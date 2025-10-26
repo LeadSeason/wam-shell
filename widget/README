@@ -1,0 +1,37 @@
+# Window, the Root.
+
+All widgets listed in this directory either must be a part of a `<window`> or otherwise return as-is, but nested within a widget that returns a window (the root).
+
+> ![warning] A window cannot be nested within another window.
+
+A `<window>` is one of the [intrinsic](https://aylur.github.io/ags/guide/intrinsics.html) elements. Intrinsic elements are also widgets. What applies to widgets also applies to intrinsic elements.
+
+## App window(s)
+
+All app windows register either through `app.window()` or through the window's `application={app}` property. This registers the window with the app, allowing it to be managed by the app lifecycle.
+
+> [!warning] The `name` property MUST proceed the `application` property. See https://aylur.github.io/ags/guide/app-cli.html#toggling-windows-by-their-name
+
+By registering a window, it can be toggled on/off through the CLI (`ags toggle Bar`) or programmatically.
+
+## Styling
+
+Set the window's class property to target it in CSS. By convention, use the widget's name as the class. E.g., Button.tsx → `<window class="Button">`.
+
+## Dimensions
+
+All windows are invisible by default unless explicitly set to `visible` (property).
+
+Unless a `defaultWidth` and `defaultHeight` are specified, the window will size to fit its contents. If the content is reduced in size, the window will keep the initial size. However, if content is added, the window will grow to fit the new content.
+
+# Looping
+
+Use a `map` on an array or use the `<For>` widget: https://aylur.github.io/ags/guide/first-widgets.html#dynamic-list-rendering
+
+# Reactivity
+
+Use `Accessor::get()` to read reactive values without transformation.
+
+If you need to transform the reactive values before reading them, call the `Accessor()` function with a callback that modifies the value and returns the modified value.
+
+https://aylur.github.io/gnim/jsx#state-management
