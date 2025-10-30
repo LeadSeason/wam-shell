@@ -24,44 +24,44 @@ export default function Tray() {
     )
   })
 
+  // TODO: The icon for AppImage-based apps do not show up.
+
   return (
-    <window visible application={app}>
-      <box orientation={Gtk.Orientation.HORIZONTAL}>
-        <For each={trayItems}>
-          {(item) => (
-            <menubutton
-              $={(self) => {
-                self.insert_action_group("dbusmenu", item.get_action_group())
-                const gestureClick = new Gtk.GestureClick({
-                  button: 0, // Listen to all buttons.
-                })
+    <box orientation={Gtk.Orientation.HORIZONTAL}>
+      <For each={trayItems}>
+        {(item) => (
+          <menubutton
+            $={(self) => {
+              self.insert_action_group("dbusmenu", item.get_action_group())
+              const gestureClick = new Gtk.GestureClick({
+                button: 0, // Listen to all buttons.
+              })
 
-                gestureClick.connect("pressed", (event) => {
-                  // Prevent default behavior.
-                  event.set_state(Gtk.EventSequenceState.CLAIMED)
+              gestureClick.connect("pressed", (event) => {
+                // Prevent default behavior.
+                event.set_state(Gtk.EventSequenceState.CLAIMED)
 
-                  switch (event.get_current_button()) {
-                    case Gdk.BUTTON_PRIMARY:
-                      item.activate(0, 0)
-                      break
-                    case Gdk.BUTTON_SECONDARY:
-                      self.get_popover()?.popup()
-                      break
-                    default:
-                  }
-                })
+                switch (event.get_current_button()) {
+                  case Gdk.BUTTON_PRIMARY:
+                    item.activate(0, 0)
+                    break
+                  case Gdk.BUTTON_SECONDARY:
+                    self.get_popover()?.popup()
+                    break
+                  default:
+                }
+              })
 
-                // TODO: self.add_controller(gestureClick)
-              }}
-              tooltipMarkup={item.tooltipMarkup}
-              direction={Gtk.ArrowType.DOWN}
-            >
-              <image gicon={item.get_gicon()} tooltip-text={item.get_title()} />
-              {Gtk.PopoverMenu.new_from_model(item.get_menu_model())}
-            </menubutton>
-          )}
-        </For>
-      </box>
-    </window>
+              // TODO: self.add_controller(gestureClick)
+            }}
+            tooltipMarkup={item.tooltipMarkup}
+            direction={Gtk.ArrowType.DOWN}
+          >
+            <image gicon={item.get_gicon()} tooltip-text={item.get_title()} />
+            {Gtk.PopoverMenu.new_from_model(item.get_menu_model())}
+          </menubutton>
+        )}
+      </For>
+    </box>
   )
 }

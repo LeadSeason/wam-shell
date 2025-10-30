@@ -7,8 +7,9 @@ app.start({
   css: style,
   instanceName: "wam-shell",
   main() {
-    const primaryMon = app.get_monitors()[0]
-    Bar(primaryMon)
-    Tray()
+    const monitors = app.get_monitors()
+    monitors.forEach((mon) => {
+      Bar(mon)
+    })
   },
 })

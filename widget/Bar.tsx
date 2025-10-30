@@ -2,6 +2,7 @@ import app from "ags/gtk4/app"
 import { Astal, Gtk, Gdk } from "ags/gtk4"
 import { execAsync } from "ags/process"
 import { createPoll } from "ags/time"
+import Tray from "./Tray"
 
 export default function Bar(gdkmonitor: Gdk.Monitor) {
   const time = createPoll("", 1000, "date")
@@ -33,6 +34,9 @@ export default function Bar(gdkmonitor: Gdk.Monitor) {
             <Gtk.Calendar />
           </popover>
         </menubutton>
+        <box $type="end">
+          <Tray />
+        </box>
       </centerbox>
     </window>
   )
