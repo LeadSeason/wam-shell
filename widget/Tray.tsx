@@ -51,7 +51,7 @@ export default function Tray() {
                   }
                 })
 
-                self.add_controller(gestureClick)
+                // TODO: self.add_controller(gestureClick)
               }}
               tooltipMarkup={item.tooltipMarkup}
               direction={Gtk.ArrowType.DOWN}
