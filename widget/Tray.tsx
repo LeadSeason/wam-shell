@@ -11,7 +11,7 @@ export default function Tray() {
     const t = registry.get_item(item_id)
     setTrayItems((items) => {
       if (items.find((item) => item.get_item_id() === item_id)) {
-        items
+        return items
       }
       return [...items, t]
     })
