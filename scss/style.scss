@@ -1,0 +1,9 @@
+@use "theme/catppuccin-mocha.scss";
+@use "widgets/include.scss";
+
+// Style ROOT, Allies to all.
+* {
+  	all: unset; // Unset all user provided style. Since we are
+	font-family: "Symbols Nerd Font Mono", "FiraCode Nerd Font Propo";
+    transition-duration: 200ms;
+}

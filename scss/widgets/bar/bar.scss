@@ -1,0 +1,78 @@
+@use "../../theme/catppuccin-mocha.scss" as t;
+@use "sass:color";
+@use "../../theme/conf.scss" as s;
+
+window.Bar {
+  background: transparent;
+  font-weight: bold;
+
+  > centerbox {
+    /*  */
+    background-image: url("./assets/grain.webp"),
+      radial-gradient(ellipse at bottom, rgba(5, 15, 70, 0.2), rgba(36, 7, 75, 0.3) 100%);
+  }
+
+  button {
+  	all: unset; // Get rid of global default for bar
+    border-radius: s.$radius;
+    margin: s.$padding-small s.$padding;
+    padding: 0 s.$padding;
+    transition-duration: 200ms;
+    border: solid 2px transparent;
+    
+
+    &:hover {
+      background-color: color.mix(t.$accent, transparent, 10%);
+      border: solid 2px color.mix(t.$accent, transparent, 10%);
+    }
+  }
+  
+  // workspaces widget
+  > centerbox > box > workspaces {
+    color: t.$text;
+    margin: s.$padding-small 0;
+
+    > workspace {
+      border-radius: s.$radius;
+      border: solid 2px transparent;
+      padding: 0 s.$padding-small;
+      margin: 0 s.$padding-small;
+
+      &:hover {
+        background-color: color.mix(t.$accent, transparent, 10%);
+        border: inset 2px color.mix(t.$accent, transparent, 10%);
+      }
+
+      &.active {
+        background-color: color.mix(t.$accent, transparent, 10%);
+        border: solid 2px color.mix(t.$accent, transparent, 10%);
+      }
+
+      // Workspace content
+      > box {
+        // Urgent app
+        .urgent {
+          background-image: radial-gradient(circle at 50% 10%,
+                                            t.$red 0%,
+                                            t.$red 5%,
+                                            transparent 6%);
+        }
+
+        > label {
+          margin-right: 4px;
+        }
+
+        > image {
+          margin: 0 s.$padding-small;
+          -gtk-icon-size: 1.5em;
+        }
+      }
+    }
+
+    // Active workspaces
+
+  }
+  
+
+
+}
