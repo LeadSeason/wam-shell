@@ -4,6 +4,7 @@ import { execAsync } from "ags/process"
 import { createPoll } from "ags/time"
 
 import Config from "../../config"
+import SwayWs from "./widgets/sway"
 
 function OSIcon() {
   const icon = Config.osIcon
@@ -43,6 +44,13 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
   const time = createPoll("", 1000, "date")
   const { TOP, LEFT, RIGHT } = Astal.WindowAnchor
 
+  let workspaceWidget
+  if (Config.desktopSession == "sway") {
+    workspaceWidget = <SwayWs monitor={gdkMonitor} />
+  } else {
+    workspaceWidget = <WorkspacesExample />
+  }
+
   return (
     <window
       visible
@@ -58,7 +66,7 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
       <centerbox cssName="centerbox">
         <box $type="start">
           <OSIcon />
-          <WorkspacesExample />
+          {workspaceWidget}
 
           <button
             $type="start"
@@ -68,10 +76,6 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
           >
             <label label="Welcome to AGS!" />
           </button>
-        </box>
-        <box $type="center" class="meaw" $={(self) => {
-        }} >
-          <label label="Meaw..." />
         </box>
         <menubutton $type="end" hexpand halign={Gtk.Align.CENTER}>
           <label label={time} />

@@ -1,0 +1,18 @@
+# wam-shell configuration
+# Enviroemntal variables don't work. here. if a environmental variable is 
+# mentioned to default or specifically specified that will work with 
+# environmental variables 
+
+# Name of the instance, defaults to wam-shell
+# instance_name = "wam-shell"
+
+# Desktop session, sway - hyprland, defaults to $DESKTOP_SESSION,
+# desktop_session = "sway"
+
+# os_icon
+# The icon in the topleft, can be a file or a icon name. File will be used if
+# string contains "/" otherwise icon is used. can also use relative paths,
+# relative paths start at the project root / instanceSrcDir. If left undefined
+# will resolve icon from /etc/os-release, if that fails will be empty string and
+# missing-icon is used.
+# os_icon = ""

@@ -1,7 +1,9 @@
 {
   "dependencies": {
     "ags": "*",
-    "gnim": "*"
+    "fuse.js": "^7.1.0",
+    "gnim": "*",
+    "toml": "^3.0.0"
   },
   "prettier": {
     "semi": false,
