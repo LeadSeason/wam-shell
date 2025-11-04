@@ -18,6 +18,9 @@ interface CommandEntry {
     main: (args: string[]) => CommandResponse
 }
 
+/**
+ * gpt made this, modified a bunch and updated to work with newer style arguments.
+ */
 class CommandRegistry {
     static instance: CommandRegistry
 

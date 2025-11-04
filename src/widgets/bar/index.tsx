@@ -21,7 +21,7 @@ function OSIcon() {
 }
 
 function WorkspacesExample() {
-  return <box cssName={"workspaces"}>
+  return <box cssName={"workspaces"} cssClasses={["bold"]}>
     <button cssName={"workspace"}>
       <box>
         <label label="1" />
@@ -67,6 +67,7 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
         <box $type="start">
           <OSIcon />
           {workspaceWidget}
+          <WorkspacesExample />
 
           <button
             $type="start"

@@ -20,20 +20,20 @@ $text: #cdd6f4;
 $subtext0: #a6adc8;
 $subtext1: #bac2de;
 
-$base: rgb(30, 30, 46);
-$mantle: rgb(24, 24, 37);
-$crust: rgb(17, 17, 27);
+$base: hsl(240, 21%, 15%);
+$mantle: hsl(240, 21%, 12%);
+$crust: hsl(240, 23%, 9%);
 
-$surface0: #313244;
-$surface1: #45475a;
-$surface2: #585b70;
+$surface0: hsl(237, 16%, 23%);
+$surface1: hsl(234, 13%, 31%);
+$surface2: hsl(233, 12%, 39%);
 
-$overlay0: #6c7086;
-$overlay1: #7f849c;
-$overlay2: #9399b2;
+$overlay0: hsl(231, 11%, 47%);
+$overlay1: hsl(230, 13%, 55%);
+$overlay2: hsl(228, 17%, 64%);
 
 /* define accent color to cooking later */
-$accent: $yellow;
+$accent: $green;
 
 $accentColor10: color.mix($accent, black, 10%);
 $accentColor20: color.mix($accent, black, 20%);

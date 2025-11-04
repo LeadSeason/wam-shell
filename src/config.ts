@@ -62,7 +62,7 @@ if (configFile) {
 const data = parseToml(readRawFile(configFile))
 
 const osIcon = data.os_icon || extractOsIconFromRelease()
-const desktopSession = data.desktop_session || (GLib.getenv("DESKTOP_SESSION") || "")
+const desktopSession = data.desktop_session_override || (GLib.getenv("DESKTOP_SESSION") || "")
 
 export default class Config {
 	static instanceName = data.instance_name || "wam-shell"

@@ -4,7 +4,6 @@
 
 window.Bar {
   background: transparent;
-  font-weight: bold;
 
   > centerbox {
     /*  */
@@ -28,7 +27,7 @@ window.Bar {
   }
   
   // workspaces widget
-  > centerbox > box > workspaces {
+  workspaces {
     color: t.$text;
     margin: s.$padding-small 0;
 
@@ -38,14 +37,21 @@ window.Bar {
       padding: 0 s.$padding-small;
       margin: 0 s.$padding-small;
 
-      &:hover {
-        background-color: color.mix(t.$accent, transparent, 10%);
-        border: inset 2px color.mix(t.$accent, transparent, 10%);
-      }
-
+      // Active workspace
       &.active {
+        color: t.$accent;
         background-color: color.mix(t.$accent, transparent, 10%);
         border: solid 2px color.mix(t.$accent, transparent, 10%);
+      }
+
+      &:hover {
+        background-color: color.mix(t.$text, transparent, 15%);
+        border: inset 2px color.mix(t.$text, transparent, 20%);
+      }
+
+      &:active {
+        background-color: color.mix(t.$text, transparent, 30%);
+        border: inset 2px color.mix(t.$text, transparent, 30%);
       }
 
       // Workspace content
@@ -58,21 +64,16 @@ window.Bar {
                                             transparent 6%);
         }
 
-        > label {
+        label {
+          font-weight: bold;
           margin-right: 4px;
         }
 
-        > image {
+        image {
           margin: 0 s.$padding-small;
           -gtk-icon-size: 1.5em;
         }
       }
     }
-
-    // Active workspaces
-
   }
-  
-
-
 }
