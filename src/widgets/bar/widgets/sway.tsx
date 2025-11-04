@@ -11,6 +11,8 @@ function focus_workspace(sway: Sway, ws: any) {
     );
 }
 
+const GtkIconTheme = new Gtk.IconTheme()
+
 /**
  * Yeah idk how this works, gpt fixed it for me
  * @param root - i3 tree root, or node with nodes 
@@ -52,7 +54,7 @@ function swayNodeToIcon(node: Node) {
        ]
         for (const element of elements)  {
             if (!element) continue;
-            if (new Gtk.IconTheme().lookup_icon((element != null) ? element : "", null, 48, 1, null, null).get_icon_name() !== "image-missing") {
+            if (GtkIconTheme.lookup_icon((element != null) ? element : "", null, 48, 1, null, null).get_icon_name() !== "image-missing") {
                 return <image iconName={element} />
             }
         }
@@ -66,7 +68,7 @@ function swayNodeToIcon(node: Node) {
         ]
         for (const element of elements) {
             if (!element) continue;
-            if (new Gtk.IconTheme().lookup_icon((element != null) ? element : "", null, 48, 1, null, null).get_icon_name() !== "image-missing") {
+            if (GtkIconTheme.lookup_icon((element != null) ? element : "", null, 48, 1, null, null).get_icon_name() !== "image-missing") {
                 return <image iconName={element} />
             }
         }
