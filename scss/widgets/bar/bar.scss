@@ -66,12 +66,12 @@ window.Bar {
 
         label {
           font-weight: bold;
-          margin-right: 4px;
+          margin: 0px 4px;
         }
 
         image {
           margin: 0 s.$padding-small;
-          -gtk-icon-size: 1.5em;
+          -gtk-icon-size: 24px;
         }
       }
     }

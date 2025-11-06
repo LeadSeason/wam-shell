@@ -67,7 +67,6 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
         <box $type="start">
           <OSIcon />
           {workspaceWidget}
-          <WorkspacesExample />
 
           <button
             $type="start"
