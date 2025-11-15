@@ -1,34 +1,38 @@
 @use "../../theme/catppuccin-mocha.scss" as t;
 @use "sass:color";
-@use "../../theme/conf.scss" as s;
+@use "../conf.scss" as s;
 
 window.Bar {
   background: transparent;
+  color: t.$text;
+  transition-duration: 200ms;
 
   > centerbox {
     /*  */
     background-image: url("./assets/grain.webp"),
       radial-gradient(ellipse at bottom, rgba(5, 15, 70, 0.2), rgba(36, 7, 75, 0.3) 100%);
+    border-bottom: solid 2px color.mix(t.$accent, transparent, 90%);
   }
 
   button {
-  	all: unset; // Get rid of global default for bar
     border-radius: s.$radius;
     margin: s.$padding-small s.$padding;
     padding: 0 s.$padding;
-    transition-duration: 200ms;
     border: solid 2px transparent;
     
-
     &:hover {
       background-color: color.mix(t.$accent, transparent, 10%);
       border: solid 2px color.mix(t.$accent, transparent, 10%);
+    }
+    &:active {
+      background-color: color.mix(t.$accent, transparent, 25%);
+      border: solid 2px color.mix(t.$accent, transparent, 30%);
+      color: t.$accent;
     }
   }
   
   // workspaces widget
   workspaces {
-    color: t.$text;
     margin: s.$padding-small 0;
 
     > workspace {
@@ -75,5 +79,17 @@ window.Bar {
         }
       }
     }
+  }
+
+  clock {
+    .separator {
+      color: t.$overlay1;
+      margin: 0 s.$padding;
+    }
+  }
+  // audio widget
+  .muted {
+    color: t.$text;
+    opacity: 0.35;
   }
 }

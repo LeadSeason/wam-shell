@@ -1,0 +1,66 @@
+@use "../../theme/catppuccin-mocha.scss" as t;
+@use "../conf.scss" as s;
+@use "sass:color";
+
+// https://docs.gtk.org/gtk4/class.Popover.html#css-nodes
+popover contents {
+  background: t.$mantle;
+  border-radius: s.$radius;
+  border: solid 2px color.mix(t.$surface0, transparent, 60%);
+  padding: s.$padding;
+  margin: 0 12px 12px; // For shadow
+  color: t.$text;
+  transition-duration: s.$transition-time;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+
+  /////////////////////////////////////
+  /// Calendar
+  /////////////////////////////////////
+  calendar {
+    background: transparent;
+
+    // Calendar header
+    header {
+      background: color.mix(t.$surface0, transparent, 50%);
+      border-radius: s.$radius;
+      margin-bottom: s.$padding-small;
+
+      // This is kind of hacky.
+      > * {
+        padding: s.$padding;
+      }
+    }
+
+    grid {
+      label {
+        border: solid 1px transparent;
+        border-radius: s.$radius;
+        padding: s.$padding-small;
+        margin: 1px;
+        
+        &:hover {
+          background-color: color.mix(t.$accent, transparent, 15%);
+          border: solid 1px color.mix(t.$accent, transparent, 20%);
+        }
+      }
+      .day-name {
+        color: color.mix(t.$accent, transparent, 75%);
+        font-weight: bold;
+      }
+      .week-number {
+        color: color.mix(t.$accent, transparent, 75%);
+      }
+      .other-month {
+        color: color.mix(t.$text, transparent, 35%);
+      }
+      .today {
+        color: t.$accent;
+        background-color: color.mix(t.$accent, transparent, 15%);
+        border: solid 1px color.mix(t.$accent, transparent, 20%);
+      }
+
+    }
+  }
+
+}
+

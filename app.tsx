@@ -7,8 +7,14 @@ import Config from "./src/config"
 import { compileScss } from "./src/lib/style"
 import { requestHandler } from "./src/lib/requestHandler"
 import { Gtk } from "ags/gtk4"
+import Scratchpad from "./src/widgets/sway-scratchpad"
+
+let scratchpad:  Gtk.Window
 
 function main() {
+	if (Config.desktopSession == "sway")
+		scratchpad = Scratchpad() as Gtk.Window
+
     const monitors = createBinding(app, "monitors")
 	
 	return (<For each={monitors} cleanup={(win) => (win as Gtk.Window).destroy()}>
@@ -25,6 +31,7 @@ compileScss()
 
 console.log("InstancePath:", Config.instanceSrcDir)
 console.log("InstanceCacheDir:", Config.instanceCacheDir)
+console.log("DesktopSession:", Config.desktopSession)
 
 app.start({
 	instanceName: Config.instanceName,

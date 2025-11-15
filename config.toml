@@ -3,11 +3,12 @@
 # mentioned to default or specifically specified that will work with 
 # environmental variables 
 
-# Name of the instance, defaults to wam-shell
+# Name of the instance, defaults to wam-shell, Recommended not to change
 # instance_name = "wam-shell"
 
-# Desktop session, sway - hyprland, defaults to $DESKTOP_SESSION,
-# desktop_session = "sway"
+# Desktop session override, overrides the desktop session, Normally picks up
+# $DESKTOP_SESSION variable. sway - hyprland. defaults to $DESKTOP_SESSION,
+# desktop_session_override = "hyprland"
 
 # os_icon
 # The icon in the topleft, can be a file or a icon name. File will be used if

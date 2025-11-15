@@ -4,40 +4,12 @@ import { execAsync } from "ags/process"
 import { createPoll } from "ags/time"
 
 import Config from "../../config"
-import SwayWs from "./widgets/sway"
 
-function OSIcon() {
-  const icon = Config.osIcon
-  let iconImage
-
-  if (icon.includes("/"))
-    iconImage = <image file={icon} pixelSize={24} />
-  else
-    iconImage = <image iconName={icon} pixelSize={24} />
-
-  return <button>
-    {iconImage}
-  </button>
-}
-
-function WorkspacesExample() {
-  return <box cssName={"workspaces"} cssClasses={["bold"]}>
-    <button cssName={"workspace"}>
-      <box>
-        <label label="1" />
-        <image iconName={"spotify-client"} />
-        <image iconName={"discord"} />
-      </box>
-    </button>
-    <button cssName={"workspace"} cssClasses={["active"]}>
-      <box>
-        <label label="3" />
-        <image iconName={"firefox"} />
-        <image iconName={"nemo"} cssClasses={["urgent"]} />
-      </box>
-    </button >
-  </box>
-}
+import OSIcon from "./barModules/osIcon"
+import SwayWs from "./barModules/workspaces-sway"
+import WorkspacesExample from "./barModules/workspaces-example"
+import { AudioInput, AudioOutput } from "./barModules/audio"
+import Clock from "./barModules/clock"
 
 
 export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
@@ -61,28 +33,20 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
       exclusivity={Astal.Exclusivity.EXCLUSIVE}
       anchor={TOP | LEFT | RIGHT}
       application={app}
-      heightRequest={40}
+      heightRequest={30}
     >
       <centerbox cssName="centerbox">
         <box $type="start">
           <OSIcon />
           {workspaceWidget}
-
-          <button
-            $type="start"
-            onClicked={() => execAsync("echo hello").then(console.log)}
-            hexpand
-            halign={Gtk.Align.CENTER}
-          >
-            <label label="Welcome to AGS!" />
-          </button>
         </box>
-        <menubutton $type="end" hexpand halign={Gtk.Align.CENTER}>
-          <label label={time} />
-          <popover>
-            <Gtk.Calendar />
-          </popover>
-        </menubutton>
+        <box $type="center">
+          <Clock />
+        </box>
+        <box $type="end">
+          <AudioInput />
+          <AudioOutput />
+        </box>
       </centerbox>
     </window>
   )

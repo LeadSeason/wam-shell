@@ -41,10 +41,8 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
             if (!element) continue;
             if (isValidIconName(element)) {
                 return <image iconName={element} />
-            } else {
             }
-        }
-        console.log("No icon found for name", (node.shell === "xwayland") ? node.window_properties?.class : node.name)
+}
         // Default image of missing icons
         return <image iconName={"missing-icon"} />
     }
@@ -66,8 +64,6 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
                     result.push(...getLeafNodes(child.nodes!));
                 }
                 if (hasFloating) {
-                    console.log("Floating con", child)
-                    console.log("")
                     result.push(...getLeafNodes(child.floating_nodes!));
                 }
             } else {
