@@ -33,7 +33,7 @@ export default function Tray() {
           const gicon = createBinding(item, "gicon")
           const tooltip = createBinding(item, "tooltip_markup")
 
-          /* Possibly can change */
+          /* Isn't reactive */
           const menuModel = Gtk.PopoverMenu.new_from_model(item.get_menu_model())
           menuModel.set_has_arrow(false)
 
