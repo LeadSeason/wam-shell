@@ -1,0 +1,12 @@
+@use "../theme/catppuccin-mocha.scss" as t;
+@use "../conf.scss" as s;
+
+tooltip {
+	margin: s.$padding;
+	padding: s.$padding;
+	font-size: 18px;
+	background-color: t.$mantle;
+	background-clip: border-box;
+	border-radius: s.$radius;
+	border: 1.6px solid t.$surface0;
+}

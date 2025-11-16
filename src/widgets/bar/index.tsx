@@ -45,9 +45,9 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
           <Clock />
         </box>
         <box $type="end">
+          <Tray />
           <AudioInput />
           <AudioOutput />
-          <Tray />
         </box>
       </centerbox>
     </window>

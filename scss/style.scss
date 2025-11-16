@@ -1,6 +1,10 @@
-@use "theme/catppuccin-mocha.scss";
-@use "widgets/include.scss";
-@use "widgets/conf.scss";
+@use "theme/catppuccin-mocha.scss" as t;
+@use "conf.scss" as s;
+
+@use "widgets/bar/bar.scss";
+@use "widgets/bar/popover.scss";
+@use "widgets/sway-scratchpad.scss";
+@use "widgets/tooltip.scss";
 
 // Style ROOT, Allies to all.
 * {

@@ -1,9 +1,10 @@
 @use "../../theme/catppuccin-mocha.scss" as t;
-@use "../conf.scss" as s;
+@use "../../conf.scss" as s;
 @use "sass:color";
 
 // https://docs.gtk.org/gtk4/class.Popover.html#css-nodes
 popover contents {
+  all: unset; // Unset all user provided style. Since we are
   background: t.$mantle;
   border-radius: s.$radius;
   border: solid 2px color.mix(t.$surface0, transparent, 60%);
@@ -25,7 +26,7 @@ popover contents {
       border-radius: s.$radius;
       margin-bottom: s.$padding-small;
 
-      // This is kind of hacky.
+      // This is kind of hacky. Somehow could'nt overwrite buttons padding.
       > * {
         padding: s.$padding;
       }
@@ -60,6 +61,52 @@ popover contents {
       }
 
     }
+  }
+
+  /////////////////////////////////////
+  /// Regular tray popover menus.
+  /////////////////////////////////////
+  modelbutton {
+      border: 2px solid transparent;
+      border-radius: 4px;
+      &:active {
+          background-color: t.$surface1;
+          border: 2px solid t.$surface2;
+      }
+      &:hover {
+          background-color: t.$surface0;
+          border: 2px solid t.$surface2;
+      }
+      &:disabled {
+        color: t.$surface2;
+      }
+  }
+
+  separator {
+      margin: 4px 0;
+      background-color: t.$surface2;
+      min-height: 1px;
+      min-height: 1px;
+  }
+  
+  arrow {
+      min-height: 16px;
+      min-width: 16px;
+      &.none {
+          -gtk-icon-source: -gtk-icontheme('open-menu-symbolic');
+      }
+      &.down {
+          -gtk-icon-source: -gtk-icontheme('pan-down-symbolic');
+      }
+      &.up {
+          -gtk-icon-source: -gtk-icontheme('pan-up-symbolic');
+      }
+      &.left {
+          -gtk-icon-source: -gtk-icontheme('pan-start-symbolic');
+      }
+      &.right {
+          -gtk-icon-source: -gtk-icontheme('pan-end-symbolic');
+      }
   }
 
 }

@@ -1,4 +1,4 @@
-import { createState, For } from "ags"
+import { createBinding, createState, For, With } from "ags"
 import { Gdk, Gtk } from "ags/gtk4"
 import app from "ags/gtk4/app"
 import AstalTray from "gi://AstalTray"
@@ -29,8 +29,15 @@ export default function Tray() {
   return (
     <box orientation={Gtk.Orientation.HORIZONTAL}>
       <For each={trayItems}>
-        {(item) => (
-          <menubutton
+        {(item) => {
+          const gicon = createBinding(item, "gicon")
+          const tooltip = createBinding(item, "tooltip_markup")
+
+          /* Possibly can change */
+          const menuModel = Gtk.PopoverMenu.new_from_model(item.get_menu_model())
+          menuModel.set_has_arrow(false)
+
+          return (<menubutton
             $={(self) => {
               self.insert_action_group("dbusmenu", item.get_action_group())
               const gestureClick = new Gtk.GestureClick({
@@ -54,13 +61,13 @@ export default function Tray() {
 
               self.add_controller(gestureClick)
             }}
-            tooltipMarkup={item.tooltipMarkup}
+            tooltipMarkup={tooltip}
             direction={Gtk.ArrowType.DOWN}
           >
-            <image gicon={item.get_gicon()} tooltip-text={item.get_title()} />
-            {Gtk.PopoverMenu.new_from_model(item.get_menu_model())}
+            <image gicon={gicon} />
+            {menuModel}
           </menubutton>
-        )}
+        )}}
       </For>
     </box>
   )
