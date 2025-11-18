@@ -11,6 +11,7 @@ import WorkspacesExample from "./barModules/workspaces-example"
 import { AudioInput, AudioOutput } from "./barModules/audio"
 import Clock from "./barModules/clock"
 import Tray from "./barModules/tray"
+import SwayNC from "./barModules/swayNC"
 
 
 export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
@@ -48,6 +49,7 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
           <Tray />
           <AudioInput />
           <AudioOutput />
+          <SwayNC />
         </box>
       </centerbox>
     </window>

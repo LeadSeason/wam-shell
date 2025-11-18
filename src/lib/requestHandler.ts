@@ -1,3 +1,4 @@
+import app from "ags/gtk4/app";
 import Config from "../config";
 
 // Example usage at the bottom of the page
@@ -123,6 +124,16 @@ registry.register({
     gives help to command if command has a help section
 `,
     main: (argv: string[]) => registry.help(argv)
+})
+
+registry.register({
+    name: ["quit", "exit"],
+    description: "quit Application",
+    help: `Exits the app`,
+    main: () => {
+        app.quit(0);
+        return "exiting ..."
+    }
 })
 
 export default CommandRegistry
