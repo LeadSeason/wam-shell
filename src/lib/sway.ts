@@ -1,8 +1,6 @@
 import GObject, { getter, register } from "ags/gobject"
 import i3ipc from "gi://i3ipc"
 
-const conn = i3ipc.Connection.new(null)
-
 @register({ GTypeName: "Sway" })
 export default class Sway extends GObject.Object {
     static instance: Sway
@@ -14,9 +12,10 @@ export default class Sway extends GObject.Object {
         return this.instance
     }
 
-    #wss: Node[] = JSON.parse(conn.message(i3ipc.MessageType.GET_WORKSPACES, ""));
-    #outputs: Displays = JSON.parse(conn.message(i3ipc.MessageType.GET_OUTPUTS, ""));
-    #tree: Node = JSON.parse(conn.message(i3ipc.MessageType.GET_TREE, ""));
+    #i3conn: i3ipc.Connection = i3ipc.Connection.new(null)
+    #wss: Node[] = JSON.parse(this.#i3conn.message(i3ipc.MessageType.GET_WORKSPACES, ""));
+    #outputs: Displays = JSON.parse(this.#i3conn.message(i3ipc.MessageType.GET_OUTPUTS, ""));
+    #tree: Node = JSON.parse(this.#i3conn.message(i3ipc.MessageType.GET_TREE, ""));
 
     @getter(Array)
     get wss () { return this.#wss };
@@ -46,16 +45,16 @@ export default class Sway extends GObject.Object {
     }
 
     message (message: string): Commands {
-        return JSON.parse(conn.message(i3ipc.MessageType.COMMAND, message));
+        return JSON.parse(this.#i3conn.message(i3ipc.MessageType.COMMAND, message));
     }
     async message_async (message: string): Promise<Commands> {
-        return await JSON.parse(conn.message(i3ipc.MessageType.COMMAND, message));
+        return await JSON.parse(this.#i3conn.message(i3ipc.MessageType.COMMAND, message));
     }
 
     constructor() {
         super()
 
-        conn.on("workspace", async (conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
+        this.#i3conn.on("workspace", async (conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
             const workspaces = await JSON.parse(conn.message(i3ipc.MessageType.GET_WORKSPACES, ""));
             this.#wss = workspaces;
 
@@ -82,7 +81,7 @@ export default class Sway extends GObject.Object {
             }
         });
 
-        conn.on("output", async (conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
+        this.#i3conn.on("output", async (conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
             const v = await JSON.parse(conn.message(i3ipc.MessageType.GET_OUTPUTS, ""));
             this.#outputs = v;
             this.notify("outputs");
