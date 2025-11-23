@@ -28,6 +28,12 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
                 node.window_properties?.window_role,
                 node.window_properties?.window_type
            ]
+
+            // Steam app icon lookup
+            if (node.window_properties?.instance.startsWith("steam_app_")) {
+                // Replaces "steam_app_" -> "steam_icon_" while keeping the numbers 
+                elements.push(node.window_properties.instance.replace(/^steam_app_(\d+)$/, "steam_icon_$1"))
+            }
         }
         else {
             // Wayland app

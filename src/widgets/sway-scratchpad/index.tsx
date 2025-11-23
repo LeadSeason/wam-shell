@@ -137,6 +137,13 @@ export default function Scratchpad() {
                 app.window_properties?.window_role,
                 app.window_properties?.window_type
             ]
+
+            // Steam app icon lookup
+            if (app.window_properties?.instance.startsWith("steam_app_")) {
+                // Replaces "steam_app_" -> "steam_icon_" while keeping the numbers 
+                elements.push(app.window_properties.instance.replace(/^steam_app_(\d+)$/, "steam_icon_$1"))
+            }
+
             title = (app.window_properties?.class != null) ? app.window_properties.class : ""
             description = (app.window_properties?.title != null) ? app.window_properties.title : ""
         }
