@@ -8,8 +8,7 @@ export function AudioOutput() {
     const { defaultSpeaker: speaker } = AstalWp.get_default()!
 
     return (
-        <menubutton
-        >
+        <menubutton>
             <Gtk.EventControllerScroll
                 flags={Gtk.EventControllerScrollFlags.VERTICAL}
                 onScroll={(
@@ -64,8 +63,7 @@ export function AudioInput() {
     const { defaultMicrophone: microphone } = AstalWp.get_default()!
 
     return (
-        <menubutton
-        >
+        <menubutton>
             <Gtk.EventControllerScroll
                 flags={Gtk.EventControllerScrollFlags.VERTICAL}
                 onScroll={(

@@ -11,9 +11,9 @@ export default function Notify() {
     }
     const reveal = createBinding(swayNc, "count").as((v) => v > 0)
     const count = createBinding(swayNc, "count").as((v) => v.toString())
-    const dnd = createBinding(swayNc, "dnd").as((v) => v ? "" : "")
+    const dnd = createBinding(swayNc, "dnd").as((v) => v ? "" : "") // TODO, use a icon instead of nerdfonts.
 
-    return <button
+    return <button cssClasses={["swayNC"]}
         onClicked={handleClick}
     >
         <box spacing={4}>

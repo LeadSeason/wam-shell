@@ -8,6 +8,7 @@ import { compileScss } from "./src/lib/style"
 import { requestHandler } from "./src/lib/requestHandler"
 import { Gtk } from "ags/gtk4"
 import Scratchpad from "./src/widgets/sway-scratchpad"
+import QSettings from "./src/widgets/QSettings"
 
 let scratchpad:  Gtk.Window
 
@@ -16,6 +17,8 @@ function main() {
 		scratchpad = Scratchpad() as Gtk.Window
 
     const monitors = createBinding(app, "monitors")
+	const qSettings = QSettings() as Gtk.Window
+	app.add_window(qSettings)
 	
 	return (<For each={monitors} cleanup={(win) => (win as Gtk.Window).destroy()}>
 		{(monitor) => <Bar gdkMonitor={monitor} /> }

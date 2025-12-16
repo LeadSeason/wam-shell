@@ -5,7 +5,7 @@
 // https://docs.gtk.org/gtk4/class.Popover.html#css-nodes
 popover contents {
   all: unset; // Unset all user provided style. Since we are
-  background: t.$mantle;
+  background: t.$crust;
   border-radius: s.$radius;
   border: solid 2px color.mix(t.$surface0, transparent, 60%);
   padding: s.$padding;
@@ -17,6 +17,44 @@ popover contents {
   /////////////////////////////////////
   /// Calendar
   /////////////////////////////////////
+
+  button {
+    border-radius: s.$radius;
+    margin: s.$padding-small s.$padding;
+    padding: 1px s.$padding;
+    border: solid 2px transparent;
+    
+    &:hover {
+      background-color: color.mix(t.$accent, transparent, 10%);
+      border: solid 2px color.mix(t.$accent, transparent, 10%);
+    }
+    &:active {
+      background-color: color.mix(t.$accent, transparent, 25%);
+      border: solid 2px color.mix(t.$accent, transparent, 30%);
+      color: t.$accent;
+    }
+  }
+
+  scale {
+      padding: .2em .6em;
+      trough {
+          border-radius: 7px;
+          border: 1px solid t.$surface1;
+          background-color: t.$surface0;
+          highlight {
+              background-color: t.$text;
+              border-radius: 7px;
+          }
+          slider {
+              background-color: t.$accent;
+              border-radius: 2em;
+              min-height: 1em;
+              min-width: 1em;
+              margin: -.2em;
+          }
+      }
+  }
+
   calendar {
     background: transparent;
 

@@ -1,0 +1,143 @@
+@use "../theme/catppuccin-mocha.scss" as t;
+@use "../conf.scss" as s;
+@use "sass:color";
+
+// https://docs.gtk.org/gtk4/class.Popover.html#css-nodes
+window#QSettings {
+    all: unset; // Unset all user provided style. Since we are
+
+    .qSettings {
+        background: t.$crust;
+        border-radius: s.$radius;
+        border: solid 2px color.mix(t.$surface0, transparent, 60%);
+        margin: 5px 12px 12px; // For shadow
+        color: t.$text;
+        transition-duration: s.$transition-time;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+    /////////////////////////////////////
+    /// Calendar
+    /////////////////////////////////////
+
+    button {
+        border-radius: s.$radius;
+        margin: s.$padding-small s.$padding;
+        padding: 1px s.$padding;
+        border: solid 2px transparent;
+
+        &:hover {
+            background-color: color.mix(t.$accent, transparent, 10%);
+            border: solid 2px color.mix(t.$accent, transparent, 10%);
+        }
+        &:active {
+            background-color: color.mix(t.$accent, transparent, 25%);
+            border: solid 2px color.mix(t.$accent, transparent, 30%);
+            color: t.$accent;
+        }
+    }
+
+    scale {
+        padding: .2em .6em;
+        trough {
+            border-radius: 7px;
+            border: 1px solid t.$surface1;
+            background-color: t.$surface0;
+            highlight {
+                background-color: t.$text;
+                border-radius: 7px;
+            }
+            slider {
+                background-color: t.$accent;
+                border-radius: 2em;
+                min-height: 1em;
+                min-width: 1em;
+                margin: -.2em;
+            }
+        }
+    }
+
+    .QSHeader {
+        background-color: t.$base;
+        .QSPFP {
+            border-radius: s.$radius;
+            border: solid 2px color.mix(t.$mantle, transparent, 60%);
+        }
+        .QSBat {
+            margin-left: s.$padding-small;
+            font-size: 14px;
+            -gtk-icon-size: 14px;
+            image {
+                margin-right: s.$padding-small;
+            }
+        }
+    }
+    .QSSection {
+        padding: s.$padding;
+    }
+    
+    .toggleButton {
+        border-radius: s.$radius;
+        background-color: t.$base;
+    }
+    .TBactive {
+        color: t.$base;
+        background-color: t.$accent;
+          &:hover {
+            background-color: color.mix(t.$accent, transparent, 70%);
+            border: solid 2px color.mix(t.$accent, transparent, 70%);
+        }
+        &:active {
+            background-color: color.mix(t.$accent, transparent, 55%);
+            border: solid 2px color.mix(t.$accent, transparent, 50%);
+        }
+    }
+
+
+    /////////////////////////////////////
+    /// Regular tray popover menus.
+    /////////////////////////////////////
+    modelbutton {
+        border: 2px solid transparent;
+        border-radius: 4px;
+        &:active {
+            background-color: t.$surface1;
+            border: 2px solid t.$surface2;
+        }
+        &:hover {
+            background-color: t.$surface0;
+            border: 2px solid t.$surface2;
+        }
+        &:disabled {
+            color: t.$surface2;
+        }
+    }
+
+    separator {
+        margin: 4px 0;
+        background-color: t.$surface2;
+        min-height: 1px;
+        min-height: 1px;
+    }
+
+    arrow {
+        min-height: 16px;
+        min-width: 16px;
+        &.none {
+            -gtk-icon-source: -gtk-icontheme('open-menu-symbolic');
+        }
+        &.down {
+            -gtk-icon-source: -gtk-icontheme('pan-down-symbolic');
+        }
+        &.up {
+            -gtk-icon-source: -gtk-icontheme('pan-up-symbolic');
+        }
+        &.left {
+            -gtk-icon-source: -gtk-icontheme('pan-start-symbolic');
+        }
+        &.right {
+            -gtk-icon-source: -gtk-icontheme('pan-end-symbolic');
+        }
+    }
+
+}
+

@@ -246,12 +246,3 @@ export default function Scratchpad() {
         </revealer>
     </window>
 }
-/*
-app.start({
-    main() {
-        let s = Scratchpad() as Gtk.Window
-        app.add_window(s)
-        s.present()
-    }
-})
-*/

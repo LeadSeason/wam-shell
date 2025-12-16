@@ -9,7 +9,7 @@ export default function OSIcon() {
   else
     iconImage = <image iconName={icon} pixelSize={24} />
 
-  return <button>
+  return <button cssClasses={["osIcon"]}>
     {iconImage}
   </button>
 }
