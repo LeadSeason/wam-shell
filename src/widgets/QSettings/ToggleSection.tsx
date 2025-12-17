@@ -1,57 +1,90 @@
 import Gtk from "gi://Gtk?version=4.0";
 import { Accessor, createState, Setter } from "gnim";
 
-function TbButton({data: data}: {data: [Accessor<number>, Setter<number>, number]}) {
-    const state = data[0]
+interface TbButtonProps {
+    active: Accessor<number>
+    setActive: Setter<number>
+    index: number
+    
+    icon: string | Accessor<string>
+    label: string | Accessor<string>
+}
+
+function DropdownButton({active, setActive, index, icon, label }: TbButtonProps) {
     // const setState = data[1]
-    const index = data[2]
     const setState = (i: number) => {
-        if (state.get() === i)
-            data[1](0)
+        if (active.get() === i)
+            setActive(0)
         else
-            data[1](i)
+            setActive(i)
     }
-    return <box cssName={"button"} hexpand cssClasses={["toggleButton", "TBactive"]}>
+    return <box cssName={"button"} hexpand cssClasses={["toggleButton", "ToggleSectionActive"]}>
         <Gtk.GestureClick
             button={1}
             onPressed={() => {
                 setState(index);
             }} />
-        <image iconName={"applications-system-symbolic"} />
-        <label label={"MEAW" + index.toString()} />
-        <image halign={Gtk.Align.END} hexpand iconName={state.as(s => (s === index) ? "arrow-up-symbolic" : "arrow-down-symbolic")} />
+        <box spacing={5}>
+            <image iconName={"applications-system-symbolic"} />
+            <label label={"MEAW" + index.toString()} />
+        </box>
+        <image halign={Gtk.Align.END} hexpand iconName={active.as(s => (s === index) ? "arrow-up-symbolic" : "arrow-down-symbolic")} />
     </box>
 }
 
 export function ToggleSection() {
-    const [active, setActive] = createState(0);
+    const [activeDropdown, setActiveDropdown] = createState(0);
 
     return <box cssClasses={["QSSection"]} orientation={Gtk.Orientation.VERTICAL}>
         <box>
-            <TbButton data={[active, setActive, 1]} />        
-            <TbButton data={[active, setActive, 2]} />        
+            <DropdownButton 
+                active={activeDropdown}
+                setActive={setActiveDropdown}
+                index={1}
+                icon={"applications-system-symbolic"}
+                label={"Test 1"}
+            />        
+            <DropdownButton 
+                active={activeDropdown}
+                setActive={setActiveDropdown}
+                index={2}
+                icon={"applications-system-symbolic"}
+                label={"Test"}
+            />        
         </box>
         <revealer
-            revealChild={active.as(s => (s === 1))}
+            revealChild={activeDropdown.as(s => (s === 1))}
         >
             <label label={"label 1"} />
         </revealer>
         <revealer
-            revealChild={active.as(s => (s === 2))}
+            revealChild={activeDropdown.as(s => (s === 2))}
         >
             <label label={"label 2"} />
         </revealer>
         <box>
-            <TbButton data={[active, setActive, 3]} />        
-            <TbButton data={[active, setActive, 4]} />        
+            <DropdownButton 
+                active={activeDropdown}
+                setActive={setActiveDropdown}
+                index={3}
+                icon={"applications-system-symbolic"}
+                label={"Test 3"}
+            />        
+            <DropdownButton 
+                active={activeDropdown}
+                setActive={setActiveDropdown}
+                index={4}
+                icon={"applications-system-symbolic"}
+                label={"Test 4"}
+            />        
         </box>
         <revealer
-            revealChild={active.as(s => (s === 3))}
+            revealChild={activeDropdown.as(s => (s === 3))}
         >
             <label label={"label 3"} />
         </revealer>
         <revealer
-            revealChild={active.as(s => (s === 4))}
+            revealChild={activeDropdown.as(s => (s === 4))}
         >
             <label label={"label 4"} />
         </revealer>

@@ -27,7 +27,10 @@ export default function Tray() {
   // TODO: The icon for AppImage-based apps do not show up.
 
   return (
-    <box>
+    <Gtk.FlowBox
+      maxChildrenPerLine={8}
+      selectionMode={Gtk.SelectionMode.NONE}
+    >
       <For each={trayItems}>
         {(item) => {
           const gicon = createBinding(item, "gicon")
@@ -69,6 +72,6 @@ export default function Tray() {
           </menubutton>
         )}}
       </For>
-    </box>
+    </Gtk.FlowBox>
   )
 }

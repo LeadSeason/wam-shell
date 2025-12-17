@@ -32,7 +32,7 @@ export default function QSettings() {
     
     function show() {
         win.present()
-        revealer.reveal_child = true;
+        revealer.set_reveal_child(true);
     }
 
     registry.register({

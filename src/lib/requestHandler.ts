@@ -51,10 +51,13 @@ class CommandRegistry {
      * @param argv command + arguments for command
      * @returns Returns the executed commands output string
      */
-    async execute(argv: string[]): Promise<string> {
+    async execute(argv: string[], silent: boolean = false): Promise<string> {
         let requested_command = argv.shift()
-        console.log("Request:", requested_command)
-        console.log("args:", argv.join(", "))
+        
+        if (!silent) {
+            console.log("Request:", requested_command)
+            console.log("args:", argv.join(", "))
+        }
 
         // Typescript happy, Also sane default
         if (!requested_command) {
@@ -73,6 +76,7 @@ class CommandRegistry {
             const result = await entry.main(argv)
             return `${Config.instanceName}: ${result}`
         } catch (err) {
+            console.log(`Error: Error: ${(err as Error).message}`)
             return `${Config.instanceName} Error: ${(err as Error).message}`
         }
     }

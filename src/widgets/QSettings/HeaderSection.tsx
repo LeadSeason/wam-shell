@@ -4,6 +4,7 @@ export function HeaderSection() {
     // @TODO default avatar "avatar-default-symbolic"
     // @TODO make avatar a circle or make the corners rounded, Css cannot do this
     // @TODO Implement functions
+        // @TODO have a Are you sure warning before turning the computer off.
 
     // @TODO Implement Battery,
     return <box cssClasses={["QSHeader", "QSSection"]}>

@@ -79,7 +79,7 @@ window#QSettings {
         border-radius: s.$radius;
         background-color: t.$base;
     }
-    .TBactive {
+    .ToggleSectionActive {
         color: t.$base;
         background-color: t.$accent;
           &:hover {
