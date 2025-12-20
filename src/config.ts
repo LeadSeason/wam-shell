@@ -2,7 +2,6 @@ import GLib from "gi://GLib?version=2.0"
 import toml from "toml"
 import { exec } from "ags/process"
 import { readFile } from "ags/file"
-
 import { isFile } from "./lib/utils"
 
 const instanceSrcDir = exec("pwd").trim()
@@ -70,6 +69,9 @@ export default class Config {
 	static instanceSrcDir = instanceSrcDir
 	static osIcon = osIcon
 	static desktopSession = desktopSession
+	
+	static swayGaps = (data.sway_gaps === undefined) ? true : data.sway_gaps
+	static swayGapsSizeDefault = 10
 
 	static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
 	static cacheFile = `${this.instanceCacheDir}/cache.json`

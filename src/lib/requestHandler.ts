@@ -54,9 +54,10 @@ class CommandRegistry {
     async execute(argv: string[], silent: boolean = false): Promise<string> {
         let requested_command = argv.shift()
         
+        if (requested_command === undefined) return "<helper> help for list of commands"
+        
         if (!silent) {
-            console.log("Request:", requested_command)
-            console.log("args:", argv.join(", "))
+            console.log(`Request: command(${requested_command}) args(${argv.join(", ")})`)
         }
 
         // Typescript happy, Also sane default

@@ -7,14 +7,17 @@ import Config from "./src/config"
 import { compileScss } from "./src/lib/style"
 import { requestHandler } from "./src/lib/requestHandler"
 import { Gtk } from "ags/gtk4"
-import Scratchpad from "./src/widgets/sway-scratchpad"
+import swayScratchpad from "./src/widgets/sway-scratchpad"
 import QSettings from "./src/widgets/QSettings"
+import SwayGaps from "./src/lib/swayGaps"
 
 let scratchpad:  Gtk.Window
 
 function main() {
 	if (Config.desktopSession == "sway")
-		scratchpad = Scratchpad() as Gtk.Window
+		scratchpad = swayScratchpad() as Gtk.Window
+	if (Config.swayGaps && Config.desktopSession == "sway")
+    	SwayGaps.get_default()
 
     const monitors = createBinding(app, "monitors")
 	const qSettings = QSettings() as Gtk.Window

@@ -55,6 +55,10 @@ export default class Brightness extends GObject.Object {
         if (percent > 1)
             percent = 1
 
+        /* @TODO, Set the brightness locally fist then Asyncrisly set the
+         * brightness later. Maybe with the same trick as the sway scratchpad,
+         * wait 25ms before updating.
+         */
         execAsync(`brightnessctl set ${Math.floor(percent * 100)}% -q`).then(() => {
             this.#screen = percent
             this.notify("screen")

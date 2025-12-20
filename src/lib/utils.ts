@@ -12,7 +12,7 @@ import Gtk from "gi://Gtk?version=4.0";
  * @param path Path to a file
  */
 export function isFile(path: string): boolean {
-    return GLib.file_test(path, GLib.FileTest.IS_REGULAR)
+    return GLib.file_test(path, GLib.FileTest.EXISTS)
 }
 
 /**

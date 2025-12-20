@@ -17,3 +17,8 @@
 # will resolve icon from /etc/os-release, if that fails will be empty string and
 # missing-icon is used.
 # os_icon = ""
+
+# sway_gaps - SwayGaps module
+# Enable sway_gaps feature, Defaults to true if desktop session is sway.
+# otherwise disabled
+# sway_gaps = true

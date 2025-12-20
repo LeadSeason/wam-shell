@@ -5,6 +5,7 @@
 // https://docs.gtk.org/gtk4/class.Popover.html#css-nodes
 window#QSettings {
     all: unset; // Unset all user provided style. Since we are
+    transition-duration: s.$transition-time;
 
     .qSettings {
         background: t.$crust;
@@ -12,7 +13,6 @@ window#QSettings {
         border: solid 2px color.mix(t.$surface0, transparent, 60%);
         margin: 5px 12px 12px; // For shadow
         color: t.$text;
-        transition-duration: s.$transition-time;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
     /////////////////////////////////////
@@ -82,9 +82,9 @@ window#QSettings {
     .ToggleSectionActive {
         color: t.$base;
         background-color: t.$accent;
-          &:hover {
+        &:hover {
             background-color: color.mix(t.$accent, transparent, 70%);
-            border: solid 2px color.mix(t.$accent, transparent, 70%);
+            border: solid 2px transparent;
         }
         &:active {
             background-color: color.mix(t.$accent, transparent, 55%);

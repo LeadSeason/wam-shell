@@ -7,7 +7,7 @@ import Tray from "./tray";
 import Config from "../../config";
 import CommandRegistry from "../../lib/requestHandler";
 
-import { ToggleSection } from "./ToggleSection";
+import { ToggleSection } from "./toggleSection";
 import { HeaderSection } from "./HeaderSection";
 import { SliderSection } from "./SliderSection";
 
