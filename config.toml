@@ -1,7 +1,7 @@
 # wam-shell configuration
-# Enviroemntal variables don't work. here. if a environmental variable is 
-# mentioned to default or specifically specified that will work with 
-# environmental variables 
+# Enviroemntal variables don't work. here. if a environmental variable is
+# mentioned to default or specifically specified that will work with
+# environmental variables
 
 # Name of the instance, defaults to wam-shell, Recommended not to change
 # instance_name = "wam-shell"

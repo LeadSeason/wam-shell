@@ -3,10 +3,10 @@
 
 window#Scratchpad {
     color: t.$text;
-    
+
     box#launcher-content {
-        border: 2px solid t.$surface0;
-        background: t.$base;
+        border: 2px solid t.$surface080;
+        background: t.$base70;
         min-width: 600px;
         border-radius: 12px;
         padding: 10px;
@@ -19,7 +19,7 @@ window#Scratchpad {
     }
 
     entry {
-        background-color: t.$surface0;
+        background-color: t.$surface040;
         border: 2px solid transparent;
         border-radius: 6px;
         padding: 0.5rem;
@@ -37,7 +37,7 @@ window#Scratchpad {
     }
 
     button {
-        background-color: t.$surface0;
+        background-color: t.$surface040;
         border-radius: 6px;
         border: 2px solid transparent;
 
@@ -54,14 +54,14 @@ window#Scratchpad {
 
         &:hover {
             border-radius: 6px;
-            background-color: t.$surface0;
-            border: 2px solid t.$surface2;
+            background-color: t.$surface060;
+            border: 2px solid t.$surface260;
         }
 
         &:focus {
             border-radius: 6px;
-            background-color: t.$surface0;
-            border: 2px solid t.$accent;
+            background-color: t.$accent10;
+            border: 2px solid t.$accent50;
         }
     }
 

@@ -1,50 +1,21 @@
-import Sway, { Node } from "../../lib/sway";
+import Sway, { Node } from "../lib/sway";
 
 import { For, createBinding, createState } from "ags"
 import { Astal, Gtk, Gdk } from "ags/gtk4"
 import Graphene from "gi://Graphene"
 import Fuse from "fuse.js";
 import { timeout } from "ags/time";
-import Config from "../../config";
-import CommandRegistry from "../../lib/requestHandler";
+import Config from "../config";
+import CommandRegistry from "../lib/requestHandler";
 
 const { TOP, BOTTOM, LEFT, RIGHT } = Astal.WindowAnchor
 
-let win: Astal.Window
-
-export function showScratchpad(): [boolean, string] {
-    if (win) {
-        if (!win.is_visible()) {
-            win.present()
-            return [true, "Scratchpad, window show"]
-        } else {
-            win.hide()
-            return [false, "Scratchpad, window hidden"]
-        }
-    } 
-    return [false, `Scratchpad, No window is defined, Maybe running on hyprland?
-Scratchpad is sway-specific`]
-}
-
-const registry = CommandRegistry.get_default()
-
-// register the help command
-registry.register({
-    name: ["scratchpad", "showScratchpad"],
-    description: "Show Apps/Nodes in the sway scratchpad",
-    help: `Sway scratchpad Tool.
-Lists apps / cons in the scratchpad.
-Shows / hides the scratchpad tool on request.
-`,
-    main: (argv: string[]) => {
-        return showScratchpad()[1]
-    }
-})
 
 export default function Scratchpad() {
+    let win: Astal.Window
     let contentBox: Gtk.Box
     let searchEntry: Gtk.Entry
-    let revealer: Gtk.Revealer
+    const [revealer, setReveler] = createState(false)
     let gtkIconTheme = new Gtk.IconTheme() // Will be replaced layer
 
     const sway = Sway.get_default()
@@ -89,8 +60,93 @@ export default function Scratchpad() {
 
     }
 
+    // App entry, passed in a Sway Node (usually a window)
+    function AppEntry({ app }: { app: Node }) {
+        let iconLet = <></>
+        let title = ""
+        let description = ""
+        let iconProps: (string | undefined)[]
+
+        if (app.shell === "xwayland") {
+            // X11 app
+            iconProps = [
+                app.window_properties?.class,
+                app.window_properties?.instance,
+                app.window_properties?.title,
+                app.window_properties?.window_role,
+                app.window_properties?.window_type
+            ]
+
+            // Steam app icon lookup
+            if (app.window_properties?.instance.startsWith("steam_app_")) {
+                // Replaces "steam_app_" -> "steam_icon_" while keeping the numbers
+                iconProps.push(app.window_properties.instance.replace(/^steam_app_(\d+)$/, "steam_icon_$1"))
+            }
+
+            title = (app.window_properties?.class != null) ? app.window_properties.class : ""
+            description = (app.window_properties?.title != null) ? app.window_properties.title : ""
+        }
+        else {
+            // Wayland app
+            iconProps = [
+                app?.app_id,
+                (app.name != null) ? app.name.split(" ")[0] : undefined,
+                (app.name != null) ? app.name : undefined
+            ]
+            title = (app?.app_id != null) ? app.app_id : ""
+            description = (app?.name != null) ? app.name : ""
+        }
+
+        title = title.replace(title.charAt(0), title.charAt(0).toUpperCase())
+        description = description.replace(description.charAt(0), description.charAt(0).toUpperCase())
+
+        for (const element of iconProps) {
+            if (!element) continue;
+            if (gtkIconTheme.has_icon(element)) {
+                iconLet = <image iconName={element} />
+            }
+        };
+
+        return <button onClicked={() => openApp(app)}>
+            <box spacing={6}>
+                {iconLet}
+                <box orientation={Gtk.Orientation.VERTICAL}  >
+                    <label label={title} class="title" maxWidthChars={60} wrap xalign={0} />
+                    <label label={description} class="description" maxWidthChars={60} wrap xalign={0} />
+                </box>
+            </box>
+        </button>
+    }
+
+    function showScratchpad(): [boolean, string] {
+        if (win) {
+            if (!win.is_visible()) {
+                win.present()
+                return [true, "Scratchpad, window show"]
+            } else {
+                hide()
+                return [false, "Scratchpad, window hidden"]
+            }
+        }
+        return [false, `Scratchpad, No window is defined, Maybe running on hyprland?
+Scratchpad is sway-specific`]
+    }
+
+    const registry = CommandRegistry.get_default()
+
+    registry.register({
+        name: ["scratchpad", "showScratchpad"],
+        description: "Show Apps/Nodes in the sway scratchpad",
+        help: `Sway scratchpad Tool.
+Lists apps / cons in the scratchpad.
+Shows / hides the scratchpad tool on request.
+    `,
+        main: (argv: string[]) => {
+            return showScratchpad()[1]
+        }
+    })
     function hide() {
-        revealer.reveal_child = false
+        setReveler(false)
         // give some time for the animation to play.
         timeout(50, () => {
             win.hide()
@@ -121,65 +177,6 @@ export default function Scratchpad() {
         }
     }
 
-    // App entry, passed in a Sway Node (usually a window)
-    function AppEntry({ app }: { app: Node }) {
-        let iconLet = <></>
-        let title = ""
-        let description = ""
-        let elements: (string | undefined)[]
-
-        if (app.shell === "xwayland") {
-            // X11 app
-            elements = [
-                app.window_properties?.class,
-                app.window_properties?.instance,
-                app.window_properties?.title,
-                app.window_properties?.window_role,
-                app.window_properties?.window_type
-            ]
-
-            // Steam app icon lookup
-            if (app.window_properties?.instance.startsWith("steam_app_")) {
-                // Replaces "steam_app_" -> "steam_icon_" while keeping the numbers 
-                elements.push(app.window_properties.instance.replace(/^steam_app_(\d+)$/, "steam_icon_$1"))
-            }
-
-            title = (app.window_properties?.class != null) ? app.window_properties.class : ""
-            description = (app.window_properties?.title != null) ? app.window_properties.title : ""
-        }
-        else {
-            // Wayland app
-            elements = [
-                app?.app_id,
-                (app.name != null) ? app.name.split(" ")[0] : undefined,
-                (app.name != null) ? app.name : undefined
-            ]
-            title = (app?.app_id != null) ? app.app_id : ""
-            description = (app?.name != null) ? app.name : ""
-        }
-
-        title = title.replace(title.charAt(0), title.charAt(0).toUpperCase())
-        description = description.replace(description.charAt(0), description.charAt(0).toUpperCase())
-
-        for (const element of elements) {
-            if (!element) continue;
-            if (gtkIconTheme.has_icon(element)) {
-                iconLet = <image iconName={element} />
-            }
-        };
-
-        return <button onClicked={() => openApp(app)}>
-            <box spacing={6}>
-                {iconLet}
-                <box orientation={Gtk.Orientation.VERTICAL}  >
-                    <label label={title} class="title" maxWidthChars={60} wrap xalign={0} />
-                    <label label={description} class="description" maxWidthChars={60} wrap xalign={0} />
-                </box>
-            </box>
-        </button>
-    }
-
-
     return <window
         $={(ref) => {
             win = ref
@@ -195,7 +192,7 @@ export default function Scratchpad() {
             if (visible) {
                 setList(apps.get())
                 searchEntry.grab_focus()
-                revealer.reveal_child = true
+                setReveler(true)
             }
             else {
                 searchEntry.set_text("")
@@ -205,7 +202,9 @@ export default function Scratchpad() {
         <Gtk.EventControllerKey onKeyPressed={onKey} />
         <Gtk.GestureClick onPressed={onClick} />
         <revealer
-            $={(ref) => (revealer = ref)}
+            transitionType={revealer.as((b) => b ? Gtk.RevealerTransitionType.SWING_DOWN : Gtk.RevealerTransitionType.SWING_UP)}
+            transitionDuration={200}
+            revealChild={revealer}
         >
             <box
                 $={(ref) => (contentBox = ref)}

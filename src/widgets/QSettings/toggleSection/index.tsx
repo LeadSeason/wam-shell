@@ -1,24 +1,36 @@
 import Gtk from "gi://Gtk?version=4.0";
 import { Accessor, createState } from "gnim";
-import { DropdownButton } from "./ToggleButton";
-import { ExampleButton, ExampleWidget } from "./SwayGaps";
+import { SwayGapsButton, SwayGapsWidget } from "./SwayGaps";
+import { PowerProfilesButton, PowerProfilesWidget } from "./powerProfile";
 
+/**
+ * @TODO Bluetooth, wifi / network. Basically connecting to network manager profiles
+ * @TODO Fix buttons being wonky
+ *
+ */
 
 export function ToggleSection() {
-    const [activeDropdown, setActiveDropdown] = createState(0);
+
+    const [activeDropdownIndex, setActiveDropdownIndex] = createState(0);
 
     return <box cssClasses={["QSSection"]} orientation={Gtk.Orientation.VERTICAL}>
         <box>
-            <ExampleButton activeDropdown={activeDropdown} setActiveDropdown={setActiveDropdown} dropdownIndex={1} />
-            <ExampleButton activeDropdown={activeDropdown} setActiveDropdown={setActiveDropdown} dropdownIndex={2} />
+            <SwayGapsButton
+                activeDropdown={activeDropdownIndex}
+                setActiveDropdown={setActiveDropdownIndex}
+                dropdownIndex={1} />
+            <PowerProfilesButton
+                activeDropdown={activeDropdownIndex}
+                setActiveDropdown={setActiveDropdownIndex}
+                dropdownIndex={2} />
+
         </box>
-        <ExampleWidget activeDropdown={activeDropdown} dropdownIndex={1}/>
-        <ExampleWidget activeDropdown={activeDropdown} dropdownIndex={2}/>
-        <box>
-            <ExampleButton activeDropdown={activeDropdown} setActiveDropdown={setActiveDropdown} dropdownIndex={3} />
-            <ExampleButton activeDropdown={activeDropdown} setActiveDropdown={setActiveDropdown} dropdownIndex={4} />
-        </box>
-        <ExampleWidget activeDropdown={activeDropdown} dropdownIndex={3}/>
-        <ExampleWidget activeDropdown={activeDropdown} dropdownIndex={4}/>
+        <SwayGapsWidget
+            activeDropdown={activeDropdownIndex}
+            dropdownIndex={1}/>
+        <PowerProfilesWidget
+            activeDropdown={activeDropdownIndex}
+            dropdownIndex={2}/>
+
     </box>;
 }

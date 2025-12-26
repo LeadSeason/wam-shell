@@ -10,7 +10,7 @@ import SwayWs from "./barModules/workspaces-sway"
 import WorkspacesExample from "./barModules/workspaces-example"
 import Clock from "./barModules/clock"
 import SwayNC from "./barModules/swayNC"
-import QSettings from "./barModules/QSettings"
+import QSettingsLabel from "./barModules/QSettingsLabel"
 
 
 export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
@@ -45,7 +45,7 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
           <Clock />
         </box>
         <box $type="end">
-          <QSettings />
+          <QSettingsLabel />
           <SwayNC />
         </box>
       </centerbox>

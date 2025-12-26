@@ -1,6 +1,6 @@
-/** 
+/**
  * File: utils.ts
- * Description: Mainly for helper functions 
+ * Description: Mainly for helper functions
  */
 import GLib from "gi://GLib?version=2.0";
 import Gtk from "gi://Gtk?version=4.0";
@@ -16,7 +16,7 @@ export function isFile(path: string): boolean {
 }
 
 /**
- * iconLookup tool.
+ * iconLookup tool. ! This Function is slow !
  * @param iconName - Icon to be locked up
  * @returns Returns null if no icon found otherwise gives a valid icon name.
  */

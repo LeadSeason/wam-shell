@@ -1,13 +1,24 @@
 import AstalWp from "gi://AstalWp?version=0.1";
 import Gtk from "gi://Gtk?version=4.0";
-import { createBinding } from "gnim";
+import { Accessor, createBinding } from "gnim";
 
-export function SliderSection() {
-    const { defaultSpeaker: speaker } = AstalWp.get_default()!;
-    const { defaultMicrophone: microphone } = AstalWp.get_default()!;
+interface VolSliderProps {
+    maxValue?: number
+    endpoint: AstalWp.Endpoint
+}
 
-    return <box cssClasses={["QSSection"]} orientation={Gtk.Orientation.VERTICAL}>
-        <box>
+function VolSlider({
+    maxValue: maxValue = 1.5,
+    endpoint: endpoint
+}: VolSliderProps) {
+    const volume = createBinding(endpoint, "volume")
+    return <box
+        cssClasses={volume.as((v) => {
+            if (v > 1 )
+                return ["volHigh"]
+            return []
+        })}
+    >
             <button>
                 <Gtk.EventControllerScroll
                     flags={Gtk.EventControllerScrollFlags.VERTICAL}
@@ -16,50 +27,38 @@ export function SliderSection() {
                         arg0: number,
                         arg1: number
                     ) => {
-                        speaker.volume -= arg1 / 100;
+                        endpoint.volume -= arg1 / 100;
                         return true;
                     }} />
                 <Gtk.GestureClick
                     button={1}
                     onPressed={() => {
-                        speaker.mute = !speaker.mute;
+                        endpoint.mute = !endpoint.mute;
                         return true;
                     }} />
-                <image iconName={createBinding(speaker, "volumeIcon")} />
+                <image iconName={createBinding(endpoint, "volumeIcon")} />
             </button>
             <slider
-                max={1.5}
+                hexpand
+                max={maxValue}
                 widthRequest={260}
-                onChangeValue={({ value }) => speaker.set_volume(value)}
-                value={createBinding(speaker, "volume")} />
+                onChangeValue={({ value }) => endpoint.set_volume(value)}
+                value={volume} />
+            <label
+                widthChars={5}
+                maxWidthChars={5}
+                label={volume.as((v) => `${Math.floor(v * 100)}%`)}/>
         </box>
 
-        <box>
-            <button> /* This is used so 4 times in QSettings. Should
-                be probably made in to a function */ /* This is used so 4 times in QSettings. Should
-                be probably made in to a function */
-                <Gtk.EventControllerScroll
-                    flags={Gtk.EventControllerScrollFlags.VERTICAL}
-                    onScroll={(
-                        source: Gtk.EventControllerScroll,
-                        arg0: number,
-                        arg1: number
-                    ) => {
-                        microphone.volume -= arg1 / 100;
-                        return true;
-                    }} />
-                <Gtk.GestureClick
-                    button={1}
-                    onPressed={() => {
-                        microphone.mute = !microphone.mute;
-                        return true;
-                    }} />
-                <image iconName={createBinding(microphone, "volumeIcon")} />
-            </button>
-            <slider
-                widthRequest={260}
-                onChangeValue={({ value }) => microphone.set_volume(value)}
-                value={createBinding(microphone, "volume")} />
-        </box>
+}
+
+export function SliderSection() {
+    const { defaultSpeaker: speaker } = AstalWp.get_default()!;
+    const { defaultMicrophone: microphone } = AstalWp.get_default()!;
+    // @TODO, Brightness slider?
+
+    return <box cssClasses={["QSSection"]} orientation={Gtk.Orientation.VERTICAL}>
+        <VolSlider endpoint={speaker} />
+        <VolSlider endpoint={microphone} maxValue={1}/>
     </box>;
 }

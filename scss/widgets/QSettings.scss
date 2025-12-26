@@ -26,13 +26,15 @@ window#QSettings {
         border: solid 2px transparent;
 
         &:hover {
-            background-color: color.mix(t.$accent, transparent, 10%);
-            border: solid 2px color.mix(t.$accent, transparent, 10%);
+            background-color: t.$accent20;
+            border: solid 2px t.$accent20;
         }
         &:active {
-            background-color: color.mix(t.$accent, transparent, 25%);
-            border: solid 2px color.mix(t.$accent, transparent, 30%);
-            color: t.$accent;
+            background-color: t.$accent20;
+            border: solid 2px t.$accent30;
+            label {
+                color: t.$accent;
+            }
         }
     }
 
@@ -43,7 +45,7 @@ window#QSettings {
             border: 1px solid t.$surface1;
             background-color: t.$surface0;
             highlight {
-                background-color: t.$text;
+                background-color: t.$accent80;
                 border-radius: 7px;
             }
             slider {
@@ -54,6 +56,29 @@ window#QSettings {
                 margin: -.2em;
             }
         }
+    }
+
+    .volHigh {
+        scale {
+            padding: .2em .6em;
+            trough {
+                border-radius: 7px;
+                border: 1px solid t.$red30;
+                background-color: t.$red20;
+                highlight {
+                    background-color: t.$red80;
+                    border-radius: 7px;
+                }
+                slider {
+                    background-color: t.$red;
+                    border-radius: 2em;
+                    min-height: 1em;
+                    min-width: 1em;
+                    margin: -.2em;
+                }
+            }
+        }
+        color: t.$red;
     }
 
     .QSHeader {
@@ -70,11 +95,25 @@ window#QSettings {
                 margin-right: s.$padding-small;
             }
         }
+        button {
+            background: t.$surface070;
+            &:hover {
+                background-color: t.$accent20;
+                border: solid 2px t.$accent20;
+            }
+            &:active {
+                background-color: t.$accent20;
+                border: solid 2px t.$accent30;
+                label {
+                    color: t.$accent;
+                }
+        }
+        }
     }
     .QSSection {
         padding: s.$padding;
     }
-    
+
     .toggleButton {
         border-radius: s.$radius;
         background-color: t.$base;
@@ -90,6 +129,11 @@ window#QSettings {
             background-color: color.mix(t.$accent, transparent, 55%);
             border: solid 2px color.mix(t.$accent, transparent, 50%);
         }
+    }
+
+    .active {
+        background-color: color.mix(t.$accent, transparent, 55%);
+        border: solid 2px color.mix(t.$accent, transparent, 50%);
     }
 
 
@@ -114,7 +158,7 @@ window#QSettings {
 
     separator {
         margin: 4px 0;
-        background-color: t.$surface2;
+        background-color: color.mix(t.$surface0, transparent, 60%);
         min-height: 1px;
         min-height: 1px;
     }

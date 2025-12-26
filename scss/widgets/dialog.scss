@@ -1,0 +1,55 @@
+@use "../theme/catppuccin-mocha.scss" as t;
+@use "sass:color";
+
+window#Dialog {
+    color: t.$text;
+
+    box#main-content {
+        border: 2px solid t.$surface0;
+        background: t.$base;
+        min-width: 600px;
+        border-radius: 12px;
+        padding: 10px;
+        min-height: 600px;
+    }
+
+    .title {
+        font-size: larger;
+        padding-bottom: 6px;
+    }
+
+    button {
+        background-color: t.$surface0;
+        border-radius: 6px;
+        border: 2px solid transparent;
+
+        -gtk-icon-size: 2.5em;
+
+        label.name {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+
+        label.description {
+            color: t.$overlay1;
+        }
+
+        &:hover {
+            border-radius: 6px;
+            background-color: t.$surface0;
+            border: 2px solid t.$surface2;
+        }
+
+        &:focus {
+            border-radius: 6px;
+            background-color: t.$surface0;
+            border: 2px solid t.$accent;
+        }
+    }
+
+    separator {
+        margin: .8rem 0;
+        background-color: t.$surface0;
+        min-height: 2px;
+    }
+}

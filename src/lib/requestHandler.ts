@@ -39,8 +39,8 @@ class CommandRegistry {
             if (element.includes(" "))
                 throw new Error(`Invalid altName "${element}" — spaces are not allowed`);
         });
-        
-        if (command.name.length === 0) 
+
+        if (command.name.length === 0)
             throw new Error(`Command must have at least 1 name ${command}`)
 
         this.commands.push(command)
@@ -53,9 +53,9 @@ class CommandRegistry {
      */
     async execute(argv: string[], silent: boolean = false): Promise<string> {
         let requested_command = argv.shift()
-        
+
         if (requested_command === undefined) return "<helper> help for list of commands"
-        
+
         if (!silent) {
             console.log(`Request: command(${requested_command}) args(${argv.join(", ")})`)
         }
@@ -109,36 +109,36 @@ class CommandRegistry {
         }
         return out.trim()
     }
+
+    constructor() {
+        this.register({
+            name: ["help", "commands", "?"],
+            description: "Lists all registered commands",
+            help: `List commands and gives help to commands
+          - help
+            Lists all registered commands
+          - help <command>
+            gives help to command if command has a help section
+        `,
+            main: (argv: string[]) => this.help(argv)
+        })
+
+        this.register({
+            name: ["quit", "exit"],
+            description: "quit Application",
+            help: `Exits the app`,
+            main: () => {
+                app.quit(0);
+                return "exiting ..."
+            }
+        })
+    }
 }
 
 const registry = CommandRegistry.get_default()
-
 // requestHandler, Pass this to app.start()
 export async function requestHandler(argv: string[], res: (response: string) => void) {
     res(await registry.execute(argv))
 }
-
-// register the help command
-registry.register({
-    name: ["help", "commands", "?"],
-    description: "Lists all registered commands",
-    help: `List commands and gives help to commands
-  - help
-    Lists all registered commands
-  - help <command>
-    gives help to command if command has a help section
-`,
-    main: (argv: string[]) => registry.help(argv)
-})
-
-registry.register({
-    name: ["quit", "exit"],
-    description: "quit Application",
-    help: `Exits the app`,
-    main: () => {
-        app.quit(0);
-        return "exiting ..."
-    }
-})
 
 export default CommandRegistry

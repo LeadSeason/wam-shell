@@ -23,7 +23,7 @@ popover contents {
     margin: s.$padding-small s.$padding;
     padding: 1px s.$padding;
     border: solid 2px transparent;
-    
+
     &:hover {
       background-color: color.mix(t.$accent, transparent, 10%);
       border: solid 2px color.mix(t.$accent, transparent, 10%);
@@ -76,7 +76,7 @@ popover contents {
         border-radius: s.$radius;
         padding: s.$padding-small;
         margin: 1px;
-        
+
         &:hover {
           background-color: color.mix(t.$accent, transparent, 15%);
           border: solid 1px color.mix(t.$accent, transparent, 20%);
@@ -126,7 +126,7 @@ popover contents {
       min-height: 1px;
       min-height: 1px;
   }
-  
+
   arrow {
       min-height: 16px;
       min-width: 16px;

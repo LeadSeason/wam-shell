@@ -1,6 +1,7 @@
 import GObject, { register, getter, setter } from "ags/gobject"
 import { monitorFile, readFileAsync } from "ags/file"
 import { exec, execAsync } from "ags/process"
+import { timeout } from "ags/time"
 
 const get = (args: string) => Number(exec(`brightnessctl ${args}`))
 const screen = exec(`bash -c "ls -w1 /sys/class/backlight | head -1"`)
@@ -13,6 +14,7 @@ if (!kbd)
 @register({ GTypeName: "Brightness" })
 export default class Brightness extends GObject.Object {
     static instance: Brightness
+
     static get_default() {
         if (!this.instance)
             this.instance = new Brightness()
@@ -55,13 +57,15 @@ export default class Brightness extends GObject.Object {
         if (percent > 1)
             percent = 1
 
-        /* @TODO, Set the brightness locally fist then Asyncrisly set the
-         * brightness later. Maybe with the same trick as the sway scratchpad,
-         * wait 25ms before updating.
-         */
-        execAsync(`brightnessctl set ${Math.floor(percent * 100)}% -q`).then(() => {
-            this.#screen = percent
-            this.notify("screen")
+        this.#screen = percent
+
+        /* @TODO, Test this update */
+        timeout(25, () => {
+            if (this.#screen = percent) {
+                execAsync(`brightnessctl set ${Math.floor(percent * 100)}% -q`).then(() => {
+                    this.notify("screen")
+                })
+            }
         })
     }
 

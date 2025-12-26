@@ -25,11 +25,11 @@ export default function QSettings() {
         // timeout to 0 for this reason
         revealer.set_reveal_child(false)
         // give some time for the animation to play.
-        timeout(0, () => {
+        timeout(50, () => {
             win.hide()
         })
     }
-    
+
     function show() {
         win.present()
         revealer.set_reveal_child(true);
@@ -47,7 +47,7 @@ export default function QSettings() {
                     hide()
                     return "QSettings, window hidden"
                 }
-            } 
+            }
             return `QSettings, No window is defined, Maybe running on hyprland?
         Scratchpad is sway-specific`
     }})
@@ -104,7 +104,9 @@ export default function QSettings() {
             >
                 <HeaderSection />
                 <ToggleSection />
+                <Gtk.Separator />
                 <SliderSection />
+                <Gtk.Separator />
                 <Tray />
             </box>
         </revealer>

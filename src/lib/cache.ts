@@ -21,8 +21,6 @@ const cacheFile = Config.cacheFile
  * ```
  */
 
-
-
 // For typescript, for adding new types to the data in the module add the type
 // to cacheType.
 
@@ -63,7 +61,7 @@ async function saveCacheData(data: cacheType) {
     data.lastSave = Date.now();
     // Write to a temporary file then swap them.
     // may cause data corruption if application is closed while writing.
-    writeFile(cacheFile, JSON.stringify(data))    
+    writeFile(cacheFile, JSON.stringify(data))
 }
 
 @register({ GTypeName: "Cache" })
@@ -91,7 +89,7 @@ export default class Cache extends GObject.Object {
             saveCacheData(this.#cache)
             .then(() => {/*
                 @TODO: Create cacheType constructor so we can notify that the
-                data has changed. 
+                data has changed.
                 this.notify("data")*/})
         }
     }

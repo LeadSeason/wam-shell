@@ -10,19 +10,25 @@ import { Gtk } from "ags/gtk4"
 import swayScratchpad from "./src/widgets/sway-scratchpad"
 import QSettings from "./src/widgets/QSettings"
 import SwayGaps from "./src/lib/swayGaps"
+import Dialog from "./src/widgets/dialog"
 
-let scratchpad:  Gtk.Window
 
 function main() {
-	if (Config.desktopSession == "sway")
-		scratchpad = swayScratchpad() as Gtk.Window
 	if (Config.swayGaps && Config.desktopSession == "sway")
     	SwayGaps.get_default()
 
-    const monitors = createBinding(app, "monitors")
+	if (Config.desktopSession == "sway") {
+		const scratchpad = swayScratchpad() as Gtk.Window
+		app.add_window(scratchpad)
+	}
+
+	const dialog = Dialog.get_default()
+	app.add_window(dialog.win)
+
 	const qSettings = QSettings() as Gtk.Window
 	app.add_window(qSettings)
-	
+
+    const monitors = createBinding(app, "monitors")
 	return (<For each={monitors} cleanup={(win) => (win as Gtk.Window).destroy()}>
 		{(monitor) => <Bar gdkMonitor={monitor} /> }
 	</For>)
@@ -31,7 +37,7 @@ function main() {
 if (!GLib.file_test(Config.instanceCacheDir, GLib.FileTest.IS_DIR)) {
     GLib.mkdir_with_parents(Config.instanceCacheDir, 0o755);
     console.log("Created dir:", Config.instanceCacheDir)
-} 
+}
 
 compileScss()
 

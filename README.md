@@ -18,7 +18,7 @@ installing modules.
 ```shell
 cd ./wam-shell
 mkdir node_modules
-ln -s /usr/share/ags/js node_modules/ags  
+ln -s /usr/share/ags/js node_modules/ags
 ln -s /usr/share/ags/js/node_modules/gnim node_modules/gnim
 rm -f package-lock.json
 npm i

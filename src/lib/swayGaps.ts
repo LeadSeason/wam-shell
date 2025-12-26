@@ -1,21 +1,14 @@
-import Sway from "./sway"
-import Cache from "./cache";
+import GObject from "gnim/gobject";
+import { register, getter, setter } from "ags/gobject"
 import i3ipc from "gi://i3ipc?version=1.0";
+import Sway from "./sway"
 import CommandRegistry from "./requestHandler";
-import Config from "../config";
-import { setter } from "ags/gobject"
+import Cache from "./cache";
 
-const sway = Sway.get_default();
-const cache = Cache.get_default();
-const conn = i3ipc.Connection.new(null)
-/**
- * @TODO variable size for gap size, Idk why it's called cacheSize
- * Save gapsSize in 
- */
-
-export default class SwayGaps {
+@register({ GTypeName: "SwayGaps" })
+export default class SwayGaps extends GObject.Object {
     static instance: SwayGaps
-    
+
     static get_default() {
         if (!this.instance)
             this.instance = new SwayGaps()
@@ -23,52 +16,70 @@ export default class SwayGaps {
         return this.instance
     }
 
-    #gaps: boolean = (cache.data.gaps === undefined) ? false : cache.data.gaps
-    #gapSize: number = (cache.data.gapsSize === undefined) ? 10 : cache.data.gapsSize
-    
-    setGaps(size: number = this.#gapSize) {
-        this.#gapSize = size
-        sway.message_async(`gaps inner all set ${size}; gaps outer all set ${size}`);
+    #sway = Sway.get_default();
+    #cache = Cache.get_default();
+    #conn = i3ipc.Connection.new(null)
 
-    }
+    #gapState: boolean = (this.#cache.data.gaps === undefined) ?
+        false : this.#cache.data.gaps
+    #gapSize: number = (this.#cache.data.gapsSize === undefined) ?
+        10 : this.#cache.data.gapsSize
+    // Last applied value, Useful for skipping unnecessary operations
+    #lastAppliedValue: number = -1
 
-    toggleGaps() {
-        this.#gaps = !this.#gaps;
-        this.gaps = this.#gaps; // Sets the sway-gap state from wam
-        this.notify("gaps")
-    }
-
-    set gapSize(size: number) {
-        this.#gapSize = size
-        this.setGaps(size)
-    }
-    
-    get gapSize(): number {
+    @getter(Number)
+    get gap_size(): number {
         return this.#gapSize
     }
 
-    @setter(Boolean)
-    set gaps(state: boolean) {
-        this.#gaps = state;
-        this.setGaps(state ? this.#gapSize : 0)
-        cache.data = { gaps: state };
+    @setter(Number)
+    set gap_size(size: number) {
+        this.#gapSize = Math.floor(size)
+        this.notify("gap_size")
+        this.#cache.data = { gapsSize: this.#gapSize }
+        this.#applyGaps()
     }
-    
-    get gaps(): boolean {
-        return this.#gaps;
+
+    @getter(Boolean)
+    get gap_state(): boolean {
+        return this.#gapState
+    }
+
+    @setter(Boolean)
+    set gap_state(state: boolean) {
+        this.#gapState = state
+        this.notify("gap_state")
+        this.#cache.data = { gaps: this.#gapState }
+        this.#applyGaps()
+    }
+
+    #applyGaps(force: boolean = false) {
+        let size = this.#gapState ? this.#gapSize : 0
+        if (size != this.#lastAppliedValue || force) {
+            this.#sway.message_async(
+                `gaps inner all set ${size}; gaps outer all set ${size}`
+            )
+            this.#lastAppliedValue = size
+        }
+    }
+
+    toggleGaps(state: boolean = !this.gap_state) {
+        this.gap_state = state
     }
 
     constructor() {
         super()
-        // This 1. loads the form cache, Set the cache 
-        this.gaps = this.#gaps
-        
-        conn.on("workspace", async (conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
-            if (event.change === "init") {
-                console.log("New Workspace Init, Setting size...")
-                this.setGaps()
+        // Ensure that correct state is applied when shell launches
+        this.#applyGaps(true)
+
+        this.#conn.on("workspace",
+            async (conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
+                if (event.change === "init") {
+                    console.log("New Workspace Init, Setting size...")
+                    this.#applyGaps(true)
+                }
             }
-        })
+        )
 
         const registry = CommandRegistry.get_default()
 
@@ -77,11 +88,8 @@ export default class SwayGaps {
             description: "Toggles gaps",
             main: () => {
                 this.toggleGaps()
-                return `Toggled gaps`
+                return `Toggled gaps: ${this.#gapState}`
             }
         })
-
-        console.log("SwayGaps init OK")
     }
 }
-
