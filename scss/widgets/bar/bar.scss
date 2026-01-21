@@ -13,7 +13,7 @@ window.Bar {
     border-bottom: solid 2px t.$accent50;
   }
 
-  clock button, .swayNC, .osIcon, .QSettings {
+  clock button, .osIcon, .QSettings {
     border-radius: s.$radius;
     margin: s.$padding-small s.$padding;
     padding: 1px s.$padding;
@@ -26,7 +26,30 @@ window.Bar {
     &:active {
       background-color: color.mix(t.$accent, transparent, 25%);
       border: solid 2px color.mix(t.$accent, transparent, 30%);
-      color: t.$accent;
+    }
+  }
+  .swayNC {
+    border-radius: s.$radius;
+    margin: 0px s.$padding;
+    padding: 0px s.$padding;
+    border: solid 2px transparent;
+
+    &:hover {
+      background-color: t.$accent10;
+      border: solid 2px t.$accent10;
+    }
+    &:active {
+      background-color: t.$accent20;
+      border: solid 2px t.$accent20;
+    }
+
+    // SwayNC Notification Ticker
+    .Badge {
+      font-size: x-small;
+      padding: 1px 4px;
+      border-radius: s.$radius;
+      color: t.$crust;
+      background-color: t.$accent;
     }
   }
 
@@ -52,7 +75,7 @@ window.Bar {
         border: inset 2px color.mix(t.$text, transparent, 20%);
       }
 
-      &:active {
+      &:active { // when the button is pressed down, this state.
         background-color: color.mix(t.$text, transparent, 30%);
         border: inset 2px color.mix(t.$text, transparent, 30%);
       }
@@ -92,13 +115,6 @@ window.Bar {
     opacity: 0.35;
   }
 
-  // SwayNC Notification Ticker
-  .Badge {
-    padding: 1px 4px;
-    border-radius: s.$radius;
-    color: t.$crust;
-    background-color: t.$red;
-  }
 
   .batLow {
     color: t.$red;
