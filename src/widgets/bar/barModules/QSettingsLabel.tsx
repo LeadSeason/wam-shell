@@ -67,7 +67,7 @@ ${driver.description}`)
             <label
                 marginStart={5}
                 class={createBinding(driver, "mute").as((v) => v ? "muted" : "")}
-                label={createBinding(driver, "volume").as((v: number) => `${(v * 100).toFixed(0)}%`)} 
+                label={createBinding(driver, "volume").as((v: number) => `${Math.floor(v * 100)}%`)} 
                 />
         </revealer>
     </box>) as Gtk.MenuButton // TS Jank, For some reason it a type error 
@@ -93,48 +93,53 @@ function secondsToTime(t: number): string {
 
 function Battery() {
     const bat = AstalBattery.get_default()
-    
-    const batTimeConvert = (timeRemaining: number) => {{
-            let timeString = secondsToTime(timeRemaining)
-            if (timeString === "00:00:00") {
-                timeString = "Unknown time remaining"
-            }
-            if (bat.charging) {
-                timeString = "Charging...\n Time to full: " + timeString
-            } else {
-                timeString = "Discharging \n Time to empty: " + timeString
-            }
-            return timeString
-        }
-    }
+    const batIcon = createBinding(bat, "batteryIconName")
 
-    const [showPrec, setShowPrec] = createState(true)
-    const [batTooltip, setBatTooltip] = createState(batTimeConvert(
-        (bat.charging) ? bat.timeToEmpty : bat.timeToEmpty))
+    const batTimeConvert = (timeRemaining: number, charging: boolean): string => {
+        if (timeRemaining <= 0) return charging ? "Fully charged" : "Unknown ammount of time left";
+
+        const hours = Math.floor(timeRemaining / 3600);
+        const minutes = Math.floor((timeRemaining % 3600) / 60);
+
+        const parts: string[] = [];
+
+        if (hours > 0) parts.push(`${hours} hour${hours !== 1 ? "s" : ""}`);
+        if (minutes > 0) parts.push(`${minutes} minute${minutes !== 1 ? "s" : ""}`);
+
+        const suffix = charging ? "until full" : "left";
+        const prefix = charging ? "Charging..." : "Discharging...";
+        const procentage = Math.floor(bat.percentage * 100).toString()
+
+        return `${prefix} ${procentage}${parts.join(" ")} ${suffix}`;
+    };
+
+    const [showPrec, setShowPrec] = createState(false)
+    const [batTime, setBatTime] = createState(batTimeConvert(
+        (bat.charging) ? bat.timeToEmpty : bat.timeToEmpty, bat.charging))
 
     createBinding(bat, "timeToEmpty").subscribe(() => {
-    if (!bat.get_charging()) {
-        setBatTooltip(batTimeConvert(bat.timeToFull))
-    }})
+    if (!bat.get_charging())
+        setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))})
 
     createBinding(bat, "timeToFull").subscribe(() => {
-    if (bat.get_charging()) {
-        setBatTooltip(batTimeConvert(bat.timeToFull))
-    }})
+    if (bat.get_charging())
+        setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))})
 
     createBinding(bat, "percentage").subscribe(() => {
         let v = bat.percentage
         if (!bat.charging) {
-            if (v === .20) {
+            if (v < .20) {
                 setShowPrec(true)
+            } else {
+                setShowPrec(false)
             }
-}
+        }
     })
     return (<box
-        tooltipText={batTooltip}
+        tooltipText={batTime}
         cssClasses={showPrec.as((v) => v ? ["batLow"] : [])}
     >
-        <image iconName={createBinding(bat, "iconName")} />
+        <image iconName={batIcon} />
         <revealer
             revealChild={showPrec}
             transitionType={Gtk.RevealerTransitionType.SLIDE_RIGHT}

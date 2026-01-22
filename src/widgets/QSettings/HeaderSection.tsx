@@ -10,7 +10,7 @@ function BatWidget() {
     const batProc = createBinding(bat, "percentage")
 
     const batTimeConvert = (timeRemaining: number, charging: boolean): string => {
-        if (timeRemaining <= 0) return charging ? "Fully charged" : "No time left";
+        if (timeRemaining <= 0) return charging ? "Fully charged" : "Unknown ammount of time left";
 
         const hours = Math.floor(timeRemaining / 3600);
         const minutes = Math.floor((timeRemaining % 3600) / 60);
@@ -39,7 +39,7 @@ function BatWidget() {
     return <box cssClasses={["QSBat"]} orientation={Gtk.Orientation.VERTICAL}>
             <box>
                 <image iconName={batIcon} />
-                <label label={batProc.as(v => `${v} %`)} />
+                <label label={batProc.as(v => `${(v*100).toFixed(0)} %`)} />
             </box>
             <label label={batTime} />
         </box>
