@@ -41,7 +41,7 @@ export function SwayGapsButton({
     />
 }
 
-export function SwayGapsWidget({activeDropdown: revealChild, dropdownIndex: index}: SwayGapsWidgetProps) {
+export function SwayGapsWidget({ activeDropdown: revealChild, dropdownIndex: index }: SwayGapsWidgetProps) {
     if (Config.desktopSession !== "sway")
         return <></>
     const swayGaps = SwayGaps.get_default()
@@ -59,7 +59,7 @@ export function SwayGapsWidget({activeDropdown: revealChild, dropdownIndex: inde
                     max={50}
                     step={1}
                     hexpand
-                    onChangeValue={({ value }) => {swayGaps.gap_size = value}}
+                    onChangeValue={({ value }) => { swayGaps.gap_size = value }}
                     value={createBinding(swayGaps, "gap_size")} />
             </box>
             <Gtk.Separator />

@@ -34,7 +34,7 @@ export function PowerProfilesButton({
     />
 }
 
-export function PowerProfilesWidget({activeDropdown: revealChild, dropdownIndex: index}: powerProfilesWidgetProps) {
+export function PowerProfilesWidget({ activeDropdown: revealChild, dropdownIndex: index }: powerProfilesWidgetProps) {
     const powerProfiles = AstalPowerProfiles.get_default()
     const profiles = powerProfiles.get_profiles()
 
@@ -42,25 +42,25 @@ export function PowerProfilesWidget({activeDropdown: revealChild, dropdownIndex:
         revealChild={revealChild.as(s => (s === index))}
     >
         <box>
-        {profiles.map((profile) => {
-            const activeCss = createBinding(powerProfiles, "activeProfile").as(
-                (active) => (active === profile.profile) ? ["active"] : [""])
-            return (
-                <box
-                    orientation={Gtk.Orientation.VERTICAL}
-                    cssName={"button"}
-                    cssClasses={activeCss}
-                >
-                    <label label={profile.profile} />
-                    <Gtk.GestureClick
-                        button={1}
-                        onPressed={() => {
-                            powerProfiles.set_active_profile(profile.profile)
-                        }}
-                    />
-                </box>
-            )
-        })}
+            {profiles.map((profile) => {
+                const activeCss = createBinding(powerProfiles, "activeProfile").as(
+                    (active) => (active === profile.profile) ? ["active"] : [""])
+                return (
+                    <box
+                        orientation={Gtk.Orientation.VERTICAL}
+                        cssName={"button"}
+                        cssClasses={activeCss}
+                    >
+                        <label label={profile.profile} />
+                        <Gtk.GestureClick
+                            button={1}
+                            onPressed={() => {
+                                powerProfiles.set_active_profile(profile.profile)
+                            }}
+                        />
+                    </box>
+                )
+            })}
         </box>
     </revealer>
 }

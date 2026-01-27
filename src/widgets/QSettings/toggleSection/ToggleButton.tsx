@@ -16,9 +16,9 @@ export function DropdownButton({
     activeDropdown: activeDropdown,
     setActiveDropdown: setDropdown,
     dropdownIndex: dropdownIndex,
-    icon="applications-system-symbolic",
+    icon = "applications-system-symbolic",
     label,
-    isActive=false,
+    isActive = false,
     activate: activate = undefined
 }: TbButtonProps) {
     const setActiveDropdown = (i: number) => {
@@ -31,7 +31,7 @@ export function DropdownButton({
 
     let cssClasses
 
-    if (typeof(isActive) === "boolean") {
+    if (typeof (isActive) === "boolean") {
         // Default to inactive always.
         cssClasses = ["toggleButton"]
     } else {
