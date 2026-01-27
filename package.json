@@ -8,5 +8,8 @@
   "prettier": {
     "semi": false,
     "tabWidth": 4
+  },
+  "devDependencies": {
+    "prettier": "^3.8.1"
   }
 }

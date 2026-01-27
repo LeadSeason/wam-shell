@@ -5,7 +5,7 @@ import { Gtk } from "ags/gtk4"
 function DisplayBrightness() {
     const brightness = Brightness.get_default()
     // @TODO, Switch to use icons instead of nerdfonts 
-    const icons = [ '󰃛', '󰃜', '󰃞', '󰃟', '󰃝', '󰃠' ]
+    const icons = ['󰃛', '󰃜', '󰃞', '󰃟', '󰃝', '󰃠']
     // Return box instead of everything.
     if (!brightness.screenIsPresent)
         return <box></box>
@@ -25,6 +25,6 @@ function DisplayBrightness() {
         />
         <label label={createBinding(brightness, "screen").as((v: number) =>
             `${Math.floor(v * 100)}% ${icons[Math.floor(v * 5)]}`
-            )} />
+        )} />
     </box>
 }

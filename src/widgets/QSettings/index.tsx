@@ -50,7 +50,8 @@ export default function QSettings() {
             }
             return `QSettings, No window is defined, Maybe running on hyprland?
         Scratchpad is sway-specific`
-    }})
+        }
+    })
 
     // close on ESC
     function onKey(

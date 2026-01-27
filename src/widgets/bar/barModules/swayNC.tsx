@@ -16,26 +16,26 @@ export default function Notify() {
         (v) => v ? "notifications-disabled-symbolic" : "notifications-symbolic"
     )
     const badge = (<revealer
-            transitionDuration={250}
-            transitionType={Gtk.RevealerTransitionType.SWING_DOWN}
-            revealChild={reveal}
-            valign={Gtk.Align.START}
-            halign={Gtk.Align.END}
-            marginEnd={5}
-        >
-            <label
-                hexpand={false}
-                vexpand={false}
-                class="Badge"
-                label={count} />
-        </revealer>) as Gtk.Box
+        transitionDuration={250}
+        transitionType={Gtk.RevealerTransitionType.SWING_DOWN}
+        revealChild={reveal}
+        valign={Gtk.Align.START}
+        halign={Gtk.Align.END}
+        marginEnd={5}
+    >
+        <label
+            hexpand={false}
+            vexpand={false}
+            class="Badge"
+            label={count} />
+    </revealer>) as Gtk.Box
 
     return <box cssClasses={["swayNC"]}>
         <Gtk.GestureClick
             button={1}
             onPressed={handleClick}
         />
-        <overlay 
+        <overlay
             $={(self) => {
                 self.add_overlay(badge)
             }}

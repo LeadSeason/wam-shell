@@ -4,148 +4,148 @@
 
 // https://docs.gtk.org/gtk4/class.Popover.html#css-nodes
 popover contents {
-  all: unset; // Unset all user provided style. Since we are
-  background: t.$crust;
-  border-radius: s.$radius;
-  border: solid 2px color.mix(t.$surface0, transparent, 60%);
-  padding: s.$padding;
-  margin: 0 12px 12px; // For shadow
-  color: t.$text;
-  transition-duration: s.$transition-time;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-
-  /////////////////////////////////////
-  /// Calendar
-  /////////////////////////////////////
-
-  button {
+    all: unset; // Unset all user provided style. Since we are
+    background: t.$crust;
     border-radius: s.$radius;
-    margin: s.$padding-small s.$padding;
-    padding: 1px s.$padding;
-    border: solid 2px transparent;
+    border: solid 2px color.mix(t.$surface0, transparent, 60%);
+    padding: s.$padding;
+    margin: 0 12px 12px; // For shadow
+    color: t.$text;
+    transition-duration: s.$transition-time;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 
-    &:hover {
-      background-color: color.mix(t.$accent, transparent, 10%);
-      border: solid 2px color.mix(t.$accent, transparent, 10%);
-    }
-    &:active {
-      background-color: color.mix(t.$accent, transparent, 25%);
-      border: solid 2px color.mix(t.$accent, transparent, 30%);
-      color: t.$accent;
-    }
-  }
+    /////////////////////////////////////
+    /// Calendar
+    /////////////////////////////////////
 
-  scale {
-      padding: .2em .6em;
-      trough {
-          border-radius: 7px;
-          border: 1px solid t.$surface1;
-          background-color: t.$surface0;
-          highlight {
-              background-color: t.$text;
-              border-radius: 7px;
-          }
-          slider {
-              background-color: t.$accent;
-              border-radius: 2em;
-              min-height: 1em;
-              min-width: 1em;
-              margin: -.2em;
-          }
-      }
-  }
-
-  calendar {
-    background: transparent;
-
-    // Calendar header
-    header {
-      background: color.mix(t.$surface0, transparent, 50%);
-      border-radius: s.$radius;
-      margin-bottom: s.$padding-small;
-
-      // This is kind of hacky. Somehow could'nt overwrite buttons padding.
-      > * {
-        padding: s.$padding;
-      }
-    }
-
-    grid {
-      label {
-        border: solid 1px transparent;
+    button {
         border-radius: s.$radius;
-        padding: s.$padding-small;
-        margin: 1px;
+        margin: s.$padding-small s.$padding;
+        padding: 1px s.$padding;
+        border: solid 2px transparent;
 
         &:hover {
-          background-color: color.mix(t.$accent, transparent, 15%);
-          border: solid 1px color.mix(t.$accent, transparent, 20%);
+            background-color: color.mix(t.$accent, transparent, 10%);
+            border: solid 2px color.mix(t.$accent, transparent, 10%);
         }
-      }
-      .day-name {
-        color: color.mix(t.$accent, transparent, 75%);
-        font-weight: bold;
-      }
-      .week-number {
-        color: color.mix(t.$accent, transparent, 75%);
-      }
-      .other-month {
-        color: color.mix(t.$text, transparent, 35%);
-      }
-      .today {
-        color: t.$accent;
-        background-color: color.mix(t.$accent, transparent, 15%);
-        border: solid 1px color.mix(t.$accent, transparent, 20%);
-      }
-
+        &:active {
+            background-color: color.mix(t.$accent, transparent, 25%);
+            border: solid 2px color.mix(t.$accent, transparent, 30%);
+            color: t.$accent;
+        }
     }
-  }
 
-  /////////////////////////////////////
-  /// Regular tray popover menus.
-  /////////////////////////////////////
-  modelbutton {
-      border: 2px solid transparent;
-      border-radius: 4px;
-      &:active {
-          background-color: t.$surface1;
-          border: 2px solid t.$surface2;
-      }
-      &:hover {
-          background-color: t.$surface0;
-          border: 2px solid t.$surface2;
-      }
-      &:disabled {
-        color: t.$surface2;
-      }
-  }
+    scale {
+            padding: .2em .6em;
+            trough {
+                    border-radius: 7px;
+                    border: 1px solid t.$surface1;
+                    background-color: t.$surface0;
+                    highlight {
+                            background-color: t.$text;
+                            border-radius: 7px;
+                    }
+                    slider {
+                            background-color: t.$accent;
+                            border-radius: 2em;
+                            min-height: 1em;
+                            min-width: 1em;
+                            margin: -.2em;
+                    }
+            }
+    }
 
-  separator {
-      margin: 4px 0;
-      background-color: t.$surface2;
-      min-height: 1px;
-      min-height: 1px;
-  }
+    calendar {
+        background: transparent;
 
-  arrow {
-      min-height: 16px;
-      min-width: 16px;
-      &.none {
-          -gtk-icon-source: -gtk-icontheme('open-menu-symbolic');
-      }
-      &.down {
-          -gtk-icon-source: -gtk-icontheme('pan-down-symbolic');
-      }
-      &.up {
-          -gtk-icon-source: -gtk-icontheme('pan-up-symbolic');
-      }
-      &.left {
-          -gtk-icon-source: -gtk-icontheme('pan-start-symbolic');
-      }
-      &.right {
-          -gtk-icon-source: -gtk-icontheme('pan-end-symbolic');
-      }
-  }
+        // Calendar header
+        header {
+            background: color.mix(t.$surface0, transparent, 50%);
+            border-radius: s.$radius;
+            margin-bottom: s.$padding-small;
+
+            // This is kind of hacky. Somehow could'nt overwrite buttons padding.
+            > * {
+                padding: s.$padding;
+            }
+        }
+
+        grid {
+            label {
+                border: solid 1px transparent;
+                border-radius: s.$radius;
+                padding: s.$padding-small;
+                margin: 1px;
+
+                &:hover {
+                    background-color: color.mix(t.$accent, transparent, 15%);
+                    border: solid 1px color.mix(t.$accent, transparent, 20%);
+                }
+            }
+            .day-name {
+                color: color.mix(t.$accent, transparent, 75%);
+                font-weight: bold;
+            }
+            .week-number {
+                color: color.mix(t.$accent, transparent, 75%);
+            }
+            .other-month {
+                color: color.mix(t.$text, transparent, 35%);
+            }
+            .today {
+                color: t.$accent;
+                background-color: color.mix(t.$accent, transparent, 15%);
+                border: solid 1px color.mix(t.$accent, transparent, 20%);
+            }
+
+        }
+    }
+
+    /////////////////////////////////////
+    /// Regular tray popover menus.
+    /////////////////////////////////////
+    modelbutton {
+            border: 2px solid transparent;
+            border-radius: 4px;
+            &:active {
+                    background-color: t.$surface1;
+                    border: 2px solid t.$surface2;
+            }
+            &:hover {
+                    background-color: t.$surface0;
+                    border: 2px solid t.$surface2;
+            }
+            &:disabled {
+                color: t.$surface2;
+            }
+    }
+
+    separator {
+            margin: 4px 0;
+            background-color: t.$surface2;
+            min-height: 1px;
+            min-height: 1px;
+    }
+
+    arrow {
+            min-height: 16px;
+            min-width: 16px;
+            &.none {
+                    -gtk-icon-source: -gtk-icontheme('open-menu-symbolic');
+            }
+            &.down {
+                    -gtk-icon-source: -gtk-icontheme('pan-down-symbolic');
+            }
+            &.up {
+                    -gtk-icon-source: -gtk-icontheme('pan-up-symbolic');
+            }
+            &.left {
+                    -gtk-icon-source: -gtk-icontheme('pan-start-symbolic');
+            }
+            &.right {
+                    -gtk-icon-source: -gtk-icontheme('pan-end-symbolic');
+            }
+    }
 
 }
 

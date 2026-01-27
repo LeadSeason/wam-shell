@@ -3,120 +3,128 @@
 @use "../../conf.scss" as s;
 
 window.Bar {
-  background: transparent;
-  color: t.$text;
-  transition-duration: 200ms;
-
-  > centerbox {
-    background-image: url("./assets/grain.webp"),
-      radial-gradient(ellipse at bottom, rgba(72, 40, 5, 0.2), rgba(2, 4, 66, 0.3) 100%);
-    border-bottom: solid 2px t.$accent50;
-  }
-
-  clock button, .osIcon, .QSettings {
-    border-radius: s.$radius;
-    margin: s.$padding-small s.$padding;
-    padding: 1px s.$padding;
-    border: solid 2px transparent;
-
-    &:hover {
-      background-color: color.mix(t.$accent, transparent, 10%);
-      border: solid 2px color.mix(t.$accent, transparent, 10%);
-    }
-    &:active {
-      background-color: color.mix(t.$accent, transparent, 25%);
-      border: solid 2px color.mix(t.$accent, transparent, 30%);
-    }
-  }
-  .swayNC {
-    border-radius: s.$radius;
-    margin: 0px s.$padding;
-    padding: 0px s.$padding;
-    border: solid 2px transparent;
-
-    &:hover {
-      background-color: t.$accent10;
-      border: solid 2px t.$accent10;
-    }
-    &:active {
-      background-color: t.$accent20;
-      border: solid 2px t.$accent20;
-    }
-
-    // SwayNC Notification Ticker
-    .Badge {
-      font-size: x-small;
-      padding: 1px 4px;
-      border-radius: s.$radius;
-      color: t.$crust;
-      background-color: t.$accent;
-    }
-  }
-
-  // workspaces widget
-  workspaces {
-    margin: s.$padding-small 0;
-
-    > workspace {
-      border-radius: s.$radius;
-      border: solid 2px transparent;
-      padding: 0 s.$padding-small;
-      margin: 0 s.$padding-small;
-
-      // Active workspace
-      &.active {
-        color: t.$accent;
-        background-color: color.mix(t.$accent, transparent, 10%);
-        border: solid 2px color.mix(t.$accent, transparent, 10%);
-      }
-
-      &:hover {
-        background-color: color.mix(t.$text, transparent, 15%);
-        border: inset 2px color.mix(t.$text, transparent, 20%);
-      }
-
-      &:active { // when the button is pressed down, this state.
-        background-color: color.mix(t.$text, transparent, 30%);
-        border: inset 2px color.mix(t.$text, transparent, 30%);
-      }
-
-      // Workspace content
-      > box {
-        // Urgent app
-        .urgent {
-          background-image: radial-gradient(circle at 50% 10%,
-                                            t.$red 0%,
-                                            t.$red 5%,
-                                            transparent 6%);
-        }
-
-        label {
-          font-weight: bold;
-          margin: 0px 4px;
-        }
-
-        image {
-          margin: 0 s.$padding-small;
-          -gtk-icon-size: 24px;
-        }
-      }
-    }
-  }
-
-  clock {
-    .separator {
-      color: t.$overlay1;
-      margin: 0 s.$padding;
-    }
-  }
-  // audio widget
-  .muted {
+    background: transparent;
     color: t.$text;
-    opacity: 0.35;
-  }
+    transition-duration: 200ms;
+
+    >centerbox {
+        background-image: url("./assets/grain.webp"),
+            radial-gradient(ellipse at bottom, rgba(72, 40, 5, 0.2), rgba(2, 4, 66, 0.3) 100%);
+        border-bottom: solid 2px t.$accent50;
+    }
+
+    clock button,
+    .osIcon,
+    .QSettings {
+        border-radius: s.$radius;
+        margin: s.$padding-small s.$padding;
+        padding: 1px s.$padding;
+        border: solid 2px transparent;
+
+        &:hover {
+            background-color: color.mix(t.$accent, transparent, 10%);
+            border: solid 2px color.mix(t.$accent, transparent, 10%);
+        }
+
+        &:active {
+            background-color: color.mix(t.$accent, transparent, 25%);
+            border: solid 2px color.mix(t.$accent, transparent, 30%);
+        }
+    }
+
+    .swayNC {
+        border-radius: s.$radius;
+        margin: 0px s.$padding;
+        padding: 0px s.$padding;
+        border: solid 2px transparent;
+
+        &:hover {
+            background-color: t.$accent10;
+            border: solid 2px t.$accent10;
+        }
+
+        &:active {
+            background-color: t.$accent20;
+            border: solid 2px t.$accent20;
+        }
+
+        // SwayNC Notification Ticker
+        .Badge {
+            font-size: x-small;
+            padding: 1px 4px;
+            border-radius: s.$radius;
+            color: t.$crust;
+            background-color: t.$accent;
+        }
+    }
+
+    // workspaces widget
+    workspaces {
+        margin: s.$padding-small 0;
+
+        >workspace {
+            border-radius: s.$radius;
+            border: solid 2px transparent;
+            padding: 0 s.$padding-small;
+            margin: 0 s.$padding-small;
+
+            // Active workspace
+            &.active {
+                color: t.$accent;
+                background-color: color.mix(t.$accent, transparent, 10%);
+                border: solid 2px color.mix(t.$accent, transparent, 10%);
+            }
+
+            &:hover {
+                background-color: color.mix(t.$text, transparent, 15%);
+                border: inset 2px color.mix(t.$text, transparent, 20%);
+            }
+
+            &:active {
+                // when the button is pressed down, this state.
+                background-color: color.mix(t.$text, transparent, 30%);
+                border: inset 2px color.mix(t.$text, transparent, 30%);
+            }
+
+            // Workspace content
+            >box {
+
+                // Urgent app
+                .urgent {
+                    background-image: radial-gradient(circle at 50% 10%,
+                            t.$red 0%,
+                            t.$red 5%,
+                            transparent 6%);
+                }
+
+                label {
+                    font-weight: bold;
+                    margin: 0px 4px;
+                }
+
+                image {
+                    margin: 0 s.$padding-small;
+                    -gtk-icon-size: 24px;
+                }
+            }
+        }
+    }
+
+    clock {
+        .separator {
+            color: t.$overlay1;
+            margin: 0 s.$padding;
+        }
+    }
+
+    // audio widget
+    .muted {
+        color: t.$text;
+        opacity: 0.35;
+    }
 
 
-  .batLow {
-    color: t.$red;
-  }
+    .batLow {
+        color: t.$red;
+    }
 }

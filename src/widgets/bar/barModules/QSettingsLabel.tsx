@@ -27,14 +27,14 @@ function audioWidget(driver: AstalWp.Endpoint): Gtk.MenuButton {
     // This show it initially once.
     createBinding(driver, "volume").subscribe(show)
     const [tooltip, setTooltip] = createState("")
-    
+
     const updateTooltip = () => {
         setTooltip(`${driver.name}  
 ${driver.description}`)
     }
     updateTooltip()
-    createBinding(driver, "name").subscribe(() => {updateTooltip()})
-    createBinding(driver, "description").subscribe(() => {updateTooltip()})
+    createBinding(driver, "name").subscribe(() => { updateTooltip() })
+    createBinding(driver, "description").subscribe(() => { updateTooltip() })
 
     return (<box
         tooltipMarkup={tooltip}
@@ -67,8 +67,8 @@ ${driver.description}`)
             <label
                 marginStart={5}
                 class={createBinding(driver, "mute").as((v) => v ? "muted" : "")}
-                label={createBinding(driver, "volume").as((v: number) => `${Math.floor(v * 100)}%`)} 
-                />
+                label={createBinding(driver, "volume").as((v: number) => `${Math.floor(v * 100)}%`)}
+            />
         </revealer>
     </box>) as Gtk.MenuButton // TS Jank, For some reason it a type error 
 }
@@ -77,18 +77,18 @@ function powerProfile() {
     const powerProfiles = AstalPowerProfiles.get_default()
     const activeProfile = createBinding(powerProfiles, "activeProfile")
     return (
-    <image
-        marginStart={1}
-        iconName={activeProfile.as(v => `power-profile-${v}-symbolic`)}
-        tooltipText={activeProfile.as(v => `Active PowerProfile ${v}`)}
-    />) as Gtk.Image // TS Jank,
+        <image
+            marginStart={1}
+            iconName={activeProfile.as(v => `power-profile-${v}-symbolic`)}
+            tooltipText={activeProfile.as(v => `Active PowerProfile ${v}`)}
+        />) as Gtk.Image // TS Jank,
 }
 
 function secondsToTime(t: number): string {
-        /* @ts-expect-error */
-        const date = new Date(null);
-        date.setSeconds(t); // specify value for SECONDS here
-        return date.toISOString().slice(11, 19);
+    /* @ts-expect-error */
+    const date = new Date(null);
+    date.setSeconds(t); // specify value for SECONDS here
+    return date.toISOString().slice(11, 19);
 }
 
 function Battery() {
@@ -108,9 +108,9 @@ function Battery() {
 
         const suffix = charging ? "until full" : "left";
         const prefix = charging ? "Charging..." : "Discharging...";
-        const procentage = Math.floor(bat.percentage * 100).toString()
+        const percentage = Math.floor(bat.percentage * 100).toString()
 
-        return `${prefix} ${procentage}${parts.join(" ")} ${suffix}`;
+        return `${prefix} ${percentage}${parts.join(" ")} ${suffix}`;
     };
 
     const [showPrec, setShowPrec] = createState(false)
@@ -118,12 +118,14 @@ function Battery() {
         (bat.charging) ? bat.timeToEmpty : bat.timeToEmpty, bat.charging))
 
     createBinding(bat, "timeToEmpty").subscribe(() => {
-    if (!bat.get_charging())
-        setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))})
+        if (!bat.get_charging())
+            setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))
+    })
 
     createBinding(bat, "timeToFull").subscribe(() => {
-    if (bat.get_charging())
-        setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))})
+        if (bat.get_charging())
+            setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))
+    })
 
     createBinding(bat, "percentage").subscribe(() => {
         let v = bat.percentage
@@ -147,8 +149,8 @@ function Battery() {
             <label
                 marginStart={5}
                 label={createBinding(bat, "batteryLevel").as(
-                    (v: number) => `${(v * 100).toFixed(0)}%`)} 
-                />
+                    (v: number) => `${(v * 100).toFixed(0)}%`)}
+            />
         </revealer>
     </box>) as Gtk.Widget // TS jank
 }
@@ -161,10 +163,10 @@ function ButtonLabel() {
 
     const { defaultSpeaker: speaker } = AstalWp.get_default()!
     const { defaultMicrophone: microphone } = AstalWp.get_default()!
-    
+
     const labelBox = new Gtk.Box()
     labelBox.spacing = 7
-    
+
     labelBox.append(audioWidget(speaker))
     labelBox.append(audioWidget(microphone))
     labelBox.append(powerProfile())

@@ -36,13 +36,13 @@ export function ExampleButton({
     />
 }
 
-export function ExampleWidget({activeDropdown: revealChild, dropdownIndex: index}: exampleWidgetProps) {
+export function ExampleWidget({ activeDropdown: revealChild, dropdownIndex: index }: exampleWidgetProps) {
     return <revealer
         revealChild={revealChild.as(s => (s === index))}
     >
         <label
             label={active.as(v => v ? `example ${index}` : `**Meaw ${index}**`)}
             useMarkup={true}
-         />
+        />
     </revealer>
 }

@@ -57,7 +57,6 @@ export default function Scratchpad() {
         sway.message_async(`[con_id=${app.id}] scratchpad show`)
         hide()
         return
-
     }
 
     // App entry, passed in a Sway Node (usually a window)

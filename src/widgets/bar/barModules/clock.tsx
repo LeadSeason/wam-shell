@@ -27,7 +27,7 @@ export default function Clock() {
                     <label cssClasses={["separator"]} label={":"} />
                 </box>
                 <box $type="end">
-                    <label cssName="clock-date" label={date}/>
+                    <label cssName="clock-date" label={date} />
                 </box>
             </centerbox>
             <popover

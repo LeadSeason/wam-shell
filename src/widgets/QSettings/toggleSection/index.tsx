@@ -27,10 +27,10 @@ export function ToggleSection() {
         </box>
         <SwayGapsWidget
             activeDropdown={activeDropdownIndex}
-            dropdownIndex={1}/>
+            dropdownIndex={1} />
         <PowerProfilesWidget
             activeDropdown={activeDropdownIndex}
-            dropdownIndex={2}/>
+            dropdownIndex={2} />
 
     </box>;
 }

@@ -29,67 +29,69 @@ function BatWidget() {
         (bat.charging) ? bat.timeToEmpty : bat.timeToEmpty, bat.charging))
 
     createBinding(bat, "timeToEmpty").subscribe(() => {
-    if (!bat.get_charging())
-        setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))})
+        if (!bat.get_charging())
+            setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))
+    })
 
     createBinding(bat, "timeToFull").subscribe(() => {
-    if (bat.get_charging())
-        setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))})
+        if (bat.get_charging())
+            setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))
+    })
 
     return <box cssClasses={["QSBat"]} orientation={Gtk.Orientation.VERTICAL}>
-            <box>
-                <image iconName={batIcon} />
-                <label label={batProc.as(v => `${(v*100).toFixed(0)} %`)} />
-            </box>
-            <label label={batTime} />
+        <box>
+            <image iconName={batIcon} />
+            <label label={batProc.as(v => `${(v * 100).toFixed(0)} %`)} />
         </box>
+        <label label={batTime} />
+    </box>
 }
 
 const uptimeConvert = (uptimeOutput: string): string => {
-  // Example input:
-  // "13:22:26 up 16 days, 10:51,  1 user,  load average: 3.14, 2.97, 2.41"
+    // Example input:
+    // "13:22:26 up 16 days, 10:51,  1 user,  load average: 3.14, 2.97, 2.41"
 
-  const upMatch = uptimeOutput.match(/up\s+(.*?),\s+\d+\s+user/);
-  if (!upMatch) return "";
+    const upMatch = uptimeOutput.match(/up\s+(.*?),\s+\d+\s+user/);
+    if (!upMatch) return "";
 
-  const upPart = upMatch[1].trim(); // "16 days, 10:51"
+    const upPart = upMatch[1].trim(); // "16 days, 10:51"
 
-  let days = 0;
-  let hours = 0;
-  let minutes = 0;
+    let days = 0;
+    let hours = 0;
+    let minutes = 0;
 
-  // Days
-  const dayMatch = upPart.match(/(\d+)\s+day/);
-  if (dayMatch) {
-    days = parseInt(dayMatch[1], 10);
-  }
+    // Days
+    const dayMatch = upPart.match(/(\d+)\s+day/);
+    if (dayMatch) {
+        days = parseInt(dayMatch[1], 10);
+    }
 
-  // Time (HH:MM)
-  const timeMatch = upPart.match(/(\d+):(\d+)/);
-  if (timeMatch) {
-    hours = parseInt(timeMatch[1], 10);
-    minutes = parseInt(timeMatch[2], 10);
-  }
+    // Time (HH:MM)
+    const timeMatch = upPart.match(/(\d+):(\d+)/);
+    if (timeMatch) {
+        hours = parseInt(timeMatch[1], 10);
+        minutes = parseInt(timeMatch[2], 10);
+    }
 
-  const parts: string[] = [];
+    const parts: string[] = [];
 
-  if (days > 0) parts.push(`${days}d`);
-  if (hours > 0) parts.push(`${hours}h`);
-  if (minutes > 0 && days < 0) parts.push(`${minutes}m`);
+    if (days > 0) parts.push(`${days}d`);
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0 && days < 0) parts.push(`${minutes}m`);
 
-  return `Up ${parts.join(" ")}`;
+    return `Up ${parts.join(" ")}`;
 };
 
 const loadConvert = (uptimeOutput: string): string => {
-  // "load average: 3.14, 2.97, 2.41"
-  const loadMatch = uptimeOutput.match(
-    /load average:\s*([\d.]+),?\s*([\d.]+),?\s*([\d.]+)/
-  );
+    // "load average: 3.14, 2.97, 2.41"
+    const loadMatch = uptimeOutput.match(
+        /load average:\s*([\d.]+),?\s*([\d.]+),?\s*([\d.]+)/
+    );
 
-  if (!loadMatch) return "";
+    if (!loadMatch) return "";
 
-  const [, one, five, fifteen] = loadMatch;
-  return `Load ${one} ${five} ${fifteen}`;
+    const [, one, five, fifteen] = loadMatch;
+    return `Load ${one} ${five} ${fifteen}`;
 };
 
 function Uptime() {

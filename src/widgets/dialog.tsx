@@ -70,12 +70,12 @@ class Dialog {
 
     constructor() {
         [this.content, this.setContent] = createState(
-        <box
-            orientation={Gtk.Orientation.VERTICAL}
-            valign={Gtk.Align.CENTER}
-            halign={Gtk.Align.CENTER}
-            hexpand
-        >
+            <box
+                orientation={Gtk.Orientation.VERTICAL}
+                valign={Gtk.Align.CENTER}
+                halign={Gtk.Align.CENTER}
+                hexpand
+            >
                 <label label={"No content set"} />
                 <label label={"Merp"} />
                 <box
@@ -85,21 +85,21 @@ class Dialog {
                 >
                     <Gtk.GestureClick
                         button={1}
-                        onPressed={() => {this.hide()}}
+                        onPressed={() => { this.hide() }}
                     />
                     <label hexpand label={"Close"}></label>
                 </box>
             </box>)
 
         this.contentBox = (<box
-                name="main-content"
-                valign={Gtk.Align.CENTER}
-                halign={Gtk.Align.CENTER}
-            >
-                <With value={this.content}>
-                    {(value) => {return value}}
-                </With>
-            </box>) as Gtk.Box
+            name="main-content"
+            valign={Gtk.Align.CENTER}
+            halign={Gtk.Align.CENTER}
+        >
+            <With value={this.content}>
+                {(value) => { return value }}
+            </With>
+        </box>) as Gtk.Box
 
         this.revealer = (<revealer>
             {this.contentBox}
@@ -151,29 +151,29 @@ export async function confirmDialog({
             halign={Gtk.Align.CENTER}
             hexpand
         >
-                <label cssClasses={["title"]} label={text} />
-                <label cssClasses={["subtext"]} label={subtext} />
-                <box homogeneous>
-                    <box cssName={"button"}>
-                        <Gtk.GestureClick
-                            button={1}
-                            onPressed={() => {
-                                dialog.hide();
-                                resolve(true);
-                            }}/>
-                        <label hexpand label={yesButton}></label>
-                    </box>
-                    <box cssName={"button"}>
-                        <Gtk.GestureClick
-                            button={1}
-                            onPressed={() => {
-                                dialog.hide();
-                                resolve(false);
-                            }}/>
-                        <label hexpand label={noButton}></label>
-                    </box>
+            <label cssClasses={["title"]} label={text} />
+            <label cssClasses={["subtext"]} label={subtext} />
+            <box homogeneous>
+                <box cssName={"button"}>
+                    <Gtk.GestureClick
+                        button={1}
+                        onPressed={() => {
+                            dialog.hide();
+                            resolve(true);
+                        }} />
+                    <label hexpand label={yesButton}></label>
                 </box>
-            </box>);
+                <box cssName={"button"}>
+                    <Gtk.GestureClick
+                        button={1}
+                        onPressed={() => {
+                            dialog.hide();
+                            resolve(false);
+                        }} />
+                    <label hexpand label={noButton}></label>
+                </box>
+            </box>
+        </box>);
         dialog.Show();
         createBinding(dialog.win, "visible").subscribe(() => {
             if (!dialog.win.get_visible()) {
