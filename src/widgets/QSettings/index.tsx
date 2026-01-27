@@ -84,7 +84,7 @@ export default function QSettings() {
         namespace={`${Config.instanceName}QSettings`}
 
         anchor={TOP | BOTTOM | LEFT | RIGHT}
-        // keymode={Astal.Keymode.EXCLUSIVE}
+        keymode={Astal.Keymode.EXCLUSIVE}
     >
 
         <Gtk.EventControllerKey onKeyPressed={onKey} />
