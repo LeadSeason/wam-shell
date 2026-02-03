@@ -10,7 +10,7 @@ export default function Clock() {
         return GLib.DateTime.new_now_local().format("%H:%M:%S")!
     })
     const date = createPoll("", 1000, () => {
-        return GLib.DateTime.new_now_local().format("%e.%m.%Y")!
+        return GLib.DateTime.new_now_local().format("%d.%m.%Y")!
     })
 
     return (
