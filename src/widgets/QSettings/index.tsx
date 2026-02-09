@@ -19,6 +19,7 @@ export default function QSettings() {
     let win: Astal.Window
     let contentBox: Gtk.Box
     let revealer: Gtk.Revealer
+    const toggleSection = ToggleSection()
 
     function hide() {
         // For some reason it does'nt want to play the animation, Setting
@@ -27,6 +28,7 @@ export default function QSettings() {
         // give some time for the animation to play.
         timeout(50, () => {
             win.hide()
+            toggleSection.reset()
         })
     }
 
@@ -104,7 +106,7 @@ export default function QSettings() {
                 widthRequest={240}
             >
                 <HeaderSection />
-                <ToggleSection />
+                {toggleSection.widget}
                 <Gtk.Separator />
                 <SliderSection />
                 <Gtk.Separator />

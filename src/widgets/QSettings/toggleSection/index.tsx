@@ -13,24 +13,29 @@ export function ToggleSection() {
 
     const [activeDropdownIndex, setActiveDropdownIndex] = createState(0);
 
-    return <box cssClasses={["QSSection"]} orientation={Gtk.Orientation.VERTICAL}>
-        <box>
-            <SwayGapsButton
+    return {
+        widget: (<box cssClasses={["QSSection"]} orientation={Gtk.Orientation.VERTICAL}>
+            <box>
+                <SwayGapsButton
+                    activeDropdown={activeDropdownIndex}
+                    setActiveDropdown={setActiveDropdownIndex}
+                    dropdownIndex={1} />
+                <PowerProfilesButton
+                    activeDropdown={activeDropdownIndex}
+                    setActiveDropdown={setActiveDropdownIndex}
+                    dropdownIndex={2} />
+
+            </box>
+            <SwayGapsWidget
                 activeDropdown={activeDropdownIndex}
-                setActiveDropdown={setActiveDropdownIndex}
                 dropdownIndex={1} />
-            <PowerProfilesButton
+            <PowerProfilesWidget
                 activeDropdown={activeDropdownIndex}
-                setActiveDropdown={setActiveDropdownIndex}
                 dropdownIndex={2} />
 
-        </box>
-        <SwayGapsWidget
-            activeDropdown={activeDropdownIndex}
-            dropdownIndex={1} />
-        <PowerProfilesWidget
-            activeDropdown={activeDropdownIndex}
-            dropdownIndex={2} />
-
-    </box>;
+        </box>),
+        reset() {
+            setActiveDropdownIndex(0)
+        }
+    }
 }
