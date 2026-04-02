@@ -22,3 +22,7 @@
 # Enable sway_gaps feature, Defaults to true if desktop session is sway.
 # otherwise disabled
 # sway_gaps = true
+
+# arch_updates_threshold - Check updates module
+# The minimum amount of updates required to show a update icon.
+# arch_updates_threshold = 50

@@ -13,7 +13,7 @@ const configFile = findConfigFile()
 if (configFile) {
     console.log("Found config file:", configFile)
 }
-const data = parseToml(readRawFile(configFile))
+const configData = parseToml(readRawFile(configFile))
 
 function findConfigFile(): string | undefined {
     // Candidates ordered by priority (highest first)
@@ -50,11 +50,11 @@ function parseToml(raw: string): Record<string, any> {
 }
 
 function getOsIcon(): string {
-    if (data.os_icon !== undefined) {
-        if (typeof (data.os_icon) !== "string") {
-            console.error(`Config "os_icon" cannot be typeof ${typeof (data.os_icon)}, must be string`);
+    if (configData.os_icon !== undefined) {
+        if (typeof (configData.os_icon) !== "string") {
+            console.error(`Config "os_icon" cannot be typeof ${typeof (configData.os_icon)}, must be string`);
         } else {
-            return data.os_icon
+            return configData.os_icon
         }
     }
 
@@ -71,7 +71,7 @@ function getOsIcon(): string {
 }
 
 function getDesktopSession(): string {
-    let override = data.desktop_session_override
+    let override = configData.desktop_session_override
     let desktop = GLib.getenv("DESKTOP_SESSION")
 
 
@@ -112,15 +112,49 @@ function getDesktopSession(): string {
     return ""
 }
 
+/**
+ * Check if the pending updates daemon is active. pending update daemon is a 
+ * LeadSeason 
+ * 
+ * @returns 
+ * - false → daemon not active OR update file missing
+ * - string → absolute path to the update file (when active and file exists)
+ */
+function getPendingUpdateDaemonStatus(): false | string {
+    let status;
+    try {
+        status = exec("systemctl --user is-active pending-updates-daemon.service");
+    } catch (e) {
+        return false;
+    }
+    if (status !== "active") {
+        return false;
+    }
+
+    let updateFile = "/tmp/system_updates";
+    const runtimeDir = GLib.getenv("XDG_RUNTIME_DIR");
+
+    if (runtimeDir) {
+        updateFile = `${runtimeDir}/system_updates`;
+    }
+
+    if (!isFile(updateFile)) {
+        return false;
+    }
+
+    return updateFile;
+}
 
 export default class Config {
-    static instanceName = data.instance_name || "wam-shell"
+    static instanceName = configData.instance_name || "wam-shell"
 
     static instanceSrcDir = instanceSrcDir
     static osIcon = getOsIcon()
     static desktopSession = getDesktopSession()
+    static pendingUpdates = getPendingUpdateDaemonStatus()
+    static updatesThreshold = configData.arch_updates_threshold || 50
 
-    static swayGaps = (data.sway_gaps === undefined) ? true : data.sway_gaps
+    static swayGaps = (configData.sway_gaps === undefined) ? true : configData.sway_gaps
     static swayGapsSizeDefault = 10
 
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`

@@ -6,8 +6,18 @@ import CommandRegistry from "../../../lib/requestHandler"
 import { SliderSection } from "../../QSettings/SliderSection"
 import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1"
 import AstalBattery from "gi://AstalBattery?version=0.1"
+import ArchUpdates from "../../../lib/archUpdates"
+import { execAsync } from "ags/process"
+import Config from "../../../config"
 
 const registry = CommandRegistry.get_default()
+
+
+/**
+ * POLICY
+ * Do not use mouse one for any label widget as its used for opening the Quick
+ * -settings. 
+ */
 
 function audioWidget(driver: AstalWp.Endpoint): Gtk.MenuButton {
     // reactivity, Scrollable, Right click to mute
@@ -30,7 +40,7 @@ function audioWidget(driver: AstalWp.Endpoint): Gtk.MenuButton {
 
     const updateTooltip = () => {
         setTooltip(`${driver.name}  
-${driver.description}`)
+${driver.description}`) // Keep this indent. New line.
     }
     updateTooltip()
     createBinding(driver, "name").subscribe(() => { updateTooltip() })
@@ -82,13 +92,6 @@ function powerProfile() {
             iconName={activeProfile.as(v => `power-profile-${v}-symbolic`)}
             tooltipText={activeProfile.as(v => `Active PowerProfile ${v}`)}
         />) as Gtk.Image // TS Jank,
-}
-
-function secondsToTime(t: number): string {
-    /* @ts-expect-error */
-    const date = new Date(null);
-    date.setSeconds(t); // specify value for SECONDS here
-    return date.toISOString().slice(11, 19);
 }
 
 function Battery() {
@@ -148,11 +151,36 @@ function Battery() {
         >
             <label
                 marginStart={5}
-                label={createBinding(bat, "batteryLevel").as(
-                    (v: number) => `${(v * 100).toFixed(0)}%`)}
+                label={createBinding(bat, "percentage").as(
+                    (v) => `${Math.floor(v * 100)}%`)}
             />
         </revealer>
     </box>) as Gtk.Widget // TS jank
+}
+
+function Updates() {
+    const archUpdates = ArchUpdates.get_default()
+
+    return (<revealer
+        transitionDuration={250}
+        transitionType={Gtk.RevealerTransitionType.SLIDE_LEFT}
+        revealChild={createBinding(archUpdates, "overthreshold")}
+    >
+        <box>
+            <Gtk.GestureClick
+                button={3}
+                onPressed={() => {
+                    // @TODO Run independent of shell, we don't want to stop
+                    // updating mid update.
+                    execAsync(`bash -c 'kitty --hold -e ${Config.instanceSrcDir}/scripts/archlinux-update.sh'`)
+                }}
+            />
+            <label
+                label={createBinding(archUpdates, "updatesnum").as(u => `󰁠 ${u}`)}
+                tooltipText={createBinding(archUpdates, "updates")}
+            />
+        </box>
+    </revealer>) as Gtk.Widget // TS jank
 }
 
 function ButtonLabel() {
@@ -172,7 +200,10 @@ function ButtonLabel() {
     labelBox.append(powerProfile())
     if (bat.isPresent) {
         labelBox.append(Battery())
+    }
 
+    if (Config.pendingUpdates) {
+        labelBox.append(Updates())
     }
 
     return labelBox
