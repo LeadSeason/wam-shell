@@ -3,9 +3,11 @@ import toml from "toml"
 import { exec } from "ags/process"
 import { readFile } from "ags/file"
 import { isFile } from "./lib/utils"
-import app from "ags/gtk4/app"
 
 const instanceSrcDir = exec("pwd").trim()
+const userHomeDir = GLib.getenv("HOME");
+const xdgConfigHomeDir = GLib.getenv("XDG_CONFIG_HOME");
+const xdgRuntimeDir = GLib.getenv("XDG_RUNTIME_DIR");
 
 
 // Locate and load config
@@ -18,9 +20,10 @@ const configData = parseToml(readRawFile(configFile))
 function findConfigFile(): string | undefined {
     // Candidates ordered by priority (highest first)
     const candidates = [
+        `${xdgConfigHomeDir}/wam-shell/config.toml`,
+        `${userHomeDir}/.config/wam-shell/config.toml`,
         `${instanceSrcDir}/config-override.toml`,
-        `${instanceSrcDir}/config.toml`,
-        // @TODO: add XDG_CONFIG_HOME and $HOME/.config/wam-shell paths here
+        `${instanceSrcDir}/config.toml`
     ]
 
     for (const candidate of candidates) {
@@ -132,10 +135,9 @@ function getPendingUpdateDaemonStatus(): false | string {
     }
 
     let updateFile = "/tmp/system_updates";
-    const runtimeDir = GLib.getenv("XDG_RUNTIME_DIR");
 
-    if (runtimeDir) {
-        updateFile = `${runtimeDir}/system_updates`;
+    if (xdgRuntimeDir) {
+        updateFile = `${xdgRuntimeDir}/system_updates`;
     }
 
     if (!isFile(updateFile)) {
