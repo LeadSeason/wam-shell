@@ -38,30 +38,61 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
 
     const accessPoints = createBinding(wifi, "accessPoints").as(aps =>
         [...aps]
+            .filter(ap => ap.ssid) // skip hidden networks
             .sort((a, b) => b.strength - a.strength)
             .slice(0, 8)
     )
 
+    // the same SSID is often broadcast on multiple bands, group by band
+    const band = (ap: AstalNetwork.AccessPoint): string => {
+        if (ap.frequency >= 5925) return "6GHz"
+        if (ap.frequency >= 5000) return "5GHz"
+        return "2.4GHz"
+    }
+
+    const groups = accessPoints.as(aps => {
+        const byBand = new Map<string, AstalNetwork.AccessPoint[]>()
+        for (const ap of aps) {
+            const b = band(ap)
+            if (!byBand.has(b)) byBand.set(b, [])
+            byBand.get(b)!.push(ap)
+        }
+        return ["6GHz", "5GHz", "2.4GHz"]
+            .filter(b => byBand.has(b))
+            .map(b => ({ band: b, aps: byBand.get(b)! }))
+    })
+
+    function ApRow({ ap }: { ap: AstalNetwork.AccessPoint }) {
+        const active = createBinding(wifi, "activeAccessPoint")
+            .as(activeAp => activeAp?.bssid === ap.bssid ? ["active"] : [""])
+        return (
+            <box cssName={"button"} cssClasses={active} spacing={5}>
+                <Gtk.GestureClick
+                    button={1}
+                    onPressed={() => {
+                        // only works for known networks, new
+                        // networks need a password prompt
+                        ap.activate(null).catch((e) => console.error(e))
+                    }}
+                />
+                <image iconName={createBinding(ap, "iconName")} />
+                <label label={ap.ssid} hexpand xalign={0} />
+            </box>
+        )
+    }
+
     return <box orientation={Gtk.Orientation.VERTICAL}>
-        <For each={accessPoints}>
-            {(ap) => {
-                const active = createBinding(wifi, "activeAccessPoint")
-                    .as(activeAp => activeAp?.bssid === ap.bssid ? ["active"] : [""])
-                return (
-                    <box cssName={"button"} cssClasses={active} spacing={5}>
-                        <Gtk.GestureClick
-                            button={1}
-                            onPressed={() => {
-                                // only works for known networks, new
-                                // networks need a password prompt
-                                ap.activate(null).catch((e) => console.error(e))
-                            }}
-                        />
-                        <image iconName={createBinding(ap, "iconName")} />
-                        <label label={ap.ssid || "Unknown"} hexpand xalign={0} />
-                    </box>
-                )
-            }}
+        <For each={groups}>
+            {(g) => (
+                <box orientation={Gtk.Orientation.VERTICAL}>
+                    <label
+                        label={g.band}
+                        cssClasses={["wifiBand"]}
+                        xalign={0}
+                    />
+                    {g.aps.map(ap => <ApRow ap={ap} />)}
+                </box>
+            )}
         </For>
     </box>
 }

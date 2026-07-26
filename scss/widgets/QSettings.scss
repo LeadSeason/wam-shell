@@ -231,6 +231,14 @@ window#QSettings {
         border: solid 2px color.mix(t.$accent, transparent, 50%);
     }
 
+    // wifi band section headers in the wifi pane
+    .wifiBand {
+        font-size: 0.85em;
+        font-weight: bold;
+        color: t.$subtext0;
+        margin: 4px 0 0 4px;
+    }
+
     // tray icons inside the popup: bigger, on their own pills
     // (pill size is set inline from tray.popup_icon_size, gaps from the
     // FlowBox spacing)
