@@ -9,14 +9,14 @@ importers:
   .:
     dependencies:
       ags:
-        specifier: link:/usr/local/share/ags/js
-        version: link:../../../../usr/local/share/ags/js
+        specifier: link:.sys/ags
+        version: link:.sys/ags
       fuse.js:
         specifier: ^7.1.0
         version: 7.5.0
       gnim:
-        specifier: link:/usr/local/share/ags/js/node_modules/gnim
-        version: link:../../../../usr/local/share/ags/js/node_modules/gnim
+        specifier: link:.sys/gnim
+        version: link:.sys/gnim
       toml:
         specifier: ^3.0.0
         version: 3.0.0

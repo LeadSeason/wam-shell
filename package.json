@@ -1,13 +1,14 @@
 {
   "scripts": {
     "start": "ags run app.tsx",
-    "debug": "GTK_DEBUG=interactive ags run app.tsx"
+    "debug": "GTK_DEBUG=interactive ags run app.tsx",
+    "setup": "bash scripts/setup.sh"
   },
   "packageManager": "pnpm@10.28.1",
   "dependencies": {
-    "ags": "link:/usr/local/share/ags/js",
+    "ags": "link:.sys/ags",
     "fuse.js": "^7.1.0",
-    "gnim": "link:/usr/local/share/ags/js/node_modules/gnim",
+    "gnim": "link:.sys/gnim",
     "toml": "^3.0.0"
   },
   "prettier": {
