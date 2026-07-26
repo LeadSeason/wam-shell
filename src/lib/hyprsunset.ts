@@ -1,5 +1,6 @@
 import { exec, execAsync } from "ags/process"
 import { createState } from "ags"
+import GLib from "gi://GLib?version=2.0"
 import Config from "../config"
 
 // Shared hyprsunset state. The daemon runs as a systemd user service
@@ -44,10 +45,23 @@ function applyTemp() {
         .catch(() => { })
 }
 
+// Dragging the brightness slider fires applyGamma per motion event;
+// spawning hyprctl that often janks the main loop. Coalesce to one
+// trailing call every 50ms — state (and the knob) still update instantly.
+let gammaSource: number | null = null
+let pendingGamma: number | null = null
 function applyGamma() {
-    const gamma = outdoor.get() ? OUTDOOR_GAMMA : Math.round(dim.get() * 100)
-    execAsync(["hyprctl", "hyprsunset", "gamma", String(gamma)])
-        .catch(() => { })
+    pendingGamma = outdoor.get() ? OUTDOOR_GAMMA : Math.round(dim.get() * 100)
+    if (gammaSource !== null) return
+    gammaSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+        gammaSource = null
+        if (pendingGamma === null) return GLib.SOURCE_REMOVE
+        const gamma = pendingGamma
+        pendingGamma = null
+        execAsync(["hyprctl", "hyprsunset", "gamma", String(gamma)])
+            .catch(() => { })
+        return GLib.SOURCE_REMOVE
+    })
 }
 
 export function setNightLightEnabled(v: boolean) {

@@ -44,6 +44,7 @@ window#QSettings {
             border-radius: 7px;
             border: 1px solid t.$surface1;
             background-color: t.$surface0;
+            min-height: 16px;
             highlight {
                 background-color: t.$accent80;
                 border-radius: 7px;
@@ -120,6 +121,14 @@ window#QSettings {
         slider highlight {
             background-color: t.$peach;
         }
+    }
+
+    // device name overlaid on the volume sliders
+    .deviceName {
+        font-size: 0.85em;
+        font-weight: bold;
+        color: t.$text;
+        margin-left: 12px;
     }
 
     slider highlight {

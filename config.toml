@@ -68,13 +68,19 @@
 # position = "left"
 # always_on_panel = ["TelegramDesktop"]
 
-# close_delay - Quick settings popup. milliseconds after the pointer leaves
-#               the popup before it closes. default 350
-# close_delay = 350
-
+# [quicksettings] - Quick settings popup
+# Keys can be set inside a [quicksettings] section or flat at the top level.
+#
+# close_delay - milliseconds after the pointer leaves the popup before it
+#               closes. default 350
 # show_battery_percentage - show the battery percentage next to the battery
 #                           icon on the panel. default true
+# show_device_names - overlay the active input/output device name on the
+#                     volume sliders. default false
+# [quicksettings]
+# close_delay = 350
 # show_battery_percentage = true
+# show_device_names = false
 
 # temperature_default - color temperature in kelvin used normally (night
 #                       light off, gamma at or below 100%). default 6000

@@ -3,6 +3,7 @@ import Gtk from "gi://Gtk?version=4.0";
 import GLib from "gi://GLib?version=2.0";
 import Pango from "gi://Pango?version=1.0";
 import { execAsync } from "ags/process";
+import Config from "../../config";
 import Brightness from "../../lib/brightness";
 import hyprsunset, { setOutdoorEnabled, OUTDOOR_GAMMA } from "../../lib/hyprsunset";
 import { Accessor, For, Setter, With, createBinding, createComputed, createState } from "gnim";
@@ -56,9 +57,28 @@ function VolSlider({
     dropdownIndex: dropdownIndex
 }: VolSliderProps) {
     const volume = createBinding(endpoint, "volume")
+    const deviceName = (
+        <label
+            canTarget={false}
+            cssClasses={["deviceName"]}
+            halign={Gtk.Align.START}
+            valign={Gtk.Align.CENTER}
+            maxWidthChars={24}
+            ellipsize={Pango.EllipsizeMode.END}
+            label={createBinding(endpoint, "description")
+                .as(d => d || endpoint.name || "")}
+        />) as Gtk.Label
+    // Drag damping: the slider itself is non-interactive (canTarget=false),
+    // a GestureDrag drives it instead. Press warps the knob to the press
+    // position (click-to-position), then pointer movement applies at
+    // DAMP_FACTOR speed so the knob deliberately trails the pointer —
+    // no fighting with GTK's own drag handling.
+    const DAMP_FACTOR = 0.3
+    let dragStartVol = 0
+    let dragWidth = 260
     return <box
         cssClasses={volume.as((v) => {
-            if (v > 1)
+            if (v > 1.01)
                 return ["volHigh"]
             return []
         })}
@@ -82,12 +102,38 @@ function VolSlider({
                 }} />
             <image iconName={createBinding(endpoint, "volumeIcon")} />
         </button>
-        <slider
-            hexpand
-            max={maxValue}
-            widthRequest={260}
-            onChangeValue={({ value }) => endpoint.set_volume(value)}
-            value={volume} />
+        <overlay $={(self) => {
+            if (Config.quicksettings.showDeviceNames)
+                self.add_overlay(deviceName)
+        }}>
+            <Gtk.GestureDrag
+                button={1}
+                onDragBegin={(gesture, x) => {
+                    dragWidth = gesture.get_widget()?.get_width() ?? 260
+                    dragStartVol = Math.min(Math.max(
+                        (x / dragWidth) * maxValue, 0), maxValue)
+                    endpoint.set_volume(dragStartVol)
+                }}
+                onDragUpdate={(_gesture, dx) => {
+                    const dv = (dx / dragWidth) * maxValue * DAMP_FACTOR
+                    endpoint.set_volume(Math.min(Math.max(
+                        dragStartVol + dv, 0), maxValue))
+                }}
+            />
+            <Gtk.EventControllerScroll
+                flags={Gtk.EventControllerScrollFlags.VERTICAL}
+                onScroll={(_source, _dx, dy) => {
+                    endpoint.volume -= dy / 100
+                    return true
+                }}
+            />
+            <slider
+                canTarget={false}
+                hexpand
+                max={maxValue}
+                widthRequest={260}
+                value={volume} />
+        </overlay>
         <label
             widthChars={5}
             maxWidthChars={5}

@@ -173,20 +173,21 @@ function getTrayConfig() {
 }
 
 function getQSettingsConfig() {
-    // Keys can be set in a [qsettings] section or flat at the top level;
+    // Keys can be set in a [quicksettings] section or flat at the top level;
     // the section takes precedence.
-    const q = configData.qsettings ?? {}
+    const q = configData.quicksettings ?? {}
     const get = (key: string, fallback: any) => q[key] ?? configData[key] ?? fallback
 
     let closeDelay = get("close_delay", 350)
     if (typeof closeDelay !== "number" || closeDelay < 0) {
-        console.error(`Config "qsettings.close_delay" must be a positive number, got "${closeDelay}"`)
+        console.error(`Config "quicksettings.close_delay" must be a positive number, got "${closeDelay}"`)
         closeDelay = 350
     }
 
     return {
         closeDelay,
         showBatteryPercentage: get("show_battery_percentage", true),
+        showDeviceNames: get("show_device_names", false),
     }
 }
 
@@ -252,7 +253,7 @@ export default class Config {
 
     static workspaces = getWorkspacesConfig()
     static tray = getTrayConfig()
-    static qsettings = getQSettingsConfig()
+    static quicksettings = getQSettingsConfig()
     static hyprsunset = getHyprsunsetConfig()
 
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`

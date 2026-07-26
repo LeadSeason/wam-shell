@@ -159,7 +159,7 @@ function Battery() {
         cssClasses={showPrec.as((v) => v ? ["batLow"] : [])}
     >
         <image iconName={batIcon} />
-        {Config.qsettings.showBatteryPercentage &&
+        {Config.quicksettings.showBatteryPercentage &&
             <label
                 marginStart={5}
                 label={createBinding(bat, "percentage").as(
