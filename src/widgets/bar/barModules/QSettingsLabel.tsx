@@ -7,6 +7,7 @@ import { SliderSection } from "../../QSettings/SliderSection"
 import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1"
 import AstalBattery from "gi://AstalBattery?version=0.1"
 import ArchUpdates from "../../../lib/archUpdates"
+import trayNeedsAttention from "../../../lib/trayAttention"
 import { execAsync } from "ags/process"
 import Config from "../../../config"
 
@@ -57,7 +58,10 @@ ${driver.description}`) // Keep this indent. New line.
                 arg1: number
             ) => {
                 show()
-                driver.volume -= arg1 / 100
+                // Fixed step per notch, raw deltas vary wildly between
+                // devices and can be imperceptibly small
+                const step = arg1 < 0 ? 0.05 : -0.05
+                driver.volume = Math.min(1, Math.max(0, driver.volume + step))
                 return true
             }}
         />
@@ -145,16 +149,13 @@ function Battery() {
         cssClasses={showPrec.as((v) => v ? ["batLow"] : [])}
     >
         <image iconName={batIcon} />
-        <revealer
-            revealChild={showPrec}
-            transitionType={Gtk.RevealerTransitionType.SLIDE_RIGHT}
-        >
+        {Config.qsettings.showBatteryPercentage &&
             <label
                 marginStart={5}
                 label={createBinding(bat, "percentage").as(
                     (v) => `${Math.floor(v * 100)}%`)}
             />
-        </revealer>
+        }
     </box>) as Gtk.Widget // TS jank
 }
 
@@ -193,7 +194,7 @@ function ButtonLabel() {
     const { defaultMicrophone: microphone } = AstalWp.get_default()!
 
     const labelBox = new Gtk.Box()
-    labelBox.spacing = 7
+    labelBox.spacing = 12
 
     labelBox.append(audioWidget(speaker))
     labelBox.append(audioWidget(microphone))
@@ -206,6 +207,18 @@ function ButtonLabel() {
         labelBox.append(Updates())
     }
 
+    // Dot shown when a nested tray item needs attention
+    if (!Config.tray.onPanel) {
+        labelBox.append(
+            <label
+                label="●"
+                cssClasses={["tray-attention"]}
+                visible={trayNeedsAttention}
+                tooltipText={"A tray item needs attention"}
+            /> as Gtk.Widget
+        )
+    }
+
     return labelBox
 }
 
@@ -214,6 +227,11 @@ export default function QSettings() {
     return <box
         cssClasses={["QSettings"]}
     >
+        <Gtk.EventControllerMotion
+            onEnter={() => {
+                registry.execute(["qSettingsShow"], true)
+            }}
+        />
         <Gtk.GestureClick
             button={1}
             onPressed={() => {

@@ -45,6 +45,28 @@
 # hide_empty = true
 # collapse_icons = false
 
+# [tray] - System tray widget
+# Keys can be set inside a [tray] section or flat at the top level.
+#
+# on_panel - show tray items directly on the bar instead of inside the
+#            quick settings popup. default false
+# spacing - horizontal gap between tray icons, in pixels. default 0
+# position - "left" or "right" of the quick settings button. default "left"
+#            NOTE: flat at the top level this key is "tray_position", a
+#            bare "position" would collide with workspaces.position
+# [tray]
+# on_panel = false
+# spacing = 0
+# position = "left"
+
+# close_delay - Quick settings popup. milliseconds after the pointer leaves
+#               the popup before it closes. default 350
+# close_delay = 350
+
+# show_battery_percentage - show the battery percentage next to the battery
+#                           icon on the panel. default true
+# show_battery_percentage = true
+
 # arch_updates_threshold - Check updates module
 # The minimum amount of updates required to show a update icon.
 # arch_updates_threshold = 50

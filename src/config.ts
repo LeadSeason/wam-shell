@@ -137,6 +137,51 @@ function getWorkspacesConfig() {
     }
 }
 
+function getTrayConfig() {
+    // Keys can be set in a [tray] section or flat at the top level;
+    // the section takes precedence.
+    const t = configData.tray ?? {}
+    const get = (key: string, fallback: any) => t[key] ?? configData[key] ?? fallback
+
+    let spacing = get("spacing", 0)
+    if (typeof spacing !== "number" || spacing < 0) {
+        console.error(`Config "tray.spacing" must be a positive number, got "${spacing}"`)
+        spacing = 0
+    }
+
+    // Flat fallback is "tray_position": a bare "position" key would collide
+    // with workspaces.position.
+    let position = t.position ?? configData.tray_position ?? "left"
+    if (position !== "left" && position !== "right") {
+        console.error(`Config "tray.position" must be "left" or "right", got "${position}"`)
+        position = "left"
+    }
+
+    return {
+        onPanel: get("on_panel", false),
+        spacing,
+        position: position as "left" | "right",
+    }
+}
+
+function getQSettingsConfig() {
+    // Keys can be set in a [qsettings] section or flat at the top level;
+    // the section takes precedence.
+    const q = configData.qsettings ?? {}
+    const get = (key: string, fallback: any) => q[key] ?? configData[key] ?? fallback
+
+    let closeDelay = get("close_delay", 350)
+    if (typeof closeDelay !== "number" || closeDelay < 0) {
+        console.error(`Config "qsettings.close_delay" must be a positive number, got "${closeDelay}"`)
+        closeDelay = 350
+    }
+
+    return {
+        closeDelay,
+        showBatteryPercentage: get("show_battery_percentage", true),
+    }
+}
+
 /**
  * Check if the pending updates daemon is active. pending update daemon is a 
  * LeadSeason 
@@ -182,6 +227,8 @@ export default class Config {
     static swayGapsSizeDefault = 10
 
     static workspaces = getWorkspacesConfig()
+    static tray = getTrayConfig()
+    static qsettings = getQSettingsConfig()
 
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`

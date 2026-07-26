@@ -32,6 +32,11 @@ window.Bar {
         }
     }
 
+    .tray-attention {
+        color: t.$accent;
+        margin-left: 2px;
+    }
+
     .swayNC {
         border-radius: s.$radius;
         margin: 0px s.$padding;

@@ -2,6 +2,7 @@ import { createBinding, createState, For, With } from "ags"
 import { Gdk, Gtk } from "ags/gtk4"
 import app from "ags/gtk4/app"
 import AstalTray from "gi://AstalTray"
+import Config from "../../config"
 
 export default function Tray() {
     const [trayItems, setTrayItems] = createState([] as AstalTray.TrayItem[])
@@ -30,6 +31,7 @@ export default function Tray() {
         <Gtk.FlowBox
             maxChildrenPerLine={8}
             selectionMode={Gtk.SelectionMode.NONE}
+            columnSpacing={Config.tray.spacing}
         >
             <For each={trayItems}>
                 {(item) => {

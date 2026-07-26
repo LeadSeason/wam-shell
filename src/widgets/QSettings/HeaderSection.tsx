@@ -1,4 +1,6 @@
 import { Gtk } from "ags/gtk4";
+import Pango from "gi://Pango?version=1.0";
+import GLib from "gi://GLib?version=2.0";
 import { execAsync } from "ags/process";
 import { createPoll } from "ags/time";
 import AstalBattery from "gi://AstalBattery?version=0.1";
@@ -10,40 +12,70 @@ function BatWidget() {
     const batProc = createBinding(bat, "percentage")
 
     const batTimeConvert = (timeRemaining: number, charging: boolean): string => {
-        if (timeRemaining <= 0) return charging ? "Fully charged" : "Unknown ammount of time left";
+        // No meaningful estimate (at charge limit, or UPower has no data):
+        // show nothing, the percentage is already visible anyway
+        if (timeRemaining <= 0) return "";
 
-        const hours = Math.floor(timeRemaining / 3600);
-        const minutes = Math.floor((timeRemaining % 3600) / 60);
+        // Round to 5 minute steps so small estimate drifts don't retext
+        // the label
+        const totalMinutes = Math.round(timeRemaining / 60 / 5) * 5;
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
 
-        const parts: string[] = [];
-
-        if (hours > 0) parts.push(`${hours} hour${hours !== 1 ? "s" : ""}`);
-        if (minutes > 0) parts.push(`${minutes} minute${minutes !== 1 ? "s" : ""}`);
-
-        const suffix = charging ? "until full" : "left";
-
-        return `${parts.join(" ")} ${suffix}`;
+        const time = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+        return charging ? `${time} to full` : `${time} left`;
     };
 
-    const [batTime, setBatTime] = createState(batTimeConvert(
-        (bat.charging) ? bat.timeToEmpty : bat.timeToEmpty, bat.charging))
+    const currentBatTime = (): string =>
+        batTimeConvert(bat.charging ? bat.timeToFull : bat.timeToEmpty, bat.charging)
 
-    createBinding(bat, "timeToEmpty").subscribe(() => {
-        if (!bat.get_charging())
-            setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))
-    })
+    const [batTime, setBatTime] = createState(currentBatTime())
 
-    createBinding(bat, "timeToFull").subscribe(() => {
-        if (bat.get_charging())
-            setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))
-    })
+    // Debounce: UPower oscillates around the charge limit (charging state
+    // and time estimates flip back and forth), only update the label once
+    // the computed text has been stable for a few seconds.
+    let pendingSource: number | null = null
+    let pendingValue: string | null = null
+
+    function updateBatTime() {
+        const raw = currentBatTime()
+
+        if (raw === batTime.get()) {
+            // back to the displayed value, drop any pending change
+            if (pendingSource !== null) {
+                GLib.source_remove(pendingSource)
+                pendingSource = null
+                pendingValue = null
+            }
+            return
+        }
+        if (raw === pendingValue) return
+
+        if (pendingSource !== null) GLib.source_remove(pendingSource)
+        pendingValue = raw
+        pendingSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 5000, () => {
+            pendingSource = null
+            pendingValue = null
+            setBatTime(raw)
+            return GLib.SOURCE_REMOVE
+        })
+    }
+
+    createBinding(bat, "timeToEmpty").subscribe(updateBatTime)
+    createBinding(bat, "timeToFull").subscribe(updateBatTime)
+    createBinding(bat, "charging").subscribe(updateBatTime)
 
     return <box cssClasses={["QSBat"]} orientation={Gtk.Orientation.VERTICAL}>
         <box>
             <image iconName={batIcon} />
             <label label={batProc.as(v => `${(v * 100).toFixed(0)} %`)} />
         </box>
-        <label label={batTime} />
+        <label
+            label={batTime}
+            xalign={0}
+            maxWidthChars={20}
+            ellipsize={Pango.EllipsizeMode.END}
+        />
     </box>
 }
 
@@ -111,8 +143,18 @@ function Uptime() {
     })
     // xalign Aligns text to the left side
     return <box cssClasses={["QSBat"]} orientation={Gtk.Orientation.VERTICAL}>
-        <label xalign={0} label={uptime} />
-        <label xalign={0} label={sysLoad} />
+        <label
+            xalign={0}
+            label={uptime}
+            maxWidthChars={20}
+            ellipsize={Pango.EllipsizeMode.END}
+        />
+        <label
+            xalign={0}
+            label={sysLoad}
+            maxWidthChars={20}
+            ellipsize={Pango.EllipsizeMode.END}
+        />
     </box>
 }
 
