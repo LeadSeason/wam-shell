@@ -8,8 +8,21 @@ export default function Tray() {
     const [trayItems, setTrayItems] = createState([] as AstalTray.TrayItem[])
     const registry = AstalTray.get_default() // Singleton.
 
+    // AppImage-based apps ship their icons outside the icon theme and
+    // point to them via IconThemePath, which GTK does not search by
+    // default. Register each item's path so its icon resolves.
+    const iconTheme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default()!)
+    const addedPaths = new Set<string>()
+
     registry.connect("item-added", (_, item_id) => {
         const t = registry.get_item(item_id)
+
+        const path = t.iconThemePath
+        if (path && !addedPaths.has(path)) {
+            addedPaths.add(path)
+            iconTheme.add_search_path(path)
+        }
+
         setTrayItems((items) => {
             if (items.find((item) => item.get_item_id() === item_id)) {
                 return items
@@ -25,7 +38,7 @@ export default function Tray() {
         )
     })
 
-    // TODO: The icon for AppImage-based apps do not show up.
+    // TODO: Icons served as raw pixmaps may still not show up.
 
     return (
         <Gtk.FlowBox
