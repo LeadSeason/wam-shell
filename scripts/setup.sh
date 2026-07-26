@@ -37,6 +37,7 @@ AUR_LIBS=(
     "libastal-hyprland-git:AstalHyprland-0.1"
     "libastal-network-git:AstalNetwork-0.1"
     "libastal-bluetooth-git:AstalBluetooth-0.1"
+    "libastal-mpris-git:AstalMpris-0.1"
     "i3ipc-glib-git:i3ipc-1.0"
 )
 # order matters for source builds: io first, the rest depend on it
@@ -50,6 +51,7 @@ SRC_LIBS=(
     "lib/hyprland:AstalHyprland-0.1"
     "lib/network:AstalNetwork-0.1"
     "lib/bluetooth:AstalBluetooth-0.1"
+    "lib/mpris:AstalMpris-0.1"
 )
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }

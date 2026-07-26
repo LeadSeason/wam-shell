@@ -13,6 +13,7 @@ import { createState } from "gnim";
 import { ToggleSection } from "./toggleSection";
 import { HeaderSection } from "./HeaderSection";
 import { SliderSection } from "./SliderSection";
+import { MediaSection } from "./MediaSection";
 import { WifiWidget } from "./toggleSection/wifi";
 import { BluetoothWidget } from "./toggleSection/bluetooth";
 import { PowerProfilesWidget } from "./toggleSection/powerProfile";
@@ -206,6 +207,7 @@ export default function QSettings() {
                         <SliderSection />
                         <Gtk.Separator />
                         {toggleSection.widget}
+                        <MediaSection />
                         {!Config.tray.onPanel && <Gtk.Separator />}
                         {!Config.tray.onPanel &&
                             <Tray filter={(item) => !isPinned(item)} />}

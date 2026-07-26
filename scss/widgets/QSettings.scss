@@ -143,6 +143,39 @@ window#QSettings {
         background-color: t.$base;
         min-height: 44px;
     }
+
+    .mediaPlayer {
+        border-radius: s.$radius;
+        background-color: t.$base;
+        padding: s.$padding;
+    }
+    .mediaTitle {
+        font-weight: bold;
+    }
+    .mediaCover {
+        min-width: 40px;
+        min-height: 40px;
+        border-radius: 6px;
+        background-size: cover;
+        background-position: center;
+        background-color: t.$surface0;
+    }
+    .mediaCoverFallback {
+        color: t.$subtext0;
+    }
+    .mediaCoverFallback image {
+        margin: 8px;
+    }
+    .mediaArtist {
+        font-size: 0.85em;
+        color: t.$subtext0;
+    }
+    .mediaButton {
+        border-radius: 2em;
+        min-width: 2em;
+        min-height: 2em;
+        padding: 0;
+    }
     .toggleTitle {
         font-weight: bold;
     }
