@@ -12,10 +12,15 @@ function BatWidget() {
     const batProc = createBinding(bat, "percentage")
 
     const batTimeConvert = (timeRemaining: number, charging: boolean): string => {
-        if (timeRemaining <= 0) return charging ? "Full" : "?";
+        // No meaningful estimate (at charge limit, or UPower has no data):
+        // show nothing, the percentage is already visible anyway
+        if (timeRemaining <= 0) return "";
 
-        const hours = Math.floor(timeRemaining / 3600);
-        const minutes = Math.floor((timeRemaining % 3600) / 60);
+        // Round to 5 minute steps so small estimate drifts don't retext
+        // the label
+        const totalMinutes = Math.round(timeRemaining / 60 / 5) * 5;
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
 
         const time = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
         return charging ? `${time} to full` : `${time} left`;
