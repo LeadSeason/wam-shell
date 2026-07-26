@@ -34,7 +34,7 @@ export function SwayGapsButton({
         activeDropdown={activeDropdown}
         setActiveDropdown={setActiveDropdown}
         dropdownIndex={dropdownIndex}
-        icon={"x-tile-panel"}
+        icon={"view-grid-symbolic"}
         label={`SwayGaps`}
         subtitle={createBinding(swayGaps, "gap_state").as(v => v ? "On" : "Off")}
         isActive={createBinding(swayGaps, "gap_state")}

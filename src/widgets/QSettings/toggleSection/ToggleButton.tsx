@@ -55,7 +55,7 @@ export function DropdownButton({
         ? ""
         : navigate !== undefined
             ? "go-next-symbolic"
-            : activeDropdown!.as(s => (s === dropdownIndex) ? "arrow-up-symbolic" : "arrow-down-symbolic")
+            : activeDropdown!.as(s => (s === dropdownIndex) ? "pan-up-symbolic" : "pan-down-symbolic")
 
     return <box cssName={"button"} hexpand cssClasses={cssClasses}>
         <box spacing={8} hexpand>
