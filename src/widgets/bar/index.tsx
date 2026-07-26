@@ -7,6 +7,7 @@ import Config from "../../config"
 
 import OSIcon from "./barModules/osIcon"
 import SwayWs from "./barModules/workspaces-sway"
+import HyprlandWs from "./barModules/workspaces-hyprland"
 import WorkspacesExample from "./barModules/workspaces-example"
 import Clock from "./barModules/clock"
 import SwayNC from "./barModules/swayNC"
@@ -17,11 +18,15 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
   const time = createPoll("", 1000, "date")
   const { TOP, LEFT, RIGHT } = Astal.WindowAnchor
 
-  let workspaceWidget
-  if (Config.desktopSession == "sway") {
-    workspaceWidget = <SwayWs monitor={gdkMonitor} />
-  } else {
-    workspaceWidget = <WorkspacesExample />
+  let workspaceWidget = null
+  if (Config.workspaces.enabled) {
+    if (Config.desktopSession == "sway" || Config.desktopSession == "i3") {
+      workspaceWidget = <SwayWs monitor={gdkMonitor} />
+    } else if (Config.desktopSession == "hyprland") {
+      workspaceWidget = <HyprlandWs monitor={gdkMonitor} />
+    } else {
+      workspaceWidget = <WorkspacesExample />
+    }
   }
 
   return (
@@ -39,7 +44,7 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
       <centerbox cssName="centerbox">
         <box $type="start">
           <OSIcon />
-          {workspaceWidget}
+          {Config.workspaces.position == "left" && workspaceWidget}
         </box>
         <box $type="center">
           <Clock />
@@ -47,6 +52,7 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
         <box $type="end">
           <QSettingsLabel />
           <SwayNC />
+          {Config.workspaces.position == "right" && workspaceWidget}
         </box>
       </centerbox>
     </window>
