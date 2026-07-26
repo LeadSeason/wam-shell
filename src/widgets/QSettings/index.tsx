@@ -123,9 +123,20 @@ export default function QSettings() {
 
     function onMotion(_e: Gtk.EventControllerMotion, x: number, y: number) {
         const [, rect] = contentBox.compute_bounds(win)
-        const position = new Graphene.Point({ x, y })
 
-        if (rect.contains_point(position)) {
+        // The popup has a margin around it (for its shadow) which is
+        // outside its bounds: a pointer resting in that strip counts as
+        // outside while visually being on the popup, and if it overlaps
+        // the bar button it causes a close/open flicker loop. Treat a
+        // buffer around the popup as inside.
+        const BUFFER = 12
+        const { x: rx, y: ry } = rect.origin
+        const { width, height } = rect.size
+        const inside =
+            x >= rx - BUFFER && x <= rx + width + BUFFER &&
+            y >= ry - BUFFER && y <= ry + height + BUFFER
+
+        if (inside) {
             hasEntered = true
             cancelClose()
         } else if (hasEntered) {
