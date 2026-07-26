@@ -35,6 +35,8 @@ AUR_LIBS=(
     "libastal-powerprofiles-git:AstalPowerProfiles-0.1"
     "libastal-tray-git:AstalTray-0.1"
     "libastal-hyprland-git:AstalHyprland-0.1"
+    "libastal-network-git:AstalNetwork-0.1"
+    "libastal-bluetooth-git:AstalBluetooth-0.1"
     "i3ipc-glib-git:i3ipc-1.0"
 )
 # order matters for source builds: io first, the rest depend on it
@@ -46,6 +48,8 @@ SRC_LIBS=(
     "lib/powerprofiles:AstalPowerProfiles-0.1"
     "lib/tray:AstalTray-0.1"
     "lib/hyprland:AstalHyprland-0.1"
+    "lib/network:AstalNetwork-0.1"
+    "lib/bluetooth:AstalBluetooth-0.1"
 )
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
@@ -76,12 +80,12 @@ install_build_deps() {
         sudo pacman -S --needed --noconfirm \
             vala meson ninja gobject-introspection \
             gtk3 gtk4 gtk-layer-shell gtk4-layer-shell \
-            json-glib wireplumber dart-sass
+            json-glib wireplumber dart-sass libnm
     elif command -v dnf >/dev/null; then
         sudo dnf install -y \
             vala meson ninja-build gobject-introspection-devel \
             gtk3-devel gtk4-devel gtk-layer-shell-devel gtk4-layer-shell-devel \
-            json-glib-devel wireplumber-devel
+            json-glib-devel wireplumber-devel NetworkManager-libnm-devel
         command -v sass >/dev/null || \
             log "WARNING: sass not found. Install dart-sass (e.g. from https://github.com/sass/dart-sass/releases)"
     else

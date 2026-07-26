@@ -10,6 +10,7 @@ interface TbButtonProps {
     icon?: string | Accessor<string>
     isActive?: boolean | Accessor<boolean>
     activate?: () => void
+    hasDropdown?: boolean
 }
 
 export function DropdownButton({
@@ -19,7 +20,8 @@ export function DropdownButton({
     icon = "applications-system-symbolic",
     label,
     isActive = false,
-    activate: activate = undefined
+    activate: activate = undefined,
+    hasDropdown = true
 }: TbButtonProps) {
     const setActiveDropdown = (i: number) => {
         // Toggle
@@ -51,13 +53,15 @@ export function DropdownButton({
             <image iconName={icon} />
             <label label={label} />
         </box>
-        <box>
-            <image halign={Gtk.Align.END} iconName={activeDropdown.as(s => (s === dropdownIndex) ? "arrow-up-symbolic" : "arrow-down-symbolic")} />
-            <Gtk.GestureClick
-                button={1}
-                onPressed={() => {
-                    setActiveDropdown(dropdownIndex);
-                }} />
-        </box>
+        {hasDropdown &&
+            <box>
+                <image halign={Gtk.Align.END} iconName={activeDropdown.as(s => (s === dropdownIndex) ? "arrow-up-symbolic" : "arrow-down-symbolic")} />
+                <Gtk.GestureClick
+                    button={1}
+                    onPressed={() => {
+                        setActiveDropdown(dropdownIndex);
+                    }} />
+            </box>
+        }
     </box>
 }
