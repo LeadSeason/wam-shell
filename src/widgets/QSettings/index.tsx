@@ -55,6 +55,18 @@ export default function QSettings() {
         }
     })
 
+    registry.register({
+        name: ["qSettingsShow"],
+        description: "Show QuickSettings without toggling (used for hover open)",
+        main: () => {
+            if (win && !win.is_visible()) {
+                show()
+                return "QSettings, window show"
+            }
+            return "QSettings, already visible"
+        }
+    })
+
     // close on ESC
     function onKey(
         _e: Gtk.EventControllerKey,

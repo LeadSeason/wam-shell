@@ -227,6 +227,11 @@ export default function QSettings() {
     return <box
         cssClasses={["QSettings"]}
     >
+        <Gtk.EventControllerMotion
+            onEnter={() => {
+                registry.execute(["qSettingsShow"], true)
+            }}
+        />
         <Gtk.GestureClick
             button={1}
             onPressed={() => {
