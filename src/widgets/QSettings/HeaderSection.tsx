@@ -1,4 +1,5 @@
 import { Gtk } from "ags/gtk4";
+import Pango from "gi://Pango?version=1.0";
 import { execAsync } from "ags/process";
 import { createPoll } from "ags/time";
 import AstalBattery from "gi://AstalBattery?version=0.1";
@@ -43,7 +44,13 @@ function BatWidget() {
             <image iconName={batIcon} />
             <label label={batProc.as(v => `${(v * 100).toFixed(0)} %`)} />
         </box>
-        <label label={batTime} />
+        <label
+            label={batTime}
+            xalign={0}
+            maxWidthChars={20}
+            ellipsize={Pango.EllipsizeMode.END}
+            tooltipText={batTime}
+        />
     </box>
 }
 
