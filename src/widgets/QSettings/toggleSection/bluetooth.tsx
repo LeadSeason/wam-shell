@@ -40,7 +40,10 @@ export function BluetoothButton({
         icon={icon}
         label={label}
         isActive={createBinding(bluetooth, "is_powered")}
-        activate={() => bluetooth.is_powered = !bluetooth.is_powered}
+        activate={() => {
+            const adapter = bluetooth.adapter
+            if (adapter) adapter.powered = !adapter.powered
+        }}
     />
 }
 

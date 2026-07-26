@@ -33,7 +33,7 @@ export function WifiButton({
         icon={createBinding(wifi, "iconName")}
         label={label}
         isActive={createBinding(wifi, "enabled")}
-        activate={() => wifi.enabled = !wifi.enabled}
+        activate={() => wifi.set_enabled(!wifi.enabled)}
     />
 }
 
