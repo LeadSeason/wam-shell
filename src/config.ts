@@ -137,6 +137,17 @@ function getWorkspacesConfig() {
     }
 }
 
+function getTrayConfig() {
+    // Keys can be set in a [tray] section or flat at the top level;
+    // the section takes precedence.
+    const t = configData.tray ?? {}
+    const get = (key: string, fallback: any) => t[key] ?? configData[key] ?? fallback
+
+    return {
+        onPanel: get("on_panel", false),
+    }
+}
+
 /**
  * Check if the pending updates daemon is active. pending update daemon is a 
  * LeadSeason 
@@ -182,6 +193,7 @@ export default class Config {
     static swayGapsSizeDefault = 10
 
     static workspaces = getWorkspacesConfig()
+    static tray = getTrayConfig()
 
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`

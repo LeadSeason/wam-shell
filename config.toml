@@ -45,6 +45,14 @@
 # hide_empty = true
 # collapse_icons = false
 
+# [tray] - System tray widget
+# Keys can be set inside a [tray] section or flat at the top level.
+#
+# on_panel - show tray items directly on the bar instead of inside the
+#            quick settings popup. default false
+# [tray]
+# on_panel = false
+
 # arch_updates_threshold - Check updates module
 # The minimum amount of updates required to show a update icon.
 # arch_updates_threshold = 50

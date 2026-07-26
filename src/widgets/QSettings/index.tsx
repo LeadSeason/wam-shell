@@ -109,8 +109,8 @@ export default function QSettings() {
                 {toggleSection.widget}
                 <Gtk.Separator />
                 <SliderSection />
-                <Gtk.Separator />
-                <Tray />
+                {!Config.tray.onPanel && <Gtk.Separator />}
+                {!Config.tray.onPanel && <Tray />}
             </box>
         </revealer>
     </window>

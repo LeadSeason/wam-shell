@@ -6,6 +6,7 @@ import { createPoll } from "ags/time"
 import Config from "../../config"
 
 import OSIcon from "./barModules/osIcon"
+import Tray from "../QSettings/tray"
 import SwayWs from "./barModules/workspaces-sway"
 import HyprlandWs from "./barModules/workspaces-hyprland"
 import WorkspacesExample from "./barModules/workspaces-example"
@@ -50,6 +51,7 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
           <Clock />
         </box>
         <box $type="end">
+          {Config.tray.onPanel && <Tray />}
           <QSettingsLabel />
           <SwayNC />
           {Config.workspaces.position == "right" && workspaceWidget}
