@@ -31,8 +31,9 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
     const wifi = AstalNetwork.get_default().wifi
 
     // rescan whenever this pane becomes visible
-    pane.subscribe(v => {
-        if (v === name) wifi.scan()
+    // (subscribe callbacks receive no value, read it)
+    pane.subscribe(() => {
+        if (pane.get() === name) wifi.scan()
     })
 
     const accessPoints = createBinding(wifi, "accessPoints").as(aps =>

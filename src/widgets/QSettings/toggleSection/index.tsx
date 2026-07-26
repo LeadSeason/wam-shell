@@ -1,9 +1,10 @@
 import Gtk from "gi://Gtk?version=4.0";
 import { createState } from "gnim";
 import { SwayGapsButton, SwayGapsWidget } from "./SwayGaps";
-import { PowerProfilesButton, PowerProfilesWidget } from "./powerProfile";
+import { PowerProfilesButton } from "./powerProfile";
 import { WifiButton } from "./wifi";
 import { BluetoothButton } from "./bluetooth";
+import { WiredButton } from "./wired";
 import { NightLightButton, DarkStyleButton, AirplaneModeButton } from "./miscToggles";
 
 /**
@@ -24,10 +25,8 @@ export function ToggleSection({ onNavigate }: { onNavigate: (pane: string) => vo
             >
                 <WifiButton navigate={() => onNavigate("wifi")} />
                 <BluetoothButton navigate={() => onNavigate("bluetooth")} />
-                <PowerProfilesButton
-                    activeDropdown={activeDropdownIndex}
-                    setActiveDropdown={setActiveDropdownIndex}
-                    dropdownIndex={2} />
+                <WiredButton />
+                <PowerProfilesButton navigate={() => onNavigate("powerprofiles")} />
                 <SwayGapsButton
                     activeDropdown={activeDropdownIndex}
                     setActiveDropdown={setActiveDropdownIndex}
@@ -39,9 +38,6 @@ export function ToggleSection({ onNavigate }: { onNavigate: (pane: string) => vo
             <SwayGapsWidget
                 activeDropdown={activeDropdownIndex}
                 dropdownIndex={1} />
-            <PowerProfilesWidget
-                activeDropdown={activeDropdownIndex}
-                dropdownIndex={2} />
 
         </box>),
         reset() {

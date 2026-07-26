@@ -14,6 +14,7 @@ import { HeaderSection } from "./HeaderSection";
 import { SliderSection } from "./SliderSection";
 import { WifiWidget } from "./toggleSection/wifi";
 import { BluetoothWidget } from "./toggleSection/bluetooth";
+import { PowerProfilesWidget } from "./toggleSection/powerProfile";
 
 const registry = CommandRegistry.get_default()
 
@@ -189,14 +190,21 @@ export default function QSettings() {
             >
                 <HeaderSection />
                 <stack
-                    visibleChildName={pane}
+                    // set the visible child after construction: as a prop it
+                    // is applied before the named children exist, which makes
+                    // Gtk warn about a missing child
+                    $={(self) => {
+                        self.visibleChildName = "main"
+                        // subscribe callbacks receive no value, read it
+                        pane.subscribe(() => self.visibleChildName = pane.get())
+                    }}
                     transitionType={Gtk.StackTransitionType.SLIDE_LEFT_RIGHT}
                     transitionDuration={200}
                 >
                     <box $type="named" name="main" orientation={Gtk.Orientation.VERTICAL}>
-                        {toggleSection.widget}
-                        <Gtk.Separator />
                         <SliderSection />
+                        <Gtk.Separator />
+                        {toggleSection.widget}
                         {!Config.tray.onPanel && <Gtk.Separator />}
                         {!Config.tray.onPanel && <Tray />}
                     </box>
@@ -207,6 +215,10 @@ export default function QSettings() {
                     <box $type="named" name="bluetooth" orientation={Gtk.Orientation.VERTICAL}>
                         <PaneHeader title="Bluetooth" onBack={() => setPane("main")} />
                         <BluetoothWidget />
+                    </box>
+                    <box $type="named" name="powerprofiles" orientation={Gtk.Orientation.VERTICAL}>
+                        <PaneHeader title="Power Mode" onBack={() => setPane("main")} />
+                        <PowerProfilesWidget />
                     </box>
                 </stack>
             </box>
