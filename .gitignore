@@ -5,3 +5,4 @@ style.css.map
 config-override.toml
 .vscode
 package-lock.json
+!pnpm-lock.yaml

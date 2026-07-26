@@ -1,0 +1,48 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      ags:
+        specifier: link:/usr/local/share/ags/js
+        version: link:../../../../usr/local/share/ags/js
+      fuse.js:
+        specifier: ^7.1.0
+        version: 7.5.0
+      gnim:
+        specifier: link:/usr/local/share/ags/js/node_modules/gnim
+        version: link:../../../../usr/local/share/ags/js/node_modules/gnim
+      toml:
+        specifier: ^3.0.0
+        version: 3.0.0
+    devDependencies:
+      prettier:
+        specifier: ^3.8.1
+        version: 3.9.6
+
+packages:
+
+  fuse.js@7.5.0:
+    resolution: {integrity: sha512-sQtrEfA+ez/3G0cCZecF70oqpCRttCexYUG4mUrtWL49ULUzUyxokt5kyqwtKzj1270RaKih+hcP3qLcumccow==}
+    engines: {node: '>=10'}
+
+  prettier@3.9.6:
+    resolution: {integrity: sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g==}
+    engines: {node: '>=14'}
+    hasBin: true
+
+  toml@3.0.0:
+    resolution: {integrity: sha512-y/mWCZinnvxjTKYhJ+pYxwD0mRLVvOtdS2Awbgxln6iEnt4rk0yBxeSBHkGJcPucRiG0e55mwWp+g/05rsrd6w==}
+
+snapshots:
+
+  fuse.js@7.5.0: {}
+
+  prettier@3.9.6: {}
+
+  toml@3.0.0: {}

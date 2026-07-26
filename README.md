@@ -17,12 +17,11 @@ ags types -d ./wam-shell
 installing modules.
 ```shell
 cd ./wam-shell
-mkdir node_modules
-ln -s /usr/share/ags/js node_modules/ags
-ln -s /usr/share/ags/js/node_modules/gnim node_modules/gnim
-rm -f package-lock.json
-npm i
+pnpm i
 ```
+`ags` and `gnim` are linked from the system AGS install
+(`/usr/local/share/ags/js`) via `link:` dependencies in `package.json`,
+so no manual symlinks are needed.
 
 ## Archlinux update checker script Install
 will show in bar if enough available updates.
