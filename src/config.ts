@@ -88,14 +88,14 @@ function getDesktopSession(): string {
         desktop = override
     }
 
-    // Preflight checks for swaywm
-    if (desktop === "sway") {
+    // Preflight checks for i3/sway (both speak the i3 IPC protocol)
+    if (desktop === "sway" || desktop === "i3") {
         if (typeof (GLib.getenv("I3SOCK")) !== "string") {
-            console.error(`sway ipc I3SOCK Socket ENV missing`);
+            console.error(`i3/sway ipc I3SOCK Socket ENV missing`);
             return "" // Fallback
         }
 
-        return "sway"
+        return desktop
     }
 
     // Preflight checks for hyprland
@@ -113,6 +113,28 @@ function getDesktopSession(): string {
     // Default fallback
     console.warn(`DESKTOP_SESSION env is ${desktop}`)
     return ""
+}
+
+function getWorkspacesConfig() {
+    // Keys can be set in a [workspaces] section or flat at the top level;
+    // the section takes precedence.
+    const ws = configData.workspaces ?? {}
+    const get = (key: string, fallback: any) => ws[key] ?? configData[key] ?? fallback
+
+    let position = get("position", "left")
+    if (position !== "left" && position !== "right") {
+        console.error(`Config "workspaces.position" must be "left" or "right", got "${position}"`)
+        position = "left"
+    }
+
+    return {
+        enabled: get("enabled", true),
+        position: position as "left" | "right",
+        showIcons: get("show_icons", true),
+        showLabels: get("show_labels", true),
+        hideEmpty: get("hide_empty", false),
+        collapseIcons: get("collapse_icons", false),
+    }
 }
 
 /**
@@ -158,6 +180,8 @@ export default class Config {
 
     static swayGaps = (configData.sway_gaps === undefined) ? true : configData.sway_gaps
     static swayGapsSizeDefault = 10
+
+    static workspaces = getWorkspacesConfig()
 
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`

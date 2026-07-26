@@ -7,7 +7,7 @@
 # instance_name = "wam-shell"
 
 # Desktop session override, overrides the desktop session, Normally picks up
-# $DESKTOP_SESSION variable. sway - hyprland. defaults to $DESKTOP_SESSION,
+# $DESKTOP_SESSION variable. sway - i3 - hyprland. defaults to $DESKTOP_SESSION,
 # desktop_session_override = "hyprland"
 
 # os_icon
@@ -22,6 +22,28 @@
 # Enable sway_gaps feature, Defaults to true if desktop session is sway.
 # otherwise disabled
 # sway_gaps = true
+
+# [workspaces] - Workspace indicator widget
+# Shows the workspace indicator for the running session (sway/i3 or hyprland)
+# Keys can be set inside a [workspaces] section or flat at the top level
+# (like the rest of this file). The section takes precedence if both are set.
+#
+# enabled - show the widget at all. default true
+# position - "left" (next to the os icon) or "right" (right edge of the
+#            tray section). default "left"
+# show_icons - show per-workspace app icons. default true
+# show_labels - show the workspace number/name. default true
+# hide_empty - hide workspaces with no windows. the focused workspace is
+#              always shown. default false
+# collapse_icons - show each app icon only once per workspace, no matter how
+#                  many windows of that app are open. default false
+# [workspaces]
+# enabled = true
+# position = "left"
+# show_icons = true
+# show_labels = true
+# hide_empty = true
+# collapse_icons = false
 
 # arch_updates_threshold - Check updates module
 # The minimum amount of updates required to show a update icon.
