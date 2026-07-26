@@ -11,19 +11,13 @@ function BatWidget() {
     const batProc = createBinding(bat, "percentage")
 
     const batTimeConvert = (timeRemaining: number, charging: boolean): string => {
-        if (timeRemaining <= 0) return charging ? "Fully charged" : "Unknown ammount of time left";
+        if (timeRemaining <= 0) return charging ? "Full" : "?";
 
         const hours = Math.floor(timeRemaining / 3600);
         const minutes = Math.floor((timeRemaining % 3600) / 60);
 
-        const parts: string[] = [];
-
-        if (hours > 0) parts.push(`${hours} hour${hours !== 1 ? "s" : ""}`);
-        if (minutes > 0) parts.push(`${minutes} minute${minutes !== 1 ? "s" : ""}`);
-
-        const suffix = charging ? "until full" : "left";
-
-        return `${parts.join(" ")} ${suffix}`;
+        const time = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+        return charging ? `${time} to full` : `${time} left`;
     };
 
     const [batTime, setBatTime] = createState(batTimeConvert(
@@ -49,7 +43,6 @@ function BatWidget() {
             xalign={0}
             maxWidthChars={20}
             ellipsize={Pango.EllipsizeMode.END}
-            tooltipText={batTime}
         />
     </box>
 }
@@ -118,8 +111,18 @@ function Uptime() {
     })
     // xalign Aligns text to the left side
     return <box cssClasses={["QSBat"]} orientation={Gtk.Orientation.VERTICAL}>
-        <label xalign={0} label={uptime} />
-        <label xalign={0} label={sysLoad} />
+        <label
+            xalign={0}
+            label={uptime}
+            maxWidthChars={20}
+            ellipsize={Pango.EllipsizeMode.END}
+        />
+        <label
+            xalign={0}
+            label={sysLoad}
+            maxWidthChars={20}
+            ellipsize={Pango.EllipsizeMode.END}
+        />
     </box>
 }
 
