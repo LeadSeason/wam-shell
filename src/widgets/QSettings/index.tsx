@@ -210,7 +210,8 @@ export default function QSettings() {
                         <MediaSection />
                         {!Config.tray.onPanel && <Gtk.Separator />}
                         {!Config.tray.onPanel &&
-                            <Tray filter={(item) => !isPinned(item)} />}
+                            <Tray filter={(item) => !isPinned(item)}
+                                iconSize={Config.tray.popupIconSize} pill />}
                     </box>
                     <box $type="named" name="wifi" orientation={Gtk.Orientation.VERTICAL}>
                         <PaneHeader title="Wi-Fi" onBack={() => setPane("main")} />

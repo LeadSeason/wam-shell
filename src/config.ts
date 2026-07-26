@@ -169,6 +169,7 @@ function getTrayConfig() {
         spacing,
         position: position as "left" | "right",
         alwaysOnPanel,
+        popupIconSize: get("popup_icon_size", 22),
     }
 }
 

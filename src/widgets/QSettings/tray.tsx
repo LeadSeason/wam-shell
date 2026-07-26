@@ -4,7 +4,11 @@ import app from "ags/gtk4/app"
 import AstalTray from "gi://AstalTray"
 import Config from "../../config"
 
-export default function Tray({ filter }: { filter?: (item: AstalTray.TrayItem) => boolean }) {
+export default function Tray({ filter, iconSize = 16, pill = false }: {
+    filter?: (item: AstalTray.TrayItem) => boolean
+    iconSize?: number
+    pill?: boolean
+}) {
     const [trayItems, setTrayItems] = createState([] as AstalTray.TrayItem[])
     const registry = AstalTray.get_default() // Singleton.
 
@@ -85,8 +89,12 @@ export default function Tray({ filter }: { filter?: (item: AstalTray.TrayItem) =
                         }}
                         tooltipMarkup={tooltip}
                         direction={Gtk.ArrowType.DOWN}
+                        cssClasses={["trayItem"]}
+                        css={pill
+                            ? `min-width: ${iconSize + 22}px; min-height: ${iconSize + 22}px;`
+                            : ""}
                     >
-                        <image gicon={gicon} />
+                        <image gicon={gicon} pixelSize={iconSize} />
                         {menuModel}
                     </menubutton>
                     )

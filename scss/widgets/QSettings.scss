@@ -212,6 +212,14 @@ window#QSettings {
         border: solid 2px color.mix(t.$accent, transparent, 50%);
     }
 
+    // tray icons inside the popup: bigger, on their own pills
+    // (pill size is set inline from tray.popup_icon_size)
+    .trayItem {
+        border-radius: s.$radius;
+        background-color: t.$base;
+        margin: s.$padding-small;
+    }
+
 
     /////////////////////////////////////
     /// Regular tray popover menus.

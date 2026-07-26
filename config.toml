@@ -62,11 +62,15 @@
 #                   "chrome_status_icon_1" as Id with an empty title
 #                   (e.g. "Connected" for Mullvad VPN).
 #                   default []
+# popup_icon_size - pixel size of tray icons inside the quick settings
+#                   popup. the pill around them scales with it.
+#                   default 22
 # [tray]
 # on_panel = false
 # spacing = 0
 # position = "left"
 # always_on_panel = ["TelegramDesktop"]
+# popup_icon_size = 22
 
 # [quicksettings] - Quick settings popup
 # Keys can be set inside a [quicksettings] section or flat at the top level.
