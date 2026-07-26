@@ -63,6 +63,10 @@
 #               the popup before it closes. default 350
 # close_delay = 350
 
+# show_battery_percentage - show the battery percentage next to the battery
+#                           icon on the panel. default true
+# show_battery_percentage = true
+
 # arch_updates_threshold - Check updates module
 # The minimum amount of updates required to show a update icon.
 # arch_updates_threshold = 50

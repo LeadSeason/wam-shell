@@ -178,6 +178,7 @@ function getQSettingsConfig() {
 
     return {
         closeDelay,
+        showBatteryPercentage: get("show_battery_percentage", true),
     }
 }
 
