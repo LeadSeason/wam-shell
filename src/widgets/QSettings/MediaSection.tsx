@@ -48,16 +48,26 @@ function Player({ player }: { player: AstalMpris.Player }) {
     resolveCover(cover.get())
 
     return <box cssClasses={["mediaPlayer"]} spacing={8}>
-        <With value={localCover}>
-            {(c) => c
-                ? <box
-                    cssClasses={["mediaCover"]}
-                    css={`background-image: url('${c}');`}
-                />
-                : <box cssClasses={["mediaCover", "mediaCoverFallback"]}>
-                    <image iconName="audio-x-generic-symbolic" />
-                </box>}
-        </With>
+        <box
+            cssName="button"
+            tooltipText="Focus player window"
+            sensitive={createBinding(player, "canRaise")}
+        >
+            <Gtk.GestureClick
+                button={1}
+                onPressed={() => player.raise()}
+            />
+            <With value={localCover}>
+                {(c) => c
+                    ? <box
+                        cssClasses={["mediaCover"]}
+                        css={`background-image: url('${c}');`}
+                    />
+                    : <box cssClasses={["mediaCover", "mediaCoverFallback"]}>
+                        <image iconName="audio-x-generic-symbolic" />
+                    </box>}
+            </With>
+        </box>
         <box orientation={Gtk.Orientation.VERTICAL} hexpand valign={Gtk.Align.CENTER}>
             <label
                 cssClasses={["mediaTitle"]}
@@ -97,11 +107,30 @@ function Player({ player }: { player: AstalMpris.Player }) {
 export function MediaSection() {
     const mpris = AstalMpris.get_default()
     const players = createBinding(mpris, "players")
+    const [active, setActive] = createState<AstalMpris.Player | null>(null)
 
-    return <With value={players}>
-        {(list) => list.length > 0 &&
+    // prefer the playing player over a paused one; re-pick whenever the
+    // list or any player's playback status changes
+    const hooked: AstalMpris.Player[] = []
+    const pick = (list: AstalMpris.Player[]) => {
+        setActive(list.find(p =>
+            p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING)
+            ?? list[0] ?? null)
+        for (const p of list) {
+            if (!hooked.includes(p)) {
+                hooked.push(p)
+                createBinding(p, "playbackStatus")
+                    .subscribe(() => pick(players.get()))
+            }
+        }
+    }
+    players.subscribe(() => pick(players.get()))
+    pick(players.get())
+
+    return <With value={active}>
+        {(p) => p &&
             <box cssClasses={["QSSection"]} orientation={Gtk.Orientation.VERTICAL}>
-                <Player player={list[0]} />
+                <Player player={p} />
             </box>}
     </With>
 }
