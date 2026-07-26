@@ -7,6 +7,7 @@ import { SliderSection } from "../../QSettings/SliderSection"
 import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1"
 import AstalBattery from "gi://AstalBattery?version=0.1"
 import ArchUpdates from "../../../lib/archUpdates"
+import trayNeedsAttention from "../../../lib/trayAttention"
 import { execAsync } from "ags/process"
 import Config from "../../../config"
 
@@ -204,6 +205,18 @@ function ButtonLabel() {
 
     if (Config.pendingUpdates) {
         labelBox.append(Updates())
+    }
+
+    // Dot shown when a nested tray item needs attention
+    if (!Config.tray.onPanel) {
+        labelBox.append(
+            <label
+                label="●"
+                cssClasses={["tray-attention"]}
+                visible={trayNeedsAttention}
+                tooltipText={"A tray item needs attention"}
+            /> as Gtk.Widget
+        )
     }
 
     return labelBox
