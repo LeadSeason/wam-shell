@@ -1,5 +1,6 @@
 import { Gtk } from "ags/gtk4";
 import Pango from "gi://Pango?version=1.0";
+import GLib from "gi://GLib?version=2.0";
 import { execAsync } from "ags/process";
 import { createPoll } from "ags/time";
 import AstalBattery from "gi://AstalBattery?version=0.1";
@@ -20,18 +21,44 @@ function BatWidget() {
         return charging ? `${time} to full` : `${time} left`;
     };
 
-    const [batTime, setBatTime] = createState(batTimeConvert(
-        (bat.charging) ? bat.timeToEmpty : bat.timeToEmpty, bat.charging))
+    const currentBatTime = (): string =>
+        batTimeConvert(bat.charging ? bat.timeToFull : bat.timeToEmpty, bat.charging)
 
-    createBinding(bat, "timeToEmpty").subscribe(() => {
-        if (!bat.get_charging())
-            setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))
-    })
+    const [batTime, setBatTime] = createState(currentBatTime())
 
-    createBinding(bat, "timeToFull").subscribe(() => {
-        if (bat.get_charging())
-            setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))
-    })
+    // Debounce: UPower oscillates around the charge limit (charging state
+    // and time estimates flip back and forth), only update the label once
+    // the computed text has been stable for a few seconds.
+    let pendingSource: number | null = null
+    let pendingValue: string | null = null
+
+    function updateBatTime() {
+        const raw = currentBatTime()
+
+        if (raw === batTime.get()) {
+            // back to the displayed value, drop any pending change
+            if (pendingSource !== null) {
+                GLib.source_remove(pendingSource)
+                pendingSource = null
+                pendingValue = null
+            }
+            return
+        }
+        if (raw === pendingValue) return
+
+        if (pendingSource !== null) GLib.source_remove(pendingSource)
+        pendingValue = raw
+        pendingSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 5000, () => {
+            pendingSource = null
+            pendingValue = null
+            setBatTime(raw)
+            return GLib.SOURCE_REMOVE
+        })
+    }
+
+    createBinding(bat, "timeToEmpty").subscribe(updateBatTime)
+    createBinding(bat, "timeToFull").subscribe(updateBatTime)
+    createBinding(bat, "charging").subscribe(updateBatTime)
 
     return <box cssClasses={["QSBat"]} orientation={Gtk.Orientation.VERTICAL}>
         <box>
