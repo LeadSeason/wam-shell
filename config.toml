@@ -59,6 +59,14 @@
 # spacing = 0
 # position = "left"
 
+# [qsettings] - Quick settings popup
+# Keys can be set inside a [qsettings] section or flat at the top level.
+#
+# close_delay - milliseconds after the pointer leaves the popup before it
+#               closes. default 350
+# [qsettings]
+# close_delay = 350
+
 # arch_updates_threshold - Check updates module
 # The minimum amount of updates required to show a update icon.
 # arch_updates_threshold = 50

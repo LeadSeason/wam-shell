@@ -164,6 +164,23 @@ function getTrayConfig() {
     }
 }
 
+function getQSettingsConfig() {
+    // Keys can be set in a [qsettings] section or flat at the top level;
+    // the section takes precedence.
+    const q = configData.qsettings ?? {}
+    const get = (key: string, fallback: any) => q[key] ?? configData[key] ?? fallback
+
+    let closeDelay = get("close_delay", 350)
+    if (typeof closeDelay !== "number" || closeDelay < 0) {
+        console.error(`Config "qsettings.close_delay" must be a positive number, got "${closeDelay}"`)
+        closeDelay = 350
+    }
+
+    return {
+        closeDelay,
+    }
+}
+
 /**
  * Check if the pending updates daemon is active. pending update daemon is a 
  * LeadSeason 
@@ -210,6 +227,7 @@ export default class Config {
 
     static workspaces = getWorkspacesConfig()
     static tray = getTrayConfig()
+    static qsettings = getQSettingsConfig()
 
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`

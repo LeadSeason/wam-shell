@@ -100,7 +100,7 @@ export default function QSettings() {
     let closeSource: number | null = null
     function scheduleClose() {
         if (closeSource !== null) return
-        closeSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 350, () => {
+        closeSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Config.qsettings.closeDelay, () => {
             closeSource = null
             if (win.is_visible()) hide()
             return GLib.SOURCE_REMOVE
