@@ -44,6 +44,7 @@ compileScss()
 console.log("InstancePath:", Config.instanceSrcDir)
 console.log("InstanceCacheDir:", Config.instanceCacheDir)
 console.log("DesktopSession:", Config.desktopSession)
+console.log("Workspaces:", JSON.stringify(Config.workspaces))
 
 app.start({
     instanceName: Config.instanceName,
