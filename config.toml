@@ -50,8 +50,10 @@
 #
 # on_panel - show tray items directly on the bar instead of inside the
 #            quick settings popup. default false
+# spacing - horizontal gap between tray icons, in pixels. default 0
 # [tray]
 # on_panel = false
+# spacing = 0
 
 # arch_updates_threshold - Check updates module
 # The minimum amount of updates required to show a update icon.

@@ -143,8 +143,15 @@ function getTrayConfig() {
     const t = configData.tray ?? {}
     const get = (key: string, fallback: any) => t[key] ?? configData[key] ?? fallback
 
+    let spacing = get("spacing", 0)
+    if (typeof spacing !== "number" || spacing < 0) {
+        console.error(`Config "tray.spacing" must be a positive number, got "${spacing}"`)
+        spacing = 0
+    }
+
     return {
         onPanel: get("on_panel", false),
+        spacing,
     }
 }
 
