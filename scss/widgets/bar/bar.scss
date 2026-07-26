@@ -75,6 +75,12 @@ window.Bar {
                 border: solid 2px color.mix(t.$accent, transparent, 10%);
             }
 
+            // Visible on its own output, but not the globally focused workspace
+            // (relevant on multi-monitor setups)
+            &.visible {
+                border: solid 2px color.mix(t.$accent, transparent, 30%);
+            }
+
             &:hover {
                 background-color: color.mix(t.$text, transparent, 15%);
                 border: inset 2px color.mix(t.$text, transparent, 20%);

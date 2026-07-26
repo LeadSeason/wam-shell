@@ -1,6 +1,5 @@
 import GObject from "gnim/gobject";
 import { register, getter, setter } from "ags/gobject"
-import i3ipc from "gi://i3ipc?version=1.0";
 import Sway from "./sway"
 import CommandRegistry from "./requestHandler";
 import Cache from "./cache";
@@ -18,7 +17,6 @@ export default class SwayGaps extends GObject.Object {
 
     #sway = Sway.get_default();
     #cache = Cache.get_default();
-    #conn = i3ipc.Connection.new(null)
 
     #gapState: boolean = (this.#cache.data.gaps === undefined) ?
         false : this.#cache.data.gaps
@@ -72,14 +70,10 @@ export default class SwayGaps extends GObject.Object {
         // Ensure that correct state is applied when shell launches
         this.#applyGaps(true)
 
-        this.#conn.on("workspace",
-            async (conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
-                if (event.change === "init") {
-                    console.log("New Workspace Init, Setting size...")
-                    this.#applyGaps(true)
-                }
-            }
-        )
+        this.#sway.connect("workspace-init", () => {
+            console.log("New Workspace Init, Setting size...")
+            this.#applyGaps(true)
+        })
 
         const registry = CommandRegistry.get_default()
 

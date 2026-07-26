@@ -2,14 +2,18 @@ import { execAsync } from "ags/process";
 import Gtk from "gi://Gtk?version=4.0";
 import SwayNc from "../../../lib/swayNC";
 import { createBinding } from "gnim";
-import Adw from "gi://Adw?version=1";
 
 export default function Notify() {
     const swayNc = SwayNc.get_default();
 
-    const handleClick = (e: Gtk.GestureClick) => {
+    const open = (e: Gtk.GestureClick) => {
         execAsync("swaync-client -t -sw")
     }
+
+    const toggleDnd = (e: Gtk.GestureClick) => {
+        execAsync("swaync-client -d -sw")
+    }
+
     const reveal = createBinding(swayNc, "count").as((v) => v > 0)
     const count = createBinding(swayNc, "count").as((v) => v.toString())
     const icon = createBinding(swayNc, "dnd").as(
@@ -33,7 +37,11 @@ export default function Notify() {
     return <box cssClasses={["swayNC"]}>
         <Gtk.GestureClick
             button={1}
-            onPressed={handleClick}
+            onPressed={open}
+        />
+        <Gtk.GestureClick
+            button={3}
+            onPressed={toggleDnd}
         />
         <overlay
             $={(self) => {

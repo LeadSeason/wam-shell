@@ -27,3 +27,23 @@ export function iconLookup(iconName: string): string | null {
     }
     return null;
 }
+
+/**
+ * converting unix epoch to time. Ignores date.
+ * @param timeInSeconds 
+ * @returns returns time in "16:50:39" format
+ */
+export function secondsToTime(timeInSeconds: number): string {
+    /* @ts-expect-error */
+    const date = new Date(null);
+    date.setSeconds(timeInSeconds); // specify value for SECONDS here
+    return date.toISOString().slice(11, 19);
+}
+
+/**
+ * Uppercases the first character of a string, leaving the rest untouched.
+ * @param text
+ */
+export function capitalize(text: string): string {
+    return text.charAt(0).toUpperCase() + text.slice(1)
+}

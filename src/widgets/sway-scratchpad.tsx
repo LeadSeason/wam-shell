@@ -1,4 +1,6 @@
 import Sway, { Node } from "../lib/sway";
+import { resolveNodeIcon } from "../lib/swayIcons";
+import { capitalize } from "../lib/utils";
 
 import { For, createBinding, createState } from "ags"
 import { Astal, Gtk, Gdk } from "ags/gtk4"
@@ -23,11 +25,11 @@ export default function Scratchpad() {
     // This is a big assumption but haven't had any issues with it. (Just yet)
     // apps is the nodes in sway scratchpad, constantly being updated on every change.
     // list is has the apps show in the scratchpad window list, updated when opened or something is searched.
-    const [apps, setApps] = createState((sway.tree.find(i => i.name === "__i3")?.nodes.find(i => i.name === "__i3_scratch")?.floating_nodes) as Node[])
-    const [list, setList] = createState((sway.tree.find(i => i.name === "__i3")?.nodes.find(i => i.name === "__i3_scratch")?.floating_nodes) as Node[])
+    const [apps, setApps] = createState(sway.scratchpadNodes)
+    const [list, setList] = createState(sway.scratchpadNodes)
 
     createBinding(sway, "tree").subscribe(() => {
-        setApps(sway.tree.find(i => i.name === "__i3")?.nodes.find(i => i.name === "__i3_scratch")?.floating_nodes as Node[])
+        setApps(sway.scratchpadNodes)
     })
 
     function search(text: string) {
@@ -61,50 +63,23 @@ export default function Scratchpad() {
 
     // App entry, passed in a Sway Node (usually a window)
     function AppEntry({ app }: { app: Node }) {
-        let iconLet = <></>
+        const icon = resolveNodeIcon(app, gtkIconTheme)
+        const iconLet = icon ? <image iconName={icon} /> : <></>
+
         let title = ""
         let description = ""
-        let iconProps: (string | undefined)[]
 
         if (app.shell === "xwayland") {
-            // X11 app
-            iconProps = [
-                app.window_properties?.class,
-                app.window_properties?.instance,
-                app.window_properties?.title,
-                app.window_properties?.window_role,
-                app.window_properties?.window_type
-            ]
-
-            // Steam app icon lookup
-            if (app.window_properties?.instance.startsWith("steam_app_")) {
-                // Replaces "steam_app_" -> "steam_icon_" while keeping the numbers
-                iconProps.push(app.window_properties.instance.replace(/^steam_app_(\d+)$/, "steam_icon_$1"))
-            }
-
-            title = (app.window_properties?.class != null) ? app.window_properties.class : ""
-            description = (app.window_properties?.title != null) ? app.window_properties.title : ""
+            title = app.window_properties?.class ?? ""
+            description = app.window_properties?.title ?? ""
         }
         else {
-            // Wayland app
-            iconProps = [
-                app?.app_id,
-                (app.name != null) ? app.name.split(" ")[0] : undefined,
-                (app.name != null) ? app.name : undefined
-            ]
-            title = (app?.app_id != null) ? app.app_id : ""
-            description = (app?.name != null) ? app.name : ""
+            title = app.app_id ?? ""
+            description = app.name ?? ""
         }
 
-        title = title.replace(title.charAt(0), title.charAt(0).toUpperCase())
-        description = description.replace(description.charAt(0), description.charAt(0).toUpperCase())
-
-        for (const element of iconProps) {
-            if (!element) continue;
-            if (gtkIconTheme.has_icon(element)) {
-                iconLet = <image iconName={element} />
-            }
-        };
+        title = capitalize(title)
+        description = capitalize(description)
 
         return <button onClicked={() => openApp(app)}>
             <box spacing={6}>

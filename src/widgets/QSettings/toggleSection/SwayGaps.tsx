@@ -27,7 +27,7 @@ export function SwayGapsButton({
 
     let [active, setActive] = createState(false)
     const toggle = () => {
-        setActive(!active.get())
+        setActive(!active.peek())
     }
 
     return <DropdownButton

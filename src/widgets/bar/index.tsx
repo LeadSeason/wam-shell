@@ -14,41 +14,42 @@ import QSettingsLabel from "./barModules/QSettingsLabel"
 
 
 export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
-  const time = createPoll("", 1000, "date")
-  const { TOP, LEFT, RIGHT } = Astal.WindowAnchor
+    const time = createPoll("", 1000, "date")
+    const { TOP, LEFT, RIGHT } = Astal.WindowAnchor
 
-  let workspaceWidget
-  if (Config.desktopSession == "sway") {
-    workspaceWidget = <SwayWs monitor={gdkMonitor} />
-  } else {
-    workspaceWidget = <WorkspacesExample />
-  }
+    const window = (<window
+        visible
+        name="bar"
+        class="Bar"
+        namespace="bar"
+        gdkmonitor={gdkMonitor}
+        exclusivity={Astal.Exclusivity.EXCLUSIVE}
+        anchor={TOP | LEFT | RIGHT}
+        application={app}
+        heightRequest={30}
+    />) as Astal.Window
 
-  return (
-    <window
-      visible
-      name="bar"
-      class="Bar"
-      namespace="bar"
-      gdkmonitor={gdkMonitor}
-      exclusivity={Astal.Exclusivity.EXCLUSIVE}
-      anchor={TOP | LEFT | RIGHT}
-      application={app}
-      heightRequest={30}
-    >
-      <centerbox cssName="centerbox">
-        <box $type="start">
-          <OSIcon />
-          {workspaceWidget}
-        </box>
-        <box $type="center">
-          <Clock />
-        </box>
-        <box $type="end">
-          <QSettingsLabel />
-          <SwayNC />
-        </box>
-      </centerbox>
-    </window>
-  )
+    let workspaceWidget
+    if (Config.desktopSession == "sway") {
+        workspaceWidget = <SwayWs monitor={gdkMonitor} />
+    } else {
+        workspaceWidget = <WorkspacesExample />
+    }
+
+    window.set_property("child",
+        <centerbox cssName="centerbox">
+            <box $type="start">
+                <OSIcon />
+                {workspaceWidget}
+            </box>
+            <box $type="center">
+                <Clock />
+            </box>
+            <box $type="end">
+                <QSettingsLabel />
+                <SwayNC />
+            </box>
+        </centerbox>
+    )
+    return window
 }
