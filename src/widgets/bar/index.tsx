@@ -4,6 +4,7 @@ import { execAsync } from "ags/process"
 import { createPoll } from "ags/time"
 
 import Config from "../../config"
+import hyprsunset from "../../lib/hyprsunset"
 
 import OSIcon from "./barModules/osIcon"
 import Tray from "../QSettings/tray"
@@ -48,7 +49,7 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
     <window
       visible
       name="bar"
-      class="Bar"
+      class={hyprsunset.outdoor.as(v => v ? "Bar outdoor" : "Bar")}
       namespace="bar"
       gdkmonitor={gdkMonitor}
       exclusivity={Astal.Exclusivity.EXCLUSIVE}

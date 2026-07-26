@@ -67,6 +67,7 @@ install_with_aur() {
 
     command -v ags >/dev/null || pkgs+=("aylurs-gtk-shell")
     command -v sass >/dev/null || pkgs+=("dart-sass")
+    command -v brightnessctl >/dev/null || pkgs+=("brightnessctl")
     for entry in "${AUR_LIBS[@]}"; do
         pkgs+=("${entry%%:*}")
     done
@@ -80,12 +81,13 @@ install_build_deps() {
         sudo pacman -S --needed --noconfirm \
             vala meson ninja gobject-introspection \
             gtk3 gtk4 gtk-layer-shell gtk4-layer-shell \
-            json-glib wireplumber dart-sass libnm
+            json-glib wireplumber dart-sass libnm brightnessctl
     elif command -v dnf >/dev/null; then
         sudo dnf install -y \
             vala meson ninja-build gobject-introspection-devel \
             gtk3-devel gtk4-devel gtk-layer-shell-devel gtk4-layer-shell-devel \
-            json-glib-devel wireplumber-devel NetworkManager-libnm-devel
+            json-glib-devel wireplumber-devel NetworkManager-libnm-devel \
+            brightnessctl
         command -v sass >/dev/null || \
             log "WARNING: sass not found. Install dart-sass (e.g. from https://github.com/sass/dart-sass/releases)"
     else

@@ -1,8 +1,11 @@
 import AstalWp from "gi://AstalWp?version=0.1";
 import Gtk from "gi://Gtk?version=4.0";
+import GLib from "gi://GLib?version=2.0";
 import Pango from "gi://Pango?version=1.0";
 import { execAsync } from "ags/process";
-import { Accessor, For, Setter, With, createBinding, createState } from "gnim";
+import Brightness from "../../lib/brightness";
+import hyprsunset, { setOutdoorEnabled, OUTDOOR_GAMMA } from "../../lib/hyprsunset";
+import { Accessor, For, Setter, With, createBinding, createComputed, createState } from "gnim";
 
 interface VolSliderProps {
     maxValue?: number
@@ -101,10 +104,69 @@ function VolSlider({
 
 }
 
+function BrightnessSlider() {
+    const brightness = Brightness.get_default()
+    if (!brightness.screenIsPresent)
+        return <></>
+
+    const screen = createBinding(brightness, "screen")
+
+    // slowly rotate the icon while outdoor mode is on, like day rolling in
+    const [angle, setAngle] = createState(0)
+    let spinSource: number | null = null
+    hyprsunset.outdoor.subscribe(() => {
+        if (hyprsunset.outdoor.get()) {
+            if (spinSource !== null) return
+            spinSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+                setAngle(a => (a + 6) % 360)
+                return GLib.SOURCE_CONTINUE
+            })
+        } else {
+            if (spinSource !== null) {
+                GLib.source_remove(spinSource)
+                spinSource = null
+            }
+            setAngle(0)
+        }
+    })
+
+    return <box cssClasses={hyprsunset.outdoor.as(v => v ? ["overdrive"] : [])}>
+        <box cssName="button" tooltipText={"Click: reset to 100%, scroll: outdoor mode"}>
+            <Gtk.GestureClick
+                button={1}
+                onPressed={() => { brightness.screen = 1 }} />
+            <Gtk.EventControllerScroll
+                flags={Gtk.EventControllerScrollFlags.VERTICAL}
+                onScroll={(_s, _dx, dy) => {
+                    setOutdoorEnabled(dy < 0)
+                    return true
+                }} />
+            <image
+                iconName={"display-brightness-symbolic"}
+                css={angle.as(a => `transform: rotate(${a}deg);`)}
+            />
+        </box>
+        <slider
+            hexpand
+            min={0}
+            max={1}
+            widthRequest={260}
+            onChangeValue={({ value }) => { brightness.screen = value }}
+            value={screen} />
+        <label
+            widthChars={5}
+            maxWidthChars={5}
+            label={createComputed(
+                [hyprsunset.outdoor, screen],
+                // show the effective gamma: outdoor boost or slider value
+                (outdoor, v) => outdoor ? `${OUTDOOR_GAMMA}%` : `${Math.floor(v * 100)}%`
+            )} />
+    </box>
+}
+
 export function SliderSection() {
     const wp = AstalWp.get_default()!
     const { audio } = wp
-    // @TODO, Brightness slider?
 
     const [expanded, setExpanded] = createState(0)
 
@@ -135,5 +197,6 @@ export function SliderSection() {
         <revealer revealChild={expanded.as(v => v === 2)}>
             <DeviceList endpoints={microphones} collapse={() => setExpanded(0)} />
         </revealer>
+        <BrightnessSlider />
     </box>;
 }

@@ -1,27 +1,15 @@
 import { createState } from "gnim";
 import { execAsync } from "ags/process";
 import { DropdownButton } from "./ToggleButton";
+import hyprsunset, { setNightLightEnabled } from "../../../lib/hyprsunset";
 
 export function NightLightButton() {
-    const [active, setActive] = createState(false)
-    execAsync("pgrep -x hyprsunset")
-        .then(() => setActive(true))
-        .catch(() => { })
-
     return <DropdownButton
         icon={"night-light-symbolic"}
         label={"Night Light"}
-        subtitle={active.as(v => v ? "On" : "Off")}
-        isActive={active}
-        activate={() => {
-            const next = !active.get()
-            if (next) {
-                execAsync(["hyprsunset", "-t", "4000"]).catch(() => { })
-            } else {
-                execAsync("pkill -x hyprsunset").catch(() => { })
-            }
-            setActive(next)
-        }}
+        subtitle={hyprsunset.nightLight.as(v => v ? "On" : "Off")}
+        isActive={hyprsunset.nightLight}
+        activate={() => setNightLightEnabled(!hyprsunset.nightLight.get())}
     />
 }
 

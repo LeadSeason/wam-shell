@@ -76,6 +76,19 @@
 #                           icon on the panel. default true
 # show_battery_percentage = true
 
+# temperature_default - color temperature in kelvin used normally (night
+#                       light off, gamma at or below 100%). default 6000
+# temperature_outdoor - color temperature applied in outdoor mode (gamma
+#                       above 100%). falls back to temperature_default
+#                       when omitted
+# night_temp - color temperature when night light is on. default 4000
+# gamma_outdoor - gamma in outdoor mode, in percent. may exceed 100.
+#                 default 150
+# temperature_default = 6000
+# temperature_outdoor = 7200
+# night_temp = 4000
+# gamma_outdoor = 150
+
 # arch_updates_threshold - Check updates module
 # The minimum amount of updates required to show a update icon.
 # arch_updates_threshold = 50

@@ -190,6 +190,22 @@ function getQSettingsConfig() {
     }
 }
 
+function getHyprsunsetConfig() {
+    const h = configData.hyprsunset ?? {}
+    const get = (key: string, fallback: any) => h[key] ?? configData[key] ?? fallback
+
+    return {
+        // temperature used normally (night light off, gamma <= 100%)
+        temperatureDefault: get("temperature_default", 6000),
+        // temperature applied in outdoor mode (gamma > 100%).
+        // falls back to temperature_default when omitted
+        temperatureOutdoor: get("temperature_outdoor", null),
+        nightTemp: get("night_temp", 4000),
+        // gamma in outdoor mode, in percent (may exceed 100)
+        gammaOutdoor: get("gamma_outdoor", 150),
+    }
+}
+
 /**
  * Check if the pending updates daemon is active. pending update daemon is a 
  * LeadSeason 
@@ -237,6 +253,7 @@ export default class Config {
     static workspaces = getWorkspacesConfig()
     static tray = getTrayConfig()
     static qsettings = getQSettingsConfig()
+    static hyprsunset = getHyprsunsetConfig()
 
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`

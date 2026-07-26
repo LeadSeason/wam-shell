@@ -114,6 +114,21 @@ window#QSettings {
         padding: s.$padding;
     }
 
+    // brightness above 100% (outdoor mode)
+    .overdrive {
+        color: t.$peach;
+        slider highlight {
+            background-color: t.$peach;
+        }
+    }
+
+    slider highlight {
+        transition: background-color 300ms;
+    }
+    label, image {
+        transition: color 300ms;
+    }
+
     .toggleButton {
         border-radius: s.$radius;
         background-color: t.$base;
