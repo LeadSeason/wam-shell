@@ -8,11 +8,22 @@ import Tray from "./tray";
 import Config from "../../config";
 import CommandRegistry from "../../lib/requestHandler";
 
+import { createState } from "gnim";
 import { ToggleSection } from "./toggleSection";
 import { HeaderSection } from "./HeaderSection";
 import { SliderSection } from "./SliderSection";
+import { WifiWidget } from "./toggleSection/wifi";
+import { BluetoothWidget } from "./toggleSection/bluetooth";
 
 const registry = CommandRegistry.get_default()
+
+function PaneHeader({ title, onBack }: { title: string, onBack: () => void }) {
+    return <box cssName="button" spacing={5}>
+        <Gtk.GestureClick button={1} onPressed={onBack} />
+        <image iconName="go-previous-symbolic" />
+        <label label={title} hexpand xalign={0} />
+    </box>
+}
 
 
 export default function QSettings() {
@@ -20,7 +31,8 @@ export default function QSettings() {
     let win: Astal.Window
     let contentBox: Gtk.Box
     let revealer: Gtk.Revealer
-    const toggleSection = ToggleSection()
+    const [pane, setPane] = createState("main")
+    const toggleSection = ToggleSection({ onNavigate: setPane })
 
     function hide() {
         cancelClose()
@@ -31,6 +43,7 @@ export default function QSettings() {
         timeout(50, () => {
             win.hide()
             toggleSection.reset()
+            setPane("main")
         })
     }
 
@@ -175,11 +188,27 @@ export default function QSettings() {
                 widthRequest={240}
             >
                 <HeaderSection />
-                {toggleSection.widget}
-                <Gtk.Separator />
-                <SliderSection />
-                {!Config.tray.onPanel && <Gtk.Separator />}
-                {!Config.tray.onPanel && <Tray />}
+                <stack
+                    visibleChildName={pane}
+                    transitionType={Gtk.StackTransitionType.SLIDE_LEFT_RIGHT}
+                    transitionDuration={200}
+                >
+                    <box $type="named" name="main" orientation={Gtk.Orientation.VERTICAL}>
+                        {toggleSection.widget}
+                        <Gtk.Separator />
+                        <SliderSection />
+                        {!Config.tray.onPanel && <Gtk.Separator />}
+                        {!Config.tray.onPanel && <Tray />}
+                    </box>
+                    <box $type="named" name="wifi" orientation={Gtk.Orientation.VERTICAL}>
+                        <PaneHeader title="Wi-Fi" onBack={() => setPane("main")} />
+                        <WifiWidget pane={pane} name="wifi" />
+                    </box>
+                    <box $type="named" name="bluetooth" orientation={Gtk.Orientation.VERTICAL}>
+                        <PaneHeader title="Bluetooth" onBack={() => setPane("main")} />
+                        <BluetoothWidget />
+                    </box>
+                </stack>
             </box>
         </revealer>
     </window>

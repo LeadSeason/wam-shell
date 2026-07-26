@@ -1,24 +1,15 @@
-import { Accessor, Setter, createBinding, createComputed, For } from "gnim";
+import { Accessor, createBinding, createComputed, For } from "gnim";
 import { DropdownButton } from "./ToggleButton";
 import AstalNetwork from "gi://AstalNetwork?version=0.1";
 import { Gtk } from "ags/gtk4";
 
-interface wifiProps {
-    activeDropdown: Accessor<number>
-    setActiveDropdown: Setter<number>
-    dropdownIndex: number
+interface wifiPaneProps {
+    /** current pane name, rescans when this pane becomes visible */
+    pane: Accessor<string>
+    name: string
 }
 
-interface wifiWidgetProps {
-    activeDropdown: Accessor<number>
-    dropdownIndex: number
-}
-
-export function WifiButton({
-    activeDropdown: activeDropdown,
-    setActiveDropdown: setActiveDropdown,
-    dropdownIndex: dropdownIndex
-}: wifiProps) {
+export function WifiButton({ navigate }: { navigate: () => void }) {
     const wifi = AstalNetwork.get_default().wifi
 
     const label = createComputed(
@@ -27,9 +18,7 @@ export function WifiButton({
     )
 
     return <DropdownButton
-        activeDropdown={activeDropdown}
-        setActiveDropdown={setActiveDropdown}
-        dropdownIndex={dropdownIndex}
+        navigate={navigate}
         icon={createBinding(wifi, "iconName")}
         label={label}
         isActive={createBinding(wifi, "enabled")}
@@ -37,8 +26,13 @@ export function WifiButton({
     />
 }
 
-export function WifiWidget({ activeDropdown: revealChild, dropdownIndex: index }: wifiWidgetProps) {
+export function WifiWidget({ pane, name }: wifiPaneProps) {
     const wifi = AstalNetwork.get_default().wifi
+
+    // rescan whenever this pane becomes visible
+    pane.subscribe(v => {
+        if (v === name) wifi.scan()
+    })
 
     const accessPoints = createBinding(wifi, "accessPoints").as(aps =>
         [...aps]
@@ -46,33 +40,26 @@ export function WifiWidget({ activeDropdown: revealChild, dropdownIndex: index }
             .slice(0, 8)
     )
 
-    return <revealer
-        revealChild={revealChild.as(s => {
-            if (s === index) wifi.scan()
-            return s === index
-        })}
-    >
-        <box orientation={Gtk.Orientation.VERTICAL}>
-            <For each={accessPoints}>
-                {(ap) => {
-                    const active = createBinding(wifi, "activeAccessPoint")
-                        .as(activeAp => activeAp?.bssid === ap.bssid ? ["active"] : [""])
-                    return (
-                        <box cssName={"button"} cssClasses={active} spacing={5}>
-                            <Gtk.GestureClick
-                                button={1}
-                                onPressed={() => {
-                                    // only works for known networks, new
-                                    // networks need a password prompt
-                                    ap.activate(null).catch((e) => console.error(e))
-                                }}
-                            />
-                            <image iconName={createBinding(ap, "iconName")} />
-                            <label label={ap.ssid || "Unknown"} hexpand xalign={0} />
-                        </box>
-                    )
-                }}
-            </For>
-        </box>
-    </revealer>
+    return <box orientation={Gtk.Orientation.VERTICAL}>
+        <For each={accessPoints}>
+            {(ap) => {
+                const active = createBinding(wifi, "activeAccessPoint")
+                    .as(activeAp => activeAp?.bssid === ap.bssid ? ["active"] : [""])
+                return (
+                    <box cssName={"button"} cssClasses={active} spacing={5}>
+                        <Gtk.GestureClick
+                            button={1}
+                            onPressed={() => {
+                                // only works for known networks, new
+                                // networks need a password prompt
+                                ap.activate(null).catch((e) => console.error(e))
+                            }}
+                        />
+                        <image iconName={createBinding(ap, "iconName")} />
+                        <label label={ap.ssid || "Unknown"} hexpand xalign={0} />
+                    </box>
+                )
+            }}
+        </For>
+    </box>
 }

@@ -2,34 +2,43 @@ import { Gtk } from "ags/gtk4";
 import { Accessor, Setter } from "gnim";
 
 interface TbButtonProps {
-    activeDropdown: Accessor<number>
-    setActiveDropdown: Setter<number>
-    dropdownIndex: number
     label: string | Accessor<string>
 
     icon?: string | Accessor<string>
     isActive?: boolean | Accessor<boolean>
     activate?: () => void
-    hasDropdown?: boolean
+
+    /**
+     * Shown on click of the chevron.
+     * navigate -> switch to a different pane, chevron points right.
+     * activeDropdown/setActiveDropdown/dropdownIndex -> inline dropdown,
+     * chevron points up/down. Neither -> chevron hidden.
+     */
+    navigate?: () => void
+    activeDropdown?: Accessor<number>
+    setActiveDropdown?: Setter<number>
+    dropdownIndex?: number
 }
 
 export function DropdownButton({
-    activeDropdown: activeDropdown,
-    setActiveDropdown: setDropdown,
-    dropdownIndex: dropdownIndex,
-    icon = "applications-system-symbolic",
     label,
+    icon = "applications-system-symbolic",
     isActive = false,
     activate: activate = undefined,
-    hasDropdown = true
+    navigate = undefined,
+    activeDropdown: activeDropdown = undefined,
+    setActiveDropdown: setDropdown = undefined,
+    dropdownIndex: dropdownIndex = 0,
 }: TbButtonProps) {
-    const setActiveDropdown = (i: number) => {
-        // Toggle
-        if (activeDropdown.get() === i)
+    const toggleDropdown = () => {
+        if (!activeDropdown || !setDropdown) return
+        if (activeDropdown.get() === dropdownIndex)
             setDropdown(0)
         else
-            setDropdown(i)
+            setDropdown(dropdownIndex)
     }
+
+    const hasChevron = navigate !== undefined || (activeDropdown !== undefined && setDropdown !== undefined)
 
     let cssClasses
 
@@ -40,6 +49,10 @@ export function DropdownButton({
         cssClasses = isActive.as(v => v ? ["toggleButton", "ToggleSectionActive"] : ["toggleButton"])
     }
 
+    const chevronIcon = navigate !== undefined
+        ? "go-next-symbolic"
+        : activeDropdown!.as(s => (s === dropdownIndex) ? "arrow-up-symbolic" : "arrow-down-symbolic")
+
     return <box cssName={"button"} hexpand cssClasses={cssClasses}>
         <box spacing={5} hexpand>
             <Gtk.GestureClick
@@ -48,18 +61,21 @@ export function DropdownButton({
                     if (activate)
                         activate()
                     else
-                        setActiveDropdown(dropdownIndex);
+                        toggleDropdown();
                 }} />
             <image iconName={icon} />
             <label label={label} />
         </box>
-        {hasDropdown &&
+        {hasChevron &&
             <box>
-                <image halign={Gtk.Align.END} iconName={activeDropdown.as(s => (s === dropdownIndex) ? "arrow-up-symbolic" : "arrow-down-symbolic")} />
+                <image halign={Gtk.Align.END} iconName={chevronIcon} />
                 <Gtk.GestureClick
                     button={1}
                     onPressed={() => {
-                        setActiveDropdown(dropdownIndex);
+                        if (navigate)
+                            navigate()
+                        else
+                            toggleDropdown();
                     }} />
             </box>
         }
