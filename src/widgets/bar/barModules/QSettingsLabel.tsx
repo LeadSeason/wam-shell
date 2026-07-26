@@ -58,7 +58,10 @@ ${driver.description}`) // Keep this indent. New line.
                 arg1: number
             ) => {
                 show()
-                driver.volume -= arg1 / 100
+                // Fixed step per notch, raw deltas vary wildly between
+                // devices and can be imperceptibly small
+                const step = arg1 < 0 ? 0.05 : -0.05
+                driver.volume = Math.min(1, Math.max(0, driver.volume + step))
                 return true
             }}
         />
@@ -194,7 +197,7 @@ function ButtonLabel() {
     const { defaultMicrophone: microphone } = AstalWp.get_default()!
 
     const labelBox = new Gtk.Box()
-    labelBox.spacing = 7
+    labelBox.spacing = 12
 
     labelBox.append(audioWidget(speaker))
     labelBox.append(audioWidget(microphone))
