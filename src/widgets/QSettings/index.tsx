@@ -211,7 +211,8 @@ export default function QSettings() {
                         {!Config.tray.onPanel && <Gtk.Separator />}
                         {!Config.tray.onPanel &&
                             <Tray filter={(item) => !isPinned(item)}
-                                iconSize={Config.tray.popupIconSize} pill />}
+                                iconSize={Config.tray.popupIconSize} pill
+                                spacing={8} />}
                     </box>
                     <box $type="named" name="wifi" orientation={Gtk.Orientation.VERTICAL}>
                         <PaneHeader title="Wi-Fi" onBack={() => setPane("main")} />

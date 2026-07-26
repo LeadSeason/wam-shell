@@ -23,6 +23,8 @@ export function ToggleSection({ onNavigate }: { onNavigate: (pane: string) => vo
                 maxChildrenPerLine={2}
                 homogeneous
                 selectionMode={Gtk.SelectionMode.NONE}
+                rowSpacing={8}
+                columnSpacing={8}
             >
                 <WifiButton navigate={() => onNavigate("wifi")} />
                 <BluetoothButton navigate={() => onNavigate("bluetooth")} />

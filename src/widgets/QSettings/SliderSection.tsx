@@ -79,8 +79,8 @@ function VolSlider({
     return <box
         cssClasses={volume.as((v) => {
             if (v > 1.01)
-                return ["volHigh"]
-            return []
+                return ["sliderRow", "volHigh"]
+            return ["sliderRow"]
         })}
     >
         <button>
@@ -176,7 +176,7 @@ function BrightnessSlider() {
         }
     })
 
-    return <box cssClasses={hyprsunset.outdoor.as(v => v ? ["overdrive"] : [])}>
+    return <box cssClasses={hyprsunset.outdoor.as(v => v ? ["sliderRow", "overdrive"] : ["sliderRow"])}>
         <box cssName="button" tooltipText={"Click: reset to 100%, scroll: outdoor mode"}>
             <Gtk.GestureClick
                 button={1}

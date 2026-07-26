@@ -4,10 +4,11 @@ import app from "ags/gtk4/app"
 import AstalTray from "gi://AstalTray"
 import Config from "../../config"
 
-export default function Tray({ filter, iconSize = 16, pill = false }: {
+export default function Tray({ filter, iconSize = 16, pill = false, spacing = Config.tray.spacing }: {
     filter?: (item: AstalTray.TrayItem) => boolean
     iconSize?: number
     pill?: boolean
+    spacing?: number
 }) {
     const [trayItems, setTrayItems] = createState([] as AstalTray.TrayItem[])
     const registry = AstalTray.get_default() // Singleton.
@@ -52,7 +53,10 @@ export default function Tray({ filter, iconSize = 16, pill = false }: {
         <Gtk.FlowBox
             maxChildrenPerLine={8}
             selectionMode={Gtk.SelectionMode.NONE}
-            columnSpacing={Config.tray.spacing}
+            columnSpacing={spacing}
+            rowSpacing={spacing}
+            // only has an effect inside the quick settings window
+            cssClasses={["QSSection"]}
         >
             <For each={visibleItems}>
                 {(item) => {

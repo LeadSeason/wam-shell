@@ -14,6 +14,8 @@ window#QSettings {
         margin: 5px 12px 12px; // For shadow
         color: t.$text;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        // uniform rhythm: 8px gutters, 8px between sections
+        padding: 4px 0;
     }
     /////////////////////////////////////
     /// Calendar
@@ -89,7 +91,7 @@ window#QSettings {
             border: solid 2px color.mix(t.$mantle, transparent, 60%);
         }
         .QSBat {
-            margin-left: s.$padding-small;
+            margin-left: 8px;
             font-size: 14px;
             -gtk-icon-size: 14px;
             image {
@@ -98,6 +100,7 @@ window#QSettings {
         }
         button {
             background: t.$surface070;
+            margin: 3px 0 3px 8px;
             &:hover {
                 background-color: t.$accent20;
                 border: solid 2px t.$accent20;
@@ -112,7 +115,19 @@ window#QSettings {
         }
     }
     .QSSection {
-        padding: s.$padding;
+        padding: 4px 8px;
+    }
+
+    // slider rows: buttons carry no margins, the row keeps the rhythm
+    .sliderRow {
+        button {
+            margin: 3px 0;
+        }
+    }
+
+    // device dropdown lists inside the slider section
+    .QSSection revealer button {
+        margin: 3px 0;
     }
 
     // brightness above 100% (outdoor mode)
@@ -142,12 +157,16 @@ window#QSettings {
         border-radius: s.$radius;
         background-color: t.$base;
         min-height: 44px;
+        margin: 0; // grid gaps come from the FlowBox spacing
     }
 
     .mediaPlayer {
         border-radius: s.$radius;
         background-color: t.$base;
-        padding: s.$padding;
+        padding: 8px;
+        button {
+            margin: 0; // gaps come from the card's box spacing
+        }
     }
     .mediaTitle {
         font-weight: bold;
@@ -213,11 +232,15 @@ window#QSettings {
     }
 
     // tray icons inside the popup: bigger, on their own pills
-    // (pill size is set inline from tray.popup_icon_size)
+    // (pill size is set inline from tray.popup_icon_size, gaps from the
+    // FlowBox spacing)
     .trayItem {
         border-radius: s.$radius;
         background-color: t.$base;
-        margin: s.$padding-small;
+        margin: 0;
+        button {
+            margin: 0;
+        }
     }
 
 
