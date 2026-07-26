@@ -23,14 +23,14 @@ export function PowerProfilesButton({
     const powerProfiles = AstalPowerProfiles.get_default()
 
     const icon = createBinding(powerProfiles, "activeProfile").as(v => `power-profile-${v}-symbolic`)
-    const label = createBinding(powerProfiles, "activeProfile")
 
     return <DropdownButton
         activeDropdown={activeDropdown}
         setActiveDropdown={setActiveDropdown}
         dropdownIndex={dropdownIndex}
         icon={icon}
-        label={label}
+        label={"Power Mode"}
+        subtitle={createBinding(powerProfiles, "activeProfile")}
     />
 }
 

@@ -6,12 +6,12 @@ import { Gtk } from "ags/gtk4";
 export function BluetoothButton({ navigate }: { navigate: () => void }) {
     const bluetooth = AstalBluetooth.get_default()
 
-    const label = createComputed(
+    const subtitle = createComputed(
         [createBinding(bluetooth, "is_powered"), createBinding(bluetooth, "devices")],
         (powered, devices) => {
-            if (!powered) return "Bluetooth"
+            if (!powered) return "Off"
             const connected = devices.find(d => d.connected)
-            return connected ? (connected.alias || connected.name) : "Bluetooth"
+            return connected ? (connected.alias || connected.name) : "On"
         }
     )
 
@@ -21,7 +21,8 @@ export function BluetoothButton({ navigate }: { navigate: () => void }) {
     return <DropdownButton
         navigate={navigate}
         icon={icon}
-        label={label}
+        label={"Bluetooth"}
+        subtitle={subtitle}
         isActive={createBinding(bluetooth, "is_powered")}
         activate={() => {
             const adapter = bluetooth.adapter

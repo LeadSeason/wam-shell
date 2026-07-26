@@ -12,15 +12,16 @@ interface wifiPaneProps {
 export function WifiButton({ navigate }: { navigate: () => void }) {
     const wifi = AstalNetwork.get_default().wifi
 
-    const label = createComputed(
+    const subtitle = createComputed(
         [createBinding(wifi, "enabled"), createBinding(wifi, "ssid")],
-        (enabled, ssid) => (enabled && ssid) ? ssid : "Wi-Fi"
+        (enabled, ssid) => enabled ? (ssid || "On") : "Off"
     )
 
     return <DropdownButton
         navigate={navigate}
         icon={createBinding(wifi, "iconName")}
-        label={label}
+        label={"Wi-Fi"}
+        subtitle={subtitle}
         isActive={createBinding(wifi, "enabled")}
         activate={() => wifi.set_enabled(!wifi.enabled)}
     />

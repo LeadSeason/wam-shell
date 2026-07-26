@@ -117,10 +117,29 @@ window#QSettings {
     .toggleButton {
         border-radius: s.$radius;
         background-color: t.$base;
+        min-height: 44px;
+    }
+    .toggleTitle {
+        font-weight: bold;
+    }
+    .toggleSubtitle {
+        font-size: 0.85em;
+        color: t.$subtext0;
+    }
+    .toggleChevron {
+        margin-left: 4px;
+        padding-left: 6px;
+        border-left: solid 1px color.mix(t.$text, transparent, 80%);
     }
     .ToggleSectionActive {
         color: t.$base;
         background-color: t.$accent;
+        .toggleSubtitle {
+            color: color.mix(t.$base, transparent, 70%);
+        }
+        .toggleChevron {
+            border-left-color: color.mix(t.$base, transparent, 70%);
+        }
         &:hover {
             background-color: color.mix(t.$accent, transparent, 70%);
             border: solid 2px transparent;

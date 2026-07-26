@@ -36,6 +36,7 @@ export function SwayGapsButton({
         dropdownIndex={dropdownIndex}
         icon={"x-tile-panel"}
         label={`SwayGaps`}
+        subtitle={createBinding(swayGaps, "gap_state").as(v => v ? "On" : "Off")}
         isActive={createBinding(swayGaps, "gap_state")}
         activate={() => swayGaps.toggleGaps()}
     />

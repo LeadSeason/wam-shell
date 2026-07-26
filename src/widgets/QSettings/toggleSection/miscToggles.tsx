@@ -11,6 +11,7 @@ export function NightLightButton() {
     return <DropdownButton
         icon={"night-light-symbolic"}
         label={"Night Light"}
+        subtitle={active.as(v => v ? "On" : "Off")}
         isActive={active}
         activate={() => {
             const next = !active.get()
@@ -33,6 +34,7 @@ export function DarkStyleButton() {
     return <DropdownButton
         icon={"weather-clear-night-symbolic"}
         label={"Dark Style"}
+        subtitle={active.as(v => v ? "On" : "Off")}
         isActive={active}
         activate={() => {
             const next = !active.get()
@@ -55,6 +57,7 @@ export function AirplaneModeButton() {
     return <DropdownButton
         icon={"airplane-mode-symbolic"}
         label={"Airplane Mode"}
+        subtitle={active.as(v => v ? "On" : "Off")}
         isActive={active}
         activate={() => {
             const next = !active.get()

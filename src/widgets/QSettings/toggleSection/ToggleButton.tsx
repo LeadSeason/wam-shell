@@ -3,6 +3,7 @@ import { Accessor, Setter } from "gnim";
 
 interface TbButtonProps {
     label: string | Accessor<string>
+    subtitle?: string | Accessor<string>
 
     icon?: string | Accessor<string>
     isActive?: boolean | Accessor<boolean>
@@ -22,6 +23,7 @@ interface TbButtonProps {
 
 export function DropdownButton({
     label,
+    subtitle = undefined,
     icon = "applications-system-symbolic",
     isActive = false,
     activate: activate = undefined,
@@ -56,7 +58,7 @@ export function DropdownButton({
             : activeDropdown!.as(s => (s === dropdownIndex) ? "arrow-up-symbolic" : "arrow-down-symbolic")
 
     return <box cssName={"button"} hexpand cssClasses={cssClasses}>
-        <box spacing={5} hexpand>
+        <box spacing={8} hexpand>
             <Gtk.GestureClick
                 button={1}
                 onPressed={() => {
@@ -66,10 +68,15 @@ export function DropdownButton({
                         toggleDropdown();
                 }} />
             <image iconName={icon} />
-            <label label={label} />
+            <box orientation={Gtk.Orientation.VERTICAL} valign={Gtk.Align.CENTER} hexpand>
+                <label cssClasses={["toggleTitle"]} label={label} xalign={0} />
+                {subtitle !== undefined &&
+                    <label cssClasses={["toggleSubtitle"]} label={subtitle} xalign={0} />
+                }
+            </box>
         </box>
         {hasChevron &&
-            <box>
+            <box cssClasses={["toggleChevron"]}>
                 <image halign={Gtk.Align.END} iconName={chevronIcon} />
                 <Gtk.GestureClick
                     button={1}
