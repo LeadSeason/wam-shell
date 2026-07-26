@@ -1,20 +1,19 @@
 import Gdk from "gi://Gdk?version=4.0"
 import AstalHyprland from "gi://AstalHyprland?version=0.1"
 import Config from "../../../config"
+import { createIconResolver } from "../../../lib/appIcon"
 import { For, createBinding, createState } from "ags"
 import { Gtk } from "ags/gtk4";
 
 export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
     const hyprland = AstalHyprland.get_default()
-    const iconTheme = Gtk.IconTheme.get_for_display(monitor.display)
+    const resolveAppIcon = createIconResolver(Gtk.IconTheme.get_for_display(monitor.display))
 
     function clientToIcon(client: AstalHyprland.Client) {
-        for (const name of [client.class, client.initialClass]) {
-            if (name && iconTheme.has_icon(name)) {
-                return <image iconName={name} />
-            }
-        }
-        return <image iconName={"missing-icon"} />
+        const icon = resolveAppIcon(client.class)
+            ?? resolveAppIcon(client.initialClass)
+            ?? "missing-icon"
+        return <image iconName={icon} />
     }
 
     const [displayName, setDisplayName] = createState(monitor.get_connector())

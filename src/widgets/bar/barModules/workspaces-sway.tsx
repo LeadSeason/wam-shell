@@ -1,6 +1,7 @@
 import Gdk from "gi://Gdk?version=4.0"
 import Sway, { Node } from "../../../lib/sway"
 import Config from "../../../config"
+import { createIconResolver } from "../../../lib/appIcon"
 import { Accessor, For, With, createBinding, createState } from "ags"
 import { Gtk } from "ags/gtk4";
 import GObject from "ags/gobject";
@@ -13,8 +14,7 @@ function focus_workspace(sway: Sway, ws: any) {
 
 export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
 
-    const GtkIconTheme = Gtk.IconTheme.get_for_display(monitor.display)
-    function isValidIconName(icon: string): boolean { return GtkIconTheme.has_icon(icon) }
+    const resolveAppIcon = createIconResolver(Gtk.IconTheme.get_for_display(monitor.display))
 
     function swayNodeToIconName(node: Node): string {
         let elements = []
@@ -42,10 +42,8 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
             ]
         }
         for (const element of elements) {
-            if (!element) continue;
-            if (isValidIconName(element)) {
-                return element
-            }
+            const icon = resolveAppIcon(element)
+            if (icon) return icon
         }
         // Default image of missing icons
         return "missing-icon"
