@@ -4,12 +4,30 @@ import app from "ags/gtk4/app"
 import AstalTray from "gi://AstalTray"
 import Config from "../../config"
 
-export default function Tray() {
+export default function Tray({ filter, iconSize = 16, pill = false, spacing = Config.tray.spacing }: {
+    filter?: (item: AstalTray.TrayItem) => boolean
+    iconSize?: number
+    pill?: boolean
+    spacing?: number
+}) {
     const [trayItems, setTrayItems] = createState([] as AstalTray.TrayItem[])
     const registry = AstalTray.get_default() // Singleton.
 
+    // AppImage-based apps ship their icons outside the icon theme and
+    // point to them via IconThemePath, which GTK does not search by
+    // default. Register each item's path so its icon resolves.
+    const iconTheme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default()!)
+    const addedPaths = new Set<string>()
+
     registry.connect("item-added", (_, item_id) => {
         const t = registry.get_item(item_id)
+
+        const path = t.iconThemePath
+        if (path && !addedPaths.has(path)) {
+            addedPaths.add(path)
+            iconTheme.add_search_path(path)
+        }
+
         setTrayItems((items) => {
             if (items.find((item) => item.get_item_id() === item_id)) {
                 return items
@@ -25,15 +43,22 @@ export default function Tray() {
         )
     })
 
-    // TODO: The icon for AppImage-based apps do not show up.
+    // TODO: Icons served as raw pixmaps may still not show up.
+
+    const visibleItems = trayItems.as(items =>
+        filter ? items.filter(filter) : items
+    )
 
     return (
         <Gtk.FlowBox
             maxChildrenPerLine={8}
             selectionMode={Gtk.SelectionMode.NONE}
-            columnSpacing={Config.tray.spacing}
+            columnSpacing={spacing}
+            rowSpacing={spacing}
+            // only has an effect inside the quick settings window
+            cssClasses={["QSSection"]}
         >
-            <For each={trayItems}>
+            <For each={visibleItems}>
                 {(item) => {
                     const gicon = createBinding(item, "gicon")
                     const tooltip = createBinding(item, "tooltip_markup")
@@ -68,8 +93,12 @@ export default function Tray() {
                         }}
                         tooltipMarkup={tooltip}
                         direction={Gtk.ArrowType.DOWN}
+                        cssClasses={["trayItem"]}
+                        css={pill
+                            ? `min-width: ${iconSize + 22}px; min-height: ${iconSize + 22}px;`
+                            : ""}
                     >
-                        <image gicon={gicon} />
+                        <image gicon={gicon} pixelSize={iconSize} />
                         {menuModel}
                     </menubutton>
                     )

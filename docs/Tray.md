@@ -37,3 +37,24 @@ trayItem.get_gicon()?.to_string() // org.telegram.desktop-attention-symbolic
 ```ts
 trayItem.get_title() // TelegramDesktop
 ```
+
+## Finding an app's SNI Id
+
+Needed for the `tray.always_on_panel` config. Entries are matched
+against the SNI Id, title and icon name, and as a substring of the
+tooltip. Electron apps all report `chrome_status_icon_1` as their Id
+with an empty title and no icon name — match them by tooltip instead
+(e.g. `"Connected"` for Mullvad VPN, `"Ferdium"` for Ferdium).
+
+Two ways to discover ids:
+
+1. The shell logs each id once as items register on startup:
+   `Tray item added: TelegramDesktop`
+2. Query the watcher over D-Bus while the shell is running:
+
+```sh
+for item in $(busctl --user get-property org.kde.StatusNotifierWatcher /StatusNotifierWatcher org.kde.StatusNotifierWatcher RegisteredStatusNotifierItems | grep -oP '"\K[^"]+'); do
+  bus="${item%%/*}"; path="/${item#*/}"
+  busctl --user get-property "$bus" "$path" org.kde.StatusNotifierItem Id 2>/dev/null | cut -d'"' -f2
+done
+```

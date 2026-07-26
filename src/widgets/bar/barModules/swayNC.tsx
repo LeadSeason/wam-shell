@@ -13,7 +13,7 @@ export default function Notify() {
     const reveal = createBinding(swayNc, "count").as((v) => v > 0)
     const count = createBinding(swayNc, "count").as((v) => v.toString())
     const icon = createBinding(swayNc, "dnd").as(
-        (v) => v ? "notifications-disabled-symbolic" : "notifications-symbolic"
+        (v) => v ? "notifications-disabled-symbolic" : "preferences-system-notifications-symbolic"
     )
     const badge = (<revealer
         transitionDuration={250}

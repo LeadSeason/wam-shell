@@ -7,12 +7,26 @@ import { timeout } from "ags/time";
 import Tray from "./tray";
 import Config from "../../config";
 import CommandRegistry from "../../lib/requestHandler";
+import { isPinned } from "../../lib/trayPinned";
 
+import { createState } from "gnim";
 import { ToggleSection } from "./toggleSection";
 import { HeaderSection } from "./HeaderSection";
 import { SliderSection } from "./SliderSection";
+import { MediaSection } from "./MediaSection";
+import { WifiWidget } from "./toggleSection/wifi";
+import { BluetoothWidget } from "./toggleSection/bluetooth";
+import { PowerProfilesWidget } from "./toggleSection/powerProfile";
 
 const registry = CommandRegistry.get_default()
+
+function PaneHeader({ title, onBack }: { title: string, onBack: () => void }) {
+    return <box cssName="button" spacing={5}>
+        <Gtk.GestureClick button={1} onPressed={onBack} />
+        <image iconName="go-previous-symbolic" />
+        <label label={title} hexpand xalign={0} />
+    </box>
+}
 
 
 export default function QSettings() {
@@ -20,7 +34,8 @@ export default function QSettings() {
     let win: Astal.Window
     let contentBox: Gtk.Box
     let revealer: Gtk.Revealer
-    const toggleSection = ToggleSection()
+    const [pane, setPane] = createState("main")
+    const toggleSection = ToggleSection({ onNavigate: setPane })
 
     function hide() {
         cancelClose()
@@ -31,6 +46,7 @@ export default function QSettings() {
         timeout(50, () => {
             win.hide()
             toggleSection.reset()
+            setPane("main")
         })
     }
 
@@ -102,7 +118,7 @@ export default function QSettings() {
     let closeSource: number | null = null
     function scheduleClose() {
         if (closeSource !== null) return
-        closeSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Config.qsettings.closeDelay, () => {
+        closeSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Config.quicksettings.closeDelay, () => {
             closeSource = null
             if (win.is_visible()) hide()
             return GLib.SOURCE_REMOVE
@@ -175,11 +191,42 @@ export default function QSettings() {
                 widthRequest={240}
             >
                 <HeaderSection />
-                {toggleSection.widget}
-                <Gtk.Separator />
-                <SliderSection />
-                {!Config.tray.onPanel && <Gtk.Separator />}
-                {!Config.tray.onPanel && <Tray />}
+                <stack
+                    // set the visible child after construction: as a prop it
+                    // is applied before the named children exist, which makes
+                    // Gtk warn about a missing child
+                    $={(self) => {
+                        self.visibleChildName = "main"
+                        // subscribe callbacks receive no value, read it
+                        pane.subscribe(() => self.visibleChildName = pane.get())
+                    }}
+                    transitionType={Gtk.StackTransitionType.SLIDE_LEFT_RIGHT}
+                    transitionDuration={200}
+                >
+                    <box $type="named" name="main" orientation={Gtk.Orientation.VERTICAL}>
+                        <SliderSection />
+                        <Gtk.Separator />
+                        {toggleSection.widget}
+                        <MediaSection />
+                        {!Config.tray.onPanel && <Gtk.Separator />}
+                        {!Config.tray.onPanel &&
+                            <Tray filter={(item) => !isPinned(item)}
+                                iconSize={Config.tray.popupIconSize} pill
+                                spacing={8} />}
+                    </box>
+                    <box $type="named" name="wifi" orientation={Gtk.Orientation.VERTICAL}>
+                        <PaneHeader title="Wi-Fi" onBack={() => setPane("main")} />
+                        <WifiWidget pane={pane} name="wifi" />
+                    </box>
+                    <box $type="named" name="bluetooth" orientation={Gtk.Orientation.VERTICAL}>
+                        <PaneHeader title="Bluetooth" onBack={() => setPane("main")} />
+                        <BluetoothWidget />
+                    </box>
+                    <box $type="named" name="powerprofiles" orientation={Gtk.Orientation.VERTICAL}>
+                        <PaneHeader title="Power Mode" onBack={() => setPane("main")} />
+                        <PowerProfilesWidget />
+                    </box>
+                </stack>
             </box>
         </revealer>
     </window>

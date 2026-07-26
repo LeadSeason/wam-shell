@@ -4,9 +4,11 @@ import { execAsync } from "ags/process"
 import { createPoll } from "ags/time"
 
 import Config from "../../config"
+import hyprsunset from "../../lib/hyprsunset"
 
 import OSIcon from "./barModules/osIcon"
 import Tray from "../QSettings/tray"
+import { isPinned } from "../../lib/trayPinned"
 import SwayWs from "./barModules/workspaces-sway"
 import HyprlandWs from "./barModules/workspaces-hyprland"
 import WorkspacesExample from "./barModules/workspaces-example"
@@ -30,11 +32,24 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
     }
   }
 
+  // on_panel: the whole tray on the bar. Otherwise only pinned apps
+  // (tray.always_on_panel) show on the bar, the rest stay nested.
+  // Tray items must be single-instance: the bar is built per monitor,
+  // so only render it on the primary one.
+  let trayWidget = null
+  if (app.monitors[0] === gdkMonitor) {
+    if (Config.tray.onPanel) {
+      trayWidget = <Tray />
+    } else if (Config.tray.alwaysOnPanel.length > 0) {
+      trayWidget = <Tray filter={isPinned} />
+    }
+  }
+
   return (
     <window
       visible
       name="bar"
-      class="Bar"
+      class={hyprsunset.outdoor.as(v => v ? "Bar outdoor" : "Bar")}
       namespace="bar"
       gdkmonitor={gdkMonitor}
       exclusivity={Astal.Exclusivity.EXCLUSIVE}
@@ -51,9 +66,9 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
           <Clock />
         </box>
         <box $type="end">
-          {Config.tray.onPanel && Config.tray.position == "left" && <Tray />}
+          {Config.tray.position == "left" && trayWidget}
           <QSettingsLabel />
-          {Config.tray.onPanel && Config.tray.position == "right" && <Tray />}
+          {Config.tray.position == "right" && trayWidget}
           <SwayNC />
           {Config.workspaces.position == "right" && workspaceWidget}
         </box>

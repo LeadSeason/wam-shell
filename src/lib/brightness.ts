@@ -2,9 +2,27 @@ import GObject, { register, getter, setter } from "ags/gobject"
 import { monitorFile, readFileAsync } from "ags/file"
 import { exec, execAsync } from "ags/process"
 import { timeout } from "ags/time"
+import { setDimLevel } from "./hyprsunset"
+import hyprsunset from "./hyprsunset"
 
-const get = (args: string) => Number(exec(`brightnessctl ${args}`))
-const screen = exec(`bash -c "ls -w1 /sys/class/backlight | head -1"`)
+const get = (args: string) => {
+    try {
+        return Number(exec(`brightnessctl ${args}`))
+    } catch {
+        return 0
+    }
+}
+const has = (bin: string) => {
+    try {
+        exec(`which ${bin}`)
+        return true
+    } catch {
+        return false
+    }
+}
+const hasBrightnessctl = has("brightnessctl")
+const hasHyprsunset = has("hyprsunset")
+const screen = hasBrightnessctl ? exec(`bash -c "ls -w1 /sys/class/backlight | head -1"`) : ""
 
 // @TODO, Use something better than this. Since if this is not set issues arise.
 let kbd = exec(`bash -c "ls -w1 /sys/class/leds | grep kbd | head -1"`)
@@ -25,8 +43,11 @@ export default class Brightness extends GObject.Object {
     #kbdMax = get(`--device ${kbd} max`)
     #kbd = get(`--device ${kbd} get`)
     #screenMax = get("max")
-    #screen = get("get") / (get("max") || 1)
-    #screenIsPresent = (screen == "") ? false : true;
+    #screen = hasBrightnessctl ? get("get") / (get("max") || 1) : hyprsunset.dim.get()
+    // Panels without a working backlight (e.g. OLED where the sysfs
+    // backlight is a dummy) are dimmed through hyprsunset gamma instead
+    #useGammaDim = !hasBrightnessctl && hasHyprsunset
+    #screenIsPresent = hasBrightnessctl ? (screen != "") : hasHyprsunset
 
     @getter(Number)
     get kbdMax() { return this.#kbdMax }
@@ -54,17 +75,26 @@ export default class Brightness extends GObject.Object {
         if (percent < 0)
             percent = 0
 
+        // outdoor mode is a toggle, the slider stays 0-100%
         if (percent > 1)
             percent = 1
 
         this.#screen = percent
 
+        if (this.#useGammaDim) {
+            setDimLevel(percent)
+            this.notify("screen")
+            return
+        }
+
         /* @TODO, Test this update */
         timeout(25, () => {
             if (this.#screen = percent) {
-                execAsync(`brightnessctl set ${Math.floor(percent * 100)}% -q`).then(() => {
-                    this.notify("screen")
-                })
+                execAsync(`brightnessctl set ${Math.floor(percent * 100)}% -q`)
+                    .then(() => {
+                        this.notify("screen")
+                    })
+                    .catch(() => { })
             }
         })
     }
@@ -75,19 +105,21 @@ export default class Brightness extends GObject.Object {
     constructor() {
         super()
 
-        const screenPath = `/sys/class/backlight/${screen}/brightness`
-        const kbdPath = `/sys/class/leds/${kbd}/brightness`
+        if (hasBrightnessctl) {
+            const screenPath = `/sys/class/backlight/${screen}/brightness`
+            const kbdPath = `/sys/class/leds/${kbd}/brightness`
 
-        monitorFile(screenPath, async f => {
-            const v = await readFileAsync(f)
-            this.#screen = Number(v) / this.#screenMax
-            this.notify("screen")
-        })
+            monitorFile(screenPath, async f => {
+                const v = await readFileAsync(f)
+                this.#screen = Number(v) / this.#screenMax
+                this.notify("screen")
+            })
 
-        monitorFile(kbdPath, async f => {
-            const v = await readFileAsync(f)
-            this.#kbd = Number(v)
-            this.notify("kbd")
-        })
+            monitorFile(kbdPath, async f => {
+                const v = await readFileAsync(f)
+                this.#kbd = Number(v)
+                this.notify("kbd")
+            })
+        }
     }
 }

@@ -157,28 +157,54 @@ function getTrayConfig() {
         position = "left"
     }
 
+    let alwaysOnPanel = get("always_on_panel", [])
+    if (!Array.isArray(alwaysOnPanel)) {
+        console.error(`Config "tray.always_on_panel" must be a list of app ids`)
+        alwaysOnPanel = []
+    }
+    alwaysOnPanel = alwaysOnPanel.filter(id => typeof id === "string" && id !== "")
+
     return {
         onPanel: get("on_panel", false),
         spacing,
         position: position as "left" | "right",
+        alwaysOnPanel,
+        popupIconSize: get("popup_icon_size", 22),
     }
 }
 
 function getQSettingsConfig() {
-    // Keys can be set in a [qsettings] section or flat at the top level;
+    // Keys can be set in a [quicksettings] section or flat at the top level;
     // the section takes precedence.
-    const q = configData.qsettings ?? {}
+    const q = configData.quicksettings ?? {}
     const get = (key: string, fallback: any) => q[key] ?? configData[key] ?? fallback
 
     let closeDelay = get("close_delay", 350)
     if (typeof closeDelay !== "number" || closeDelay < 0) {
-        console.error(`Config "qsettings.close_delay" must be a positive number, got "${closeDelay}"`)
+        console.error(`Config "quicksettings.close_delay" must be a positive number, got "${closeDelay}"`)
         closeDelay = 350
     }
 
     return {
         closeDelay,
         showBatteryPercentage: get("show_battery_percentage", true),
+        showDeviceNames: get("show_device_names", false),
+    }
+}
+
+function getHyprsunsetConfig() {
+    const h = configData.hyprsunset ?? {}
+    const get = (key: string, fallback: any) => h[key] ?? configData[key] ?? fallback
+
+    return {
+        // temperature used normally (night light off, gamma <= 100%)
+        temperatureDefault: get("temperature_default", 6000),
+        // temperature applied in outdoor mode (gamma > 100%).
+        // falls back to temperature_default when omitted
+        temperatureOutdoor: get("temperature_outdoor", null),
+        nightTemp: get("night_temp", 4000),
+        // gamma in outdoor mode, in percent (may exceed 100)
+        gammaOutdoor: get("gamma_outdoor", 150),
     }
 }
 
@@ -228,7 +254,8 @@ export default class Config {
 
     static workspaces = getWorkspacesConfig()
     static tray = getTrayConfig()
-    static qsettings = getQSettingsConfig()
+    static quicksettings = getQSettingsConfig()
+    static hyprsunset = getHyprsunsetConfig()
 
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`

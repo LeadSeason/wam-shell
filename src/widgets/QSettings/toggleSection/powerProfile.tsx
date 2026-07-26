@@ -1,66 +1,45 @@
-import { Accessor, createBinding, createState, For, Setter } from "gnim";
+import { createBinding } from "gnim";
+import { execAsync } from "ags/process";
 import { DropdownButton } from "./ToggleButton";
 import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1";
 import { Gtk } from "ags/gtk4";
 
-interface powerProfilesProps {
-    activeDropdown: Accessor<number>
-    setActiveDropdown: Setter<number>
-    dropdownIndex: number
-}
-
-interface powerProfilesWidgetProps {
-    activeDropdown: Accessor<number>
-    dropdownIndex: number
-}
-
-export function PowerProfilesButton({
-    activeDropdown: activeDropdown,
-    setActiveDropdown: setActiveDropdown,
-    dropdownIndex: dropdownIndex
-}: powerProfilesProps) {
-
+export function PowerProfilesButton({ navigate }: { navigate: () => void }) {
     const powerProfiles = AstalPowerProfiles.get_default()
 
     const icon = createBinding(powerProfiles, "activeProfile").as(v => `power-profile-${v}-symbolic`)
-    const label = createBinding(powerProfiles, "activeProfile")
 
     return <DropdownButton
-        activeDropdown={activeDropdown}
-        setActiveDropdown={setActiveDropdown}
-        dropdownIndex={dropdownIndex}
+        navigate={navigate}
         icon={icon}
-        label={label}
+        label={"Power Mode"}
+        subtitle={createBinding(powerProfiles, "activeProfile")}
     />
 }
 
-export function PowerProfilesWidget({ activeDropdown: revealChild, dropdownIndex: index }: powerProfilesWidgetProps) {
+export function PowerProfilesWidget() {
     const powerProfiles = AstalPowerProfiles.get_default()
     const profiles = powerProfiles.get_profiles()
 
-    return <revealer
-        revealChild={revealChild.as(s => (s === index))}
-    >
-        <box>
-            {profiles.map((profile) => {
-                const activeCss = createBinding(powerProfiles, "activeProfile").as(
-                    (active) => (active === profile.profile) ? ["active"] : [""])
-                return (
-                    <box
-                        orientation={Gtk.Orientation.VERTICAL}
-                        cssName={"button"}
-                        cssClasses={activeCss}
-                    >
-                        <label label={profile.profile} />
-                        <Gtk.GestureClick
-                            button={1}
-                            onPressed={() => {
-                                powerProfiles.set_active_profile(profile.profile)
-                            }}
-                        />
-                    </box>
-                )
-            })}
-        </box>
-    </revealer>
+    return <box orientation={Gtk.Orientation.VERTICAL}>
+        {profiles.map((profile) => {
+            const activeCss = createBinding(powerProfiles, "activeProfile").as(
+                (active) => (active === profile.profile) ? ["active"] : [""])
+            return (
+                <box
+                    cssName={"button"}
+                    cssClasses={activeCss}
+                >
+                    <Gtk.GestureClick
+                        button={1}
+                        onPressed={() => {
+                            execAsync(["powerprofilesctl", "set", profile.profile])
+                                .catch((e) => console.error(e))
+                        }}
+                    />
+                    <label label={profile.profile} hexpand xalign={0} />
+                </box>
+            )
+        })}
+    </box>
 }

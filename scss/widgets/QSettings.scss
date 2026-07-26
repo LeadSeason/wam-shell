@@ -14,6 +14,8 @@ window#QSettings {
         margin: 5px 12px 12px; // For shadow
         color: t.$text;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        // uniform rhythm: 8px gutters, 8px between sections
+        padding: 4px 0;
     }
     /////////////////////////////////////
     /// Calendar
@@ -44,6 +46,7 @@ window#QSettings {
             border-radius: 7px;
             border: 1px solid t.$surface1;
             background-color: t.$surface0;
+            min-height: 16px;
             highlight {
                 background-color: t.$accent80;
                 border-radius: 7px;
@@ -88,7 +91,7 @@ window#QSettings {
             border: solid 2px color.mix(t.$mantle, transparent, 60%);
         }
         .QSBat {
-            margin-left: s.$padding-small;
+            margin-left: 8px;
             font-size: 14px;
             -gtk-icon-size: 14px;
             image {
@@ -97,6 +100,7 @@ window#QSettings {
         }
         button {
             background: t.$surface070;
+            margin: 3px 0 3px 8px;
             &:hover {
                 background-color: t.$accent20;
                 border: solid 2px t.$accent20;
@@ -111,16 +115,107 @@ window#QSettings {
         }
     }
     .QSSection {
-        padding: s.$padding;
+        padding: 4px 8px;
+    }
+
+    // slider rows: buttons carry no margins, the row keeps the rhythm
+    .sliderRow {
+        button {
+            margin: 3px 0;
+        }
+    }
+
+    // device dropdown lists inside the slider section
+    .QSSection revealer button {
+        margin: 3px 0;
+    }
+
+    // brightness above 100% (outdoor mode)
+    .overdrive {
+        color: t.$peach;
+        slider highlight {
+            background-color: t.$peach;
+        }
+    }
+
+    // device name overlaid on the volume sliders
+    .deviceName {
+        font-size: 0.85em;
+        font-weight: bold;
+        color: t.$text;
+        margin-left: 12px;
+    }
+
+    slider highlight {
+        transition: background-color 300ms;
+    }
+    label, image {
+        transition: color 300ms;
     }
 
     .toggleButton {
         border-radius: s.$radius;
         background-color: t.$base;
+        min-height: 44px;
+        margin: 0; // grid gaps come from the FlowBox spacing
+    }
+
+    .mediaPlayer {
+        border-radius: s.$radius;
+        background-color: t.$base;
+        padding: 8px;
+        button {
+            margin: 0; // gaps come from the card's box spacing
+        }
+    }
+    .mediaTitle {
+        font-weight: bold;
+    }
+    .mediaCover {
+        min-width: 40px;
+        min-height: 40px;
+        border-radius: 6px;
+        background-size: cover;
+        background-position: center;
+        background-color: t.$surface0;
+    }
+    .mediaCoverFallback {
+        color: t.$subtext0;
+    }
+    .mediaCoverFallback image {
+        margin: 8px;
+    }
+    .mediaArtist {
+        font-size: 0.85em;
+        color: t.$subtext0;
+    }
+    .mediaButton {
+        border-radius: 2em;
+        min-width: 2em;
+        min-height: 2em;
+        padding: 0;
+    }
+    .toggleTitle {
+        font-weight: bold;
+    }
+    .toggleSubtitle {
+        font-size: 0.85em;
+        color: t.$subtext0;
+    }
+    .toggleChevron {
+        margin-left: 4px;
+        padding-left: 6px;
+        border-left: solid 1px color.mix(t.$text, transparent, 80%);
     }
     .ToggleSectionActive {
         color: t.$base;
         background-color: t.$accent;
+        .toggleSubtitle {
+            color: color.mix(t.$base, transparent, 70%);
+        }
+        .toggleChevron {
+            border-left-color: color.mix(t.$base, transparent, 70%);
+        }
         &:hover {
             background-color: color.mix(t.$accent, transparent, 70%);
             border: solid 2px transparent;
@@ -134,6 +229,26 @@ window#QSettings {
     .active {
         background-color: color.mix(t.$accent, transparent, 55%);
         border: solid 2px color.mix(t.$accent, transparent, 50%);
+    }
+
+    // wifi band section headers in the wifi pane
+    .wifiBand {
+        font-size: 0.85em;
+        font-weight: bold;
+        color: t.$subtext0;
+        margin: 4px 0 0 4px;
+    }
+
+    // tray icons inside the popup: bigger, on their own pills
+    // (pill size is set inline from tray.popup_icon_size, gaps from the
+    // FlowBox spacing)
+    .trayItem {
+        border-radius: s.$radius;
+        background-color: t.$base;
+        margin: 0;
+        button {
+            margin: 0;
+        }
     }
 
 

@@ -177,6 +177,6 @@ export function HeaderSection() {
         {batWidget}
         <button hexpand halign={Gtk.Align.END} iconName={"system-lock-screen-symbolic"} />
         <button iconName={"system-log-out-symbolic"} />
-        <button iconName={"system-shutdown-panel-symbolic"} />
+        <button iconName={"system-shutdown-symbolic"} />
     </box>;
 }
