@@ -152,6 +152,9 @@ export default function QSettings() {
         namespace={`${Config.instanceName}QSettings`}
 
         anchor={TOP | BOTTOM | LEFT | RIGHT}
+        // Keep the overlay below the bar so bar widgets (volume scroll,
+        // buttons) stay interactive while the popup is open
+        marginTop={30}
         keymode={Astal.Keymode.EXCLUSIVE}
     >
 
