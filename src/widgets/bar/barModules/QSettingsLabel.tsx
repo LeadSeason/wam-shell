@@ -149,16 +149,11 @@ function Battery() {
         cssClasses={showPrec.as((v) => v ? ["batLow"] : [])}
     >
         <image iconName={batIcon} />
-        <revealer
-            revealChild={showPrec}
-            transitionType={Gtk.RevealerTransitionType.SLIDE_RIGHT}
-        >
-            <label
-                marginStart={5}
-                label={createBinding(bat, "percentage").as(
-                    (v) => `${Math.floor(v * 100)}%`)}
-            />
-        </revealer>
+        <label
+            marginStart={5}
+            label={createBinding(bat, "percentage").as(
+                (v) => `${Math.floor(v * 100)}%`)}
+        />
     </box>) as Gtk.Widget // TS jank
 }
 
