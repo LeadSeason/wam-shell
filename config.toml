@@ -51,9 +51,14 @@
 # on_panel - show tray items directly on the bar instead of inside the
 #            quick settings popup. default false
 # spacing - horizontal gap between tray icons, in pixels. default 0
+# position - "left" (before the quick settings button) or "right" (right
+#            edge of the bar). default "left"
+#            NOTE: flat at the top level this key is "tray_position", a
+#            bare "position" would collide with workspaces.position
 # [tray]
 # on_panel = false
 # spacing = 0
+# position = "left"
 
 # arch_updates_threshold - Check updates module
 # The minimum amount of updates required to show a update icon.

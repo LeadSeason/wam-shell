@@ -51,10 +51,11 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
           <Clock />
         </box>
         <box $type="end">
-          {Config.tray.onPanel && <Tray />}
+          {Config.tray.onPanel && Config.tray.position == "left" && <Tray />}
           <QSettingsLabel />
           <SwayNC />
           {Config.workspaces.position == "right" && workspaceWidget}
+          {Config.tray.onPanel && Config.tray.position == "right" && <Tray />}
         </box>
       </centerbox>
     </window>

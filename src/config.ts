@@ -149,9 +149,18 @@ function getTrayConfig() {
         spacing = 0
     }
 
+    // Flat fallback is "tray_position": a bare "position" key would collide
+    // with workspaces.position.
+    let position = t.position ?? configData.tray_position ?? "left"
+    if (position !== "left" && position !== "right") {
+        console.error(`Config "tray.position" must be "left" or "right", got "${position}"`)
+        position = "left"
+    }
+
     return {
         onPanel: get("on_panel", false),
         spacing,
+        position: position as "left" | "right",
     }
 }
 
