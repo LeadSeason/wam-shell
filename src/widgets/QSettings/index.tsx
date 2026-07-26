@@ -1,4 +1,5 @@
 import Graphene from "gi://Graphene?version=1.0";
+import GLib from "gi://GLib?version=2.0";
 
 import { Astal, Gdk, Gtk } from "ags/gtk4";
 import { timeout } from "ags/time";
@@ -22,6 +23,7 @@ export default function QSettings() {
     const toggleSection = ToggleSection()
 
     function hide() {
+        cancelClose()
         // For some reason it does'nt want to play the animation, Setting
         // timeout to 0 for this reason
         revealer.set_reveal_child(false)
@@ -90,6 +92,37 @@ export default function QSettings() {
             return
         }
     }
+
+    // close shortly after the pointer leaves the popup. Motion is tracked
+    // on the fullscreen overlay: tray popover menus are separate windows,
+    // so while the pointer is over one no motion reaches the overlay and
+    // no close is triggered.
+    let closeSource: number | null = null
+    function scheduleClose() {
+        if (closeSource !== null) return
+        closeSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 350, () => {
+            closeSource = null
+            if (win.is_visible()) hide()
+            return GLib.SOURCE_REMOVE
+        })
+    }
+    function cancelClose() {
+        if (closeSource !== null) {
+            GLib.source_remove(closeSource)
+            closeSource = null
+        }
+    }
+
+    function onMotion(_e: Gtk.EventControllerMotion, x: number, y: number) {
+        const [, rect] = contentBox.compute_bounds(win)
+        const position = new Graphene.Point({ x, y })
+
+        if (rect.contains_point(position)) {
+            cancelClose()
+        } else {
+            scheduleClose()
+        }
+    }
     return <window
         $={(ref) => {
             win = ref
@@ -104,6 +137,7 @@ export default function QSettings() {
 
         <Gtk.EventControllerKey onKeyPressed={onKey} />
         <Gtk.GestureClick onPressed={onClick} />
+        <Gtk.EventControllerMotion onMotion={onMotion} />
         <revealer
             $={(ref) => (revealer = ref)}
             transitionDuration={200}
