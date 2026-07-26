@@ -30,6 +30,15 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
     }
   }
 
+  // on_panel: the whole tray on the bar. Otherwise only pinned apps
+  // (tray.always_on_panel) show on the bar, the rest stay nested.
+  let trayWidget = null
+  if (Config.tray.onPanel) {
+    trayWidget = <Tray />
+  } else if (Config.tray.alwaysOnPanel.length > 0) {
+    trayWidget = <Tray filter={(id) => Config.tray.alwaysOnPanel.includes(id)} />
+  }
+
   return (
     <window
       visible
@@ -51,9 +60,9 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
           <Clock />
         </box>
         <box $type="end">
-          {Config.tray.onPanel && Config.tray.position == "left" && <Tray />}
+          {Config.tray.position == "left" && trayWidget}
           <QSettingsLabel />
-          {Config.tray.onPanel && Config.tray.position == "right" && <Tray />}
+          {Config.tray.position == "right" && trayWidget}
           <SwayNC />
           {Config.workspaces.position == "right" && workspaceWidget}
         </box>

@@ -206,7 +206,8 @@ export default function QSettings() {
                         <Gtk.Separator />
                         {toggleSection.widget}
                         {!Config.tray.onPanel && <Gtk.Separator />}
-                        {!Config.tray.onPanel && <Tray />}
+                        {!Config.tray.onPanel &&
+                            <Tray filter={(id) => !Config.tray.alwaysOnPanel.includes(id)} />}
                     </box>
                     <box $type="named" name="wifi" orientation={Gtk.Orientation.VERTICAL}>
                         <PaneHeader title="Wi-Fi" onBack={() => setPane("main")} />

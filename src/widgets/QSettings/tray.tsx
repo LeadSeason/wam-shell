@@ -4,7 +4,7 @@ import app from "ags/gtk4/app"
 import AstalTray from "gi://AstalTray"
 import Config from "../../config"
 
-export default function Tray() {
+export default function Tray({ filter }: { filter?: (id: string) => boolean }) {
     const [trayItems, setTrayItems] = createState([] as AstalTray.TrayItem[])
     const registry = AstalTray.get_default() // Singleton.
 
@@ -16,6 +16,7 @@ export default function Tray() {
 
     registry.connect("item-added", (_, item_id) => {
         const t = registry.get_item(item_id)
+        console.log("Tray item added:", t.get_id())
 
         const path = t.iconThemePath
         if (path && !addedPaths.has(path)) {
@@ -40,13 +41,17 @@ export default function Tray() {
 
     // TODO: Icons served as raw pixmaps may still not show up.
 
+    const visibleItems = trayItems.as(items =>
+        filter ? items.filter(item => filter(item.get_id())) : items
+    )
+
     return (
         <Gtk.FlowBox
             maxChildrenPerLine={8}
             selectionMode={Gtk.SelectionMode.NONE}
             columnSpacing={Config.tray.spacing}
         >
-            <For each={trayItems}>
+            <For each={visibleItems}>
                 {(item) => {
                     const gicon = createBinding(item, "gicon")
                     const tooltip = createBinding(item, "tooltip_markup")

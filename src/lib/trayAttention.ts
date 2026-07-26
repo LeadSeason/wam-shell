@@ -1,9 +1,11 @@
 import AstalTray from "gi://AstalTray"
 import { createState } from "ags"
+import Config from "../config"
 
 // Tracks whether any tray item reports Status.NeedsAttention.
 // Used to show an indicator on the bar when the tray is nested inside
-// the quick settings popup (tray.on_panel = false).
+// the quick settings popup (tray.on_panel = false). Pinned items
+// (tray.always_on_panel) are visible on the bar already and are ignored.
 
 const registry = AstalTray.get_default()
 const items = new Map<string, AstalTray.TrayItem>()
@@ -12,6 +14,7 @@ const [needsAttention, setNeedsAttention] = createState(false)
 
 function update() {
     for (const item of items.values()) {
+        if (Config.tray.alwaysOnPanel.includes(item.get_id())) continue
         if (item.status === AstalTray.Status.NEEDS_ATTENTION) {
             setNeedsAttention(true)
             return

@@ -157,10 +157,17 @@ function getTrayConfig() {
         position = "left"
     }
 
+    let alwaysOnPanel = get("always_on_panel", [])
+    if (!Array.isArray(alwaysOnPanel)) {
+        console.error(`Config "tray.always_on_panel" must be a list of app ids`)
+        alwaysOnPanel = []
+    }
+
     return {
         onPanel: get("on_panel", false),
         spacing,
         position: position as "left" | "right",
+        alwaysOnPanel,
     }
 }
 
