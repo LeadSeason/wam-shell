@@ -37,3 +37,18 @@ trayItem.get_gicon()?.to_string() // org.telegram.desktop-attention-symbolic
 ```ts
 trayItem.get_title() // TelegramDesktop
 ```
+
+## Finding an app's SNI Id
+
+Needed for the `tray.always_on_panel` config. Two ways:
+
+1. The shell logs each id as items register on startup:
+   `Tray item added: TelegramDesktop`
+2. Query the watcher over D-Bus while the shell is running:
+
+```sh
+for item in $(busctl --user get-property org.kde.StatusNotifierWatcher /StatusNotifierWatcher org.kde.StatusNotifierWatcher RegisteredStatusNotifierItems | grep -oP '"\K[^"]+'); do
+  bus="${item%%/*}"; path="/${item#*/}"
+  busctl --user get-property "$bus" "$path" org.kde.StatusNotifierItem Id 2>/dev/null | cut -d'"' -f2
+done
+```
