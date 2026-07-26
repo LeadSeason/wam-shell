@@ -35,6 +35,8 @@ export default function QSettings() {
     }
 
     function show() {
+        hasEntered = false
+        cancelClose()
         win.present()
         revealer.set_reveal_child(true);
     }
@@ -113,13 +115,20 @@ export default function QSettings() {
         }
     }
 
+    // Only arm auto-close after the pointer has been inside the popup:
+    // when opened by hovering the bar button, the overlay appears under
+    // the pointer while it is still outside the popup, which would
+    // otherwise immediately schedule a close and flicker.
+    let hasEntered = false
+
     function onMotion(_e: Gtk.EventControllerMotion, x: number, y: number) {
         const [, rect] = contentBox.compute_bounds(win)
         const position = new Graphene.Point({ x, y })
 
         if (rect.contains_point(position)) {
+            hasEntered = true
             cancelClose()
-        } else {
+        } else if (hasEntered) {
             scheduleClose()
         }
     }
