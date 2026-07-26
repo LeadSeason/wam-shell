@@ -6,6 +6,7 @@ import { WifiButton } from "./wifi";
 import { BluetoothButton } from "./bluetooth";
 import { WiredButton } from "./wired";
 import { NightLightButton, DarkStyleButton, AirplaneModeButton } from "./miscToggles";
+import { VpnButton } from "./vpn";
 
 /**
  * @TODO Fix buttons being wonky
@@ -33,6 +34,7 @@ export function ToggleSection({ onNavigate }: { onNavigate: (pane: string) => vo
                     dropdownIndex={1} />
                 <NightLightButton />
                 <DarkStyleButton />
+                <VpnButton />
                 <AirplaneModeButton />
             </Gtk.FlowBox>
             <SwayGapsWidget

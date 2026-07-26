@@ -8,6 +8,7 @@ import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1"
 import AstalBattery from "gi://AstalBattery?version=0.1"
 import ArchUpdates from "../../../lib/archUpdates"
 import trayNeedsAttention from "../../../lib/trayAttention"
+import vpnStatus from "../../../lib/vpn"
 import { execAsync } from "ags/process"
 import Config from "../../../config"
 
@@ -96,6 +97,15 @@ function powerProfile() {
             iconName={activeProfile.as(v => `power-profile-${v}-symbolic`)}
             tooltipText={activeProfile.as(v => `Active PowerProfile ${v}`)}
         />) as Gtk.Image // TS Jank,
+}
+
+function vpnIndicator() {
+    // only visible while connected, like GNOME
+    return (<image
+        iconName={"network-vpn-symbolic"}
+        visible={vpnStatus.as(s => s.connected)}
+        tooltipText={vpnStatus.as(s => `VPN connected: ${s.relay}`)}
+    />) as Gtk.Image // TS Jank
 }
 
 function Battery() {
@@ -199,6 +209,7 @@ function ButtonLabel() {
     labelBox.append(audioWidget(speaker))
     labelBox.append(audioWidget(microphone))
     labelBox.append(powerProfile())
+    labelBox.append(vpnIndicator())
     if (bat.isPresent) {
         labelBox.append(Battery())
     }
