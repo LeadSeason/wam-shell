@@ -49,9 +49,11 @@ export function DropdownButton({
         cssClasses = isActive.as(v => v ? ["toggleButton", "ToggleSectionActive"] : ["toggleButton"])
     }
 
-    const chevronIcon = navigate !== undefined
-        ? "go-next-symbolic"
-        : activeDropdown!.as(s => (s === dropdownIndex) ? "arrow-up-symbolic" : "arrow-down-symbolic")
+    const chevronIcon = !hasChevron
+        ? ""
+        : navigate !== undefined
+            ? "go-next-symbolic"
+            : activeDropdown!.as(s => (s === dropdownIndex) ? "arrow-up-symbolic" : "arrow-down-symbolic")
 
     return <box cssName={"button"} hexpand cssClasses={cssClasses}>
         <box spacing={5} hexpand>
