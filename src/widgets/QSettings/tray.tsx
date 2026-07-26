@@ -4,7 +4,7 @@ import app from "ags/gtk4/app"
 import AstalTray from "gi://AstalTray"
 import Config from "../../config"
 
-export default function Tray({ filter }: { filter?: (id: string) => boolean }) {
+export default function Tray({ filter }: { filter?: (item: AstalTray.TrayItem) => boolean }) {
     const [trayItems, setTrayItems] = createState([] as AstalTray.TrayItem[])
     const registry = AstalTray.get_default() // Singleton.
 
@@ -16,7 +16,6 @@ export default function Tray({ filter }: { filter?: (id: string) => boolean }) {
 
     registry.connect("item-added", (_, item_id) => {
         const t = registry.get_item(item_id)
-        console.log("Tray item added:", t.get_id())
 
         const path = t.iconThemePath
         if (path && !addedPaths.has(path)) {
@@ -42,7 +41,7 @@ export default function Tray({ filter }: { filter?: (id: string) => boolean }) {
     // TODO: Icons served as raw pixmaps may still not show up.
 
     const visibleItems = trayItems.as(items =>
-        filter ? items.filter(item => filter(item.get_id())) : items
+        filter ? items.filter(filter) : items
     )
 
     return (

@@ -55,8 +55,12 @@
 #            NOTE: flat at the top level this key is "tray_position", a
 #            bare "position" would collide with workspaces.position
 # always_on_panel - list of app ids whose tray icons always show on the
-#                   bar, even when the rest of the tray is nested. the app
-#                   id is the SNI Id, e.g. "TelegramDesktop", "spotify".
+#                   bar, even when the rest of the tray is nested. entries
+#                   are matched against the SNI Id, title and icon name,
+#                   and as a substring of the tooltip. use the tooltip
+#                   match for Electron apps, they all report
+#                   "chrome_status_icon_1" as Id with an empty title
+#                   (e.g. "Connected" for Mullvad VPN).
 #                   default []
 # [tray]
 # on_panel = false

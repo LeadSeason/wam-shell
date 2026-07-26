@@ -7,6 +7,7 @@ import Config from "../../config"
 
 import OSIcon from "./barModules/osIcon"
 import Tray from "../QSettings/tray"
+import { isPinned } from "../../lib/trayPinned"
 import SwayWs from "./barModules/workspaces-sway"
 import HyprlandWs from "./barModules/workspaces-hyprland"
 import WorkspacesExample from "./barModules/workspaces-example"
@@ -32,11 +33,15 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
 
   // on_panel: the whole tray on the bar. Otherwise only pinned apps
   // (tray.always_on_panel) show on the bar, the rest stay nested.
+  // Tray items must be single-instance: the bar is built per monitor,
+  // so only render it on the primary one.
   let trayWidget = null
-  if (Config.tray.onPanel) {
-    trayWidget = <Tray />
-  } else if (Config.tray.alwaysOnPanel.length > 0) {
-    trayWidget = <Tray filter={(id) => Config.tray.alwaysOnPanel.includes(id)} />
+  if (app.monitors[0] === gdkMonitor) {
+    if (Config.tray.onPanel) {
+      trayWidget = <Tray />
+    } else if (Config.tray.alwaysOnPanel.length > 0) {
+      trayWidget = <Tray filter={isPinned} />
+    }
   }
 
   return (

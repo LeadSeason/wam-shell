@@ -7,6 +7,7 @@ import { timeout } from "ags/time";
 import Tray from "./tray";
 import Config from "../../config";
 import CommandRegistry from "../../lib/requestHandler";
+import { isPinned } from "../../lib/trayPinned";
 
 import { createState } from "gnim";
 import { ToggleSection } from "./toggleSection";
@@ -207,7 +208,7 @@ export default function QSettings() {
                         {toggleSection.widget}
                         {!Config.tray.onPanel && <Gtk.Separator />}
                         {!Config.tray.onPanel &&
-                            <Tray filter={(id) => !Config.tray.alwaysOnPanel.includes(id)} />}
+                            <Tray filter={(item) => !isPinned(item)} />}
                     </box>
                     <box $type="named" name="wifi" orientation={Gtk.Orientation.VERTICAL}>
                         <PaneHeader title="Wi-Fi" onBack={() => setPane("main")} />
