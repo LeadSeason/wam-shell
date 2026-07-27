@@ -1,34 +1,22 @@
 import GObject, { register, getter, setter } from "ags/gobject"
-import { monitorFile, readFileAsync } from "ags/file"
-import { exec, execAsync } from "ags/process"
-import { timeout } from "ags/time"
+import { exec } from "ags/process"
+import AstalBrightness from "gi://AstalBrightness"
 import Config from "../config"
 import { setDimLevel } from "./hyprsunset"
 import hyprsunset from "./hyprsunset"
 
-const get = (args: string) => {
-    try {
-        return Number(exec(`brightnessctl ${args}`))
-    } catch {
-        return 0
-    }
-}
-const has = (bin: string) => {
-    try {
-        exec(`which ${bin}`)
-        return true
-    } catch {
-        return false
-    }
-}
-const hasBrightnessctl = has("brightnessctl")
-const hasHyprsunset = has("hyprsunset")
-const screen = hasBrightnessctl ? exec(`bash -c "ls -w1 /sys/class/backlight | head -1"`) : ""
+// Backlight via the astal brightness library (systemd-logind, no
+// brightnessctl or video group needed). OLED laptops expose a dummy
+// backlight (nvidia_0) that ignores writes — those dim through
+// hyprsunset gamma instead (hyprland only).
 
-// @TODO, Use something better than this. Since if this is not set issues arise.
-let kbd = exec(`bash -c "ls -w1 /sys/class/leds | grep kbd | head -1"`)
-if (!kbd)
-    kbd = exec(`bash -c "ls -w1 /sys/class/leds | head -1"`)
+const ab = AstalBrightness.get_default()
+const abScreen = ab?.screen ?? null // proxy for the guessed main screen
+const isDummy = abScreen ? abScreen.name.startsWith("nvidia") : false
+const hasBacklight = abScreen !== null && !isDummy
+const hasHyprsunset = (() => {
+    try { exec("which hyprsunset"); return true } catch { return false }
+})()
 
 @register({ GTypeName: "Brightness" })
 export default class Brightness extends GObject.Object {
@@ -41,35 +29,10 @@ export default class Brightness extends GObject.Object {
         return this.instance
     }
 
-    #kbdMax = get(`--device ${kbd} max`)
-    #kbd = get(`--device ${kbd} get`)
-    #screenMax = get("max")
-    #screen = hasBrightnessctl ? get("get") / (get("max") || 1) : hyprsunset.dim.get()
-    // Panels without a working backlight (e.g. OLED where the sysfs
-    // backlight is a dummy) are dimmed through hyprsunset gamma instead —
-    // only on hyprland, where hyprctl exists
-    #useGammaDim = !hasBrightnessctl && hasHyprsunset
+    #screen = hasBacklight ? abScreen.brightness : hyprsunset.dim.get()
+    #useGammaDim = !hasBacklight && hasHyprsunset
         && Config.desktopSession === "hyprland"
-    #screenIsPresent = hasBrightnessctl ? (screen != "")
-        : (hasHyprsunset && Config.desktopSession === "hyprland")
-
-    @getter(Number)
-    get kbdMax() { return this.#kbdMax }
-
-    @getter(Number)
-    get kbd() { return this.#kbd }
-
-    // @TODO, This setter is really slow.
-    @setter(Number)
-    set kbd(value) {
-        if (value < 0 || value > this.#kbdMax)
-            return
-
-        execAsync(`brightnessctl -d ${kbd} s ${value} -q`).then(() => {
-            this.#kbd = value
-            this.notify("kbd")
-        })
-    }
+    #screenIsPresent = hasBacklight || #useGammaDim
 
     @getter(Number)
     get screen() { return this.#screen }
@@ -91,25 +54,11 @@ export default class Brightness extends GObject.Object {
             return
         }
 
-        // dragging fires this per motion event; coalesce to one
-        // trailing brightnessctl call
-        this.#applyPercent = percent
-        if (this.#applySource !== null) return
-        this.#applySource = timeout(50, () => {
-            this.#applySource = null
-            const p = this.#applyPercent
-            if (p === null) return
-            this.#applyPercent = null
-            execAsync(`brightnessctl set ${Math.floor(p * 100)}% -q`)
-                .then(() => {
-                    this.notify("screen")
-                })
-                .catch(() => { })
-        })
+        if (hasBacklight) {
+            abScreen.brightness = percent
+            this.notify("screen")
+        }
     }
-
-    #applyPercent: number | null = null
-    #applySource: number | null = null
 
     @getter(Boolean)
     get screenIsPresent() { return this.#screenIsPresent };
@@ -117,29 +66,18 @@ export default class Brightness extends GObject.Object {
     constructor() {
         super()
 
-        // gamma-dim path: keep the slider's value in sync with the
-        // shared dim state (quick settings, keybinds, the daemon watcher)
         if (this.#useGammaDim) {
+            // gamma-dim path: keep the slider's value in sync with the
+            // shared dim state (quick settings, keybinds, the watcher)
             hyprsunset.dim.subscribe(() => {
                 this.#screen = hyprsunset.dim.get()
                 this.notify("screen")
             })
-        }
-
-        if (hasBrightnessctl && screen != "") {
-            const screenPath = `/sys/class/backlight/${screen}/brightness`
-            const kbdPath = `/sys/class/leds/${kbd}/brightness`
-
-            monitorFile(screenPath, async f => {
-                const v = await readFileAsync(f)
-                this.#screen = Number(v) / this.#screenMax
+        } else if (hasBacklight) {
+            // astal monitors sysfs itself
+            abScreen.connect("notify::brightness", () => {
+                this.#screen = abScreen.brightness
                 this.notify("screen")
-            })
-
-            monitorFile(kbdPath, async f => {
-                const v = await readFileAsync(f)
-                this.#kbd = Number(v)
-                this.notify("kbd")
             })
         }
     }
