@@ -17,6 +17,11 @@ const hasBacklight = abScreen !== null && !isDummy
 const hasHyprsunset = (() => {
     try { exec("which hyprsunset"); return true } catch { return false }
 })()
+// computed at module level: private fields can't be referenced from
+// other fields' initializers
+const useGammaDim = !hasBacklight && hasHyprsunset
+    && Config.desktopSession === "hyprland"
+const screenIsPresent = hasBacklight || useGammaDim
 
 @register({ GTypeName: "Brightness" })
 export default class Brightness extends GObject.Object {
@@ -30,9 +35,8 @@ export default class Brightness extends GObject.Object {
     }
 
     #screen = hasBacklight ? abScreen.brightness : hyprsunset.dim.get()
-    #useGammaDim = !hasBacklight && hasHyprsunset
-        && Config.desktopSession === "hyprland"
-    #screenIsPresent = hasBacklight || #useGammaDim
+    #useGammaDim = useGammaDim
+    #screenIsPresent = screenIsPresent
 
     @getter(Number)
     get screen() { return this.#screen }
