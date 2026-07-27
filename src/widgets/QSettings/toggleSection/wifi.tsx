@@ -1,4 +1,4 @@
-import { Accessor, createBinding, createComputed, For } from "gnim";
+import { Accessor, createBinding, createComputed, createState, For } from "gnim";
 import { DropdownButton } from "./ToggleButton";
 import AstalNetwork from "gi://AstalNetwork?version=0.1";
 import { Gtk } from "ags/gtk4";
@@ -11,6 +11,8 @@ interface wifiPaneProps {
 
 export function WifiButton({ navigate }: { navigate: () => void }) {
     const wifi = AstalNetwork.get_default().wifi
+    // no wifi device on this machine
+    if (!wifi) return <></>
 
     const subtitle = createComputed(
         [createBinding(wifi, "enabled"), createBinding(wifi, "ssid")],
@@ -29,6 +31,7 @@ export function WifiButton({ navigate }: { navigate: () => void }) {
 
 export function WifiWidget({ pane, name }: wifiPaneProps) {
     const wifi = AstalNetwork.get_default().wifi
+    if (!wifi) return <></>
 
     // rescan whenever this pane becomes visible
     // (subscribe callbacks receive no value, read it)
@@ -50,17 +53,28 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
         return "2.4GHz"
     }
 
-    const groups = accessPoints.as(aps => {
+    // per-band state so group headers don't rebuild on every scan;
+    // rows update through the band's own accessor
+    const bandNames = ["6GHz", "5GHz", "2.4GHz"]
+    const bandStates = new Map(
+        bandNames.map(b => [b, createState<AstalNetwork.AccessPoint[]>([])]))
+    const [visibleBands, setVisibleBands] = createState<string[]>([])
+
+    const updateBands = () => {
         const byBand = new Map<string, AstalNetwork.AccessPoint[]>()
-        for (const ap of aps) {
+        for (const ap of accessPoints.get()) {
             const b = band(ap)
             if (!byBand.has(b)) byBand.set(b, [])
             byBand.get(b)!.push(ap)
         }
-        return ["6GHz", "5GHz", "2.4GHz"]
-            .filter(b => byBand.has(b))
-            .map(b => ({ band: b, aps: byBand.get(b)! }))
-    })
+        for (const b of bandNames) {
+            const [, setAps] = bandStates.get(b)!
+            setAps(byBand.get(b) ?? [])
+        }
+        setVisibleBands(bandNames.filter(b => byBand.has(b)))
+    }
+    accessPoints.subscribe(updateBands)
+    updateBands()
 
     function ApRow({ ap }: { ap: AstalNetwork.AccessPoint }) {
         const active = createBinding(wifi, "activeAccessPoint")
@@ -82,15 +96,17 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
     }
 
     return <box orientation={Gtk.Orientation.VERTICAL}>
-        <For each={groups}>
-            {(g) => (
+        <For each={visibleBands}>
+            {(b) => (
                 <box orientation={Gtk.Orientation.VERTICAL}>
                     <label
-                        label={g.band}
+                        label={b}
                         cssClasses={["wifiBand"]}
                         xalign={0}
                     />
-                    {g.aps.map(ap => <ApRow ap={ap} />)}
+                    <For each={bandStates.get(b)![0]}>
+                        {(ap) => <ApRow ap={ap} />}
+                    </For>
                 </box>
             )}
         </For>

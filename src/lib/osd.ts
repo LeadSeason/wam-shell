@@ -53,25 +53,29 @@ function hookEndpoint(
         ? "microphone-sensitivity-muted-symbolic"
         : "audio-volume-muted-symbolic"
     let hooked: AstalWp.Endpoint | null = null
+    let disposers: (() => void)[] = []
     const hook = (ep: AstalWp.Endpoint | null) => {
         if (!ep || ep === hooked) return
+        // unsubscribe the old endpoint, its changes aren't the default's
+        for (const d of disposers) d()
+        disposers = []
         hooked = ep
-        createBinding(ep, "volume").subscribe(() => {
+        disposers.push(createBinding(ep, "volume").subscribe(() => {
             show({
                 icon: ep.mute ? mutedIcon : ep.volumeIcon,
                 value: Math.min(ep.volume, 1),
                 label: `${Math.round(ep.volume * 100)}%`,
                 over: ep.volume > 1.01,
             }, kind)
-        })
-        createBinding(ep, "mute").subscribe(() => {
+        }))
+        disposers.push(createBinding(ep, "mute").subscribe(() => {
             show({
                 icon: ep.mute ? mutedIcon : ep.volumeIcon,
                 value: ep.mute ? 0 : Math.min(ep.volume, 1),
                 label: ep.mute ? "Muted" : `${Math.round(ep.volume * 100)}%`,
                 over: false,
             }, kind)
-        })
+        }))
     }
     return hook
 }

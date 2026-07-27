@@ -6,6 +6,8 @@ import Adw from "gi://Adw?version=1";
 
 export default function Notify() {
     const swayNc = SwayNc.get_default();
+    // swaync-client not installed: hide the widget entirely
+    if (!swayNc.available) return <></>
 
     const handleClick = (e: Gtk.GestureClick) => {
         execAsync("swaync-client -t -sw")

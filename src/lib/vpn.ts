@@ -1,5 +1,5 @@
 import GLib from "gi://GLib?version=2.0"
-import { execAsync } from "ags/process"
+import { exec, execAsync } from "ags/process"
 import { createState } from "ags"
 
 // Shared Mullvad VPN state, polled (the mullvad CLI is not reactive).
@@ -19,14 +19,20 @@ export async function refreshVpn() {
         const relay = out.match(/Relay:\s*(\S+)/)?.[1] ?? ""
         setStatus({ connected, relay })
     } catch {
-        // mullvad CLI missing or daemon down, leave state as is
+        // daemon down, leave state as is
     }
 }
 
-refreshVpn()
-GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 5, () => {
+// probe once: no point polling every 5s when mullvad isn't installed
+let hasMullvad = false
+try { exec("which mullvad"); hasMullvad = true } catch { }
+
+if (hasMullvad) {
     refreshVpn()
-    return GLib.SOURCE_CONTINUE
-})
+    GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 5, () => {
+        refreshVpn()
+        return GLib.SOURCE_CONTINUE
+    })
+}
 
 export default status

@@ -17,7 +17,9 @@ export default class SwayNc extends GObject.Object {
     #dnd: boolean = false;
     #visible: boolean = false;
     #inhibited: boolean = false;
-    #_process: Process;
+    #_process: Process | null = null;
+    // false when swaync-client isn't installed: widget shows nothing
+    #available: boolean = false;
 
     @getter(Number)
     get count (): number { return this.#count }
@@ -30,6 +32,9 @@ export default class SwayNc extends GObject.Object {
 
     @getter(Boolean)
     get inhibited (): boolean { return this.#inhibited }
+
+    @getter(Boolean)
+    get available (): boolean { return this.#available }
 
 
 
@@ -55,19 +60,28 @@ export default class SwayNc extends GObject.Object {
             }
         }
 
-        this.#_process = subprocess(
-            "swaync-client -s",
-            (v) => {
-                eventHandler(JSON.parse(v))
-            },
-            (v) => {
-                console.log("SwayNc:", v)
-            }
-
-        )
+        try {
+            this.#_process = subprocess(
+                "swaync-client -s",
+                (v) => {
+                    try {
+                        eventHandler(JSON.parse(v))
+                    } catch (e) {
+                        console.error("SwayNc: malformed event:", e)
+                    }
+                },
+                (v) => {
+                    console.log("SwayNc:", v)
+                }
+            )
+            this.#available = true
+            this.notify("available")
+        } catch (e) {
+            console.warn("SwayNc: swaync-client not available, notifications widget disabled:", e)
+        }
 
         app.connect("shutdown", () => {
-            this.#_process.kill()
+            this.#_process?.kill()
         })
     }
 }

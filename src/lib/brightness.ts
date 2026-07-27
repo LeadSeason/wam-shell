@@ -2,6 +2,7 @@ import GObject, { register, getter, setter } from "ags/gobject"
 import { monitorFile, readFileAsync } from "ags/file"
 import { exec, execAsync } from "ags/process"
 import { timeout } from "ags/time"
+import Config from "../config"
 import { setDimLevel } from "./hyprsunset"
 import hyprsunset from "./hyprsunset"
 
@@ -45,9 +46,12 @@ export default class Brightness extends GObject.Object {
     #screenMax = get("max")
     #screen = hasBrightnessctl ? get("get") / (get("max") || 1) : hyprsunset.dim.get()
     // Panels without a working backlight (e.g. OLED where the sysfs
-    // backlight is a dummy) are dimmed through hyprsunset gamma instead
+    // backlight is a dummy) are dimmed through hyprsunset gamma instead —
+    // only on hyprland, where hyprctl exists
     #useGammaDim = !hasBrightnessctl && hasHyprsunset
-    #screenIsPresent = hasBrightnessctl ? (screen != "") : hasHyprsunset
+        && Config.desktopSession === "hyprland"
+    #screenIsPresent = hasBrightnessctl ? (screen != "")
+        : (hasHyprsunset && Config.desktopSession === "hyprland")
 
     @getter(Number)
     get kbdMax() { return this.#kbdMax }
@@ -87,17 +91,25 @@ export default class Brightness extends GObject.Object {
             return
         }
 
-        /* @TODO, Test this update */
-        timeout(25, () => {
-            if (this.#screen = percent) {
-                execAsync(`brightnessctl set ${Math.floor(percent * 100)}% -q`)
-                    .then(() => {
-                        this.notify("screen")
-                    })
-                    .catch(() => { })
-            }
+        // dragging fires this per motion event; coalesce to one
+        // trailing brightnessctl call
+        this.#applyPercent = percent
+        if (this.#applySource !== null) return
+        this.#applySource = timeout(50, () => {
+            this.#applySource = null
+            const p = this.#applyPercent
+            if (p === null) return
+            this.#applyPercent = null
+            execAsync(`brightnessctl set ${Math.floor(p * 100)}% -q`)
+                .then(() => {
+                    this.notify("screen")
+                })
+                .catch(() => { })
         })
     }
+
+    #applyPercent: number | null = null
+    #applySource: number | null = null
 
     @getter(Boolean)
     get screenIsPresent() { return this.#screenIsPresent };
@@ -114,7 +126,7 @@ export default class Brightness extends GObject.Object {
             })
         }
 
-        if (hasBrightnessctl) {
+        if (hasBrightnessctl && screen != "") {
             const screenPath = `/sys/class/backlight/${screen}/brightness`
             const kbdPath = `/sys/class/leds/${kbd}/brightness`
 

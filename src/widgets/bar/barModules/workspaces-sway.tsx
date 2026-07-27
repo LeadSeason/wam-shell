@@ -2,7 +2,7 @@ import Gdk from "gi://Gdk?version=4.0"
 import Sway, { Node } from "../../../lib/sway"
 import Config from "../../../config"
 import { createIconResolver } from "../../../lib/appIcon"
-import { Accessor, For, With, createBinding, createState } from "ags"
+import { Accessor, For, With, createBinding, createComputed, createState } from "ags"
 import { Gtk } from "ags/gtk4";
 import GObject from "ags/gobject";
 
@@ -28,7 +28,7 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
             ]
 
             // Steam app icon lookup
-            if (node.window_properties?.instance.startsWith("steam_app_")) {
+            if (node.window_properties?.instance?.startsWith("steam_app_")) {
                 // Replaces "steam_app_" -> "steam_icon_" while keeping the numbers 
                 elements.push(node.window_properties.instance.replace(/^steam_app_(\d+)$/, "steam_icon_$1"))
             }
@@ -78,27 +78,31 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
     }
 
     const sway = Sway.get_default();
+    // IPC dead (stale socket, sway not running): show nothing
+    if (!sway.ok) return <></>
 
     const [displayName, setDisplayName] = createState(monitor.get_connector())
     setTimeout(() => {
         setDisplayName(monitor.get_connector())
     })
 
-    const swayWorkspacesList = createBinding(sway, "wss").as((wss) => {
-        return wss.filter((ws) => {
-            if (ws.output !== displayName.get()) return false;
-            if (!Config.workspaces.hideEmpty) return true;
-            if (ws.id === sway.focused) return true;
+    const swayWorkspacesList = createComputed(
+        [createBinding(sway, "wss"), createBinding(sway, "tree"), createBinding(sway, "focused")],
+        (wss) => {
+            return wss.filter((ws) => {
+                if (ws.output !== displayName.get()) return false;
+                if (!Config.workspaces.hideEmpty) return true;
+                if (ws.id === sway.focused) return true;
 
-            // workspaceList doesn't contain child nodes, look them up in the tree
-            const wsNode = sway.tree
-                .find((output) => output.name === displayName.get())
-                ?.nodes.find((node) => node.id === ws.id);
-            if (!wsNode) return true;  // can't tell, keep it
+                // workspaceList doesn't contain child nodes, look them up in the tree
+                const wsNode = sway.tree
+                    .find((output) => output.name === displayName.get())
+                    ?.nodes.find((node) => node.id === ws.id);
+                if (!wsNode) return true;  // can't tell, keep it
 
-            return (wsNode.nodes?.length ?? 0) > 0 || (wsNode.floating_nodes?.length ?? 0) > 0;
+                return (wsNode.nodes?.length ?? 0) > 0 || (wsNode.floating_nodes?.length ?? 0) > 0;
+            });
         });
-    });
 
     return <box cssName={"workspaces"}>
         <For each={swayWorkspacesList}>
@@ -115,7 +119,7 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
 
                         return workspace.id.toString()
                     })
-                const apps: Accessor<GObject.Object | undefined> = createBinding(sway, "rename")
+                const apps: Accessor<GObject.Object | undefined> = createBinding(sway, "tree")
                     .as((_) => {
                         // 1st find: get the display from tree root
                         // 2nt find: find the correct workspace from outputs workspaces

@@ -24,7 +24,7 @@ function matchMonitor(wanted: string[], m: Gdk.Monitor): boolean {
 }
 
 function main() {
-    if (Config.swayGaps && Config.desktopSession == "sway")
+    if (Config.swayGaps && (Config.desktopSession == "sway" || Config.desktopSession == "i3"))
         SwayGaps.get_default()
 
     if (Config.desktopSession == "sway") {
@@ -50,6 +50,8 @@ function main() {
             ms.flatMap(m => Config.panels
                 .filter(p => matchMonitor(p.monitors, m))
                 .map(panel => ({ monitor: m, panel }))))}
+            id={({ monitor, panel }) =>
+                `${monitor.get_connector()}/${panel.position}/${panel.class}`}
             cleanup={(win) => (win as Gtk.Window).destroy()}>
             {({ monitor, panel }) => <Bar gdkMonitor={monitor} panel={panel} />}
         </For>)

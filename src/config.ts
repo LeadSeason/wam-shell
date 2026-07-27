@@ -4,7 +4,9 @@ import { exec } from "ags/process"
 import { readFile } from "ags/file"
 import { isFile } from "./lib/utils"
 
-const instanceSrcDir = exec("pwd").trim()
+// scss/theme/script paths resolve against the repo root. Launching from
+// another cwd breaks that; WAM_SHELL_DIR overrides when needed.
+const instanceSrcDir = GLib.getenv("WAM_SHELL_DIR") || exec("pwd").trim()
 const userHomeDir = GLib.getenv("HOME");
 const xdgConfigHomeDir = GLib.getenv("XDG_CONFIG_HOME");
 const xdgRuntimeDir = GLib.getenv("XDG_RUNTIME_DIR");

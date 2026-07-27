@@ -109,7 +109,7 @@ const uptimeConvert = (uptimeOutput: string): string => {
 
     if (days > 0) parts.push(`${days}d`);
     if (hours > 0) parts.push(`${hours}h`);
-    if (minutes > 0 && days < 0) parts.push(`${minutes}m`);
+    if (minutes > 0 && days === 0) parts.push(`${minutes}m`);
 
     return `Up ${parts.join(" ")}`;
 };
@@ -129,7 +129,7 @@ const loadConvert = (uptimeOutput: string): string => {
 function Uptime() {
     const [uptime, setUptime] = createState("")
     const [sysLoad, setSysLoad] = createState("")
-    const poll = createPoll("", 1000, async () => {
+    const poll = createPoll("", 30_000, async () => {
         let val = ""
         await execAsync("uptime").then((v) => {
             val = v
@@ -137,7 +137,7 @@ function Uptime() {
         return val
     })
     poll.subscribe(() => {
-        let v = poll.peek()
+        let v = poll.get()
         setUptime(uptimeConvert(v))
         setSysLoad(loadConvert(v))
     })

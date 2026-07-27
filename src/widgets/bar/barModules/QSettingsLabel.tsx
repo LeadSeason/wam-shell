@@ -1,7 +1,7 @@
 import { Gtk } from "ags/gtk4"
 import { timeout } from "ags/time"
 import AstalWp from "gi://AstalWp?version=0.1"
-import { createBinding, createState } from "gnim"
+import { createBinding, createState, onCleanup } from "gnim"
 import CommandRegistry from "../../../lib/requestHandler"
 import { SliderSection } from "../../QSettings/SliderSection"
 import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1"
@@ -127,24 +127,30 @@ function Battery() {
         const prefix = charging ? "Charging..." : "Discharging...";
         const percentage = Math.floor(bat.percentage * 100).toString()
 
-        return `${prefix} ${percentage}${parts.join(" ")} ${suffix}`;
+        return `${prefix} ${percentage}% ${parts.join(" ")} ${suffix}`;
     };
 
     const [showPrec, setShowPrec] = createState(false)
     const [batTime, setBatTime] = createState(batTimeConvert(
-        (bat.charging) ? bat.timeToEmpty : bat.timeToEmpty, bat.charging))
+        (bat.charging) ? bat.timeToFull : bat.timeToEmpty, bat.charging))
 
-    createBinding(bat, "timeToEmpty").subscribe(() => {
-        if (!bat.get_charging())
-            setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))
+    // released when the bar is destroyed (monitor hotplug)
+    const disposers: (() => void)[] = []
+    onCleanup(() => {
+        for (const d of disposers) d()
     })
 
-    createBinding(bat, "timeToFull").subscribe(() => {
+    disposers.push(createBinding(bat, "timeToEmpty").subscribe(() => {
+        if (!bat.get_charging())
+            setBatTime(batTimeConvert(bat.timeToEmpty, bat.get_charging()))
+    }))
+
+    disposers.push(createBinding(bat, "timeToFull").subscribe(() => {
         if (bat.get_charging())
             setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))
-    })
+    }))
 
-    createBinding(bat, "percentage").subscribe(() => {
+    disposers.push(createBinding(bat, "percentage").subscribe(() => {
         let v = bat.percentage
         if (!bat.charging) {
             if (v < .20) {
@@ -153,7 +159,7 @@ function Battery() {
                 setShowPrec(false)
             }
         }
-    })
+    }))
     return (<box
         tooltipText={batTime}
         cssClasses={showPrec.as((v) => v ? ["batLow"] : [])}
@@ -200,14 +206,16 @@ function ButtonLabel() {
 
     const bat = AstalBattery.get_default()
 
-    const { defaultSpeaker: speaker } = AstalWp.get_default()!
-    const { defaultMicrophone: microphone } = AstalWp.get_default()!
+    const wp = AstalWp.get_default()
+    // null when pipewire has no devices; audioWidget can't take null
+    const speaker = wp?.defaultSpeaker ?? null
+    const microphone = wp?.defaultMicrophone ?? null
 
     const labelBox = new Gtk.Box()
     labelBox.spacing = 12
 
-    labelBox.append(audioWidget(speaker))
-    labelBox.append(audioWidget(microphone))
+    if (speaker) labelBox.append(audioWidget(speaker))
+    if (microphone) labelBox.append(audioWidget(microphone))
     labelBox.append(powerProfile())
     labelBox.append(vpnIndicator())
     if (bat.isPresent) {

@@ -80,7 +80,18 @@ function readNet(intervalSec: number): [number, number] {
     return [Math.round(down), Math.round(up)]
 }
 
+// probe once: no point spawning nvidia-smi every tick without one
+const hasNvidia = (() => {
+    try { exec("which nvidia-smi"); return true } catch { return false }
+})()
+let inFlight = false
+
 const poll = createPoll("", INTERVAL, async () => {
+    // don't overlap ticks when nvidia-smi is slow
+    if (inFlight) return ""
+    inFlight = true
+
+    try {
     const step = (label: string, fn: () => void) => {
         try { fn() } catch (e) { console.error(`sysstats ${label}:`, e) }
     }
@@ -101,7 +112,7 @@ const poll = createPoll("", INTERVAL, async () => {
         setNetUp(up)
     })
 
-    try {
+    if (hasNvidia) try {
         const out = await execAsync([
             "nvidia-smi",
             "--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total",
@@ -113,14 +124,18 @@ const poll = createPoll("", INTERVAL, async () => {
         setVram([vramUsed, vramTotal])
         push(gpuHist.get(), setGpuHist, util)
     } catch {
-        setGpu(null) // no nvidia gpu / driver: hide the row
+        setGpu(null) // driver hiccup: hide the row until it recovers
     }
 
+    } finally {
+        inFlight = false
+    }
     return ""
 })
 
-// createPoll is lazy until subscribed; keep it alive for the session
-poll.subscribe(() => { })
+// createPoll is lazy until subscribed; keep it alive while stats are on
+if (Config.quicksettings.showStats || Config.quicksettings.statsOnPanel)
+    poll.subscribe(() => { })
 
 export function formatRate(bytesPerSec: number): string {
     if (bytesPerSec >= 1024 * 1024)

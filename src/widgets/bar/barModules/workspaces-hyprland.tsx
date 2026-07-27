@@ -3,7 +3,7 @@ import AstalHyprland from "gi://AstalHyprland?version=0.1"
 import { execAsync } from "ags/process"
 import Config from "../../../config"
 import { createIconResolver } from "../../../lib/appIcon"
-import { For, createBinding, createState } from "ags"
+import { For, createBinding, createState, onCleanup } from "ags"
 import { Gtk } from "ags/gtk4";
 
 export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
@@ -27,7 +27,12 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
     // window opens on an existing (empty, hidden) workspace
     const [hyprlandWorkspacesList, setList] =
         createState<AstalHyprland.Workspace[]>([])
-    const hookedClients = new Set<number>()
+    const hookedClients = new Set<AstalHyprland.Workspace>()
+    // released when the bar is destroyed (monitor hotplug)
+    const disposers: (() => void)[] = []
+    onCleanup(() => {
+        for (const d of disposers) d()
+    })
 
     const compute = () => {
         const focused = hyprland.focusedWorkspace
@@ -43,18 +48,20 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
     }
 
     const hook = (wss: AstalHyprland.Workspace[]) => {
+        // keyed by object identity: hyprland destroys and recreates
+        // workspaces reusing the same id
         for (const ws of wss) {
-            if (hookedClients.has(ws.id)) continue
-            hookedClients.add(ws.id)
-            createBinding(ws, "clients").subscribe(compute)
+            if (hookedClients.has(ws)) continue
+            hookedClients.add(ws)
+            disposers.push(createBinding(ws, "clients").subscribe(compute))
         }
     }
 
-    createBinding(hyprland, "workspaces").subscribe(() => {
+    disposers.push(createBinding(hyprland, "workspaces").subscribe(() => {
         hook(hyprland.workspaces)
         compute()
-    })
-    createBinding(hyprland, "focusedWorkspace").subscribe(compute)
+    }))
+    disposers.push(createBinding(hyprland, "focusedWorkspace").subscribe(compute))
     hook(hyprland.workspaces)
     compute()
 

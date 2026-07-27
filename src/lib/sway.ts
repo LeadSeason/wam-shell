@@ -12,10 +12,12 @@ export default class Sway extends GObject.Object {
         return this.instance
     }
 
-    #i3conn: i3ipc.Connection = i3ipc.Connection.new(null)
-    #wss: Node[] = JSON.parse(this.#i3conn.message(i3ipc.MessageType.GET_WORKSPACES, ""));
-    #outputs: Displays = JSON.parse(this.#i3conn.message(i3ipc.MessageType.GET_OUTPUTS, ""));
-    #tree: Node = JSON.parse(this.#i3conn.message(i3ipc.MessageType.GET_TREE, ""));
+    #i3conn!: i3ipc.Connection // assigned in the constructor's try
+    #wss: Node[] = []
+    #outputs: Displays = []
+    #tree: Node = { nodes: [] } as unknown as Node
+    // false when the IPC socket is dead (stale I3SOCK, sway not running)
+    ok = false
 
     @getter(Array)
     get wss () { return this.#wss };
@@ -54,13 +56,35 @@ export default class Sway extends GObject.Object {
     constructor() {
         super()
 
-        this.#i3conn.on("workspace", async (conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
-            const workspaces = await JSON.parse(conn.message(i3ipc.MessageType.GET_WORKSPACES, ""));
-            this.#wss = workspaces;
+        try {
+            this.#i3conn = i3ipc.Connection.new(null)
+            this.#wss = JSON.parse(this.#i3conn.message(i3ipc.MessageType.GET_WORKSPACES, ""));
+            this.#outputs = JSON.parse(this.#i3conn.message(i3ipc.MessageType.GET_OUTPUTS, ""));
+            this.#tree = JSON.parse(this.#i3conn.message(i3ipc.MessageType.GET_TREE, ""));
+            this.ok = true
+        } catch (e) {
+            console.error("Sway: IPC connection failed:", e)
+        }
+        if (!this.ok) return
 
-            const tree = await JSON.parse(conn.message(i3ipc.MessageType.GET_TREE, ""));
-            this.#tree = tree;
-            this.notify("tree")
+        // i3ipc message() blocks the main loop; don't pile up round-trips
+        // on rapid event bursts (the fetch always reads current state)
+        let fetching = false
+        this.#i3conn.on("workspace", async (conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
+            if (fetching) return
+            fetching = true
+            try {
+                const workspaces = await JSON.parse(conn.message(i3ipc.MessageType.GET_WORKSPACES, ""));
+                this.#wss = workspaces;
+
+                const tree = await JSON.parse(conn.message(i3ipc.MessageType.GET_TREE, ""));
+                this.#tree = tree;
+                this.notify("tree")
+            } catch (e) {
+                console.error("Sway: IPC fetch failed:", e)
+            } finally {
+                fetching = false
+            }
 
             switch (event.change) {
                 case "focus":
@@ -85,6 +109,22 @@ export default class Sway extends GObject.Object {
             const v = await JSON.parse(conn.message(i3ipc.MessageType.GET_OUTPUTS, ""));
             this.#outputs = v;
             this.notify("outputs");
+        });
+
+        // window open/close/move/focus: refresh the tree so workspace
+        // icons and hide_empty stay current
+        this.#i3conn.on("window", async (conn: i3ipc.Connection) => {
+            if (fetching) return
+            fetching = true
+            try {
+                const tree = await JSON.parse(conn.message(i3ipc.MessageType.GET_TREE, ""));
+                this.#tree = tree;
+                this.notify("tree")
+            } catch (e) {
+                console.error("Sway: IPC fetch failed:", e)
+            } finally {
+                fetching = false
+            }
         });
     }
 }

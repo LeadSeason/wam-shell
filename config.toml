@@ -2,6 +2,10 @@
 # Enviroemntal variables don't work. here. if a environmental variable is
 # mentioned to default or specifically specified that will work with
 # environmental variables
+#
+# Paths (scss, themes, scripts) resolve against the directory ags is
+# started from. Set WAM_SHELL_DIR to the repo root when launching from
+# somewhere else.
 
 # Name of the instance, defaults to wam-shell, Recommended not to change
 # instance_name = "wam-shell"
