@@ -71,7 +71,7 @@ function applyGamma() {
 // Watch the daemon for external gamma/temperature changes (keybinds,
 // other tools). Skipped briefly after our own applies so a mid-drag
 // read can't fight the debounced apply above.
-GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
     try {
         const gamma = Number(exec("hyprctl hyprsunset gamma"))
         if (!isNaN(gamma) && gamma > 0 && Date.now() - lastApply >= 1500) {
