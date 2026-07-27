@@ -27,7 +27,7 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
     // window opens on an existing (empty, hidden) workspace
     const [hyprlandWorkspacesList, setList] =
         createState<AstalHyprland.Workspace[]>([])
-    const hookedClients = new Set<number>()
+    const hookedClients = new Set<AstalHyprland.Workspace>()
 
     const compute = () => {
         const focused = hyprland.focusedWorkspace
@@ -43,9 +43,11 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
     }
 
     const hook = (wss: AstalHyprland.Workspace[]) => {
+        // keyed by object identity: hyprland destroys and recreates
+        // workspaces reusing the same id
         for (const ws of wss) {
-            if (hookedClients.has(ws.id)) continue
-            hookedClients.add(ws.id)
+            if (hookedClients.has(ws)) continue
+            hookedClients.add(ws)
             createBinding(ws, "clients").subscribe(compute)
         }
     }

@@ -73,7 +73,6 @@ function hyprlandSource(): LayoutSource {
             setActiveIndex(kb.active_layout_index)
             if (kb.active_layout_index === lastIndex) return
             const wasFirst = lastIndex === null
-            console.log("DEBUG kb idx", lastIndex, "->", kb.active_layout_index)
             lastIndex = kb.active_layout_index
             if (wasFirst) return
             const code = codes[kb.active_layout_index] ?? ""
@@ -119,11 +118,20 @@ function swaySource(msgCmd: string): LayoutSource {
     const [activeIndex, setActiveIndex] = createState(0)
     let identifier = ""
 
-    const poll = createPoll("", 1000, `${msgCmd} -t get_inputs`)
+    const poll = createPoll("", 1000, async () => {
+        // swallow failures (binary missing, IPC down): keep old value
+        try {
+            return await execAsync(`${msgCmd} -t get_inputs`)
+        } catch {
+            return ""
+        }
+    })
     let prevIndex: number | null = null
     poll.subscribe(() => {
         try {
-            const inputs = JSON.parse(poll.get())
+            const raw = poll.get()
+            if (!raw) return
+            const inputs = JSON.parse(raw)
             const kb = inputs.find((k: any) =>
                 k.type === "keyboard" && k.xkb_layout_names?.length > 0)
             if (!kb) return

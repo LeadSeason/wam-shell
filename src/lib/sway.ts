@@ -67,13 +67,24 @@ export default class Sway extends GObject.Object {
         }
         if (!this.ok) return
 
+        // i3ipc message() blocks the main loop; don't pile up round-trips
+        // on rapid event bursts (the fetch always reads current state)
+        let fetching = false
         this.#i3conn.on("workspace", async (conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
-            const workspaces = await JSON.parse(conn.message(i3ipc.MessageType.GET_WORKSPACES, ""));
-            this.#wss = workspaces;
+            if (fetching) return
+            fetching = true
+            try {
+                const workspaces = await JSON.parse(conn.message(i3ipc.MessageType.GET_WORKSPACES, ""));
+                this.#wss = workspaces;
 
-            const tree = await JSON.parse(conn.message(i3ipc.MessageType.GET_TREE, ""));
-            this.#tree = tree;
-            this.notify("tree")
+                const tree = await JSON.parse(conn.message(i3ipc.MessageType.GET_TREE, ""));
+                this.#tree = tree;
+                this.notify("tree")
+            } catch (e) {
+                console.error("Sway: IPC fetch failed:", e)
+            } finally {
+                fetching = false
+            }
 
             switch (event.change) {
                 case "focus":

@@ -21,16 +21,18 @@ const [outdoor, setOutdoor] = createState(false)
 const [dim, setDim] = createState(1) // gamma fraction, 0.05..1
 
 // init from the running daemon so the slider matches reality
-try {
-    const gamma = Number(exec("hyprctl hyprsunset gamma"))
-    if (!isNaN(gamma) && gamma > 0) {
-        if (gamma > 100) setOutdoor(true)
-        else setDim(gamma / 100)
+if (Config.desktopSession === "hyprland") {
+    try {
+        const gamma = Number(exec("hyprctl hyprsunset gamma"))
+        if (!isNaN(gamma) && gamma > 0) {
+            if (gamma > 100) setOutdoor(true)
+            else setDim(gamma / 100)
+        }
+        const temp = Number(exec("hyprctl hyprsunset temperature"))
+        if (!isNaN(temp)) setNightLight(temp <= 5000)
+    } catch {
+        // daemon not running, keep defaults
     }
-    const temp = Number(exec("hyprctl hyprsunset temperature"))
-    if (!isNaN(temp)) setNightLight(temp <= 5000)
-} catch {
-    // daemon not running, keep defaults
 }
 
 function currentTemp(): number {
@@ -70,8 +72,10 @@ function applyGamma() {
 
 // Watch the daemon for external gamma/temperature changes (keybinds,
 // other tools). Skipped briefly after our own applies so a mid-drag
-// read can't fight the debounced apply above. Async reads, 250ms.
+// read can't fight the debounced apply above. hyprland only — hyprctl
+// does not exist elsewhere.
 let watchRunning = false
+if (Config.desktopSession === "hyprland")
 GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
     if (watchRunning) return GLib.SOURCE_CONTINUE
     watchRunning = true
