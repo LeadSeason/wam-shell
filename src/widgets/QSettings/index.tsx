@@ -14,6 +14,7 @@ import { ToggleSection } from "./toggleSection";
 import { HeaderSection } from "./HeaderSection";
 import { SliderSection } from "./SliderSection";
 import { MediaSection } from "./MediaSection";
+import { StatsSection } from "./StatsSection";
 import { WifiWidget } from "./toggleSection/wifi";
 import { BluetoothWidget } from "./toggleSection/bluetooth";
 import { PowerProfilesWidget } from "./toggleSection/powerProfile";
@@ -207,6 +208,7 @@ export default function QSettings() {
                         <SliderSection />
                         <Gtk.Separator />
                         {toggleSection.widget}
+                        {Config.quicksettings.showStats && <StatsSection />}
                         <MediaSection />
                         {!Config.tray.onPanel && <Gtk.Separator />}
                         {!Config.tray.onPanel &&

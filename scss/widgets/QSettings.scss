@@ -239,6 +239,34 @@ window#QSettings {
         margin: 4px 0 0 4px;
     }
 
+    // performance stats section
+    .statsRow {
+        min-height: 24px;
+    }
+    .statName {
+        font-weight: bold;
+        min-width: 32px;
+    }
+    .statValue {
+        font-size: 0.85em;
+        color: t.$subtext0;
+        min-width: 42px;
+    }
+    .statNet {
+        min-width: 0;
+    }
+    .statGraph {
+        min-height: 24px;
+        box {
+            min-width: 2px;
+            margin-left: 1px;
+            border-radius: 1px;
+        }
+    }
+    .statCpu box { background-color: t.$blue; }
+    .statRam box { background-color: t.$green; }
+    .statGpu box { background-color: t.$peach; }
+
     // tray icons inside the popup: bigger, on their own pills
     // (pill size is set inline from tray.popup_icon_size, gaps from the
     // FlowBox spacing)

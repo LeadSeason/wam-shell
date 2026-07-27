@@ -20,6 +20,27 @@ window.Bar {
         background-color: t.$crust;
     }
 
+    // resource utilization monitor
+    .sysStats {
+        font-size: 0.85em;
+        margin-right: 4px;
+        .statCpu { color: t.$blue; }
+        .statRam { color: t.$green; }
+        .statGpu { color: t.$peach; }
+        .statNet { color: t.$mauve; }
+        .statGraph {
+            min-height: 12px;
+            box {
+                min-width: 2px;
+                margin-left: 1px;
+                border-radius: 1px;
+            }
+        }
+        .statCpu box { background-color: t.$blue; }
+        .statRam box { background-color: t.$green; }
+        .statGpu box { background-color: t.$peach; }
+    }
+
     clock button,
     .osIcon,
     .QSettings {

@@ -15,6 +15,7 @@ import WorkspacesExample from "./barModules/workspaces-example"
 import Clock from "./barModules/clock"
 import SwayNC from "./barModules/swayNC"
 import KeyboardLayout from "./barModules/keyboardLayout"
+import SysStats from "./barModules/sysStats"
 import QSettingsLabel from "./barModules/QSettingsLabel"
 
 
@@ -67,6 +68,7 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
           <Clock />
         </box>
         <box $type="end">
+          {Config.quicksettings.statsOnPanel && <SysStats />}
           {Config.tray.position == "left" && trayWidget}
           <QSettingsLabel />
           {Config.tray.position == "right" && trayWidget}
