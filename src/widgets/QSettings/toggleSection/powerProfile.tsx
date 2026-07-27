@@ -1,10 +1,16 @@
 import { createBinding } from "gnim";
-import { execAsync } from "ags/process";
+import { exec, execAsync } from "ags/process";
 import { DropdownButton } from "./ToggleButton";
 import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1";
 import { Gtk } from "ags/gtk4";
 
+const hasPowerprofilesctl = (() => {
+    try { exec("which powerprofilesctl"); return true } catch { return false }
+})()
+
 export function PowerProfilesButton({ navigate }: { navigate: () => void }) {
+    // power-profiles-daemon not installed
+    if (!hasPowerprofilesctl) return <></>
     const powerProfiles = AstalPowerProfiles.get_default()
 
     const icon = createBinding(powerProfiles, "activeProfile").as(v => `power-profile-${v}-symbolic`)
