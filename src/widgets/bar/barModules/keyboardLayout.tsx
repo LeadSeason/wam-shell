@@ -74,10 +74,12 @@ export default function KeyboardLayout() {
         return v ? `${name(code)} (${v})` : name(code)
     }
 
-    return <menubutton tooltipText={activeIndex.as(i => {
-        const code = layouts.get()[i]
-        return code ? label(i, code) : "Keyboard layout"
-    })}>
+    return <menubutton
+        cssClasses={["keyboardLayout"]}
+        tooltipText={activeIndex.as(i => {
+            const code = layouts.get()[i]
+            return code ? label(i, code) : "Keyboard layout"
+        })}>
         <label label={activeIndex.as(i => {
             const code = layouts.get()[i] ?? ""
             return flag(code) || code.toUpperCase()

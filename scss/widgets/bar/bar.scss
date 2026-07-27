@@ -44,6 +44,15 @@ window.Bar {
         .statGpu box { background-color: t.$peach; }
     }
 
+    // gap between panel widgets; GTK css has no box spacing, so margins
+    >centerbox > box > *:not(:last-child) {
+        margin-right: s.$bar-widget-spacing;
+    }
+    // per-widget spacing: override margins on the widget's class, e.g.
+    // .sysStats { margin-right: 12px; }
+    // classes: .osIcon, workspaces, clock button, .sysStats, .trayItem,
+    // .QSettings, .keyboardLayout, .swayNC
+
     clock button,
     .osIcon,
     .QSettings {
