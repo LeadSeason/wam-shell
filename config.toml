@@ -23,6 +23,12 @@
 # otherwise disabled
 # sway_gaps = true
 
+# bar_monitors - list of monitors that get a panel. Entries match the
+#                connector ("HDMI-A-1"), the model ("X34 P") or a
+#                substring of the description ("Acer"). Unset or empty
+#                list shows the panel on every monitor
+# bar_monitors = ["Acer X34 P"]
+
 # [workspaces] - Workspace indicator widget
 # Shows the workspace indicator for the running session (sway/i3 or hyprland)
 # Keys can be set inside a [workspaces] section or flat at the top level

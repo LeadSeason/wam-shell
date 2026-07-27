@@ -217,6 +217,17 @@ function getHyprsunsetConfig() {
     }
 }
 
+function getBarMonitors(): string[] {
+    // connectors (e.g. "eDP-1") that get a panel; empty = all monitors
+    const m = configData.bar_monitors
+    if (m === undefined) return []
+    if (!Array.isArray(m)) {
+        console.error(`Config "bar_monitors" must be a list of monitor connectors`)
+        return []
+    }
+    return m.filter(x => typeof x === "string" && x !== "")
+}
+
 /**
  * Check if the pending updates daemon is active. pending update daemon is a 
  * LeadSeason 
@@ -265,6 +276,7 @@ export default class Config {
     static tray = getTrayConfig()
     static quicksettings = getQSettingsConfig()
     static hyprsunset = getHyprsunsetConfig()
+    static barMonitors = getBarMonitors()
 
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`

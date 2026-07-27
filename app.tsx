@@ -28,7 +28,17 @@ function main() {
     const qSettings = QSettings() as Gtk.Window
     app.add_window(qSettings)
 
-    const monitors = createBinding(app, "monitors")
+    const monitors = createBinding(app, "monitors").as(ms =>
+        // bar_monitors config picks monitors by connector (eDP-1),
+        // model (X34 P) or a substring of the description; empty = all
+        Config.barMonitors.length === 0 ? ms
+            : ms.filter(m => {
+                const conn = m.get_connector() ?? ""
+                const model = m.get_model() ?? ""
+                const desc = m.get_description() ?? ""
+                return Config.barMonitors.some(w =>
+                    w === conn || w === model || (w !== "" && desc.includes(w)))
+            }))
     return (<For each={monitors} cleanup={(win) => (win as Gtk.Window).destroy()}>
         {(monitor) => <Bar gdkMonitor={monitor} />}
     </For>)
