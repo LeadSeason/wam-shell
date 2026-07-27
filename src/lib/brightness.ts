@@ -43,9 +43,9 @@ export default class Brightness extends GObject.Object {
 
     @setter(Number)
     set screen(percent) {
-        // never go fully blank; outdoor mode is a toggle, slider 0-100%
-        if (percent < 0.05)
-            percent = 0.05
+        // never go fully blank (1% floor); outdoor is a toggle, 0-100%
+        if (percent < 0.01)
+            percent = 0.01
 
         if (percent > 1)
             percent = 1
