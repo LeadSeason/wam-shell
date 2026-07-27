@@ -38,12 +38,16 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
 
     // drive window visibility from the lib state: present+reveal on show,
     // slide out and fully unmap on hide (a mapped window ghosts its last
-    // frame on some compositors)
+    // frame on some compositors). Focus gates only PRESENTING — hiding
+    // must always happen, or a focus change between show and hide leaves
+    // the pill stuck on screen.
     visible.subscribe(() => {
-        const focused = typeof isFocused === "boolean" ? isFocused : isFocused.get()
-        console.log("DEBUG osd win:", visible.get() ? "show" : "hide", "focused:", focused, "mon:", gdkMonitor.get_connector())
-        if (!focused) return
+        console.log("DEBUG osd win:", visible.get() ? "show" : "hide", "focused:",
+            (typeof isFocused === "boolean" ? isFocused : isFocused.get()),
+            "mon:", gdkMonitor.get_connector())
         if (visible.get()) {
+            const focused = typeof isFocused === "boolean" ? isFocused : isFocused.get()
+            if (!focused) return
             if (hideSource !== null) {
                 GLib.source_remove(hideSource)
                 hideSource = null
