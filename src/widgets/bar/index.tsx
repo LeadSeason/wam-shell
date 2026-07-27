@@ -14,6 +14,7 @@ import HyprlandWs from "./barModules/workspaces-hyprland"
 import WorkspacesExample from "./barModules/workspaces-example"
 import Clock from "./barModules/clock"
 import SwayNC from "./barModules/swayNC"
+import KeyboardLayout from "./barModules/keyboardLayout"
 import QSettingsLabel from "./barModules/QSettingsLabel"
 
 
@@ -69,6 +70,7 @@ export default function Bar({ gdkMonitor: gdkMonitor }: { gdkMonitor: Gdk.Monito
           {Config.tray.position == "left" && trayWidget}
           <QSettingsLabel />
           {Config.tray.position == "right" && trayWidget}
+          {Config.desktopSession == "hyprland" && <KeyboardLayout />}
           <SwayNC />
           {Config.workspaces.position == "right" && workspaceWidget}
         </box>
