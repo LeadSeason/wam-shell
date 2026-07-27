@@ -13,7 +13,11 @@ import hyprsunset from "./hyprsunset"
 
 const ab = AstalBrightness.get_default()
 const abScreen = ab?.screen ?? null // proxy for the guessed main screen
-const isDummy = abScreen ? abScreen.name.startsWith("nvidia") : false
+// OLED laptops expose a dummy backlight (nvidia_0) that ignores writes;
+// LED devices (e.g. scrollock) can be misguessed as the screen too
+const isDummy = abScreen
+    ? abScreen.name.startsWith("nvidia") || /lock|kbd|keyboard/i.test(abScreen.name)
+    : false
 const hasBacklight = abScreen !== null && !isDummy
 const hasHyprsunset = (() => {
     try { exec("which hyprsunset"); return true } catch { return false }
