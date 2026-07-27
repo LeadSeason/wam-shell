@@ -27,8 +27,11 @@ let hideSource: number | null = null
 // swallow trigger events fired at startup (initial binding values)
 const graceUntil = Date.now() + 1500
 
-function show(c: OsdContent) {
+type OsdKind = "volume" | "microphone" | "brightness" | "layout" | "lockKeys"
+
+function show(c: OsdContent, kind: OsdKind) {
     if (!Config.osd.enabled) return
+    if (!Config.osd[kind]) return
     if (Date.now() < graceUntil) return
     setContent(c)
     setVisible(true)
@@ -43,8 +46,11 @@ function show(c: OsdContent) {
 // volume + microphone
 function hookEndpoint(
     getEndpoint: () => AstalWp.Endpoint | null,
-    mutedIcon: string,
+    kind: "volume" | "microphone",
 ) {
+    const mutedIcon = kind === "microphone"
+        ? "microphone-sensitivity-muted-symbolic"
+        : "audio-volume-muted-symbolic"
     let hooked: AstalWp.Endpoint | null = null
     const hook = (ep: AstalWp.Endpoint | null) => {
         if (!ep || ep === hooked) return
@@ -55,7 +61,7 @@ function hookEndpoint(
                 value: Math.min(ep.volume, 1),
                 label: `${Math.round(ep.volume * 100)}%`,
                 over: ep.volume > 1.01,
-            })
+            }, kind)
         })
         createBinding(ep, "mute").subscribe(() => {
             show({
@@ -63,7 +69,7 @@ function hookEndpoint(
                 value: ep.mute ? 0 : Math.min(ep.volume, 1),
                 label: ep.mute ? "Muted" : `${Math.round(ep.volume * 100)}%`,
                 over: false,
-            })
+            }, kind)
         })
     }
     return hook
@@ -73,14 +79,14 @@ const wp = AstalWp.get_default()
 if (wp) {
     const { audio } = wp
     const hookSpeaker = hookEndpoint(
-        () => audio.defaultSpeaker, "audio-volume-muted-symbolic")
+        () => audio.defaultSpeaker, "volume")
     createBinding(audio, "defaultSpeaker").subscribe(() => {
         hookSpeaker(audio.defaultSpeaker)
     })
     hookSpeaker(audio.defaultSpeaker)
 
     const hookMic = hookEndpoint(
-        () => audio.defaultMicrophone, "microphone-sensitivity-muted-symbolic")
+        () => audio.defaultMicrophone, "microphone")
     createBinding(audio, "defaultMicrophone").subscribe(() => {
         hookMic(audio.defaultMicrophone)
     })
@@ -97,7 +103,7 @@ createBinding(brightness, "screen").subscribe(() => {
         value: outdoor ? 1 : brightness.screen,
         label: outdoor ? `${OUTDOOR_GAMMA}%` : `${Math.round(brightness.screen * 100)}%`,
         over: outdoor,
-    })
+    }, "brightness")
 })
 
 // keyboard layout switches (hyprland, sway, i3). The source is shared
@@ -111,7 +117,7 @@ layoutOsdText.subscribe(() => {
         value: null, // no bar, just the flag + name
         label: text,
         over: false,
-    })
+    }, "layout")
 })
 
 // the layer close/resize animation replays the OSD's last frame as a
@@ -127,7 +133,7 @@ if (Config.desktopSession === "hyprland" && Config.osd.enabled) {
 
 // caps/num lock (hyprland only, no event exists — poll and diff).
 // execAsync: a synchronous hyprctl call on a timer can stall the main loop
-if (Config.desktopSession === "hyprland" && Config.osd.enabled) {
+if (Config.desktopSession === "hyprland" && Config.osd.enabled && Config.osd.lockKeys) {
     let prev: { caps: boolean, num: boolean } | null = null
     let running = false
     GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
@@ -148,14 +154,14 @@ if (Config.desktopSession === "hyprland" && Config.osd.enabled) {
                         value: null,
                         label: "Caps Lock",
                         over: cur.caps, // tints the icon
-                    })
+                    }, "lockKeys")
                 } else {
                     show({
                         icon: "input-keyboard-symbolic",
                         value: null,
                         label: `Num Lock ${cur.num ? "on" : "off"}`,
                         over: false,
-                    })
+                    }, "lockKeys")
                 }
             }
             prev = cur

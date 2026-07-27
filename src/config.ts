@@ -248,6 +248,12 @@ function getOsdConfig() {
         enabled: get("enabled", true),
         position: position as "bottom" | "center" | "top",
         timeout,
+        // per-trigger toggles
+        volume: get("volume", true),
+        microphone: get("microphone", true),
+        brightness: get("brightness", true),
+        layout: get("layout", true),
+        lockKeys: get("lock_keys", true),
     }
 }
 
