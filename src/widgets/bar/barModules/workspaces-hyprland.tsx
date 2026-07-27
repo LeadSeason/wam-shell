@@ -22,17 +22,41 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
         setDisplayName(monitor.get_connector())
     })
 
-    const hyprlandWorkspacesList = createBinding(hyprland, "workspaces").as((wss) =>
-        wss
+    // recompute when the workspace list, the focus, or any workspace's
+    // clients change — the workspaces binding alone does not fire when a
+    // window opens on an existing (empty, hidden) workspace
+    const [hyprlandWorkspacesList, setList] =
+        createState<AstalHyprland.Workspace[]>([])
+    const hookedClients = new Set<number>()
+
+    const compute = () => {
+        const focused = hyprland.focusedWorkspace
+        setList(hyprland.workspaces
             // id < 0 are special workspaces (scratchpad)
             .filter((ws) => ws.id > 0 && ws.monitor?.name === displayName.get())
             .filter((ws) =>
                 !Config.workspaces.hideEmpty ||
                 ws.clients.length > 0 ||
-                ws.id === hyprland.focusedWorkspace?.id
+                ws.id === focused?.id
             )
-            .sort((a, b) => a.id - b.id)
-    )
+            .sort((a, b) => a.id - b.id))
+    }
+
+    const hook = (wss: AstalHyprland.Workspace[]) => {
+        for (const ws of wss) {
+            if (hookedClients.has(ws.id)) continue
+            hookedClients.add(ws.id)
+            createBinding(ws, "clients").subscribe(compute)
+        }
+    }
+
+    createBinding(hyprland, "workspaces").subscribe(() => {
+        hook(hyprland.workspaces)
+        compute()
+    })
+    createBinding(hyprland, "focusedWorkspace").subscribe(compute)
+    hook(hyprland.workspaces)
+    compute()
 
     return <box cssName={"workspaces"}>
         <For each={hyprlandWorkspacesList}>
