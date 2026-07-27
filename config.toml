@@ -26,8 +26,35 @@
 # bar_monitors - list of monitors that get a panel. Entries match the
 #                connector ("HDMI-A-1"), the model ("X34 P") or a
 #                substring of the description ("Acer"). Unset or empty
-#                list shows the panel on every monitor
+#                list shows the panel on every monitor.
+#                Ignored when [[panel]] blocks are defined.
 # bar_monitors = ["Acer X34 P"]
+
+# [[panel]] - multiple configurable panels
+# Each [[panel]] block spawns a bar on the matching monitors with its
+# own edge and widget layout. When no [[panel]] block is defined the
+# classic single bar is used (and all existing settings apply).
+#
+# monitors - same matching as bar_monitors. empty = every monitor
+# position - "top" or "bottom". default "top"
+# left/center/right - widget lists. Available widgets:
+#                osicon, workspaces, clock, stats, tray, quicksettings,
+#                language, notifications
+# Note: tray is single-instance, only the first panel that lists it
+# gets it. Multiple panels on the same edge of the same monitor stack.
+# [[panel]]
+# monitors = ["Acer"]
+# position = "top"
+# left = ["osicon", "workspaces"]
+# center = ["clock"]
+# right = ["stats", "tray", "quicksettings", "language", "notifications"]
+#
+# [[panel]]
+# monitors = ["eDP-1"]
+# position = "bottom"
+# left = ["workspaces"]
+# center = []
+# right = ["notifications"]
 
 # [workspaces] - Workspace indicator widget
 # Shows the workspace indicator for the running session (sway/i3 or hyprland)

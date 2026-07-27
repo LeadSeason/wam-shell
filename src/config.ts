@@ -228,6 +228,55 @@ function getBarMonitors(): string[] {
     return m.filter(x => typeof x === "string" && x !== "")
 }
 
+export interface PanelConfig {
+    monitors: string[]
+    position: "top" | "bottom"
+    left: string[]
+    center: string[]
+    right: string[]
+}
+
+const PANEL_WIDGETS = [
+    "osicon", "workspaces", "clock", "stats",
+    "tray", "quicksettings", "language", "notifications",
+]
+
+function getPanelsConfig(): PanelConfig[] {
+    const p = configData.panel
+    if (p === undefined) return []
+    if (!Array.isArray(p)) {
+        console.error(`Config "panel" must be a list of [[panel]] tables`)
+        return []
+    }
+
+    const strList = (v: any, fallback: string[]) =>
+        Array.isArray(v) ? v.filter(x => typeof x === "string") : fallback
+
+    return p.map((entry: any, i: number) => {
+        let position = entry.position ?? "top"
+        if (position !== "top" && position !== "bottom") {
+            console.error(`Config "panel[${i}].position" must be "top" or "bottom", got "${position}"`)
+            position = "top"
+        }
+
+        const checkWidgets = (names: string[]) =>
+            names.filter(n => {
+                if (PANEL_WIDGETS.includes(n)) return true
+                console.error(`Config "panel[${i}]": unknown widget "${n}", skipping`)
+                return false
+            })
+
+        return {
+            monitors: strList(entry.monitors, []),
+            position: position as "top" | "bottom",
+            left: checkWidgets(strList(entry.left, ["osicon", "workspaces"])),
+            center: checkWidgets(strList(entry.center, ["clock"])),
+            right: checkWidgets(strList(entry.right,
+                ["stats", "tray", "quicksettings", "language", "notifications"])),
+        }
+    })
+}
+
 /**
  * Check if the pending updates daemon is active. pending update daemon is a 
  * LeadSeason 
@@ -277,6 +326,7 @@ export default class Config {
     static quicksettings = getQSettingsConfig()
     static hyprsunset = getHyprsunsetConfig()
     static barMonitors = getBarMonitors()
+    static panels = getPanelsConfig()
 
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`
