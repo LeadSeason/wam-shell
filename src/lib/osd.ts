@@ -9,6 +9,7 @@ import Brightness from "./brightness"
 import hyprsunset, { OUTDOOR_GAMMA } from "./hyprsunset"
 import { ensureLayoutSource, layoutOsdText } from "./kbLayout"
 import { coverFile } from "./coverArt"
+import notifd from "./notifd"
 
 // OSD state and triggers. Widgets read `content`/`visible`; triggers
 // call show() which (re)starts the hide timer.
@@ -30,7 +31,7 @@ let hideSource: number | null = null
 // swallow trigger events fired at startup (initial binding values)
 const graceUntil = Date.now() + 1500
 
-type OsdKind = "volume" | "microphone" | "brightness" | "layout" | "lockKeys" | "media"
+type OsdKind = "volume" | "microphone" | "brightness" | "layout" | "lockKeys" | "media" | "notification"
 
 function show(c: Omit<OsdContent, "kind">, kind: OsdKind) {
     if (!Config.osd.enabled) return
@@ -138,6 +139,21 @@ const hookMedia = (list: AstalMpris.Player[]) => {
 }
 createBinding(mpris, "players").subscribe(() => hookMedia(mpris.players))
 hookMedia(mpris.players)
+
+// notifications: show incoming ones unless DND is on
+notifd.connect("notified", (_, id: number) => {
+    if (notifd.dontDisturb) return
+    const n = notifd.get_notification(id)
+    if (!n) return
+    const icon = n.get_image() || n.get_app_icon()
+        || "preferences-system-notifications-symbolic"
+    show({
+        icon,
+        value: null,
+        label: `${n.get_app_name()}${n.get_summary() ? `: ${n.get_summary()}` : ""}`,
+        over: false,
+    }, "notification")
+})
 
 // keyboard layout switches (hyprland, sway, i3). The source is shared
 // with the bar widget but does not depend on it being on any panel.
