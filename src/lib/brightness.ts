@@ -1,5 +1,6 @@
 import GObject, { register, getter, setter } from "ags/gobject"
 import { exec } from "ags/process"
+import { readFile } from "ags/file"
 import AstalBrightness from "gi://AstalBrightness"
 import Config from "../config"
 import { setDimLevel } from "./hyprsunset"
@@ -23,6 +24,17 @@ const useGammaDim = !hasBacklight && hasHyprsunset
     && Config.desktopSession === "hyprland"
 const screenIsPresent = hasBacklight || useGammaDim
 
+// the floor is the device's raw 1, not a fixed percentage
+const maxBrightness = (() => {
+    if (!hasBacklight) return 0
+    try {
+        return Number(readFile(
+            `/sys/class/backlight/${abScreen.name}/max_brightness`)) || 0
+    } catch {
+        return 0
+    }
+})()
+
 @register({ GTypeName: "Brightness" })
 export default class Brightness extends GObject.Object {
     static instance: Brightness
@@ -43,12 +55,14 @@ export default class Brightness extends GObject.Object {
 
     @setter(Number)
     set screen(percent) {
-        // never go fully blank (1% floor); outdoor is a toggle, 0-100%
-        if (percent < 0.01)
-            percent = 0.01
-
+        // outdoor mode is a toggle, the slider stays 0-100%
         if (percent > 1)
             percent = 1
+
+        // never go fully blank: floor at the device's raw 1
+        const floor = maxBrightness > 0 ? 1 / maxBrightness : 0.01
+        if (percent < floor)
+            percent = floor
 
         this.#screen = percent
 
