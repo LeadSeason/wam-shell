@@ -35,7 +35,6 @@ function Player({ player }: { player: AstalMpris.Player }) {
         // astal gives bare paths (no file:// scheme) for local art
         if (url.startsWith("/")) return setLocalCover(`file://${url}`)
         if (!url.startsWith("http")) return setLocalCover(url)
-        if (!url.startsWith("http")) return setLocalCover(url)
         const hash = GLib.compute_checksum_for_string(
             GLib.ChecksumType.MD5, url, -1)
         const path = `${Config.instanceCacheDir}/cover-${hash}`

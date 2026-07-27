@@ -144,6 +144,14 @@ export async function confirmDialog({
     // @TODO Clean up style for this function
 
     return new Promise((resolve) => {
+        // unsubscribed when the dialog resolves by any path
+        let unsub: (() => void) | null = null
+        const done = (v: boolean) => {
+            unsub?.()
+            unsub = null
+            resolve(v)
+        }
+
         dialog.setContent(<box
             cssClasses={["confirm"]}
             orientation={Gtk.Orientation.VERTICAL}
@@ -159,7 +167,7 @@ export async function confirmDialog({
                         button={1}
                         onPressed={() => {
                             dialog.hide();
-                            resolve(true);
+                            done(true);
                         }} />
                     <label hexpand label={yesButton}></label>
                 </box>
@@ -168,16 +176,16 @@ export async function confirmDialog({
                         button={1}
                         onPressed={() => {
                             dialog.hide();
-                            resolve(false);
+                            done(false);
                         }} />
                     <label hexpand label={noButton}></label>
                 </box>
             </box>
         </box>);
         dialog.Show();
-        createBinding(dialog.win, "visible").subscribe(() => {
+        unsub = createBinding(dialog.win, "visible").subscribe(() => {
             if (!dialog.win.get_visible()) {
-                resolve(false);
+                done(false);
             }
         });
     });

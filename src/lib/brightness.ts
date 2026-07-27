@@ -87,17 +87,25 @@ export default class Brightness extends GObject.Object {
             return
         }
 
-        /* @TODO, Test this update */
-        timeout(25, () => {
-            if (this.#screen = percent) {
-                execAsync(`brightnessctl set ${Math.floor(percent * 100)}% -q`)
-                    .then(() => {
-                        this.notify("screen")
-                    })
-                    .catch(() => { })
-            }
+        // dragging fires this per motion event; coalesce to one
+        // trailing brightnessctl call
+        this.#applyPercent = percent
+        if (this.#applySource !== null) return
+        this.#applySource = timeout(50, () => {
+            this.#applySource = null
+            const p = this.#applyPercent
+            if (p === null) return
+            this.#applyPercent = null
+            execAsync(`brightnessctl set ${Math.floor(p * 100)}% -q`)
+                .then(() => {
+                    this.notify("screen")
+                })
+                .catch(() => { })
         })
     }
+
+    #applyPercent: number | null = null
+    #applySource: number | null = null
 
     @getter(Boolean)
     get screenIsPresent() { return this.#screenIsPresent };
@@ -114,7 +122,7 @@ export default class Brightness extends GObject.Object {
             })
         }
 
-        if (hasBrightnessctl) {
+        if (hasBrightnessctl && screen != "") {
             const screenPath = `/sys/class/backlight/${screen}/brightness`
             const kbdPath = `/sys/class/leds/${kbd}/brightness`
 

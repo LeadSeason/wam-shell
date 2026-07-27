@@ -37,6 +37,7 @@ export default function QSettings() {
     let revealer: Gtk.Revealer
     const [pane, setPane] = createState("main")
     const toggleSection = ToggleSection({ onNavigate: setPane })
+    let hideTimer: ReturnType<typeof timeout> | null = null
 
     function hide() {
         cancelClose()
@@ -44,7 +45,9 @@ export default function QSettings() {
         // timeout to 0 for this reason
         revealer.set_reveal_child(false)
         // give some time for the animation to play.
-        timeout(50, () => {
+        hideTimer?.cancel()
+        hideTimer = timeout(50, () => {
+            hideTimer = null
             win.hide()
             toggleSection.reset()
             setPane("main")
@@ -54,6 +57,9 @@ export default function QSettings() {
     function show() {
         hasEntered = false
         cancelClose()
+        // a hide may have a pending win.hide(); cancel it
+        hideTimer?.cancel()
+        hideTimer = null
         win.present()
         revealer.set_reveal_child(true);
     }

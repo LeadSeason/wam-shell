@@ -35,13 +35,15 @@ export default class ArchUpdates extends GObject.Object {
         const updatesFileUpdate = async (path: string) => {
             const v = await readFileAsync(path);
             this.#updates = v;
-            this.#updatesnum = v.split(/\r\n|\r|\n/).length - 1;
+            // count non-empty lines (robust to a missing trailing newline)
+            this.#updatesnum = v.split(/\r\n|\r|\n/)
+                .filter(line => line.trim() !== "").length;
             this.notify("updates");
             this.notify("updatesnum");  // keep lower-case
             this.notify("overthreshold"); // keep lower-case
         }
         if (updatesFile === false) {
-            throw "ArchUpdates constructed invoked when no update file is provided"
+            throw new Error("ArchUpdates constructed invoked when no update file is provided")
         }
 
         updatesFileUpdate(updatesFile);

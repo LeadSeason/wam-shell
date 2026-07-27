@@ -127,16 +127,16 @@ function Battery() {
         const prefix = charging ? "Charging..." : "Discharging...";
         const percentage = Math.floor(bat.percentage * 100).toString()
 
-        return `${prefix} ${percentage}${parts.join(" ")} ${suffix}`;
+        return `${prefix} ${percentage}% ${parts.join(" ")} ${suffix}`;
     };
 
     const [showPrec, setShowPrec] = createState(false)
     const [batTime, setBatTime] = createState(batTimeConvert(
-        (bat.charging) ? bat.timeToEmpty : bat.timeToEmpty, bat.charging))
+        (bat.charging) ? bat.timeToFull : bat.timeToEmpty, bat.charging))
 
     createBinding(bat, "timeToEmpty").subscribe(() => {
         if (!bat.get_charging())
-            setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))
+            setBatTime(batTimeConvert(bat.timeToEmpty, bat.get_charging()))
     })
 
     createBinding(bat, "timeToFull").subscribe(() => {
