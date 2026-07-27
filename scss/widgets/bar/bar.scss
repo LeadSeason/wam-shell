@@ -25,8 +25,8 @@ window.Bar {
 
     // resource utilization monitor
     .sysStats {
-        font-size: 0.85em;
-        margin-right: 4px;
+        font-size: s.$font-small;
+        margin-right: s.$gap-small;
         .statCpu { color: t.$blue; }
         .statRam { color: t.$green; }
         .statGpu { color: t.$peach; }

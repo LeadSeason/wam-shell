@@ -46,7 +46,7 @@ window#QSettings {
             border-radius: 7px;
             border: 1px solid t.$surface1;
             background-color: t.$surface0;
-            min-height: 16px;
+            min-height: s.$slider-height;
             highlight {
                 background-color: t.$accent;
                 border-radius: 7px;
@@ -97,7 +97,7 @@ window#QSettings {
             border: solid 2px color.mix(t.$mantle, transparent, 60%);
         }
         .QSBat {
-            margin-left: 8px;
+            margin-left: s.$gap;
             font-size: 14px;
             -gtk-icon-size: 14px;
             image {
@@ -106,7 +106,7 @@ window#QSettings {
         }
         button {
             background: t.$surface070;
-            margin: 3px 0 3px 8px;
+            margin: 3px 0 3px s.$gap;
             &:hover {
                 background-color: t.$accent20;
                 border: solid 2px t.$accent20;
@@ -121,7 +121,7 @@ window#QSettings {
         }
     }
     .QSSection {
-        padding: 4px 8px;
+        padding: s.$gap-small s.$gap;
     }
 
     // slider rows: buttons carry no margins, the row keeps the rhythm
@@ -146,7 +146,7 @@ window#QSettings {
 
     // device name overlaid on the volume sliders
     .deviceName {
-        font-size: 0.85em;
+        font-size: s.$font-small;
         font-weight: bold;
         color: t.$text;
         margin-left: 12px;
@@ -162,14 +162,14 @@ window#QSettings {
     .toggleButton {
         border-radius: s.$radius;
         background-color: t.$base;
-        min-height: 44px;
+        min-height: s.$pill-size;
         margin: 0; // grid gaps come from the FlowBox spacing
     }
 
     .mediaPlayer {
         border-radius: s.$radius;
         background-color: t.$base;
-        padding: 8px;
+        padding: s.$gap;
         button {
             margin: 0; // gaps come from the card's box spacing
         }
@@ -192,7 +192,7 @@ window#QSettings {
         margin: 8px;
     }
     .mediaArtist {
-        font-size: 0.85em;
+        font-size: s.$font-small;
         color: t.$subtext0;
     }
     .mediaButton {
@@ -205,7 +205,7 @@ window#QSettings {
         font-weight: bold;
     }
     .toggleSubtitle {
-        font-size: 0.85em;
+        font-size: s.$font-small;
         color: t.$subtext0;
     }
     .toggleChevron {
@@ -239,7 +239,7 @@ window#QSettings {
 
     // wifi band section headers in the wifi pane
     .wifiBand {
-        font-size: 0.85em;
+        font-size: s.$font-small;
         font-weight: bold;
         color: t.$subtext0;
         margin: 4px 0 0 4px;
@@ -254,7 +254,7 @@ window#QSettings {
         min-width: 32px;
     }
     .statValue {
-        font-size: 0.85em;
+        font-size: s.$font-small;
         color: t.$subtext0;
         min-width: 42px;
     }
@@ -313,7 +313,7 @@ window#QSettings {
     }
 
     arrow {
-        min-height: 16px;
+        min-height: s.$slider-height;
         min-width: 16px;
         &.none {
             -gtk-icon-source: -gtk-icontheme('open-menu-symbolic');
