@@ -200,14 +200,16 @@ function ButtonLabel() {
 
     const bat = AstalBattery.get_default()
 
-    const { defaultSpeaker: speaker } = AstalWp.get_default()!
-    const { defaultMicrophone: microphone } = AstalWp.get_default()!
+    const wp = AstalWp.get_default()
+    // null when pipewire has no devices; audioWidget can't take null
+    const speaker = wp?.defaultSpeaker ?? null
+    const microphone = wp?.defaultMicrophone ?? null
 
     const labelBox = new Gtk.Box()
     labelBox.spacing = 12
 
-    labelBox.append(audioWidget(speaker))
-    labelBox.append(audioWidget(microphone))
+    if (speaker) labelBox.append(audioWidget(speaker))
+    if (microphone) labelBox.append(audioWidget(microphone))
     labelBox.append(powerProfile())
     labelBox.append(vpnIndicator())
     if (bat.isPresent) {

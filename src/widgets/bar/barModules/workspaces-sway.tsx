@@ -28,7 +28,7 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
             ]
 
             // Steam app icon lookup
-            if (node.window_properties?.instance.startsWith("steam_app_")) {
+            if (node.window_properties?.instance?.startsWith("steam_app_")) {
                 // Replaces "steam_app_" -> "steam_icon_" while keeping the numbers 
                 elements.push(node.window_properties.instance.replace(/^steam_app_(\d+)$/, "steam_icon_$1"))
             }
@@ -78,6 +78,8 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
     }
 
     const sway = Sway.get_default();
+    // IPC dead (stale socket, sway not running): show nothing
+    if (!sway.ok) return <></>
 
     const [displayName, setDisplayName] = createState(monitor.get_connector())
     setTimeout(() => {

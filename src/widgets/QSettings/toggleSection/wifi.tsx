@@ -11,6 +11,8 @@ interface wifiPaneProps {
 
 export function WifiButton({ navigate }: { navigate: () => void }) {
     const wifi = AstalNetwork.get_default().wifi
+    // no wifi device on this machine
+    if (!wifi) return <></>
 
     const subtitle = createComputed(
         [createBinding(wifi, "enabled"), createBinding(wifi, "ssid")],
@@ -29,6 +31,7 @@ export function WifiButton({ navigate }: { navigate: () => void }) {
 
 export function WifiWidget({ pane, name }: wifiPaneProps) {
     const wifi = AstalNetwork.get_default().wifi
+    if (!wifi) return <></>
 
     // rescan whenever this pane becomes visible
     // (subscribe callbacks receive no value, read it)

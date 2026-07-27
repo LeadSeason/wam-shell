@@ -230,7 +230,13 @@ function BrightnessSlider() {
 }
 
 export function SliderSection() {
-    const wp = AstalWp.get_default()!
+    const wp = AstalWp.get_default()
+
+    // wireplumber absent or audio not connected: brightness still works
+    if (!wp || !wp.audio)
+        return <box cssClasses={["QSSection"]} orientation={Gtk.Orientation.VERTICAL}>
+            <BrightnessSlider />
+        </box>
     const { audio } = wp
 
     const [expanded, setExpanded] = createState(0)
