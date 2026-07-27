@@ -1,5 +1,14 @@
 # wam-shell conventions
 
+## Runtime services
+
+- Notifications come from AstalNotifd — the shell IS the notification
+  daemon. Do not run swaync alongside; remove it from autostart.
+- The app launcher and notification center toggle via request
+  commands: `ags request -i wam-shell launcher` and
+  `ags request -i wam-shell notifications` (bind these in the
+  compositor config).
+
 ## Widgets must be CSS-targetable
 
 Every new widget (bar module, quick settings section, etc.) must carry
