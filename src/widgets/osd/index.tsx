@@ -4,17 +4,25 @@ import app from "ags/gtk4/app"
 import { createBinding, With } from "gnim"
 import AstalHyprland from "gi://AstalHyprland"
 import Config from "../../config"
+import Sway from "../../lib/sway"
 import { content, visible } from "../../lib/osd"
 
 export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
     const { TOP, BOTTOM } = Astal.WindowAnchor
 
-    // show only on the focused monitor (hyprland); elsewhere primary
+    // show only on the focused monitor
     let isFocused
     if (Config.desktopSession === "hyprland") {
         const hyprland = AstalHyprland.get_default()
         isFocused = createBinding(hyprland, "focusedMonitor").as(m =>
             m?.name === gdkMonitor.get_connector())
+    } else if (Config.desktopSession === "sway" || Config.desktopSession === "i3") {
+        const sway = Sway.get_default()
+        isFocused = sway.ok
+            ? createBinding(sway, "outputs").as(outputs =>
+                (outputs.find((o: any) => o.focused)?.name ?? null)
+                === gdkMonitor.get_connector())
+            : app.monitors[0] === gdkMonitor
     } else {
         isFocused = app.monitors[0] === gdkMonitor
     }
