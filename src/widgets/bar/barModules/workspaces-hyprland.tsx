@@ -1,5 +1,6 @@
 import Gdk from "gi://Gdk?version=4.0"
 import AstalHyprland from "gi://AstalHyprland?version=0.1"
+import { execAsync } from "ags/process"
 import Config from "../../../config"
 import { createIconResolver } from "../../../lib/appIcon"
 import { For, createBinding, createState } from "ags"
@@ -48,7 +49,11 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
                     <button
                         cssName={"workspace"}
                         cssClasses={focused}
-                        onClicked={() => workspace.focus()}
+                        // hyprland 0.55+ only speaks lua dispatch; astal's
+                        // workspace.focus() still uses the legacy syntax
+                        onClicked={() => execAsync(["hyprctl", "dispatch",
+                            `hl.dsp.focus({workspace="${workspace.id}"})`])
+                            .catch(e => console.error(e))}
                     >
                         <box>
                             {Config.workspaces.showLabels && <label label={workspace.id.toString()} />}
