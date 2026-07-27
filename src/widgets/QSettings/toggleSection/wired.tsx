@@ -5,6 +5,8 @@ import AstalNetwork from "gi://AstalNetwork?version=0.1";
 
 export function WiredButton() {
     const wired = AstalNetwork.get_default().wired
+    // no ethernet device on this machine (or link down at startup)
+    if (!wired) return <></>
     const DS = AstalNetwork.DeviceState
 
     const subtitle = createBinding(wired, "state").as(state => {

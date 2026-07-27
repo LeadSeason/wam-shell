@@ -185,10 +185,19 @@ function getQSettingsConfig() {
         closeDelay = 350
     }
 
+    let statsInterval = get("stats_interval", 1000)
+    if (typeof statsInterval !== "number" || statsInterval <= 0) {
+        console.error(`Config "quicksettings.stats_interval" must be a positive number, got "${statsInterval}"`)
+        statsInterval = 1000
+    }
+
     return {
         closeDelay,
         showBatteryPercentage: get("show_battery_percentage", true),
         showDeviceNames: get("show_device_names", false),
+        showStats: get("show_stats", false),
+        statsOnPanel: get("stats_on_panel", false),
+        statsInterval,
     }
 }
 
