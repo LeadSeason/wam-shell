@@ -228,9 +228,21 @@ function getBarMonitors(): string[] {
     return m.filter(x => typeof x === "string" && x !== "")
 }
 
+function getTheme(data: Record<string, any>): string {
+    const fallback = "catppuccin-mocha"
+    const t = data.theme
+    if (t === undefined) return fallback
+    if (typeof t !== "string" || !isFile(`${instanceSrcDir}/scss/theme/${t}.scss`)) {
+        console.error(`Config "theme": no scss/theme/${t}.scss, falling back to ${fallback}`)
+        return fallback
+    }
+    return t
+}
+
 export interface PanelConfig {
     monitors: string[]
     position: "top" | "bottom"
+    class: string
     left: string[]
     center: string[]
     right: string[]
@@ -269,6 +281,7 @@ function getPanelsConfig(): PanelConfig[] {
         return {
             monitors: strList(entry.monitors, []),
             position: position as "top" | "bottom",
+            class: typeof entry.class === "string" ? entry.class : "",
             left: checkWidgets(strList(entry.left, ["osicon", "workspaces"])),
             center: checkWidgets(strList(entry.center, ["clock"])),
             right: checkWidgets(strList(entry.right,
@@ -327,10 +340,19 @@ export default class Config {
     static hyprsunset = getHyprsunsetConfig()
     static barMonitors = getBarMonitors()
     static panels = getPanelsConfig()
+    static theme = getTheme(configData)
 
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`
 
     static cssPath = `${this.instanceCacheDir}/style.css`
     static scssPath = `${this.instanceSrcDir}/scss/style.scss`
+}
+
+// Re-read the theme key from the config file so theme changes apply
+// on reloadStyle without a restart.
+export function reloadTheme(): string {
+    const data = parseToml(readRawFile(findConfigFile()))
+    Config.theme = getTheme(data)
+    return Config.theme
 }

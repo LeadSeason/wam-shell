@@ -1,4 +1,4 @@
-@use "../../theme/catppuccin-mocha.scss" as t;
+@use "../../theme/active-theme.scss" as t;
 @use "sass:color";
 @use "../../conf.scss" as s;
 
@@ -8,6 +8,9 @@ window.Bar {
     transition-duration: 200ms;
 
     >centerbox {
+        // solid theme base: translucency over the wallpaper washed
+        // text out
+        background-color: t.$base;
         background-image: url("./assets/grain.webp"),
             radial-gradient(ellipse at bottom, rgba(72, 40, 5, 0.2), rgba(2, 4, 66, 0.3) 100%);
         border-bottom: solid 2px t.$accent50;
@@ -22,8 +25,8 @@ window.Bar {
 
     // resource utilization monitor
     .sysStats {
-        font-size: 0.85em;
-        margin-right: 4px;
+        font-size: s.$font-small;
+        margin-right: s.$gap-small;
         .statCpu { color: t.$blue; }
         .statRam { color: t.$green; }
         .statGpu { color: t.$peach; }
@@ -40,6 +43,15 @@ window.Bar {
         .statRam box { background-color: t.$green; }
         .statGpu box { background-color: t.$peach; }
     }
+
+    // gap between panel widgets; GTK css has no box spacing, so margins
+    >centerbox > box > *:not(:last-child) {
+        margin-right: s.$bar-widget-spacing;
+    }
+    // per-widget spacing: override margins on the widget's class, e.g.
+    // .sysStats { margin-right: 12px; }
+    // classes: .osIcon, workspaces, clock button, .sysStats, .trayItem,
+    // .QSettings, .keyboardLayout, .swayNC
 
     clock button,
     .osIcon,

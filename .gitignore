@@ -7,3 +7,5 @@ config-override.toml
 .vscode
 package-lock.json
 !pnpm-lock.yaml
+scss/theme/active-theme.scss
+scss/user.scss

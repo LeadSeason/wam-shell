@@ -1,4 +1,4 @@
-@use "theme/catppuccin-mocha.scss" as t;
+@use "theme/active-theme.scss" as t;
 @use "conf.scss" as s;
 
 @use "widgets/bar/bar.scss";
@@ -7,6 +7,9 @@
 @use "widgets/tooltip.scss";
 @use "widgets/QSettings.scss";
 @use "widgets/dialog.scss";
+
+// user overrides always win (gitignored, created if missing)
+@use "user.scss";
 
 // Style ROOT, Allies to all.
 * {

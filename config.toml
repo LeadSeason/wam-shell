@@ -23,6 +23,11 @@
 # otherwise disabled
 # sway_gaps = true
 
+# theme - color theme, a file in scss/theme/<name>.scss. shipped:
+#         catppuccin-mocha (default), catppuccin-macchiato,
+#         catppuccin-frappe, catppuccin-latte, gruvbox
+# theme = "catppuccin-mocha"
+
 # bar_monitors - list of monitors that get a panel. Entries match the
 #                connector ("HDMI-A-1"), the model ("X34 P") or a
 #                substring of the description ("Acer"). Unset or empty
@@ -37,11 +42,16 @@
 #
 # monitors - same matching as bar_monitors. empty = every monitor
 # position - "top" or "bottom". default "top"
+# class - extra css class on the panel window, for per-panel styling
+#         in scss (e.g. class = "laptop" -> window.Bar.laptop). optional
 # left/center/right - widget lists. Available widgets:
 #                osicon, workspaces, clock, stats, tray, quicksettings,
 #                language, notifications
-# Note: tray is single-instance, only the first panel that lists it
-# gets it. Multiple panels on the same edge of the same monitor stack.
+#                The lists are authoritative: a listed widget always
+#                renders, regardless of global toggles like
+#                stats_on_panel or workspaces.enabled (those only apply
+#                to the classic layout). language supports hyprland,
+#                sway and i3; tray renders in every panel that lists it.
 # [[panel]]
 # monitors = ["Acer"]
 # position = "top"
