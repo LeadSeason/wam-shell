@@ -171,6 +171,7 @@
 # brightness = true
 # layout = true
 # lock_keys = true
+# notification = true
 # media = true
 
 # arch_updates_threshold - Check updates module

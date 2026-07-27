@@ -257,6 +257,7 @@ function getOsdConfig() {
         layout: get("layout", true),
         lockKeys: get("lock_keys", true),
         media: get("media", true),
+        notification: get("notification", true),
     }
 }
 
