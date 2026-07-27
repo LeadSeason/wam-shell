@@ -18,23 +18,7 @@ import KeyboardLayout from "./barModules/keyboardLayout"
 import SysStats from "./barModules/sysStats"
 import QSettingsLabel from "./barModules/QSettingsLabel"
 
-// Tray is single-instance: it owns the SNI watcher, so only the first
-// panel (or monitor) that lists it gets it
-let trayClaimed = false
-
-function workspaceWidgetFor(gdkMonitor: Gdk.Monitor) {
-    if (!Config.workspaces.enabled) return null
-    if (Config.desktopSession == "sway" || Config.desktopSession == "i3") {
-        return <SwayWs monitor={gdkMonitor} />
-    } else if (Config.desktopSession == "hyprland") {
-        return <HyprlandWs monitor={gdkMonitor} />
-    }
-    return <WorkspacesExample />
-}
-
 function trayWidgetFor(gdkMonitor: Gdk.Monitor) {
-    if (trayClaimed) return null
-    trayClaimed = true
     if (Config.tray.onPanel) {
         return <Tray />
     } else if (Config.tray.alwaysOnPanel.length > 0) {
@@ -43,17 +27,28 @@ function trayWidgetFor(gdkMonitor: Gdk.Monitor) {
     return null
 }
 
+function workspaceWidgetFor(gdkMonitor: Gdk.Monitor, authoritative = false) {
+    // panel mode is authoritative: a widget in the list always renders
+    if (!authoritative && !Config.workspaces.enabled) return null
+    if (Config.desktopSession == "sway" || Config.desktopSession == "i3") {
+        return <SwayWs monitor={gdkMonitor} />
+    } else if (Config.desktopSession == "hyprland") {
+        return <HyprlandWs monitor={gdkMonitor} />
+    }
+    return <WorkspacesExample />
+}
+
 function moduleFor(name: string, gdkMonitor: Gdk.Monitor) {
+    // panel lists are authoritative: global toggles (stats_on_panel,
+    // workspaces.enabled) do not apply here.
     switch (name) {
         case "osicon": return <OSIcon />
-        case "workspaces": return workspaceWidgetFor(gdkMonitor)
+        case "workspaces": return workspaceWidgetFor(gdkMonitor, true)
         case "clock": return <Clock />
-        case "stats":
-            return Config.quicksettings.statsOnPanel ? <SysStats /> : null
+        case "stats": return <SysStats />
         case "tray": return trayWidgetFor(gdkMonitor)
         case "quicksettings": return <QSettingsLabel />
-        case "language":
-            return Config.desktopSession == "hyprland" ? <KeyboardLayout /> : null
+        case "language": return <KeyboardLayout />
         case "notifications": return <SwayNC />
         default: return null
     }
@@ -107,12 +102,7 @@ export default function Bar({ gdkMonitor, panel }: {
 
     // on_panel: the whole tray on the bar. Otherwise only pinned apps
     // (tray.always_on_panel) show on the bar, the rest stay nested.
-    // Tray items must be single-instance: the bar is built per monitor,
-    // so only render it on the primary one.
-    let trayWidget = null
-    if (app.monitors[0] === gdkMonitor) {
-        trayWidget = trayWidgetFor(gdkMonitor)
-    }
+    let trayWidget = trayWidgetFor(gdkMonitor)
 
     return win(TOP | LEFT | RIGHT,
         <centerbox cssName="centerbox">
@@ -128,7 +118,7 @@ export default function Bar({ gdkMonitor, panel }: {
                 {Config.tray.position == "left" && trayWidget}
                 <QSettingsLabel />
                 {Config.tray.position == "right" && trayWidget}
-                {Config.desktopSession == "hyprland" && <KeyboardLayout />}
+                <KeyboardLayout />
                 <SwayNC />
                 {Config.workspaces.position == "right" && workspaceWidget}
             </box>

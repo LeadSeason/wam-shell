@@ -47,8 +47,11 @@
 # left/center/right - widget lists. Available widgets:
 #                osicon, workspaces, clock, stats, tray, quicksettings,
 #                language, notifications
-# Note: tray is single-instance, only the first panel that lists it
-# gets it. Multiple panels on the same edge of the same monitor stack.
+#                The lists are authoritative: a listed widget always
+#                renders, regardless of global toggles like
+#                stats_on_panel or workspaces.enabled (those only apply
+#                to the classic layout). language supports hyprland,
+#                sway and i3; tray renders in every panel that lists it.
 # [[panel]]
 # monitors = ["Acer"]
 # position = "top"

@@ -1,12 +1,15 @@
-import { createState } from "gnim"
+import { Accessor, createState } from "gnim"
 import { Gtk } from "ags/gtk4"
 import { exec, execAsync } from "ags/process"
+import { createPoll } from "ags/time"
 import { readFile } from "ags/file"
 import AstalHyprland from "gi://AstalHyprland"
+import Config from "../../../config"
 
-// Keyboard layout indicator (hyprland only). Bar shows the active layout's
-// flag, clicking opens a dropdown of all configured layouts with flag and
-// name; picking one switches to it directly.
+// Keyboard layout indicator. Bar shows the active layout's flag, clicking
+// opens a dropdown of all configured layouts with flag and name; picking
+// one switches to it directly. Backends: hyprland (events) and sway/i3
+// (polled swaymsg/i3-msg).
 
 // xkb codes that are not ISO country codes
 const FLAG_OVERRIDES: Record<string, string> = {
@@ -40,14 +43,20 @@ function loadXkbNames(): Record<string, string> {
     }
 }
 
-export default function KeyboardLayout() {
+interface LayoutSource {
+    layouts: Accessor<string[]> // xkb codes ("" when unknown)
+    names: Accessor<string[]>   // display name per index
+    activeIndex: Accessor<number>
+    switchTo(i: number): void
+}
+
+function hyprlandSource(): LayoutSource {
     const hyprland = AstalHyprland.get_default()
     const xkbNames = loadXkbNames()
     const [layouts, setLayouts] = createState<string[]>([])
     const [variants, setVariants] = createState<string[]>([])
     const [activeIndex, setActiveIndex] = createState(0)
     let mainKb = ""
-    let pop: Gtk.Popover | null = null
 
     function refresh() {
         try {
@@ -68,45 +77,105 @@ export default function KeyboardLayout() {
     refresh()
     hyprland.connect("keyboard-layout", refresh)
 
-    const name = (code: string) => xkbNames[code] ?? code.toUpperCase()
-    const label = (i: number, code: string) => {
-        const v = variants.get()[i]
-        return v ? `${name(code)} (${v})` : name(code)
+    return {
+        layouts,
+        names: layouts.as(ls => ls.map((code, i) => {
+            const base = xkbNames[code] ?? code.toUpperCase()
+            const v = variants.get()[i]
+            return v ? `${base} (${v})` : base
+        })),
+        activeIndex,
+        switchTo(i) {
+            if (mainKb)
+                execAsync(["hyprctl", "switchxkblayout", mainKb, String(i)])
+                    .catch(e => console.error("keyboard layout:", e))
+        },
     }
+}
+
+function swaySource(msgCmd: string): LayoutSource {
+    // sway gives layout descriptions, not codes; reverse the xkb db
+    const xkbNames = loadXkbNames()
+    const descToCode: Record<string, string> = {}
+    for (const [code, desc] of Object.entries(xkbNames))
+        if (!(desc in descToCode)) descToCode[desc] = code
+
+    const [layouts, setLayouts] = createState<string[]>([])
+    const [names, setNames] = createState<string[]>([])
+    const [activeIndex, setActiveIndex] = createState(0)
+    let identifier = ""
+
+    const poll = createPoll("", 1000, `${msgCmd} -t get_inputs`)
+    poll.subscribe(() => {
+        try {
+            const inputs = JSON.parse(poll.get())
+            const kb = inputs.find((k: any) =>
+                k.type === "keyboard" && k.xkb_layout_names?.length > 0)
+            if (!kb) return
+            identifier = kb.identifier
+            const ns = kb.xkb_layout_names as string[]
+            setNames(ns)
+            setLayouts(ns.map(n => descToCode[n] ?? ""))
+            setActiveIndex(kb.xkb_active_layout_index ?? 0)
+        } catch (e) {
+            console.error("keyboard layout:", e)
+        }
+    })
+
+    return {
+        layouts,
+        names,
+        activeIndex,
+        switchTo(i) {
+            if (identifier)
+                execAsync([msgCmd, "input", identifier,
+                    "xkb_switch_layout", String(i)])
+                    .catch(e => console.error("keyboard layout:", e))
+        },
+    }
+}
+
+function LayoutDropdown({ source }: { source: LayoutSource }) {
+    const { layouts, names, activeIndex } = source
+    let pop: Gtk.Popover | null = null
 
     return <menubutton
         cssClasses={["keyboardLayout"]}
-        tooltipText={activeIndex.as(i => {
-            const code = layouts.get()[i]
-            return code ? label(i, code) : "Keyboard layout"
-        })}>
+        tooltipText={activeIndex.as(i =>
+            names.get()[i] ?? "Keyboard layout")}>
         <label label={activeIndex.as(i => {
             const code = layouts.get()[i] ?? ""
-            return flag(code) || code.toUpperCase()
+            return flag(code) || code.toUpperCase() || "⌨"
         })} />
         <popover
             hasArrow={false}
             $={(self) => { pop = self as Gtk.Popover }}
         >
             <box orientation={Gtk.Orientation.VERTICAL}>
-                {layouts.get().map((code, i) =>
+                {names.get().map((n, i) =>
                     <button
                         cssClasses={activeIndex.as(a => a === i ? ["active"] : [])}
                         onClicked={() => {
-                            if (mainKb)
-                                execAsync(["hyprctl", "switchxkblayout",
-                                    mainKb, String(i)])
-                                    .catch(e => console.error("keyboard layout:", e))
+                            source.switchTo(i)
                             pop?.popdown()
                         }}
                     >
                         <box spacing={8}>
-                            <label label={flag(code) || "  "} />
-                            <label label={label(i, code)} xalign={0} />
+                            <label label={flag(layouts.get()[i] ?? "") || "  "} />
+                            <label label={n} xalign={0} />
                         </box>
                     </button>
                 )}
             </box>
         </popover>
     </menubutton>
+}
+
+export default function KeyboardLayout() {
+    const ds = Config.desktopSession
+    if (ds === "hyprland")
+        return <LayoutDropdown source={hyprlandSource()} />
+    if (ds === "sway" || ds === "i3")
+        return <LayoutDropdown source={swaySource(ds === "i3" ? "i3-msg" : "swaymsg")} />
+    return <></>
 }
