@@ -18,7 +18,20 @@ const abScreen = ab?.screen ?? null // proxy for the guessed main screen
 const isDummy = abScreen
     ? abScreen.name.startsWith("nvidia") || /lock|kbd|keyboard/i.test(abScreen.name)
     : false
-const hasBacklight = abScreen !== null && !isDummy
+
+// a real backlight must have a readable max in sysfs — an empty
+// /sys/class/backlight can still leave a phantom proxy
+const readMax = (): number => {
+    if (!abScreen || isDummy) return 0
+    try {
+        return Number(readFile(
+            `/sys/class/backlight/${abScreen.name}/max_brightness`)) || 0
+    } catch {
+        return 0
+    }
+}
+const maxBrightness = readMax()
+const hasBacklight = abScreen !== null && !isDummy && maxBrightness > 0
 const hasHyprsunset = (() => {
     try { exec("which hyprsunset"); return true } catch { return false }
 })()
@@ -27,17 +40,6 @@ const hasHyprsunset = (() => {
 const useGammaDim = !hasBacklight && hasHyprsunset
     && Config.desktopSession === "hyprland"
 const screenIsPresent = hasBacklight || useGammaDim
-
-// the floor is the device's raw 1, not a fixed percentage
-const maxBrightness = (() => {
-    if (!hasBacklight) return 0
-    try {
-        return Number(readFile(
-            `/sys/class/backlight/${abScreen.name}/max_brightness`)) || 0
-    } catch {
-        return 0
-    }
-})()
 
 @register({ GTypeName: "Brightness" })
 export default class Brightness extends GObject.Object {
