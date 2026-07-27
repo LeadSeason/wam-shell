@@ -228,6 +228,17 @@ function getBarMonitors(): string[] {
     return m.filter(x => typeof x === "string" && x !== "")
 }
 
+function getTheme(): string {
+    const fallback = "catppuccin-mocha"
+    const t = configData.theme
+    if (t === undefined) return fallback
+    if (typeof t !== "string" || !isFile(`${instanceSrcDir}/scss/theme/${t}.scss`)) {
+        console.error(`Config "theme": no scss/theme/${t}.scss, falling back to ${fallback}`)
+        return fallback
+    }
+    return t
+}
+
 export interface PanelConfig {
     monitors: string[]
     position: "top" | "bottom"
@@ -329,6 +340,7 @@ export default class Config {
     static hyprsunset = getHyprsunsetConfig()
     static barMonitors = getBarMonitors()
     static panels = getPanelsConfig()
+    static theme = getTheme()
 
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`

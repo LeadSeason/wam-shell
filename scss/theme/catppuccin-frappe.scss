@@ -1,0 +1,303 @@
+@use "sass:color";
+
+/* Catppuccin Frappe */
+$rosewater: #f2d5cf;
+$flamingo: #eebebe;
+$pink: #f4b8e4;
+$mauve: #ca9ee6;
+$red: #e78284;
+$maroon: #ea999c;
+$peach: #ef9f76;
+$yellow: #e5c890;
+$green: #a6d189;
+$teal: #81c8be;
+$sky: #99d1db;
+$sapphire: #85c1dc;
+$blue: #8caaee;
+$lavender: #babbf1;
+$text: #c6d0f5;
+$subtext1: #b5bfe2;
+$subtext0: #a5adce;
+$overlay2: #949cbb;
+$overlay1: #838ba7;
+$overlay0: #737994;
+$surface2: #626880;
+$surface1: #51576d;
+$surface0: #414559;
+$base: #303446;
+$mantle: #292c3c;
+$crust: #232634;
+
+/* define accent color to cooking later */
+$accent: $blue;
+
+$accent10: color.mix($accent, transparent, 10%);
+$accent20: color.mix($accent, transparent, 20%);
+$accent30: color.mix($accent, transparent, 30%);
+$accent40: color.mix($accent, transparent, 40%);
+$accent50: color.mix($accent, transparent, 50%);
+$accent60: color.mix($accent, transparent, 60%);
+$accent70: color.mix($accent, transparent, 70%);
+$accent80: color.mix($accent, transparent, 80%);
+$accent90: color.mix($accent, transparent, 90%);
+
+$rosewater10: color.mix($rosewater, transparent, 10%);
+$rosewater20: color.mix($rosewater, transparent, 20%);
+$rosewater30: color.mix($rosewater, transparent, 30%);
+$rosewater40: color.mix($rosewater, transparent, 40%);
+$rosewater50: color.mix($rosewater, transparent, 50%);
+$rosewater60: color.mix($rosewater, transparent, 60%);
+$rosewater70: color.mix($rosewater, transparent, 70%);
+$rosewater80: color.mix($rosewater, transparent, 80%);
+$rosewater90: color.mix($rosewater, transparent, 90%);
+
+$flamingo10: color.mix($flamingo, transparent, 10%);
+$flamingo20: color.mix($flamingo, transparent, 20%);
+$flamingo30: color.mix($flamingo, transparent, 30%);
+$flamingo40: color.mix($flamingo, transparent, 40%);
+$flamingo50: color.mix($flamingo, transparent, 50%);
+$flamingo60: color.mix($flamingo, transparent, 60%);
+$flamingo70: color.mix($flamingo, transparent, 70%);
+$flamingo80: color.mix($flamingo, transparent, 80%);
+$flamingo90: color.mix($flamingo, transparent, 90%);
+
+$pink10: color.mix($pink, transparent, 10%);
+$pink20: color.mix($pink, transparent, 20%);
+$pink30: color.mix($pink, transparent, 30%);
+$pink40: color.mix($pink, transparent, 40%);
+$pink50: color.mix($pink, transparent, 50%);
+$pink60: color.mix($pink, transparent, 60%);
+$pink70: color.mix($pink, transparent, 70%);
+$pink80: color.mix($pink, transparent, 80%);
+$pink90: color.mix($pink, transparent, 90%);
+
+$mauve10: color.mix($mauve, transparent, 10%);
+$mauve20: color.mix($mauve, transparent, 20%);
+$mauve30: color.mix($mauve, transparent, 30%);
+$mauve40: color.mix($mauve, transparent, 40%);
+$mauve50: color.mix($mauve, transparent, 50%);
+$mauve60: color.mix($mauve, transparent, 60%);
+$mauve70: color.mix($mauve, transparent, 70%);
+$mauve80: color.mix($mauve, transparent, 80%);
+$mauve90: color.mix($mauve, transparent, 90%);
+
+$red10: color.mix($red, transparent, 10%);
+$red20: color.mix($red, transparent, 20%);
+$red30: color.mix($red, transparent, 30%);
+$red40: color.mix($red, transparent, 40%);
+$red50: color.mix($red, transparent, 50%);
+$red60: color.mix($red, transparent, 60%);
+$red70: color.mix($red, transparent, 70%);
+$red80: color.mix($red, transparent, 80%);
+$red90: color.mix($red, transparent, 90%);
+
+$maroon10: color.mix($maroon, transparent, 10%);
+$maroon20: color.mix($maroon, transparent, 20%);
+$maroon30: color.mix($maroon, transparent, 30%);
+$maroon40: color.mix($maroon, transparent, 40%);
+$maroon50: color.mix($maroon, transparent, 50%);
+$maroon60: color.mix($maroon, transparent, 60%);
+$maroon70: color.mix($maroon, transparent, 70%);
+$maroon80: color.mix($maroon, transparent, 80%);
+$maroon90: color.mix($maroon, transparent, 90%);
+
+$peach10: color.mix($peach, transparent, 10%);
+$peach20: color.mix($peach, transparent, 20%);
+$peach30: color.mix($peach, transparent, 30%);
+$peach40: color.mix($peach, transparent, 40%);
+$peach50: color.mix($peach, transparent, 50%);
+$peach60: color.mix($peach, transparent, 60%);
+$peach70: color.mix($peach, transparent, 70%);
+$peach80: color.mix($peach, transparent, 80%);
+$peach90: color.mix($peach, transparent, 90%);
+
+$yellow10: color.mix($yellow, transparent, 10%);
+$yellow20: color.mix($yellow, transparent, 20%);
+$yellow30: color.mix($yellow, transparent, 30%);
+$yellow40: color.mix($yellow, transparent, 40%);
+$yellow50: color.mix($yellow, transparent, 50%);
+$yellow60: color.mix($yellow, transparent, 60%);
+$yellow70: color.mix($yellow, transparent, 70%);
+$yellow80: color.mix($yellow, transparent, 80%);
+$yellow90: color.mix($yellow, transparent, 90%);
+
+$green10: color.mix($green, transparent, 10%);
+$green20: color.mix($green, transparent, 20%);
+$green30: color.mix($green, transparent, 30%);
+$green40: color.mix($green, transparent, 40%);
+$green50: color.mix($green, transparent, 50%);
+$green60: color.mix($green, transparent, 60%);
+$green70: color.mix($green, transparent, 70%);
+$green80: color.mix($green, transparent, 80%);
+$green90: color.mix($green, transparent, 90%);
+
+$teal10: color.mix($teal, transparent, 10%);
+$teal20: color.mix($teal, transparent, 20%);
+$teal30: color.mix($teal, transparent, 30%);
+$teal40: color.mix($teal, transparent, 40%);
+$teal50: color.mix($teal, transparent, 50%);
+$teal60: color.mix($teal, transparent, 60%);
+$teal70: color.mix($teal, transparent, 70%);
+$teal80: color.mix($teal, transparent, 80%);
+$teal90: color.mix($teal, transparent, 90%);
+
+$sky10: color.mix($sky, transparent, 10%);
+$sky20: color.mix($sky, transparent, 20%);
+$sky30: color.mix($sky, transparent, 30%);
+$sky40: color.mix($sky, transparent, 40%);
+$sky50: color.mix($sky, transparent, 50%);
+$sky60: color.mix($sky, transparent, 60%);
+$sky70: color.mix($sky, transparent, 70%);
+$sky80: color.mix($sky, transparent, 80%);
+$sky90: color.mix($sky, transparent, 90%);
+
+$sapphire10: color.mix($sapphire, transparent, 10%);
+$sapphire20: color.mix($sapphire, transparent, 20%);
+$sapphire30: color.mix($sapphire, transparent, 30%);
+$sapphire40: color.mix($sapphire, transparent, 40%);
+$sapphire50: color.mix($sapphire, transparent, 50%);
+$sapphire60: color.mix($sapphire, transparent, 60%);
+$sapphire70: color.mix($sapphire, transparent, 70%);
+$sapphire80: color.mix($sapphire, transparent, 80%);
+$sapphire90: color.mix($sapphire, transparent, 90%);
+
+$blue10: color.mix($blue, transparent, 10%);
+$blue20: color.mix($blue, transparent, 20%);
+$blue30: color.mix($blue, transparent, 30%);
+$blue40: color.mix($blue, transparent, 40%);
+$blue50: color.mix($blue, transparent, 50%);
+$blue60: color.mix($blue, transparent, 60%);
+$blue70: color.mix($blue, transparent, 70%);
+$blue80: color.mix($blue, transparent, 80%);
+$blue90: color.mix($blue, transparent, 90%);
+
+$lavender10: color.mix($lavender, transparent, 10%);
+$lavender20: color.mix($lavender, transparent, 20%);
+$lavender30: color.mix($lavender, transparent, 30%);
+$lavender40: color.mix($lavender, transparent, 40%);
+$lavender50: color.mix($lavender, transparent, 50%);
+$lavender60: color.mix($lavender, transparent, 60%);
+$lavender70: color.mix($lavender, transparent, 70%);
+$lavender80: color.mix($lavender, transparent, 80%);
+$lavender90: color.mix($lavender, transparent, 90%);
+
+$text10: color.mix($text, transparent, 10%);
+$text20: color.mix($text, transparent, 20%);
+$text30: color.mix($text, transparent, 30%);
+$text40: color.mix($text, transparent, 40%);
+$text50: color.mix($text, transparent, 50%);
+$text60: color.mix($text, transparent, 60%);
+$text70: color.mix($text, transparent, 70%);
+$text80: color.mix($text, transparent, 80%);
+$text90: color.mix($text, transparent, 90%);
+
+$subtext110: color.mix($subtext1, transparent, 10%);
+$subtext120: color.mix($subtext1, transparent, 20%);
+$subtext130: color.mix($subtext1, transparent, 30%);
+$subtext140: color.mix($subtext1, transparent, 40%);
+$subtext150: color.mix($subtext1, transparent, 50%);
+$subtext160: color.mix($subtext1, transparent, 60%);
+$subtext170: color.mix($subtext1, transparent, 70%);
+$subtext180: color.mix($subtext1, transparent, 80%);
+$subtext190: color.mix($subtext1, transparent, 90%);
+
+$subtext010: color.mix($subtext0, transparent, 10%);
+$subtext020: color.mix($subtext0, transparent, 20%);
+$subtext030: color.mix($subtext0, transparent, 30%);
+$subtext040: color.mix($subtext0, transparent, 40%);
+$subtext050: color.mix($subtext0, transparent, 50%);
+$subtext060: color.mix($subtext0, transparent, 60%);
+$subtext070: color.mix($subtext0, transparent, 70%);
+$subtext080: color.mix($subtext0, transparent, 80%);
+$subtext090: color.mix($subtext0, transparent, 90%);
+
+$overlay210: color.mix($overlay2, transparent, 10%);
+$overlay220: color.mix($overlay2, transparent, 20%);
+$overlay230: color.mix($overlay2, transparent, 30%);
+$overlay240: color.mix($overlay2, transparent, 40%);
+$overlay250: color.mix($overlay2, transparent, 50%);
+$overlay260: color.mix($overlay2, transparent, 60%);
+$overlay270: color.mix($overlay2, transparent, 70%);
+$overlay280: color.mix($overlay2, transparent, 80%);
+$overlay290: color.mix($overlay2, transparent, 90%);
+
+$overlay110: color.mix($overlay1, transparent, 10%);
+$overlay120: color.mix($overlay1, transparent, 20%);
+$overlay130: color.mix($overlay1, transparent, 30%);
+$overlay140: color.mix($overlay1, transparent, 40%);
+$overlay150: color.mix($overlay1, transparent, 50%);
+$overlay160: color.mix($overlay1, transparent, 60%);
+$overlay170: color.mix($overlay1, transparent, 70%);
+$overlay180: color.mix($overlay1, transparent, 80%);
+$overlay190: color.mix($overlay1, transparent, 90%);
+
+$overlay010: color.mix($overlay0, transparent, 10%);
+$overlay020: color.mix($overlay0, transparent, 20%);
+$overlay030: color.mix($overlay0, transparent, 30%);
+$overlay040: color.mix($overlay0, transparent, 40%);
+$overlay050: color.mix($overlay0, transparent, 50%);
+$overlay060: color.mix($overlay0, transparent, 60%);
+$overlay070: color.mix($overlay0, transparent, 70%);
+$overlay080: color.mix($overlay0, transparent, 80%);
+$overlay090: color.mix($overlay0, transparent, 90%);
+
+$surface210: color.mix($surface2, transparent, 10%);
+$surface220: color.mix($surface2, transparent, 20%);
+$surface230: color.mix($surface2, transparent, 30%);
+$surface240: color.mix($surface2, transparent, 40%);
+$surface250: color.mix($surface2, transparent, 50%);
+$surface260: color.mix($surface2, transparent, 60%);
+$surface270: color.mix($surface2, transparent, 70%);
+$surface280: color.mix($surface2, transparent, 80%);
+$surface290: color.mix($surface2, transparent, 90%);
+
+$surface110: color.mix($surface1, transparent, 10%);
+$surface120: color.mix($surface1, transparent, 20%);
+$surface130: color.mix($surface1, transparent, 30%);
+$surface140: color.mix($surface1, transparent, 40%);
+$surface150: color.mix($surface1, transparent, 50%);
+$surface160: color.mix($surface1, transparent, 60%);
+$surface170: color.mix($surface1, transparent, 70%);
+$surface180: color.mix($surface1, transparent, 80%);
+$surface190: color.mix($surface1, transparent, 90%);
+
+$surface010: color.mix($surface0, transparent, 10%);
+$surface020: color.mix($surface0, transparent, 20%);
+$surface030: color.mix($surface0, transparent, 30%);
+$surface040: color.mix($surface0, transparent, 40%);
+$surface050: color.mix($surface0, transparent, 50%);
+$surface060: color.mix($surface0, transparent, 60%);
+$surface070: color.mix($surface0, transparent, 70%);
+$surface080: color.mix($surface0, transparent, 80%);
+$surface090: color.mix($surface0, transparent, 90%);
+
+$base10: color.mix($base, transparent, 10%);
+$base20: color.mix($base, transparent, 20%);
+$base30: color.mix($base, transparent, 30%);
+$base40: color.mix($base, transparent, 40%);
+$base50: color.mix($base, transparent, 50%);
+$base60: color.mix($base, transparent, 60%);
+$base70: color.mix($base, transparent, 70%);
+$base80: color.mix($base, transparent, 80%);
+$base90: color.mix($base, transparent, 90%);
+
+$mantle10: color.mix($mantle, transparent, 10%);
+$mantle20: color.mix($mantle, transparent, 20%);
+$mantle30: color.mix($mantle, transparent, 30%);
+$mantle40: color.mix($mantle, transparent, 40%);
+$mantle50: color.mix($mantle, transparent, 50%);
+$mantle60: color.mix($mantle, transparent, 60%);
+$mantle70: color.mix($mantle, transparent, 70%);
+$mantle80: color.mix($mantle, transparent, 80%);
+$mantle90: color.mix($mantle, transparent, 90%);
+
+$crust10: color.mix($crust, transparent, 10%);
+$crust20: color.mix($crust, transparent, 20%);
+$crust30: color.mix($crust, transparent, 30%);
+$crust40: color.mix($crust, transparent, 40%);
+$crust50: color.mix($crust, transparent, 50%);
+$crust60: color.mix($crust, transparent, 60%);
+$crust70: color.mix($crust, transparent, 70%);
+$crust80: color.mix($crust, transparent, 80%);
+$crust90: color.mix($crust, transparent, 90%);
+

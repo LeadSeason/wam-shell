@@ -23,6 +23,11 @@
 # otherwise disabled
 # sway_gaps = true
 
+# theme - color theme, a file in scss/theme/<name>.scss. shipped:
+#         catppuccin-mocha (default), catppuccin-macchiato,
+#         catppuccin-frappe, catppuccin-latte
+# theme = "catppuccin-mocha"
+
 # bar_monitors - list of monitors that get a panel. Entries match the
 #                connector ("HDMI-A-1"), the model ("X34 P") or a
 #                substring of the description ("Acer"). Unset or empty
