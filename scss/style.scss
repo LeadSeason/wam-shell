@@ -7,6 +7,7 @@
 @use "widgets/tooltip.scss";
 @use "widgets/QSettings.scss";
 @use "widgets/dialog.scss";
+@use "widgets/osd.scss";
 
 // user overrides always win (gitignored, created if missing)
 @use "user.scss";

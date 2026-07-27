@@ -70,29 +70,38 @@ function applyGamma() {
 
 // Watch the daemon for external gamma/temperature changes (keybinds,
 // other tools). Skipped briefly after our own applies so a mid-drag
-// read can't fight the debounced apply above.
-GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
-    try {
-        const gamma = Number(exec("hyprctl hyprsunset gamma"))
-        if (!isNaN(gamma) && gamma > 0 && Date.now() - lastApply >= 1500) {
-            const expected = outdoor.get() ? OUTDOOR_GAMMA : Math.round(dim.get() * 100)
-            if (Math.abs(gamma - expected) > 1) {
-                if (gamma > 100) {
-                    setOutdoor(true)
-                } else {
-                    setOutdoor(false)
-                    setDim(gamma / 100)
+// read can't fight the debounced apply above. Async reads, 250ms.
+let watchRunning = false
+GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
+    if (watchRunning) return GLib.SOURCE_CONTINUE
+    watchRunning = true
+    Promise.all([
+        execAsync("hyprctl hyprsunset gamma"),
+        execAsync("hyprctl hyprsunset temperature"),
+    ])
+        .then(([gammaOut, tempOut]) => {
+            const gamma = Number(gammaOut.trim())
+            if (!isNaN(gamma) && gamma > 0 && Date.now() - lastApply >= 1500) {
+                const expected = outdoor.get() ? OUTDOOR_GAMMA : Math.round(dim.get() * 100)
+                if (Math.abs(gamma - expected) > 1) {
+                    if (gamma > 100) {
+                        setOutdoor(true)
+                    } else {
+                        setOutdoor(false)
+                        setDim(gamma / 100)
+                    }
                 }
             }
-        }
 
-        const temp = Number(exec("hyprctl hyprsunset temperature"))
-        if (!isNaN(temp) && temp > 0 && Date.now() - lastTempApply >= 1500) {
-            // matches the init heuristic: warm means night light is on
-            const nl = temp <= 5000
-            if (nl !== nightLight.get()) setNightLight(nl)
-        }
-    } catch { }
+            const temp = Number(tempOut.trim())
+            if (!isNaN(temp) && temp > 0 && Date.now() - lastTempApply >= 1500) {
+                // matches the init heuristic: warm means night light is on
+                const nl = temp <= 5000
+                if (nl !== nightLight.get()) setNightLight(nl)
+            }
+        })
+        .catch(() => { })
+        .finally(() => { watchRunning = false })
     return GLib.SOURCE_CONTINUE
 })
 

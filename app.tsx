@@ -3,6 +3,7 @@ import app from "ags/gtk4/app"
 import { createBinding, For } from "gnim"
 
 import Bar from "./src/widgets/bar"
+import OSD from "./src/widgets/osd"
 import Config from "./src/config"
 import { compileScss } from "./src/lib/style"
 import { requestHandler } from "./src/lib/requestHandler"
@@ -37,24 +38,29 @@ function main() {
     const qSettings = QSettings() as Gtk.Window
     app.add_window(qSettings)
 
-    // legacy mode (no [[panel]] config): one bar per monitor, filtered
-    // by bar_monitors (connector/model/description)
-    if (Config.panels.length === 0) {
-        const monitors = createBinding(app, "monitors").as(ms =>
-            ms.filter(m => matchMonitor(Config.barMonitors, m)))
-        return (<For each={monitors} cleanup={(win) => (win as Gtk.Window).destroy()}>
+    const bars = Config.panels.length === 0
+        // legacy mode: one bar per monitor, filtered by bar_monitors
+        ? (<For each={createBinding(app, "monitors").as(ms =>
+            ms.filter(m => matchMonitor(Config.barMonitors, m)))}
+            cleanup={(win) => (win as Gtk.Window).destroy()}>
             {(monitor) => <Bar gdkMonitor={monitor} />}
         </For>)
-    }
+        // panel mode: one bar per matching [[panel]] per monitor
+        : (<For each={createBinding(app, "monitors").as(ms =>
+            ms.flatMap(m => Config.panels
+                .filter(p => matchMonitor(p.monitors, m))
+                .map(panel => ({ monitor: m, panel }))))}
+            cleanup={(win) => (win as Gtk.Window).destroy()}>
+            {({ monitor, panel }) => <Bar gdkMonitor={monitor} panel={panel} />}
+        </For>)
 
-    // panel mode: one bar per matching [[panel]] per monitor
-    const pairs = createBinding(app, "monitors").as(ms =>
-        ms.flatMap(m => Config.panels
-            .filter(p => matchMonitor(p.monitors, m))
-            .map(panel => ({ monitor: m, panel }))))
-    return (<For each={pairs} cleanup={(win) => (win as Gtk.Window).destroy()}>
-        {({ monitor, panel }) => <Bar gdkMonitor={monitor} panel={panel} />}
-    </For>)
+    const osds = !Config.osd.enabled ? null
+        : (<For each={createBinding(app, "monitors")}
+            cleanup={(win) => (win as Gtk.Window).destroy()}>
+            {(monitor) => <OSD gdkMonitor={monitor} />}
+        </For>)
+
+    return [bars, osds]
 }
 
 if (!GLib.file_test(Config.instanceCacheDir, GLib.FileTest.IS_DIR)) {

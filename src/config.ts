@@ -228,6 +228,35 @@ function getBarMonitors(): string[] {
     return m.filter(x => typeof x === "string" && x !== "")
 }
 
+function getOsdConfig() {
+    const o = configData.osd ?? {}
+    const get = (key: string, fallback: any) => o[key] ?? configData[key] ?? fallback
+
+    let position = get("position", "bottom")
+    if (!["bottom", "center", "top"].includes(position)) {
+        console.error(`Config "osd.position" must be "bottom", "center" or "top", got "${position}"`)
+        position = "bottom"
+    }
+
+    let timeout = get("timeout", 2000)
+    if (typeof timeout !== "number" || timeout <= 0) {
+        console.error(`Config "osd.timeout" must be a positive number, got "${timeout}"`)
+        timeout = 2000
+    }
+
+    return {
+        enabled: get("enabled", true),
+        position: position as "bottom" | "center" | "top",
+        timeout,
+        // per-trigger toggles
+        volume: get("volume", true),
+        microphone: get("microphone", true),
+        brightness: get("brightness", true),
+        layout: get("layout", true),
+        lockKeys: get("lock_keys", true),
+    }
+}
+
 function getTheme(data: Record<string, any>): string {
     const fallback = "catppuccin-mocha"
     const t = data.theme
@@ -341,6 +370,7 @@ export default class Config {
     static barMonitors = getBarMonitors()
     static panels = getPanelsConfig()
     static theme = getTheme(configData)
+    static osd = getOsdConfig()
 
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`
