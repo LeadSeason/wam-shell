@@ -21,17 +21,19 @@ const [outdoor, setOutdoor] = createState(false)
 const [dim, setDim] = createState(1) // gamma fraction, 0.05..1
 
 // Night light backend. hyprctl (hyprland + hyprsunset daemon) is
-// preferred; without it fall back to gsettings (GNOME) or gammastep
-// (wlroots compositors like sway).
+// preferred; then gammastep (works on wlroots like sway); gsettings
+// only when gnome-settings-daemon actually runs — on sway the schema
+// often exists as a dependency but changes nothing.
 type TempBackend = "hyprctl" | "gsettings" | "gammastep" | "none"
 const GSCHEMA = "org.gnome.settings-daemon.plugins.color"
 export const tempBackend: TempBackend = (() => {
     if (Config.desktopSession === "hyprland") return "hyprctl"
+    try { exec("which gammastep"); return "gammastep" } catch { }
     try {
         exec(`gsettings get ${GSCHEMA} night-light-enabled`)
+        exec("pgrep -x gnome-settings-daemon")
         return "gsettings"
     } catch { }
-    try { exec("which gammastep"); return "gammastep" } catch { }
     return "none"
 })()
 
