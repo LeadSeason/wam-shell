@@ -86,7 +86,7 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                     onPressed={() => {
                         // only works for known networks, new
                         // networks need a password prompt
-                        ap.activate(null).catch((e) => console.error(e))
+                        ap.activate(null).catch((e) => console.warn("wifi connect failed:", e))
                     }}
                 />
                 <image iconName={createBinding(ap, "iconName")} />

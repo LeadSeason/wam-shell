@@ -20,8 +20,25 @@ const [nightLight, setNightLight] = createState(false)
 const [outdoor, setOutdoor] = createState(false)
 const [dim, setDim] = createState(1) // gamma fraction, 0.05..1
 
+// Night light backend. hyprctl (hyprland + hyprsunset daemon) is
+// preferred; then gammastep (works on wlroots like sway); gsettings
+// only when gnome-settings-daemon actually runs — on sway the schema
+// often exists as a dependency but changes nothing.
+type TempBackend = "hyprctl" | "gsettings" | "gammastep" | "none"
+const GSCHEMA = "org.gnome.settings-daemon.plugins.color"
+export const tempBackend: TempBackend = (() => {
+    if (Config.desktopSession === "hyprland") return "hyprctl"
+    try { exec("which gammastep"); return "gammastep" } catch { }
+    try {
+        exec(`gsettings get ${GSCHEMA} night-light-enabled`)
+        exec("pgrep -x gnome-settings-daemon")
+        return "gsettings"
+    } catch { }
+    return "none"
+})()
+
 // init from the running daemon so the slider matches reality
-if (Config.desktopSession === "hyprland") {
+if (tempBackend === "hyprctl") {
     try {
         const gamma = Number(exec("hyprctl hyprsunset gamma"))
         if (!isNaN(gamma) && gamma > 0) {
@@ -33,6 +50,11 @@ if (Config.desktopSession === "hyprland") {
     } catch {
         // daemon not running, keep defaults
     }
+} else if (tempBackend === "gsettings") {
+    try {
+        const enabled = exec(`gsettings get ${GSCHEMA} night-light-enabled`).trim()
+        setNightLight(enabled === "true")
+    } catch { }
 }
 
 function currentTemp(): number {
@@ -45,8 +67,28 @@ function currentTemp(): number {
 let lastTempApply = 0
 function applyTemp() {
     lastTempApply = Date.now()
-    execAsync(["hyprctl", "hyprsunset", "temperature", String(currentTemp())])
-        .catch(() => { })
+    const nl = nightLight.get()
+    switch (tempBackend) {
+        case "hyprctl":
+            execAsync(["hyprctl", "hyprsunset", "temperature", String(currentTemp())])
+                .catch(() => { })
+            break
+        case "gsettings":
+            if (nl)
+                execAsync(["gsettings", "set", GSCHEMA,
+                    "night-light-temperature", String(Config.hyprsunset.nightTemp)])
+                    .catch(() => { })
+            execAsync(["gsettings", "set", GSCHEMA,
+                "night-light-enabled", nl ? "true" : "false"])
+                .catch(() => { })
+            break
+        case "gammastep":
+            execAsync(nl
+                ? ["gammastep", "-O", String(Config.hyprsunset.nightTemp)]
+                : ["gammastep", "-x"])
+                .catch(() => { })
+            break
+    }
 }
 
 // Dragging the brightness slider fires applyGamma per motion event;

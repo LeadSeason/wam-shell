@@ -5,6 +5,8 @@ import { Gtk } from "ags/gtk4";
 
 export function BluetoothButton({ navigate }: { navigate: () => void }) {
     const bluetooth = AstalBluetooth.get_default()
+    // no bluetooth adapter on this machine
+    if (!bluetooth.adapter) return <></>
 
     const subtitle = createComputed(
         [createBinding(bluetooth, "is_powered"), createBinding(bluetooth, "devices")],

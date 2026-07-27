@@ -1,20 +1,29 @@
 import { Astal, Gtk, Gdk } from "ags/gtk4"
 import GLib from "gi://GLib?version=2.0"
+import Pango from "gi://Pango?version=1.0"
 import app from "ags/gtk4/app"
 import { createBinding, With } from "gnim"
 import AstalHyprland from "gi://AstalHyprland"
 import Config from "../../config"
+import Sway from "../../lib/sway"
 import { content, visible } from "../../lib/osd"
 
 export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
     const { TOP, BOTTOM } = Astal.WindowAnchor
 
-    // show only on the focused monitor (hyprland); elsewhere primary
+    // show only on the focused monitor
     let isFocused
     if (Config.desktopSession === "hyprland") {
         const hyprland = AstalHyprland.get_default()
         isFocused = createBinding(hyprland, "focusedMonitor").as(m =>
             m?.name === gdkMonitor.get_connector())
+    } else if (Config.desktopSession === "sway" || Config.desktopSession === "i3") {
+        const sway = Sway.get_default()
+        isFocused = sway.ok
+            ? createBinding(sway, "outputs").as(outputs =>
+                (outputs.find((o: any) => o.focused)?.name ?? null)
+                === gdkMonitor.get_connector())
+            : app.monitors[0] === gdkMonitor
     } else {
         isFocused = app.monitors[0] === gdkMonitor
     }
@@ -30,11 +39,13 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
 
     // drive window visibility from the lib state: present+reveal on show,
     // slide out and fully unmap on hide (a mapped window ghosts its last
-    // frame on some compositors)
+    // frame on some compositors). Focus gates only PRESENTING — hiding
+    // must always happen, or a focus change between show and hide leaves
+    // the pill stuck on screen.
     visible.subscribe(() => {
-        const focused = typeof isFocused === "boolean" ? isFocused : isFocused.get()
-        if (!focused) return
         if (visible.get()) {
+            const focused = typeof isFocused === "boolean" ? isFocused : isFocused.get()
+            if (!focused) return
             if (hideSource !== null) {
                 GLib.source_remove(hideSource)
                 hideSource = null
@@ -82,13 +93,17 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
                         <box
                             cssClasses={["osdBar", c.over ? "over" : ""]}
                             // fill is a background-size percentage so the
-                            // bar's size is fully controlled from scss
-                            css={`background-size: ${Math.round((c.value ?? 0) * 100)}% 100%;`}
+                            // bar's size is fully controlled from scss;
+                            // clamp: negative size is invalid css
+                            css={`background-size: ${
+                                Math.max(0, Math.round((c.value ?? 0) * 100))}% 100%;`}
                         />}
                 </With>
                 <label
                     label={content.as(c => c.label)}
                     widthChars={4}
+                    maxWidthChars={36}
+                    ellipsize={Pango.EllipsizeMode.END}
                 />
             </box>
         </revealer>

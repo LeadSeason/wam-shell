@@ -11,6 +11,7 @@ window#QSettings {
         background: t.$crust;
         border-radius: s.$radius;
         border: solid 2px color.mix(t.$surface0, transparent, 60%);
+        border-top: none; // reads as a stray line right under the bar
         margin: 5px 12px 12px; // For shadow
         color: t.$text;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);

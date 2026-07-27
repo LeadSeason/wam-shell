@@ -30,6 +30,8 @@ export function WiredButton() {
         activate={() => {
             const device = wired.device
             if (!device) return
+            // no cable: connecting would just fail with "no carrier"
+            if (wired.state === DS.UNAVAILABLE) return
             const iface = device.get_iface()
             if (!iface) {
                 console.error("Wired toggle: device has no interface name")
@@ -37,7 +39,7 @@ export function WiredButton() {
             }
             const activated = wired.state === DS.ACTIVATED
             execAsync(["nmcli", "device", activated ? "disconnect" : "connect", iface])
-                .catch((e) => console.error(e))
+                .catch((e) => console.warn("wired toggle failed:", e))
         }}
     />
 }

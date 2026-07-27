@@ -80,6 +80,11 @@ export default class Sway extends GObject.Object {
                 const tree = await JSON.parse(conn.message(i3ipc.MessageType.GET_TREE, ""));
                 this.#tree = tree;
                 this.notify("tree")
+
+                // workspace focus may have moved to another output
+                const outputs = await JSON.parse(conn.message(i3ipc.MessageType.GET_OUTPUTS, ""));
+                this.#outputs = outputs;
+                this.notify("outputs")
             } catch (e) {
                 console.error("Sway: IPC fetch failed:", e)
             } finally {
