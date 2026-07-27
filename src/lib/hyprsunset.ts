@@ -40,7 +40,9 @@ function currentTemp(): number {
     return Config.hyprsunset.temperatureDefault
 }
 
+let lastTempApply = 0
 function applyTemp() {
+    lastTempApply = Date.now()
     execAsync(["hyprctl", "hyprsunset", "temperature", String(currentTemp())])
         .catch(() => { })
 }
@@ -50,6 +52,7 @@ function applyTemp() {
 // trailing call every 50ms — state (and the knob) still update instantly.
 let gammaSource: number | null = null
 let pendingGamma: number | null = null
+let lastApply = 0
 function applyGamma() {
     pendingGamma = outdoor.get() ? OUTDOOR_GAMMA : Math.round(dim.get() * 100)
     if (gammaSource !== null) return
@@ -58,11 +61,40 @@ function applyGamma() {
         if (pendingGamma === null) return GLib.SOURCE_REMOVE
         const gamma = pendingGamma
         pendingGamma = null
+        lastApply = Date.now()
         execAsync(["hyprctl", "hyprsunset", "gamma", String(gamma)])
             .catch(() => { })
         return GLib.SOURCE_REMOVE
     })
 }
+
+// Watch the daemon for external gamma/temperature changes (keybinds,
+// other tools). Skipped briefly after our own applies so a mid-drag
+// read can't fight the debounced apply above.
+GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+    try {
+        const gamma = Number(exec("hyprctl hyprsunset gamma"))
+        if (!isNaN(gamma) && gamma > 0 && Date.now() - lastApply >= 1500) {
+            const expected = outdoor.get() ? OUTDOOR_GAMMA : Math.round(dim.get() * 100)
+            if (Math.abs(gamma - expected) > 1) {
+                if (gamma > 100) {
+                    setOutdoor(true)
+                } else {
+                    setOutdoor(false)
+                    setDim(gamma / 100)
+                }
+            }
+        }
+
+        const temp = Number(exec("hyprctl hyprsunset temperature"))
+        if (!isNaN(temp) && temp > 0 && Date.now() - lastTempApply >= 1500) {
+            // matches the init heuristic: warm means night light is on
+            const nl = temp <= 5000
+            if (nl !== nightLight.get()) setNightLight(nl)
+        }
+    } catch { }
+    return GLib.SOURCE_CONTINUE
+})
 
 export function setNightLightEnabled(v: boolean) {
     setNightLight(v)

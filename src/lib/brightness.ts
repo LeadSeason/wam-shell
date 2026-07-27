@@ -105,6 +105,15 @@ export default class Brightness extends GObject.Object {
     constructor() {
         super()
 
+        // gamma-dim path: keep the slider's value in sync with the
+        // shared dim state (quick settings, keybinds, the daemon watcher)
+        if (this.#useGammaDim) {
+            hyprsunset.dim.subscribe(() => {
+                this.#screen = hyprsunset.dim.get()
+                this.notify("screen")
+            })
+        }
+
         if (hasBrightnessctl) {
             const screenPath = `/sys/class/backlight/${screen}/brightness`
             const kbdPath = `/sys/class/leds/${kbd}/brightness`
