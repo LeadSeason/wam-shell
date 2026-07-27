@@ -48,15 +48,18 @@ window#QSettings {
             background-color: t.$surface0;
             min-height: 16px;
             highlight {
-                background-color: t.$accent80;
+                background-color: t.$accent;
                 border-radius: 7px;
             }
             slider {
-                background-color: t.$accent;
-                border-radius: 2em;
-                min-height: 1em;
-                min-width: 1em;
-                margin: -.2em;
+                // no knob: the fill's rounded end is the visual head
+                background-color: transparent;
+                background-image: none;
+                border: none;
+                box-shadow: none;
+                min-height: 0;
+                min-width: 0;
+                margin: 0;
             }
         }
     }
@@ -69,15 +72,18 @@ window#QSettings {
                 border: 1px solid t.$red30;
                 background-color: t.$red20;
                 highlight {
-                    background-color: t.$red80;
+                    background-color: t.$red;
                     border-radius: 7px;
                 }
                 slider {
-                    background-color: t.$red;
-                    border-radius: 2em;
-                    min-height: 1em;
-                    min-width: 1em;
-                    margin: -.2em;
+                    // no knob, matches the flat sliders
+                    background-color: transparent;
+                    background-image: none;
+                    border: none;
+                    box-shadow: none;
+                    min-height: 0;
+                    min-width: 0;
+                    margin: 0;
                 }
             }
         }
