@@ -75,10 +75,12 @@ let watchRunning = false
 GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
     if (watchRunning) return GLib.SOURCE_CONTINUE
     watchRunning = true
-    execAsync("hyprctl hyprsunset gamma && hyprctl hyprsunset temperature")
-        .then((out) => {
-            const [gammaStr, tempStr] = out.trim().split("\n")
-            const gamma = Number(gammaStr)
+    Promise.all([
+        execAsync("hyprctl hyprsunset gamma"),
+        execAsync("hyprctl hyprsunset temperature"),
+    ])
+        .then(([gammaOut, tempOut]) => {
+            const gamma = Number(gammaOut.trim())
             if (!isNaN(gamma) && gamma > 0 && Date.now() - lastApply >= 1500) {
                 const expected = outdoor.get() ? OUTDOOR_GAMMA : Math.round(dim.get() * 100)
                 if (Math.abs(gamma - expected) > 1) {
@@ -91,7 +93,7 @@ GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
                 }
             }
 
-            const temp = Number(tempStr)
+            const temp = Number(tempOut.trim())
             if (!isNaN(temp) && temp > 0 && Date.now() - lastTempApply >= 1500) {
                 // matches the init heuristic: warm means night light is on
                 const nl = temp <= 5000
