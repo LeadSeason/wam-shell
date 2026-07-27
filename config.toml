@@ -25,7 +25,7 @@
 
 # theme - color theme, a file in scss/theme/<name>.scss. shipped:
 #         catppuccin-mocha (default), catppuccin-macchiato,
-#         catppuccin-frappe, catppuccin-latte
+#         catppuccin-frappe, catppuccin-latte, gruvbox
 # theme = "catppuccin-mocha"
 
 # bar_monitors - list of monitors that get a panel. Entries match the
