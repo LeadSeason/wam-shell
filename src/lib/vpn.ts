@@ -24,8 +24,9 @@ export async function refreshVpn() {
 }
 
 // probe once: no point polling every 5s when mullvad isn't installed
-let hasMullvad = false
-try { exec("which mullvad"); hasMullvad = true } catch { }
+export const hasMullvad = (() => {
+    try { exec("which mullvad"); return true } catch { return false }
+})()
 
 if (hasMullvad) {
     refreshVpn()

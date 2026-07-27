@@ -1,8 +1,10 @@
 import { execAsync } from "ags/process";
 import { DropdownButton } from "./ToggleButton";
-import vpnStatus, { refreshVpn } from "../../../lib/vpn";
+import vpnStatus, { hasMullvad, refreshVpn } from "../../../lib/vpn";
 
 export function VpnButton() {
+    // mullvad CLI required
+    if (!hasMullvad) return <></>
     return <DropdownButton
         icon={"network-vpn-symbolic"}
         label={"VPN"}
