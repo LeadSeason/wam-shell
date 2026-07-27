@@ -160,7 +160,7 @@
 # enabled - default true
 # position - "bottom", "center" or "top". default "bottom"
 # timeout - milliseconds before the OSD hides. default 2000
-# volume, microphone, brightness, layout, lock_keys - per-trigger
+# volume, microphone, brightness, layout, lock_keys, media - per-trigger
 #           toggles. default true
 # [osd]
 # enabled = true
@@ -171,6 +171,7 @@
 # brightness = true
 # layout = true
 # lock_keys = true
+# media = true
 
 # arch_updates_threshold - Check updates module
 # The minimum amount of updates required to show a update icon.

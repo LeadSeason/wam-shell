@@ -1,5 +1,6 @@
 import GLib from "gi://GLib?version=2.0"
 import AstalWp from "gi://AstalWp?version=0.1"
+import AstalMpris from "gi://AstalMpris?version=0.1"
 import { createState } from "gnim"
 import { createBinding } from "gnim"
 import { exec, execAsync } from "ags/process"
@@ -7,6 +8,7 @@ import Config from "../config"
 import Brightness from "./brightness"
 import hyprsunset, { OUTDOOR_GAMMA } from "./hyprsunset"
 import { ensureLayoutSource, layoutOsdText } from "./kbLayout"
+import { coverFile } from "./coverArt"
 
 // OSD state and triggers. Widgets read `content`/`visible`; triggers
 // call show() which (re)starts the hide timer.
@@ -28,7 +30,7 @@ let hideSource: number | null = null
 // swallow trigger events fired at startup (initial binding values)
 const graceUntil = Date.now() + 1500
 
-type OsdKind = "volume" | "microphone" | "brightness" | "layout" | "lockKeys"
+type OsdKind = "volume" | "microphone" | "brightness" | "layout" | "lockKeys" | "media"
 
 function show(c: Omit<OsdContent, "kind">, kind: OsdKind) {
     if (!Config.osd.enabled) return
@@ -111,6 +113,32 @@ createBinding(brightness, "screen").subscribe(() => {
         over: outdoor,
     }, "brightness")
 })
+
+// media (mpris): show the track when it changes. The bar is the
+// position at show time, the icon the cover art when already cached.
+const mpris = AstalMpris.get_default()
+const hookedPlayers = new Set<AstalMpris.Player>()
+const hookMedia = (list: AstalMpris.Player[]) => {
+    for (const p of list) {
+        if (hookedPlayers.has(p)) continue
+        hookedPlayers.add(p)
+        let lastTitle = p.title
+        createBinding(p, "title").subscribe(() => {
+            if (!p.title || p.title === lastTitle) return
+            lastTitle = p.title
+            show({
+                icon: coverFile(p.coverArt) || "audio-x-generic-symbolic",
+                value: p.length > 0
+                    ? Math.min(1, Math.max(0, p.position / p.length))
+                    : null,
+                label: `${p.title}${p.artist ? ` — ${p.artist}` : ""}`,
+                over: false,
+            }, "media")
+        })
+    }
+}
+createBinding(mpris, "players").subscribe(() => hookMedia(mpris.players))
+hookMedia(mpris.players)
 
 // keyboard layout switches (hyprland, sway, i3). The source is shared
 // with the bar widget but does not depend on it being on any panel.
