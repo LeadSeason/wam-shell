@@ -1,5 +1,8 @@
 import Gtk from "gi://Gtk?version=4.0";
-import { count, dnd, toggleDnd } from "../../../lib/notifd";
+import { count, dnd } from "../../../lib/notifd";
+import CommandRegistry from "../../../lib/requestHandler";
+
+const registry = CommandRegistry.get_default()
 
 export default function Notify() {
     const reveal = count.as((v) => v > 0)
@@ -25,7 +28,7 @@ export default function Notify() {
     return <box cssClasses={["swayNC"]}>
         <Gtk.GestureClick
             button={1}
-            onPressed={() => toggleDnd()}
+            onPressed={() => { registry.execute(["notifications"], true) }}
         />
         <overlay
             $={(self) => {

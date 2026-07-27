@@ -8,6 +8,7 @@
 @use "widgets/QSettings.scss";
 @use "widgets/dialog.scss";
 @use "widgets/osd.scss";
+@use "widgets/notifications.scss";
 
 // user overrides always win (gitignored, created if missing)
 @use "user.scss";

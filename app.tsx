@@ -10,6 +10,7 @@ import { requestHandler } from "./src/lib/requestHandler"
 import { Gtk, Gdk } from "ags/gtk4"
 import swayScratchpad from "./src/widgets/sway-scratchpad"
 import QSettings from "./src/widgets/QSettings"
+import Notifications from "./src/widgets/notifications"
 import SwayGaps from "./src/lib/swayGaps"
 import Dialog from "./src/widgets/dialog"
 
@@ -37,6 +38,8 @@ function main() {
 
     const qSettings = QSettings() as Gtk.Window
     app.add_window(qSettings)
+
+    app.add_window(Notifications() as Gtk.Window)
 
     const bars = Config.panels.length === 0
         // legacy mode: one bar per monitor, filtered by bar_monitors
