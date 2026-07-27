@@ -231,6 +231,7 @@ function getBarMonitors(): string[] {
 export interface PanelConfig {
     monitors: string[]
     position: "top" | "bottom"
+    class: string
     left: string[]
     center: string[]
     right: string[]
@@ -269,6 +270,7 @@ function getPanelsConfig(): PanelConfig[] {
         return {
             monitors: strList(entry.monitors, []),
             position: position as "top" | "bottom",
+            class: typeof entry.class === "string" ? entry.class : "",
             left: checkWidgets(strList(entry.left, ["osicon", "workspaces"])),
             center: checkWidgets(strList(entry.center, ["clock"])),
             right: checkWidgets(strList(entry.right,

@@ -65,11 +65,13 @@ export default function Bar({ gdkMonitor, panel }: {
 }) {
     const { TOP, BOTTOM, LEFT, RIGHT } = Astal.WindowAnchor
 
-    const win = (anchor: number, children: JSX.Element) => (
+    const win = (anchor: number, children: JSX.Element, extraClass = "") => (
         <window
             visible
             name="bar"
-            class={hyprsunset.outdoor.as(v => v ? "Bar outdoor" : "Bar")}
+            class={hyprsunset.outdoor.as(v =>
+                ["Bar", extraClass, v ? "outdoor" : ""]
+                    .filter(Boolean).join(" "))}
             namespace="bar"
             gdkmonitor={gdkMonitor}
             exclusivity={Astal.Exclusivity.EXCLUSIVE}
@@ -95,7 +97,8 @@ export default function Bar({ gdkMonitor, panel }: {
                 <box $type="end">
                     {panel.right.map(n => moduleFor(n, gdkMonitor))}
                 </box>
-            </centerbox>
+            </centerbox>,
+            panel.class
         )
     }
 
