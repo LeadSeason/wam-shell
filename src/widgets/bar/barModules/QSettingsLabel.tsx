@@ -1,7 +1,7 @@
 import { Gtk } from "ags/gtk4"
 import { timeout } from "ags/time"
 import AstalWp from "gi://AstalWp?version=0.1"
-import { createBinding, createState } from "gnim"
+import { createBinding, createState, onCleanup } from "gnim"
 import CommandRegistry from "../../../lib/requestHandler"
 import { SliderSection } from "../../QSettings/SliderSection"
 import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1"
@@ -134,17 +134,23 @@ function Battery() {
     const [batTime, setBatTime] = createState(batTimeConvert(
         (bat.charging) ? bat.timeToFull : bat.timeToEmpty, bat.charging))
 
-    createBinding(bat, "timeToEmpty").subscribe(() => {
+    // released when the bar is destroyed (monitor hotplug)
+    const disposers: (() => void)[] = []
+    onCleanup(() => {
+        for (const d of disposers) d()
+    })
+
+    disposers.push(createBinding(bat, "timeToEmpty").subscribe(() => {
         if (!bat.get_charging())
             setBatTime(batTimeConvert(bat.timeToEmpty, bat.get_charging()))
-    })
+    }))
 
-    createBinding(bat, "timeToFull").subscribe(() => {
+    disposers.push(createBinding(bat, "timeToFull").subscribe(() => {
         if (bat.get_charging())
             setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))
-    })
+    }))
 
-    createBinding(bat, "percentage").subscribe(() => {
+    disposers.push(createBinding(bat, "percentage").subscribe(() => {
         let v = bat.percentage
         if (!bat.charging) {
             if (v < .20) {
@@ -153,7 +159,7 @@ function Battery() {
                 setShowPrec(false)
             }
         }
-    })
+    }))
     return (<box
         tooltipText={batTime}
         cssClasses={showPrec.as((v) => v ? ["batLow"] : [])}
