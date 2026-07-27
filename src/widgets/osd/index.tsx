@@ -82,8 +82,10 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
                         <box
                             cssClasses={["osdBar", c.over ? "over" : ""]}
                             // fill is a background-size percentage so the
-                            // bar's size is fully controlled from scss
-                            css={`background-size: ${Math.round((c.value ?? 0) * 100)}% 100%;`}
+                            // bar's size is fully controlled from scss;
+                            // clamp: negative size is invalid css
+                            css={`background-size: ${
+                                Math.max(0, Math.round((c.value ?? 0) * 100))}% 100%;`}
                         />}
                 </With>
                 <label
