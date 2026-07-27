@@ -37,7 +37,7 @@ export function WiredButton() {
             }
             const activated = wired.state === DS.ACTIVATED
             execAsync(["nmcli", "device", activated ? "disconnect" : "connect", iface])
-                .catch((e) => console.error(e))
+                .catch((e) => console.warn("wired toggle failed:", e))
         }}
     />
 }
