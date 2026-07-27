@@ -6,8 +6,10 @@ import CommandRegistry from "./requestHandler"
 const registry = CommandRegistry.get_default()
 
 export function compileScss() {
-    // the configured theme is what scss files import as active-theme
+    // the configured theme is what scss files import as active-theme;
+    // user.scss holds personal overrides (gitignored, created if missing)
     exec(`cp ${Config.instanceSrcDir}/scss/theme/${Config.theme}.scss ${Config.instanceSrcDir}/scss/theme/active-theme.scss`)
+    exec(`touch ${Config.instanceSrcDir}/scss/user.scss`)
     exec(`sass ${Config.scssPath} ${Config.cssPath}`)
 }
 

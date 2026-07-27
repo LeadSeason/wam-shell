@@ -8,6 +8,9 @@
 @use "widgets/QSettings.scss";
 @use "widgets/dialog.scss";
 
+// user overrides always win (gitignored, created if missing)
+@use "user.scss";
+
 // Style ROOT, Allies to all.
 * {
     all: unset; // Unset all user provided style. Since we are
