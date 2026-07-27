@@ -41,6 +41,7 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
     // frame on some compositors)
     visible.subscribe(() => {
         const focused = typeof isFocused === "boolean" ? isFocused : isFocused.get()
+        console.log("DEBUG osd win:", visible.get() ? "show" : "hide", "focused:", focused, "mon:", gdkMonitor.get_connector())
         if (!focused) return
         if (visible.get()) {
             if (hideSource !== null) {
