@@ -228,9 +228,9 @@ function getBarMonitors(): string[] {
     return m.filter(x => typeof x === "string" && x !== "")
 }
 
-function getTheme(): string {
+function getTheme(data: Record<string, any>): string {
     const fallback = "catppuccin-mocha"
-    const t = configData.theme
+    const t = data.theme
     if (t === undefined) return fallback
     if (typeof t !== "string" || !isFile(`${instanceSrcDir}/scss/theme/${t}.scss`)) {
         console.error(`Config "theme": no scss/theme/${t}.scss, falling back to ${fallback}`)
@@ -340,11 +340,19 @@ export default class Config {
     static hyprsunset = getHyprsunsetConfig()
     static barMonitors = getBarMonitors()
     static panels = getPanelsConfig()
-    static theme = getTheme()
+    static theme = getTheme(configData)
 
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`
 
     static cssPath = `${this.instanceCacheDir}/style.css`
     static scssPath = `${this.instanceSrcDir}/scss/style.scss`
+}
+
+// Re-read the theme key from the config file so theme changes apply
+// on reloadStyle without a restart.
+export function reloadTheme(): string {
+    const data = parseToml(readRawFile(findConfigFile()))
+    Config.theme = getTheme(data)
+    return Config.theme
 }
