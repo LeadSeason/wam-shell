@@ -1,9 +1,15 @@
 import { createState } from "gnim";
-import { execAsync } from "ags/process";
+import { exec, execAsync } from "ags/process";
 import { DropdownButton } from "./ToggleButton";
-import hyprsunset, { setNightLightEnabled } from "../../../lib/hyprsunset";
+import hyprsunset, { setNightLightEnabled, tempBackend } from "../../../lib/hyprsunset";
+
+const has = (bin: string) => {
+    try { exec(`which ${bin}`); return true } catch { return false }
+}
 
 export function NightLightButton() {
+    // no night light backend (hyprctl, gsettings or gammastep)
+    if (tempBackend === "none") return <></>
     return <DropdownButton
         icon={"night-light-symbolic"}
         label={"Night Light"}
@@ -14,6 +20,7 @@ export function NightLightButton() {
 }
 
 export function DarkStyleButton() {
+    if (!has("gsettings")) return <></>
     const [active, setActive] = createState(false)
     execAsync(["gsettings", "get", "org.gnome.desktop.interface", "color-scheme"])
         .then(v => setActive(v.includes("prefer-dark")))
@@ -37,6 +44,7 @@ export function DarkStyleButton() {
 }
 
 export function AirplaneModeButton() {
+    if (!has("nmcli")) return <></>
     const [active, setActive] = createState(false)
     execAsync(["nmcli", "radio", "all"])
         .then(v => setActive(v.trim().startsWith("disabled")))

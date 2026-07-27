@@ -25,7 +25,7 @@ const [dim, setDim] = createState(1) // gamma fraction, 0.05..1
 // (wlroots compositors like sway).
 type TempBackend = "hyprctl" | "gsettings" | "gammastep" | "none"
 const GSCHEMA = "org.gnome.settings-daemon.plugins.color"
-const tempBackend: TempBackend = (() => {
+export const tempBackend: TempBackend = (() => {
     if (Config.desktopSession === "hyprland") return "hyprctl"
     try {
         exec(`gsettings get ${GSCHEMA} night-light-enabled`)
