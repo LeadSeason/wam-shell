@@ -6,8 +6,6 @@ import AstalHyprland from "gi://AstalHyprland"
 import Config from "../../config"
 import { content, visible } from "../../lib/osd"
 
-const BAR_WIDTH = 160
-
 export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
     const { TOP, BOTTOM } = Astal.WindowAnchor
 
@@ -73,21 +71,20 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
             transitionType={Gtk.RevealerTransitionType.CROSSFADE}
             transitionDuration={200}
         >
-            <box cssClasses={["OSD"]} spacing={10} canTarget={false}>
+            <box cssClasses={content.as(c => ["OSD", `osd-${c.kind}`])} spacing={10} canTarget={false}>
                 <image
                     iconName={content.as(c => c.icon)}
                     visible={content.as(c => c.icon !== "")}
                     cssClasses={content.as(c => c.over ? ["osdOn"] : ["osdOff"])}
-                    pixelSize={20}
                 />
                 <With value={content}>
                     {(c) => c.value !== null &&
-                        <box cssClasses={["osdBar"]} widthRequest={BAR_WIDTH}>
-                            <box
-                                cssClasses={c.over ? ["osdFill", "over"] : ["osdFill"]}
-                                css={`min-width: ${Math.round((c.value ?? 0) * BAR_WIDTH)}px;`}
-                            />
-                        </box>}
+                        <box
+                            cssClasses={["osdBar", c.over ? "over" : ""]}
+                            // fill is a background-size percentage so the
+                            // bar's size is fully controlled from scss
+                            css={`background-size: ${Math.round((c.value ?? 0) * 100)}% 100%;`}
+                        />}
                 </With>
                 <label
                     label={content.as(c => c.label)}

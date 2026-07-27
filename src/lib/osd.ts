@@ -15,11 +15,12 @@ export interface OsdContent {
     icon: string
     value: number | null  // 0..1 for the bar, null = no bar
     label: string
-    over: boolean  // overdrive styling (>100%, outdoor)
+    over: boolean  // overdrive styling (>100%, outdoor, caps on)
+    kind: string   // volume|microphone|brightness|layout|lockKeys
 }
 
 export const [content, setContent] = createState<OsdContent>({
-    icon: "", value: 0, label: "", over: false,
+    icon: "", value: 0, label: "", over: false, kind: "",
 })
 export const [visible, setVisible] = createState(false)
 
@@ -29,11 +30,11 @@ const graceUntil = Date.now() + 1500
 
 type OsdKind = "volume" | "microphone" | "brightness" | "layout" | "lockKeys"
 
-function show(c: OsdContent, kind: OsdKind) {
+function show(c: Omit<OsdContent, "kind">, kind: OsdKind) {
     if (!Config.osd.enabled) return
     if (!Config.osd[kind]) return
     if (Date.now() < graceUntil) return
-    setContent(c)
+    setContent({ ...c, kind })
     setVisible(true)
     if (hideSource !== null) GLib.source_remove(hideSource)
     hideSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Config.osd.timeout, () => {

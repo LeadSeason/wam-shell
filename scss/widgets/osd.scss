@@ -5,6 +5,9 @@
 window.OSDWindow {
     background: transparent;
 
+    // the pill carries a per-trigger class for styling:
+    // .osd-volume, .osd-microphone, .osd-brightness, .osd-layout,
+    // .osd-lockKeys — e.g. .OSD.osd-brightness { ... }
     .OSD {
         background: color.mix(t.$crust, transparent, 90%);
         color: t.$text;
@@ -13,21 +16,27 @@ window.OSDWindow {
         padding: 10px 16px;
         margin: 8px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+
+        // icon size is styled here, not in the widget
+        image {
+            -gtk-icon-size: 20px;
+        }
     }
 
+    // the bar: trough is background-color, fill is a background-image
+    // sized in % from the widget — so min-width/min-height fully
+    // control its size from css
     .osdBar {
+        min-width: 10em;
+        min-height: 8px;
+        border-radius: 4px;
         background-color: t.$surface0;
-        border-radius: 4px;
-        min-height: 8px;
+        background-image: linear-gradient(to right, t.$accent, t.$accent);
+        background-repeat: no-repeat;
+        transition: background-size 100ms;
     }
-    .osdFill {
-        background-color: t.$accent;
-        border-radius: 4px;
-        min-height: 8px;
-        transition: min-width 100ms;
-    }
-    .osdFill.over {
-        background-color: t.$peach;
+    .osdBar.over {
+        background-image: linear-gradient(to right, t.$peach, t.$peach);
     }
     // caps lock state tint
     .osdOn { color: t.$green; }
