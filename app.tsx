@@ -24,7 +24,7 @@ function matchMonitor(wanted: string[], m: Gdk.Monitor): boolean {
 }
 
 function main() {
-    if (Config.swayGaps && Config.desktopSession == "sway")
+    if (Config.swayGaps && (Config.desktopSession == "sway" || Config.desktopSession == "i3"))
         SwayGaps.get_default()
 
     if (Config.desktopSession == "sway") {

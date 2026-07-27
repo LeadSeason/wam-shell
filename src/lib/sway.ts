@@ -110,6 +110,22 @@ export default class Sway extends GObject.Object {
             this.#outputs = v;
             this.notify("outputs");
         });
+
+        // window open/close/move/focus: refresh the tree so workspace
+        // icons and hide_empty stay current
+        this.#i3conn.on("window", async (conn: i3ipc.Connection) => {
+            if (fetching) return
+            fetching = true
+            try {
+                const tree = await JSON.parse(conn.message(i3ipc.MessageType.GET_TREE, ""));
+                this.#tree = tree;
+                this.notify("tree")
+            } catch (e) {
+                console.error("Sway: IPC fetch failed:", e)
+            } finally {
+                fetching = false
+            }
+        });
     }
 }
 

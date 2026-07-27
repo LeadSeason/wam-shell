@@ -2,6 +2,7 @@ import GObject, { register, getter, setter } from "ags/gobject"
 import { monitorFile, readFileAsync } from "ags/file"
 import { exec, execAsync } from "ags/process"
 import { timeout } from "ags/time"
+import Config from "../config"
 import { setDimLevel } from "./hyprsunset"
 import hyprsunset from "./hyprsunset"
 
@@ -45,9 +46,12 @@ export default class Brightness extends GObject.Object {
     #screenMax = get("max")
     #screen = hasBrightnessctl ? get("get") / (get("max") || 1) : hyprsunset.dim.get()
     // Panels without a working backlight (e.g. OLED where the sysfs
-    // backlight is a dummy) are dimmed through hyprsunset gamma instead
+    // backlight is a dummy) are dimmed through hyprsunset gamma instead —
+    // only on hyprland, where hyprctl exists
     #useGammaDim = !hasBrightnessctl && hasHyprsunset
-    #screenIsPresent = hasBrightnessctl ? (screen != "") : hasHyprsunset
+        && Config.desktopSession === "hyprland"
+    #screenIsPresent = hasBrightnessctl ? (screen != "")
+        : (hasHyprsunset && Config.desktopSession === "hyprland")
 
     @getter(Number)
     get kbdMax() { return this.#kbdMax }
