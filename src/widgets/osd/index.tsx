@@ -43,9 +43,6 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
     // must always happen, or a focus change between show and hide leaves
     // the pill stuck on screen.
     visible.subscribe(() => {
-        console.log("DEBUG osd win:", visible.get() ? "show" : "hide", "focused:",
-            (typeof isFocused === "boolean" ? isFocused : isFocused.get()),
-            "mon:", gdkMonitor.get_connector())
         if (visible.get()) {
             const focused = typeof isFocused === "boolean" ? isFocused : isFocused.get()
             if (!focused) return

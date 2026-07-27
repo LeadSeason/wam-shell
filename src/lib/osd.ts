@@ -36,7 +36,6 @@ function show(c: Omit<OsdContent, "kind">, kind: OsdKind) {
     if (!Config.osd.enabled) return
     if (!Config.osd[kind]) return
     if (Date.now() < graceUntil) return
-    console.log("DEBUG osd show:", kind, JSON.stringify(c.label))
     setContent({ ...c, kind })
     setVisible(true)
     if (hideSource !== null) GLib.source_remove(hideSource)
