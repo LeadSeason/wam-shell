@@ -176,6 +176,7 @@ function BrightnessSlider() {
         }
     })
 
+    let scrollAcc = 0
     return <box cssClasses={hyprsunset.outdoor.as(v => v ? ["sliderRow", "overdrive"] : ["sliderRow"])}>
         <box cssName="button" tooltipText={"Click: reset to 100%, scroll: outdoor mode"}>
             <Gtk.GestureClick
@@ -198,7 +199,25 @@ function BrightnessSlider() {
             max={1}
             widthRequest={260}
             onChangeValue={({ value }) => { brightness.screen = value }}
-            value={screen} />
+            value={screen}>
+            <Gtk.EventControllerScroll
+                flags={Gtk.EventControllerScrollFlags.VERTICAL}
+                onScroll={(_s, _dx, dy) => {
+                    // accumulate deltas and step 1% per 5 units:
+                    // device-independent speed (touchpads emit many
+                    // small deltas, wheels few big ones)
+                    scrollAcc += dy
+                    const steps = Math.trunc(scrollAcc / 5)
+                    if (steps !== 0) {
+                        scrollAcc -= steps * 5
+                        // setDimLevel exits outdoor mode, so scrolling
+                        // always lands on the bar
+                        brightness.screen = Math.min(1,
+                            Math.max(0.05, brightness.screen - steps / 100))
+                    }
+                    return true
+                }} />
+        </slider>
         <label
             widthChars={5}
             maxWidthChars={5}
