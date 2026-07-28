@@ -203,8 +203,16 @@ function getQSettingsConfig() {
     }
 }
 
-function getHyprsunsetConfig() {
-    const h = configData.hyprsunset ?? {}
+function getBluetoothConfig() {
+    const b = configData.bluetooth ?? {}
+    const get = (key: string, fallback: any) => b[key] ?? configData[key] ?? fallback
+
+    return {
+        notifications: get("notifications", true),
+    }
+}
+
+function getHyprsunsetConfig() {    const h = configData.hyprsunset ?? {}
     const get = (key: string, fallback: any) => h[key] ?? configData[key] ?? fallback
 
     return {
@@ -370,6 +378,7 @@ export default class Config {
     static workspaces = getWorkspacesConfig()
     static tray = getTrayConfig()
     static quicksettings = getQSettingsConfig()
+    static bluetooth = getBluetoothConfig()
     static hyprsunset = getHyprsunsetConfig()
     static barMonitors = getBarMonitors()
     static panels = getPanelsConfig()

@@ -142,6 +142,12 @@
 # stats_on_panel = false
 # stats_interval = 1000
 
+# [bluetooth] - bluetooth quick settings pane
+# notifications - send a notification when a device connects/disconnects
+#                 or reports low battery (<= 20%). default true
+# [bluetooth]
+# notifications = true
+
 # temperature_default - color temperature in kelvin used normally (night
 #                       light off, gamma at or below 100%). default 6000
 # temperature_outdoor - color temperature applied in outdoor mode (gamma
