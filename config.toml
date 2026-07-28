@@ -148,6 +148,16 @@
 # [bluetooth]
 # notifications = true
 
+# [media] - panel media controls (mpris) + popup
+# enabled - show the media widget in the legacy (non-[[panel]]) bar
+#           layout. default false. panel lists always render it
+# show_controls - show prev/play/next buttons on the panel. default true
+# max_width - maximum characters of the track label. default 20
+# [media]
+# enabled = false
+# show_controls = true
+# max_width = 20
+
 # temperature_default - color temperature in kelvin used normally (night
 #                       light off, gamma at or below 100%). default 6000
 # temperature_outdoor - color temperature applied in outdoor mode (gamma

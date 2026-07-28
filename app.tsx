@@ -16,6 +16,7 @@ import SwayGaps from "./src/lib/swayGaps"
 import Dialog from "./src/widgets/dialog"
 import BluetoothPairing from "./src/widgets/bluetoothPairing"
 import { startBluetoothAgent } from "./src/lib/bluetoothAgent"
+import MediaPopup from "./src/widgets/mediaPopup"
 
 
 function matchMonitor(wanted: string[], m: Gdk.Monitor): boolean {
@@ -45,6 +46,7 @@ function main() {
     app.add_window(Notifications() as Gtk.Window)
     app.add_window(Launcher() as Gtk.Window)
     app.add_window(BluetoothPairing() as Gtk.Window)
+    app.add_window(MediaPopup() as Gtk.Window)
     startBluetoothAgent()
 
     const bars = Config.panels.length === 0

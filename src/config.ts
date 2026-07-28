@@ -212,6 +212,23 @@ function getBluetoothConfig() {
     }
 }
 
+function getMediaConfig() {
+    const m = configData.media ?? {}
+    const get = (key: string, fallback: any) => m[key] ?? configData[key] ?? fallback
+
+    let maxWidth = get("max_width", 20)
+    if (typeof maxWidth !== "number" || maxWidth <= 0) {
+        console.error(`Config "media.max_width" must be a positive number, got "${maxWidth}"`)
+        maxWidth = 20
+    }
+
+    return {
+        enabled: get("enabled", false),
+        showControls: get("show_controls", true),
+        maxWidth,
+    }
+}
+
 function getHyprsunsetConfig() {    const h = configData.hyprsunset ?? {}
     const get = (key: string, fallback: any) => h[key] ?? configData[key] ?? fallback
 
@@ -291,7 +308,7 @@ export interface PanelConfig {
 
 const PANEL_WIDGETS = [
     "osicon", "workspaces", "clock", "stats",
-    "tray", "quicksettings", "language", "notifications",
+    "tray", "quicksettings", "language", "notifications", "media",
 ]
 
 function getPanelsConfig(): PanelConfig[] {
@@ -379,6 +396,7 @@ export default class Config {
     static tray = getTrayConfig()
     static quicksettings = getQSettingsConfig()
     static bluetooth = getBluetoothConfig()
+    static media = getMediaConfig()
     static hyprsunset = getHyprsunsetConfig()
     static barMonitors = getBarMonitors()
     static panels = getPanelsConfig()

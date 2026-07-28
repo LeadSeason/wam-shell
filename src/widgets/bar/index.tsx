@@ -15,6 +15,7 @@ import SwayNC from "./barModules/swayNC"
 import KeyboardLayout from "./barModules/keyboardLayout"
 import SysStats from "./barModules/sysStats"
 import QSettingsLabel from "./barModules/QSettingsLabel"
+import Media from "./barModules/media"
 
 function trayWidgetFor(gdkMonitor: Gdk.Monitor) {
     if (Config.tray.onPanel) {
@@ -48,6 +49,7 @@ function moduleFor(name: string, gdkMonitor: Gdk.Monitor) {
         case "quicksettings": return <QSettingsLabel />
         case "language": return <KeyboardLayout />
         case "notifications": return <SwayNC />
+        case "media": return <Media monitor={gdkMonitor} />
         default: return null
     }
 }
@@ -113,6 +115,7 @@ export default function Bar({ gdkMonitor, panel }: {
             </box>
             <box $type="end">
                 {Config.quicksettings.statsOnPanel && <SysStats />}
+                {Config.media.enabled && <Media monitor={gdkMonitor} />}
                 {Config.tray.position == "left" && trayWidget}
                 <QSettingsLabel />
                 {Config.tray.position == "right" && trayWidget}

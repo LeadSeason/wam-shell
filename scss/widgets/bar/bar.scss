@@ -51,7 +51,7 @@ window.Bar {
     // per-widget spacing: override margins on the widget's class, e.g.
     // .sysStats { margin-right: 12px; }
     // classes: .osIcon, workspaces, clock button, .sysStats, .trayItem,
-    // .QSettings, .keyboardLayout, .swayNC
+    // .QSettings, .keyboardLayout, .swayNC, .media
 
     clock button,
     .osIcon,
@@ -75,6 +75,29 @@ window.Bar {
     .tray-attention {
         color: t.$accent;
         margin-left: 2px;
+    }
+
+    .media {
+        border-radius: s.$radius;
+        margin: s.$padding-small s.$padding;
+        padding: 1px s.$padding;
+        border: solid 2px transparent;
+
+        &:hover {
+            background-color: t.$accent10;
+            border: solid 2px t.$accent10;
+        }
+
+        button {
+            padding: 0 3px;
+            border-radius: s.$radius;
+            &:hover {
+                background-color: t.$accent10;
+            }
+            &:disabled {
+                opacity: 0.35;
+            }
+        }
     }
 
     .swayNC {

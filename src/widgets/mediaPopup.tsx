@@ -1,0 +1,284 @@
+import { Astal, Gtk, Gdk } from "ags/gtk4"
+import GLib from "gi://GLib?version=2.0"
+import Pango from "gi://Pango?version=1.0"
+import Graphene from "gi://Graphene?version=1.0"
+import AstalMpris from "gi://AstalMpris?version=0.1"
+import { For, With, createBinding, createComputed, createState } from "gnim"
+import { createPoll } from "ags/time"
+import CommandRegistry from "../lib/requestHandler"
+import { activePlayer, coverState, formatTime, overrideActivePlayer, players } from "../lib/mpris"
+import { createIconResolver } from "../lib/appIcon"
+import Config from "../config"
+
+const registry = CommandRegistry.get_default()
+
+/** where the pill was clicked: the popup drops directly below it */
+export const [popupAnchor, setPopupAnchor] =
+    createState<{ x: number, monitor: Gdk.Monitor } | null>(null)
+
+// the popup appears where the pill is: centered for the center section,
+// top-left/top-right for the side sections
+function mediaAnchor(): number {
+    const { TOP, LEFT, RIGHT } = Astal.WindowAnchor
+    const zones = new Set<string>()
+    for (const p of Config.panels) {
+        if (p.left.includes("media")) zones.add("left")
+        if (p.center.includes("media")) zones.add("center")
+        if (p.right.includes("media")) zones.add("right")
+    }
+    if (zones.has("center")) return TOP
+    if (zones.has("left") && !zones.has("right")) return TOP | LEFT
+    if (zones.has("right") && !zones.has("left")) return TOP | RIGHT
+    // legacy layout (no [[panel]]) puts media in the right section;
+    // media on both sides is ambiguous — center it
+    return zones.size === 0 ? TOP | RIGHT : TOP
+}
+
+function PlayerSwitcher() {
+    return <box
+        cssClasses={["switcher"]}
+        spacing={6}
+        visible={players.as(l => l.length > 1)}
+    >
+        <label label={"Player"} cssClasses={["section"]} xalign={0} hexpand />
+        <For each={players}>
+            {(p) =>
+                <button
+                    cssClasses={activePlayer.as(a => a === p ? ["active"] : [""])}
+                    onClicked={() => overrideActivePlayer(p)}
+                >
+                    <label
+                        label={p.identity}
+                        maxWidthChars={12}
+                        ellipsize={Pango.EllipsizeMode.END}
+                    />
+                </button>
+            }
+        </For>
+    </box>
+}
+
+function PopupContent({ player }: { player: AstalMpris.Player }) {
+    const localCover = coverState(player)
+    const status = createBinding(player, "playbackStatus")
+    const resolveIcon = createIconResolver(
+        Gtk.IconTheme.get_for_display(Gdk.Display.get_default()!))
+
+    // 1s ticker driving the seek position while the popup is open
+    const position = createPoll(0, 1000, () => player.position)
+    const length = createBinding(player, "length")
+    const canSeek = createBinding(player, "canSeek")
+
+    const shuffleClass = createBinding(player, "shuffleStatus").as(s =>
+        s === AstalMpris.Shuffle.ON ? ["active"] : [""])
+    const loopClass = createBinding(player, "loopStatus").as(l =>
+        l === AstalMpris.Loop.TRACK || l === AstalMpris.Loop.PLAYLIST
+            ? ["active"] : [""])
+
+    function cycleLoop() {
+        switch (player.loopStatus) {
+            case AstalMpris.Loop.NONE:
+                player.loopStatus = AstalMpris.Loop.TRACK; break
+            case AstalMpris.Loop.TRACK:
+                player.loopStatus = AstalMpris.Loop.PLAYLIST; break
+            default:
+                player.loopStatus = AstalMpris.Loop.NONE
+        }
+    }
+
+    return <box cssClasses={["mediaPopup"]} orientation={Gtk.Orientation.VERTICAL} spacing={10} widthRequest={360}>
+        {/* player identity header */}
+        <box halign={Gtk.Align.CENTER} spacing={6}>
+            <image
+                iconName={createBinding(player, "entry").as(e =>
+                    // browsers leave DesktopEntry empty; identity
+                    // ("Brave") resolves via fuzzy match instead
+                    resolveIcon(e || player.identity) ?? "audio-x-generic-symbolic")}
+                pixelSize={20}
+            />
+            <label cssClasses={["identity"]} label={player.identity} />
+        </box>
+        {/* big centered art; empty when the player has no cover */}
+        <box halign={Gtk.Align.CENTER}>
+            <With value={localCover}>
+                {(c) => c
+                    ? <box
+                        cssClasses={["coverBig"]}
+                        css={`background-image: url('${c}');`}
+                    />
+                    : <box cssClasses={["coverBig", "fallback"]} />}
+            </With>
+        </box>
+        <label
+            cssClasses={["title"]}
+            label={createBinding(player, "title").as(t => t || "Unknown title")}
+            halign={Gtk.Align.CENTER}
+            maxWidthChars={30}
+            ellipsize={Pango.EllipsizeMode.END}
+        />
+        <label
+            cssClasses={["artist"]}
+            label={createBinding(player, "artist").as(a => a || "")}
+            halign={Gtk.Align.CENTER}
+            maxWidthChars={34}
+            ellipsize={Pango.EllipsizeMode.END}
+        />
+        <box spacing={6}>
+            <label cssClasses={["time"]} label={position.as(p => formatTime(p))} />
+            <Gtk.Scale
+                $={(self) => {
+                    self.set_range(0, Math.max(1, length.get()))
+                    self.set_value(position.get())
+                    length.subscribe(() =>
+                        self.set_range(0, Math.max(1, length.get())))
+                    position.subscribe(() => {
+                        // only follow the player while the user is not dragging
+                        if (!self.has_focus) self.set_value(position.get())
+                    })
+                    self.connect("change-value", (_s: Gtk.Scale, _scroll: unknown, value: number) => {
+                        if (player.canSeek) player.position = value
+                    })
+                }}
+                hexpand
+                sensitive={canSeek}
+            />
+            <label cssClasses={["time"]} label={length.as(l => formatTime(l))} />
+        </box>
+        <box cssClasses={["controls"]} spacing={6} halign={Gtk.Align.CENTER}>
+            <button
+                cssClasses={loopClass}
+                sensitive={createBinding(player, "loopStatus").as(l =>
+                    l !== AstalMpris.Loop.UNSUPPORTED)}
+                onClicked={cycleLoop}
+            >
+                <image iconName="media-playlist-repeat-symbolic" />
+            </button>
+            <button
+                onClicked={() => player.previous()}
+                sensitive={createBinding(player, "canGoPrevious")}
+            >
+                <image iconName="media-skip-backward-symbolic" />
+            </button>
+            <button
+                cssClasses={["play"]}
+                onClicked={() => player.play_pause()}
+                sensitive={createBinding(player, "canPlay")}
+            >
+                <image
+                    pixelSize={28}
+                    iconName={status.as(s =>
+                        s === AstalMpris.PlaybackStatus.PLAYING
+                            ? "media-playback-pause-symbolic"
+                            : "media-playback-start-symbolic")}
+                />
+            </button>
+            <button
+                onClicked={() => player.next()}
+                sensitive={createBinding(player, "canGoNext")}
+            >
+                <image iconName="media-skip-forward-symbolic" />
+            </button>
+            <button
+                cssClasses={shuffleClass}
+                sensitive={createBinding(player, "shuffleStatus").as(s =>
+                    s !== AstalMpris.Shuffle.UNSUPPORTED)}
+                onClicked={() => {
+                    player.shuffleStatus =
+                        player.shuffleStatus === AstalMpris.Shuffle.ON
+                            ? AstalMpris.Shuffle.OFF
+                            : AstalMpris.Shuffle.ON
+                }}
+            >
+                <image iconName="media-playlist-shuffle-symbolic" />
+            </button>
+        </box>
+        <PlayerSwitcher />
+    </box>
+}
+
+export default function MediaPopup() {
+    let win: Astal.Window
+    let rev: Gtk.Revealer
+    let hideSource: number | null = null
+
+    function show() {
+        if (hideSource !== null) {
+            GLib.source_remove(hideSource)
+            hideSource = null
+        }
+        // drop directly below the pill when its position is known
+        const anchor = popupAnchor.get()
+        if (anchor) win.gdkmonitor = anchor.monitor
+        win.present()
+        rev.revealChild = true
+    }
+
+    function hide() {
+        rev.revealChild = false
+        if (hideSource !== null) GLib.source_remove(hideSource)
+        hideSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+            hideSource = null
+            win.hide()
+            overrideActivePlayer(null)
+            return GLib.SOURCE_REMOVE
+        })
+    }
+
+    registry.register({
+        name: ["media", "mediaPopup"],
+        description: "Toggle the media controls popup",
+        main: () => {
+            if (!win) return "no window"
+            if (win.is_visible()) {
+                hide()
+                return "hidden"
+            }
+            show()
+            return "shown"
+        }
+    })
+
+    function onKey(_e: Gtk.EventControllerKey, keyValue: number) {
+        if (keyValue === Gdk.KEY_Escape) hide()
+    }
+
+    function onClick(_e: Gtk.GestureClick, _: number, x: number, y: number) {
+        const [, rect] = win.get_child()!.compute_bounds(win)
+        if (!rect.contains_point(new Graphene.Point({ x, y }))) hide()
+    }
+
+    return <window
+        $={(self) => { win = self }}
+        name="MediaPopup"
+        class="MediaPopup"
+        namespace="media-popup"
+        anchor={popupAnchor.as(a => a
+            ? (Astal.WindowAnchor.TOP | Astal.WindowAnchor.LEFT)
+            : mediaAnchor())}
+        marginTop={30}
+        marginRight={12}
+        // pill center minus half the popup width (360)
+        marginLeft={popupAnchor.as(a => a
+            ? Math.max(0, Math.round(a.x - 180))
+            : 12)}
+        keymode={Astal.Keymode.EXCLUSIVE}
+        visible={false}
+    >
+        <Gtk.EventControllerKey onKeyPressed={onKey} />
+        <Gtk.GestureClick onPressed={onClick} />
+        <revealer
+            $={(self) => { rev = self }}
+            transitionDuration={200}
+            transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
+        >
+            <With value={activePlayer}>
+                {(player) => player
+                    ? <PopupContent player={player} />
+                    : <box cssClasses={["mediaPopup", "empty"]} halign={Gtk.Align.CENTER}>
+                        <image iconName="audio-x-generic-symbolic" pixelSize={32} />
+                        <label label={"Nothing playing"} />
+                    </box>}
+            </With>
+        </revealer>
+    </window>
+}
