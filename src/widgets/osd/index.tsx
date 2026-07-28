@@ -37,15 +37,13 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
     let rev: Gtk.Revealer
     let hideSource: number | null = null
 
-    // drive window visibility from the lib state: present+reveal on show,
-    // slide out and fully unmap on hide (a mapped window ghosts its last
-    // frame on some compositors). Focus gates only PRESENTING — hiding
-    // must always happen, or a focus change between show and hide leaves
-    // the pill stuck on screen.
-    visible.subscribe(() => {
-        if (visible.get()) {
-            const focused = typeof isFocused === "boolean" ? isFocused : isFocused.get()
-            if (!focused) return
+    // drive window visibility from the lib state AND focus: the pill
+    // follows the focused monitor. Hiding must never be gated — a focus
+    // change between show and hide, or a visible-stays-true trigger
+    // streak on another monitor, must not leave the pill stuck.
+    const update = () => {
+        const focused = typeof isFocused === "boolean" ? isFocused : isFocused.get()
+        if (visible.get() && focused) {
             if (hideSource !== null) {
                 GLib.source_remove(hideSource)
                 hideSource = null
@@ -54,13 +52,16 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
             rev.revealChild = true
         } else {
             rev.revealChild = false
+            if (hideSource !== null) return
             hideSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
                 hideSource = null
                 win.hide()
                 return GLib.SOURCE_REMOVE
             })
         }
-    })
+    }
+    visible.subscribe(update)
+    if (typeof isFocused !== "boolean") isFocused.subscribe(update)
 
     return <window
         $={(self) => { win = self }}
