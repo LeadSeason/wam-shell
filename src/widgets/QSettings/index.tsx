@@ -40,6 +40,7 @@ export default function QSettings() {
     let hideTimer: ReturnType<typeof timeout> | null = null
 
     function hide() {
+        console.log("DEBUG QS hide") // DEBUG: keep until merge
         cancelClose()
         // For some reason it does'nt want to play the animation, Setting
         // timeout to 0 for this reason
@@ -125,6 +126,7 @@ export default function QSettings() {
     let closeSource: number | null = null
     function scheduleClose() {
         if (closeSource !== null) return
+        console.log("DEBUG QS scheduleClose (pointer left)") // DEBUG: keep until merge
         closeSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Config.quicksettings.closeDelay, () => {
             closeSource = null
             if (win.is_visible()) hide()
@@ -205,7 +207,10 @@ export default function QSettings() {
                     $={(self) => {
                         self.visibleChildName = "main"
                         // subscribe callbacks receive no value, read it
-                        pane.subscribe(() => self.visibleChildName = pane.get())
+                        pane.subscribe(() => {
+                            console.log(`DEBUG pane -> ${pane.get()}`) // DEBUG: keep until merge
+                            self.visibleChildName = pane.get()
+                        })
                     }}
                     transitionType={Gtk.StackTransitionType.SLIDE_LEFT_RIGHT}
                     transitionDuration={200}
@@ -228,7 +233,7 @@ export default function QSettings() {
                     </box>
                     <box $type="named" name="bluetooth" orientation={Gtk.Orientation.VERTICAL}>
                         <PaneHeader title="Bluetooth" onBack={() => setPane("main")} />
-                        <BluetoothWidget />
+                        <BluetoothWidget pane={pane} name="bluetooth" />
                     </box>
                     <box $type="named" name="powerprofiles" orientation={Gtk.Orientation.VERTICAL}>
                         <PaneHeader title="Power Mode" onBack={() => setPane("main")} />

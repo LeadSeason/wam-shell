@@ -246,6 +246,59 @@ window#QSettings {
         margin: 4px 0 0 4px;
     }
 
+    // bluetooth pane
+    .btSection {
+        font-size: s.$font-small;
+        font-weight: bold;
+        color: t.$subtext0;
+        margin: 4px 0 0 4px;
+    }
+
+    .btDevice {
+        .status {
+            font-size: s.$font-small;
+            color: t.$subtext0;
+
+            &.error {
+                color: t.$red;
+            }
+        }
+        .trust, .forget, .details {
+            padding: 0 4px;
+        }
+        .trust.active {
+            color: t.$accent;
+        }
+    }
+
+    .btDetails {
+        margin: 2px 8px 6px 32px;
+
+        .key {
+            font-size: s.$font-small;
+            color: t.$subtext0;
+        }
+        .value {
+            font-size: s.$font-small;
+        }
+        .profileOption {
+            padding: 2px 6px;
+            margin-top: 2px;
+
+            label {
+                font-size: s.$font-small;
+            }
+            &.active label {
+                color: t.$accent;
+                font-weight: bold;
+            }
+        }
+    }
+
+    .rescan {
+        padding: 0 4px;
+    }
+
     // performance stats section
     .statsRow {
         min-height: 24px;
