@@ -3,6 +3,7 @@ import { DropdownButton } from "./ToggleButton";
 import AstalBluetooth from "gi://AstalBluetooth?version=0.1";
 import Gio from "gi://Gio?version=2.0";
 import GLib from "gi://GLib?version=2.0";
+import Pango from "gi://Pango?version=1.0";
 import { Gtk } from "ags/gtk4";
 import bluetooth from "../../../lib/bluetooth";
 import { pairingRequest, setBtPaneOpen, dismissPairingPrompt } from "../../../lib/bluetoothAgent";
@@ -229,14 +230,6 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
     // redundant ones are filtered as benign) and track scanning ourselves
     const [scanning, setScanning] = createState(false)
 
-    // DEBUG: keep until merge — which pipewire bluetooth cards exist
-    createBinding(wp.audio, "devices").subscribe(() => {
-        console.log(`DEBUG wp bluetooth cards: [${(wp.audio.devices ?? [])
-            .filter(d => d.icon?.includes("bluetooth"))
-            .map(d => `"${d.description}"`)
-            .join(", ")}]`)
-    })
-
     // scan while this pane is visible (hiding QSettings resets the pane to
     // "main", so discovery always stops on close)
     const maybeScan = () => {
@@ -383,7 +376,6 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
                 connectDevice()
             } else {
                 setPending("pairing")
-                console.log(`bluetooth: pair requested for ${device.alias || device.name} @ ${Date.now()}`)
                 // token guards the timeout against a newer attempt on the
                 // same device (a stale timeout must not fail the new one)
                 const attempt = ++pairAttempt
@@ -418,11 +410,14 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
         const details: [string, string][] = [
             ["Address", device.address],
             ["Type", deviceType(device.icon)],
-            ["Profiles", device.uuids.length
-                ? [...new Set(device.uuids.map(uuidName))].join(", ")
-                : "—"],
         ]
         if (device.modalias) details.push(["Modalias", device.modalias])
+        // uuids only resolve once connected (services discovery) — bind
+        // instead of baking them in at row construction
+        const profilesText = createBinding(device, "uuids").as(uuids =>
+            uuids.length
+                ? [...new Set(uuids.map(uuidName))].join(", ")
+                : "—")
 
         return <box orientation={Gtk.Orientation.VERTICAL}>
             <box
@@ -490,9 +485,25 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
                     {details.map(([key, value]) =>
                         <box>
                             <label cssClasses={["key"]} label={key} xalign={0} hexpand />
-                            <label cssClasses={["value"]} label={value} xalign={1} />
+                            <label
+                                cssClasses={["value"]}
+                                label={value}
+                                xalign={1}
+                                maxWidthChars={24}
+                                ellipsize={Pango.EllipsizeMode.END}
+                            />
                         </box>
                     )}
+                    <box>
+                        <label cssClasses={["key"]} label={"Profiles"} xalign={0} hexpand />
+                        <label
+                            cssClasses={["value"]}
+                            label={profilesText}
+                            xalign={1}
+                            maxWidthChars={24}
+                            ellipsize={Pango.EllipsizeMode.END}
+                        />
+                    </box>
                     <box visible={createBinding(device, "rssi").as(r => r !== 0)}>
                         <label cssClasses={["key"]} label={"Signal"} xalign={0} hexpand />
                         <label
@@ -571,14 +582,19 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
                 </For>
                 <box
                     cssName={"button"}
-                    spacing={5}
+                    spacing={8}
                     visible={available.as(l => l.length === 0)}
                 >
                     <Gtk.GestureClick button={1} onPressed={rescan} />
+                    {/* real spinner while scanning: the loading icon
+                        renders as an ugly "•••" glyph */}
+                    <Gtk.Spinner
+                        $={(self) => self.start()}
+                        visible={scanning}
+                    />
                     <image
-                        iconName={scanning.as(d => d
-                            ? "content-loading-symbolic"
-                            : "bluetooth-symbolic")}
+                        iconName="bluetooth-symbolic"
+                        visible={scanning.as(s => !s)}
                     />
                     <label
                         label={scanning.as(d => d

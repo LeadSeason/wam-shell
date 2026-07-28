@@ -160,7 +160,6 @@ function onMethodCall(
 ) {
     const { name, icon, address } = deviceInfo(
         method === "Cancel" || method === "Release" ? "" : params.get_child_value(0).get_string()[0])
-    console.log(`bluetooth agent: ${method} for ${name} @ ${Date.now()}`)
 
     switch (method) {
         case "Release":
@@ -242,24 +241,39 @@ function onMethodCall(
 let registered = false
 
 function register() {
-    try {
-        Gio.DBus.system.call_sync(
-            "org.bluez", "/org/bluez", "org.bluez.AgentManager1",
-            "RegisterAgent",
-            new GLib.Variant("(os)", [AGENT_PATH, CAPABILITY]),
-            null, Gio.DBusCallFlags.NONE, -1, null)
-        Gio.DBus.system.call_sync(
-            "org.bluez", "/org/bluez", "org.bluez.AgentManager1",
-            "RequestDefaultAgent",
-            new GLib.Variant("(o)", [AGENT_PATH]),
-            null, Gio.DBusCallFlags.NONE, -1, null)
-        registered = true
-        console.log("bluetooth: pairing agent registered")
-    } catch (e) {
-        registered = false
-        console.warn("bluetooth: agent registration failed " +
-            "(pairing degrades to just-works):", e)
-    }
+    // async like every other bluez call: a sync call here can freeze the
+    // whole shell at startup when bluez is slow
+    Gio.DBus.system.call(
+        "org.bluez", "/org/bluez", "org.bluez.AgentManager1", "RegisterAgent",
+        new GLib.Variant("(os)", [AGENT_PATH, CAPABILITY]),
+        null, Gio.DBusCallFlags.NONE, -1, null,
+        (_c, res) => {
+            try {
+                Gio.DBus.system.call_finish(res)
+            } catch (e) {
+                registered = false
+                console.warn("bluetooth: agent registration failed " +
+                    "(pairing degrades to just-works):", e)
+                return
+            }
+            Gio.DBus.system.call(
+                "org.bluez", "/org/bluez", "org.bluez.AgentManager1",
+                "RequestDefaultAgent",
+                new GLib.Variant("(o)", [AGENT_PATH]),
+                null, Gio.DBusCallFlags.NONE, -1, null,
+                (_c2, res2) => {
+                    try {
+                        Gio.DBus.system.call_finish(res2)
+                        registered = true
+                        console.log("bluetooth: pairing agent registered")
+                    } catch (e) {
+                        registered = false
+                        console.warn("bluetooth: default agent request failed:", e)
+                    }
+                },
+            )
+        },
+    )
 }
 
 export function startBluetoothAgent() {

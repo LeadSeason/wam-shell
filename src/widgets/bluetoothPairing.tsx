@@ -74,11 +74,14 @@ export default function BluetoothPairing() {
 
     // fallback for prompts that arrive while the QS bluetooth pane is
     // not on screen (e.g. pairing initiated from the phone); when the
-    // pane is open the prompt renders inline instead
-    pairingRequest.subscribe(() => {
+    // pane is open the prompt renders inline instead. Watch both states:
+    // the QS closing mid-prompt must surface the floating dialog
+    const updateVisibility = () => {
         if (pairingRequest.get() !== null && !btPaneOpen.get()) win.present()
         else win.hide()
-    })
+    }
+    pairingRequest.subscribe(updateVisibility)
+    btPaneOpen.subscribe(updateVisibility)
 
     function onKey(_e: Gtk.EventControllerKey, keyValue: number) {
         if (keyValue === Gdk.KEY_Escape) pairingRequest.get()?.respond(false)

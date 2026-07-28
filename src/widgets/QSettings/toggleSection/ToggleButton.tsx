@@ -81,7 +81,6 @@ export function DropdownButton({
                 <Gtk.GestureClick
                     button={1}
                     onPressed={() => {
-                        console.log(`DEBUG chevron pressed, navigate=${navigate !== undefined}`) // DEBUG: keep until merge
                         if (navigate)
                             navigate()
                         else
