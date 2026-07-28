@@ -13,11 +13,13 @@ export function compileScss() {
     exec(`sass ${Config.scssPath} ${Config.cssPath}`)
 }
 
-export async function reloadStyle() {
+export async function reloadStyle(noUser: boolean = false) {
     try {
         reloadTheme() // pick up theme config changes without a restart
-        exec(`cp ${Config.instanceSrcDir}/scss/theme/${Config.theme}.scss ${Config.instanceSrcDir}/scss/theme/active-theme.scss`)
-        exec(`touch ${Config.instanceSrcDir}/scss/user.scss`)
+        if (!noUser) {
+            exec(`cp ${Config.instanceSrcDir}/scss/theme/${Config.theme}.scss ${Config.instanceSrcDir}/scss/theme/active-theme.scss`)
+            exec(`touch ${Config.instanceSrcDir}/scss/user.scss`)
+        }
         await execAsync(`sass ${Config.scssPath} ${Config.cssPath}`)
         console.log(`${Config.instanceName}: Style reloaded`)
         app.apply_css(Config.cssPath)
@@ -32,7 +34,8 @@ registry.register({
     name: ["reloadStyle", "reloadstyle", "style"],
     description: "Reloads the style",
     help: "Reloads the style from ",
-    main: async () => {
-        return await reloadStyle()
+    main: async (args) => {
+        console.log()
+        return await reloadStyle(args.includes("nouser"))
     }
 })
