@@ -29,21 +29,29 @@ export function createIconResolver(theme: Gtk.IconTheme) {
     function resolveUncached(name: string): string | null {
         const lower = name.toLowerCase()
 
-        // desktop entry by id: "brave-browser" -> brave-browser.desktop
+        // desktop entry by id: "brave-browser" -> brave-browser.desktop;
+        // the -browser suffix catches identities like "Brave"
         const fromEntry = fromDesktopId(name) ?? fromDesktopId(lower)
+            ?? fromDesktopId(`${lower}-browser`)
         if (fromEntry) return fromEntry
 
         // desktop entry by StartupWMClass
         const fromWmClass = wmClassMap.get(lower)
         if (fromWmClass && theme.has_icon(fromWmClass)) return fromWmClass
 
-        // fuzzy query as a last database resort
-        const fromQuery = apps.fuzzy_query(name)[0]?.get_icon_name()
-        if (fromQuery && theme.has_icon(fromQuery)) return fromQuery
-
-        // plain theme lookup
+        // plain theme lookup before fuzzy: a direct icon ("mpv") must
+        // win over fuzzy noise ("mullvad-vpn")
         if (theme.has_icon(name)) return name
         if (theme.has_icon(lower)) return lower
+
+        // fuzzy query as a last resort; prefer entries whose app name
+        // actually matches — a bare query like "Brave" would otherwise
+        // pick a brave-*.desktop PWA (file-name match) over the browser
+        const results = apps.fuzzy_query(name)
+        const named = results.find(a =>
+            a.get_name()?.toLowerCase().includes(lower))
+        const fromQuery = (named ?? results[0])?.get_icon_name()
+        if (fromQuery && theme.has_icon(fromQuery)) return fromQuery
 
         return null
     }
