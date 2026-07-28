@@ -38,12 +38,17 @@ function main() {
     const qSettings = QSettings() as Gtk.Window
     app.add_window(qSettings)
 
+    if (Config.osd.enabled)  {
+        const osd = OSD() as Gtk.Window
+        app.add_window(osd)
+    }
+
     const bars = Config.panels.length === 0
         // legacy mode: one bar per monitor, filtered by bar_monitors
         ? (<For each={createBinding(app, "monitors").as(ms =>
             ms.filter(m => matchMonitor(Config.barMonitors, m)))}
             cleanup={(win) => (win as Gtk.Window).destroy()}>
-            {(monitor) => <Bar gdkMonitor={monitor} />}
+            {(monitor: Gdk.Monitor) => <Bar gdkMonitor={monitor} />}
         </For>)
         // panel mode: one bar per matching [[panel]] per monitor
         : (<For each={createBinding(app, "monitors").as(ms =>
@@ -56,13 +61,7 @@ function main() {
             {({ monitor, panel }) => <Bar gdkMonitor={monitor} panel={panel} />}
         </For>)
 
-    const osds = !Config.osd.enabled ? null
-        : (<For each={createBinding(app, "monitors")}
-            cleanup={(win) => (win as Gtk.Window).destroy()}>
-            {(monitor) => <OSD gdkMonitor={monitor} />}
-        </For>)
-
-    return [bars, osds]
+    return [bars]
 }
 
 if (!GLib.file_test(Config.instanceCacheDir, GLib.FileTest.IS_DIR)) {

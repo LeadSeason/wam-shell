@@ -2,46 +2,33 @@
 @use "../conf.scss" as s;
 @use "sass:color";
 
-window.OSDWindow {
-    background: transparent;
-
-    // the pill carries a per-trigger class for styling:
-    // .osd-volume, .osd-microphone, .osd-brightness, .osd-layout,
-    // .osd-lockKeys — e.g. .OSD.osd-brightness { ... }
-    .OSD {
+window#OSD {
+    box.OSD {
+        border-radius: s.$radius;
         background: color.mix(t.$crust, transparent, 90%);
-        color: t.$text;
-        border-radius: calc(s.$radius * 2);
-        border: solid 2px color.mix(t.$surface0, transparent, 60%);
-        padding: 10px 16px;
-        margin: 8px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-
-        // icon size is styled here, not in the widget
-        image {
-            -gtk-icon-size: 20px;
-        }
+        padding: 10px 14px;
+        box-shadow: 3px 3px 7px 0 rgba(0,0,0,.4);
+		border: 2px solid t.$surface1;
     }
 
-    // the bar: trough is background-color, fill is a background-image
-    // sized in % from the widget — so min-width/min-height fully
-    // control its size from css
-    .osdBar {
-        min-width: 10em;
-        min-height: 8px;
-        border-radius: 4px;
-        background-color: t.$surface0;
-        background-image: linear-gradient(to right, t.$accent, t.$accent);
-        background-repeat: no-repeat;
-        transition: background-size 100ms;
+    image {
+		margin-right: 10px;
+		-gtk-icon-size: 28px
     }
-    .osdBar.over {
-        background-image: linear-gradient(to right, t.$peach, t.$peach);
-    }
-    // caps lock state tint
-    .osdOn { color: t.$green; }
-    .osdOff { color: t.$subtext0; }
+
     label {
-        font-size: s.$font-small;
+		margin-left: 10px;
+        font-size: 22px;
     }
+
+	levelbar block.high, levelbar block:not(.empty) {
+		min-height: 22px;
+		border-radius: 26px;
+		background-color: t.$accent;
+	}
+
+	levelbar block.empty {
+		border-radius: 22px;
+		background-color: t.$surface1;
+	}
 }

@@ -1,106 +1,117 @@
-import { Astal, Gtk, Gdk } from "ags/gtk4"
-import GLib from "gi://GLib?version=2.0"
-import app from "ags/gtk4/app"
-import { createBinding, With } from "gnim"
-import AstalHyprland from "gi://AstalHyprland"
-import Config from "../../config"
-import Sway from "../../lib/sway"
-import { content, visible } from "../../lib/osd"
+import { Accessor, createBinding, createState } from "ags";
+import { Astal, Gtk } from "ags/gtk4";
+import { timeout } from "ags/time";
 
-export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
-    const { TOP, BOTTOM } = Astal.WindowAnchor
+import Brightness from "../../lib/brightness"
+import Wp from "gi://AstalWp"
+import Config from "../../config";
 
-    // show only on the focused monitor
-    let isFocused
-    if (Config.desktopSession === "hyprland") {
-        const hyprland = AstalHyprland.get_default()
-        isFocused = createBinding(hyprland, "focusedMonitor").as(m =>
-            m?.name === gdkMonitor.get_connector())
-    } else if (Config.desktopSession === "sway" || Config.desktopSession === "i3") {
-        const sway = Sway.get_default()
-        isFocused = sway.ok
-            ? createBinding(sway, "outputs").as(outputs =>
-                (outputs.find((o: any) => o.focused)?.name ?? null)
-                === gdkMonitor.get_connector())
-            : app.monitors[0] === gdkMonitor
-    } else {
-        isFocused = app.monitors[0] === gdkMonitor
-    }
+const [visible, setVisible] = createState<boolean>(false)
+const [visibleBlock, setVisibleBlock] = createState<boolean>(false)
+let count = 0
 
-    const anchor = Config.osd.position === "bottom" ? BOTTOM
-        : Config.osd.position === "top" ? TOP : 0
-    const margin = Config.osd.position === "center" ? {} :
-        { [Config.osd.position === "bottom" ? "marginBottom" : "marginTop"]: 60 }
+const [iconName, setIconName] = createState("")
+const [value, setValue] = createState(0)
+const [levelMax, setLevelMax] = createState(1)
 
-    let win: Astal.Window
-    let rev: Gtk.Revealer
-    let hideSource: number | null = null
 
-    // drive window visibility from the lib state: present+reveal on show,
-    // slide out and fully unmap on hide (a mapped window ghosts its last
-    // frame on some compositors)
-    visible.subscribe(() => {
-        const focused = typeof isFocused === "boolean" ? isFocused : isFocused.get()
-        if (!focused) return
-        if (visible.get()) {
-            if (hideSource !== null) {
-                GLib.source_remove(hideSource)
-                hideSource = null
-            }
-            win.present()
-            rev.revealChild = true
-        } else {
-            rev.revealChild = false
-            hideSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
-                hideSource = null
-                win.hide()
-                return GLib.SOURCE_REMOVE
-            })
-        }
+export const showOSD = (v: number | null = null, icon: string | null = null, valueMax: number | null = null) => {
+    log("Show osd")
+    if (valueMax)
+        setLevelMax(valueMax)
+    if (v)
+        setValue(v)
+    if (icon)
+        setIconName(icon)
+
+    setVisible(true)
+
+    count++
+    timeout(Config.osd.timeout, () => {
+        count--
+        if (count === 0 && !visibleBlock.get()) setVisible(false)
+    })
+}
+
+const brightness = Brightness.get_default()
+const speaker = Wp.get_default()!.get_default_speaker()
+const microphone = Wp.get_default()!.get_default_microphone()
+
+function OnScreenDisplay() {
+    // @ts-ignore
+    createBinding(brightness, "monitor").subscribe(() => {
+        showOSD(brightness.screen, "display-brightness-symbolic", 1)
+    })
+    
+    createBinding(speaker, "volume").subscribe(() => {
+        showOSD(speaker.volume, speaker.volumeIcon, 1.5)
     })
 
-    return <window
-        $={(self) => { win = self }}
-        name="OSD"
-        class="OSDWindow"
-        namespace="osd"
-        gdkmonitor={gdkMonitor}
-        layer={Astal.Layer.OVERLAY}
-        exclusivity={Astal.Exclusivity.IGNORE}
-        keymode={Astal.Keymode.NONE}
-        anchor={anchor}
-        visible={false}
-        application={app}
-        {...margin}
+    createBinding(microphone, "volume").subscribe(() => {
+        showOSD(microphone.volume, microphone.volumeIcon, 1.5)
+    })
+
+    return <revealer
+        revealChild={visible}
+        transitionType={Gtk.RevealerTransitionType.CROSSFADE}
     >
-        <revealer
-            $={(self) => { rev = self }}
-            revealChild={false}
-            transitionType={Gtk.RevealerTransitionType.CROSSFADE}
-            transitionDuration={200}
-        >
-            <box cssClasses={content.as(c => ["OSD", `osd-${c.kind}`])} spacing={10} canTarget={false}>
-                <image
-                    iconName={content.as(c => c.icon)}
-                    visible={content.as(c => c.icon !== "")}
-                    cssClasses={content.as(c => c.over ? ["osdOn"] : ["osdOff"])}
-                />
-                <With value={content}>
-                    {(c) => c.value !== null &&
-                        <box
-                            cssClasses={["osdBar", c.over ? "over" : ""]}
-                            // fill is a background-size percentage so the
-                            // bar's size is fully controlled from scss;
-                            // clamp: negative size is invalid css
-                            css={`background-size: ${
-                                Math.max(0, Math.round((c.value ?? 0) * 100))}% 100%;`}
-                        />}
-                </With>
-                <label
-                    label={content.as(c => c.label)}
-                    widthChars={4}
-                />
-            </box>
-        </revealer>
+        <box class="OSD">
+            <image iconName={iconName} />
+            <levelbar
+                valign={Gtk.Align.CENTER}
+                widthRequest={200}
+                value={value(v => {
+                    if (v > levelMax.get()) {
+                        return levelMax.get()
+                    }
+                    return v
+                })}
+                minValue={0}
+                maxValue={levelMax}
+            />
+            <label label={value(v => `${Math.round(v * 100)}%`)} />
+        </box>
+    </revealer>
+}
+
+export default function onScreenDisplay() {
+    let win: Gtk.Window
+
+    return <window
+        $={(self) => {
+            win = self
+            visible.subscribe(() => {
+                if (visible.peek()) {
+                    self.show()
+                } else {
+                    timeout(200, () => self.hide())
+                }
+            })
+        }}
+        name="OSD"
+        class="OSD"
+        namespace={`${Config.instanceName}OSD`}
+        anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.LEFT}
+        keymode={Astal.Keymode.ON_DEMAND}
+        marginTop={20}
+        marginLeft={40}
+        visible={true}
+    >
+        <Gtk.GestureClick
+            onPressed={(source, arg0, x, y) => {
+                setVisible(false)
+                win.hide()
+            }}
+        />
+        <Gtk.EventControllerMotion 
+            onEnter={() => {
+                setVisibleBlock(true)
+            }}
+            onLeave={() => {
+                setVisibleBlock(false)
+                showOSD()
+            }}
+        />
+        <OnScreenDisplay />
     </window>
 }
