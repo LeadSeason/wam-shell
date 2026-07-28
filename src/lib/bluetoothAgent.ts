@@ -239,8 +239,14 @@ function onMethodCall(
 }
 
 let registered = false
+let registering = false
+let retried = false
 
 function register() {
+    // watch_name fires "appeared" at setup while the first call is still
+    // in flight — never run two registrations concurrently
+    if (registered || registering) return
+    registering = true
     // async like every other bluez call: a sync call here can freeze the
     // whole shell at startup when bluez is slow
     Gio.DBus.system.call(
@@ -251,6 +257,17 @@ function register() {
             try {
                 Gio.DBus.system.call_finish(res)
             } catch (e) {
+                registering = false
+                // a just-killed instance's agent registration lingers on
+                // the bus briefly — retry once instead of giving up
+                if (!retried && (e as Error).message?.includes("AlreadyExists")) {
+                    retried = true
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+                        register()
+                        return GLib.SOURCE_REMOVE
+                    })
+                    return
+                }
                 registered = false
                 console.warn("bluetooth: agent registration failed " +
                     "(pairing degrades to just-works):", e)
@@ -262,6 +279,7 @@ function register() {
                 new GLib.Variant("(o)", [AGENT_PATH]),
                 null, Gio.DBusCallFlags.NONE, -1, null,
                 (_c2, res2) => {
+                    registering = false
                     try {
                         Gio.DBus.system.call_finish(res2)
                         registered = true
