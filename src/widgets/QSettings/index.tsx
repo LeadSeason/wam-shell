@@ -197,7 +197,6 @@ export default function QSettings() {
                 cssClasses={["qSettings"]}
                 widthRequest={240}
             >
-                <HeaderSection />
                 <stack
                     // set the visible child after construction: as a prop it
                     // is applied before the named children exist, which makes
@@ -211,6 +210,8 @@ export default function QSettings() {
                     transitionDuration={200}
                 >
                     <box $type="named" name="main" orientation={Gtk.Orientation.VERTICAL}>
+                        {/* header (battery, power, …) only on the main pane */}
+                        <HeaderSection />
                         <SliderSection />
                         <Gtk.Separator />
                         {toggleSection.widget}
