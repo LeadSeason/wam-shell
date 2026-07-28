@@ -29,12 +29,41 @@ window.Notifications {
         }
     }
 
+    .group {
+        margin-top: 8px;
+    }
+
+    .groupHeader {
+        padding: 0 4px;
+
+        .appName, .count {
+            font-size: s.$font-small;
+            color: t.$subtext0;
+        }
+    }
+
     .notification {
         background-color: t.$base;
         border-radius: s.$radius;
+        border: solid 2px transparent;
         padding: 8px;
-        margin-top: 8px;
 
+        &.critical {
+            border-color: t.$red20;
+            .summary {
+                color: t.$red;
+            }
+        }
+        &.low {
+            .summary, .appName {
+                color: t.$subtext0;
+            }
+        }
+
+        .appName, .time {
+            font-size: s.$font-small;
+            color: t.$subtext0;
+        }
         .summary {
             font-weight: bold;
         }
@@ -42,8 +71,14 @@ window.Notifications {
             font-size: s.$font-small;
             color: t.$subtext0;
         }
+        .image {
+            border-radius: s.$radius;
+        }
         .dismiss {
             padding: 0 4px;
+        }
+        .actions {
+            margin-top: 2px;
         }
     }
 

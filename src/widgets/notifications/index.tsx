@@ -1,37 +1,56 @@
 import { Astal, Gtk, Gdk } from "ags/gtk4"
 import GLib from "gi://GLib?version=2.0"
-import Pango from "gi://Pango?version=1.0"
 import Graphene from "gi://Graphene?version=1.0"
-import { For } from "gnim"
-import notifd, { dnd, toggleDnd } from "../../lib/notifd"
+import { For, With, createState } from "gnim"
+import notifd, { dnd, grouped, toggleDnd } from "../../lib/notifd"
 import { createBinding } from "gnim"
 import CommandRegistry from "../../lib/requestHandler"
+import NotificationRow from "./NotificationRow"
 
 const registry = CommandRegistry.get_default()
 
-function NotificationRow({ n }: { n: any }) {
-    const image = n.get_image() || n.get_app_icon() || "application-x-executable-symbolic"
-    return <box cssClasses={["notification"]} spacing={8}>
-        <image iconName={image} pixelSize={24} valign={Gtk.Align.START} />
-        <box orientation={Gtk.Orientation.VERTICAL} hexpand>
-            <box>
-                <label
-                    cssClasses={["summary"]}
-                    label={n.get_summary() || n.get_app_name()}
-                    xalign={0} hexpand
-                    maxWidthChars={28} ellipsize={Pango.EllipsizeMode.END}
-                />
-                <button cssClasses={["dismiss"]} onClicked={() => n.dismiss()}>
-                    <image iconName="window-close-symbolic" />
-                </button>
-            </box>
-            <label
-                cssClasses={["body"]}
-                label={n.get_body() || ""}
-                xalign={0} wrap
-                maxWidthChars={36}
-                visible={n.get_body() !== ""}
+function Group({ app }: { app: string }) {
+    // live view of this group's notifications; For keys groups by app so
+    // this widget (and its expand state) survives list recomputes
+    const items = grouped.as((gs) => gs.find((g) => g.app === app)?.items ?? [])
+    const [expanded, setExpanded] = createState(false)
+    const multi = items.as((l) => l.length > 1)
+
+    return <box cssClasses={["group"]} orientation={Gtk.Orientation.VERTICAL} spacing={6}>
+        <box cssClasses={["groupHeader"]} spacing={8} visible={multi}>
+            <image
+                iconName={items.as((l) => l[0]?.get_app_icon() || "application-x-executable-symbolic")}
+                pixelSize={16}
             />
+            <label cssClasses={["appName"]} label={app} xalign={0} />
+            <label cssClasses={["count"]} label={items.as((l) => l.length.toString())} />
+            <label hexpand />
+            <button
+                cssClasses={["expand"]}
+                tooltipText={expanded.as((e) => e ? "Collapse" : "Expand")}
+                onClicked={() => setExpanded(!expanded.get())}
+            >
+                <image iconName={expanded.as((e) => e ? "pan-up-symbolic" : "pan-down-symbolic")} />
+            </button>
+            <button
+                cssClasses={["clearGroup"]}
+                tooltipText="Clear group"
+                onClicked={() => { for (const n of [...items.get()]) n.dismiss() }}
+            >
+                <image iconName="user-trash-symbolic" />
+            </button>
+        </box>
+        {/* gnim can't nest Fragments, so expanded/collapsed are two
+            containers toggled by visible rather than an accessor switch */}
+        <box orientation={Gtk.Orientation.VERTICAL} spacing={6} visible={expanded}>
+            <For each={items} id={(n) => n.id}>
+                {(n) => <NotificationRow n={n} />}
+            </For>
+        </box>
+        <box orientation={Gtk.Orientation.VERTICAL} visible={expanded.as((e) => !e)}>
+            <With value={items.as((l) => l[0])}>
+                {(n) => n && <NotificationRow n={n} />}
+            </With>
         </box>
     </box>
 }
@@ -131,9 +150,18 @@ export default function Notifications() {
                 >
                     <label label="No notifications" />
                 </box>
-                <For each={notifications}>
-                    {(n) => <NotificationRow n={n} />}
-                </For>
+                <Gtk.ScrolledWindow
+                    vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                    hscrollbarPolicy={Gtk.PolicyType.NEVER}
+                    propagateNaturalHeight
+                    maxContentHeight={640}
+                >
+                    <box orientation={Gtk.Orientation.VERTICAL}>
+                        <For each={grouped} id={(g) => g.app}>
+                            {(g) => <Group app={g.app} />}
+                        </For>
+                    </box>
+                </Gtk.ScrolledWindow>
             </box>
         </revealer>
     </window>
