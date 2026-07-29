@@ -47,7 +47,13 @@ export function AirplaneModeButton() {
     if (!has("nmcli")) return <></>
     const [active, setActive] = createState(false)
     execAsync(["nmcli", "radio", "all"])
-        .then(v => setActive(v.trim().startsWith("disabled")))
+        .then(v => {
+            // first line is the header (WIFI-HW WIFI WWAN-HW WWAN);
+            // airplane mode = software radios (cols 2 and 4) disabled
+            const values = v.trim().split("\n")[1] ?? ""
+            const cols = values.split(/\s+/)
+            setActive(cols[1] === "disabled" && cols[3] === "disabled")
+        })
         .catch(() => { })
 
     return <DropdownButton
