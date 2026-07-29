@@ -31,7 +31,7 @@ export async function reloadStyle() {
 registry.register({
     name: ["reloadStyle", "reloadstyle", "style"],
     description: "Reloads the style",
-    help: "Reloads the style from ",
+    help: "Reloads the style from the scss files",
     main: async () => {
         return await reloadStyle()
     }
