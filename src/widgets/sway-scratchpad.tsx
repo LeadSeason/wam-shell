@@ -103,6 +103,9 @@ export default function Scratchpad() {
             if (!element) continue;
             if (gtkIconTheme.has_icon(element)) {
                 iconLet = <image iconName={element} />
+                // first match wins — iconProps is ordered most specific
+                // first, continuing would let the least specific win
+                break
             }
         };
 
