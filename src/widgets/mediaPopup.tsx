@@ -3,7 +3,7 @@ import GLib from "gi://GLib?version=2.0"
 import Pango from "gi://Pango?version=1.0"
 import Graphene from "gi://Graphene?version=1.0"
 import AstalMpris from "gi://AstalMpris?version=0.1"
-import { For, With, createBinding, createComputed, createState } from "gnim"
+import { For, With, createBinding, createComputed, createState, onCleanup } from "gnim"
 import { createPoll } from "ags/time"
 import CommandRegistry from "../lib/requestHandler"
 import { activePlayer, coverState, formatTime, overrideActivePlayer, players } from "../lib/mpris"
@@ -129,12 +129,17 @@ function PopupContent({ player }: { player: AstalMpris.Player }) {
                 $={(self) => {
                     self.set_range(0, Math.max(1, length.get()))
                     self.set_value(position.get())
-                    length.subscribe(() =>
-                        self.set_range(0, Math.max(1, length.get())))
-                    position.subscribe(() => {
-                        // only follow the player while the user is not dragging
-                        if (!self.has_focus) self.set_value(position.get())
-                    })
+                    // these must be released on rebuild — the position one
+                    // keeps the 1s poll alive otherwise
+                    const unsubs = [
+                        length.subscribe(() =>
+                            self.set_range(0, Math.max(1, length.get()))),
+                        position.subscribe(() => {
+                            // only follow the player while the user is not dragging
+                            if (!self.has_focus) self.set_value(position.get())
+                        }),
+                    ]
+                    onCleanup(() => unsubs.forEach(u => u()))
                     self.connect("change-value", (_s: Gtk.Scale, _scroll: unknown, value: number) => {
                         if (player.canSeek) player.position = value
                     })
