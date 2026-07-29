@@ -3,11 +3,11 @@ import AstalWp from "gi://AstalWp?version=0.1"
 import AstalMpris from "gi://AstalMpris?version=0.1"
 import { createState } from "gnim"
 import { createBinding } from "gnim"
-import { exec, execAsync } from "ags/process"
+import { exec } from "ags/process"
 import Config from "../config"
 import Brightness from "./brightness"
 import hyprsunset, { OUTDOOR_GAMMA } from "./hyprsunset"
-import { ensureLayoutSource, layoutOsdText } from "./kbLayout"
+import { ensureLayoutSource, layoutOsdText, lockKeyState } from "./kbLayout"
 import { coverFile } from "./coverArt"
 
 // OSD state and triggers. Widgets read `content`/`visible`; triggers
@@ -149,10 +149,12 @@ hookMedia(mpris.players)
 
 // keyboard layout switches (hyprland, sway, i3). The source is shared
 // with the bar widget but does not depend on it being on any panel.
-// Only start it when the layout OSD is on — on sway/i3 it polls
-// swaymsg/i3-msg every second otherwise.
-if (Config.osd.enabled && Config.osd.layout) {
+// The same source also drives caps/num lock (hyprland), so start it when
+// either OSD is on.
+if (Config.osd.enabled && (Config.osd.layout
+    || (Config.osd.lockKeys && Config.desktopSession === "hyprland")))
     ensureLayoutSource()
+if (Config.osd.enabled && Config.osd.layout) {
     layoutOsdText.subscribe(() => {
         const text = layoutOsdText.get()
         if (!text) return
@@ -176,45 +178,37 @@ if (Config.desktopSession === "hyprland" && Config.osd.enabled) {
     }
 }
 
-// caps/num lock (hyprland only, no event exists — poll and diff).
-// execAsync: a synchronous hyprctl call on a timer can stall the main loop.
-// 500ms: still snappy for an OSD, half the process churn of 250ms.
+// caps/num lock (hyprland). No event exists for it, but the shared
+// keyboard-layout source already reads hyprctl devices every second and
+// publishes lockKeyState — subscribe to that instead of spawning a
+// second recurring hyprctl poll here.
 if (Config.desktopSession === "hyprland" && Config.osd.enabled && Config.osd.lockKeys) {
     let prev: { caps: boolean, num: boolean } | null = null
-    let running = false
-    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
-        if (running) return GLib.SOURCE_CONTINUE
-        running = true
-        execAsync("hyprctl devices -j").then((out) => {
-            const devices = JSON.parse(out)
-            const kb = devices.keyboards.find((k: any) => k.main)
-                ?? devices.keyboards[0]
-            if (!kb) return
-            const cur = { caps: !!kb.capsLock, num: !!kb.numLock }
-            if (prev && (cur.caps !== prev.caps || cur.num !== prev.num)) {
-                // two independent checks: a tick where both flip must
-                // not drop the num-lock banner behind the caps one
-                if (cur.caps !== prev.caps) {
-                    show({
-                        icon: cur.caps
-                            ? "changes-prevent-symbolic"
-                            : "changes-allow-symbolic",
-                        value: null,
-                        label: "Caps Lock",
-                        over: cur.caps, // tints the icon
-                    }, "lockKeys")
-                }
-                if (cur.num !== prev.num) {
-                    show({
-                        icon: "input-keyboard-symbolic",
-                        value: null,
-                        label: `Num Lock ${cur.num ? "on" : "off"}`,
-                        over: false,
-                    }, "lockKeys")
-                }
+    lockKeyState.subscribe(() => {
+        const cur = lockKeyState.get()
+        if (!cur) return
+        if (prev && (cur.caps !== prev.caps || cur.num !== prev.num)) {
+            // two independent checks: a tick where both flip must
+            // not drop the num-lock banner behind the caps one
+            if (cur.caps !== prev.caps) {
+                show({
+                    icon: cur.caps
+                        ? "changes-prevent-symbolic"
+                        : "changes-allow-symbolic",
+                    value: null,
+                    label: "Caps Lock",
+                    over: cur.caps, // tints the icon
+                }, "lockKeys")
             }
-            prev = cur
-        }).catch(() => { }).finally(() => { running = false })
-        return GLib.SOURCE_CONTINUE
+            if (cur.num !== prev.num) {
+                show({
+                    icon: "input-keyboard-symbolic",
+                    value: null,
+                    label: `Num Lock ${cur.num ? "on" : "off"}`,
+                    over: false,
+                }, "lockKeys")
+            }
+        }
+        prev = cur
     })
 }

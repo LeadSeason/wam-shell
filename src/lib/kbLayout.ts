@@ -51,6 +51,12 @@ export interface LayoutSource {
 // fed by the backends on layout change; the OSD shows it
 export const [layoutOsdText, setLayoutOsdText] = createState("")
 
+// caps/num lock state, parsed from the same hyprctl device read the
+// layout source already does. Shared so the lock-keys OSD does not need
+// its own recurring hyprctl poll. null before the first read.
+export const [lockKeyState, setLockKeyState] =
+    createState<{ caps: boolean, num: boolean } | null>(null)
+
 function hyprlandSource(): LayoutSource {
     const hyprland = AstalHyprland.get_default()
     const xkbNames = loadXkbNames()
@@ -71,6 +77,9 @@ function hyprlandSource(): LayoutSource {
             setVariants((kb.variant ?? "").split(",")
                 .map((s: string) => s.trim()))
             setActiveIndex(kb.active_layout_index)
+            // caps/num lock for the lock-keys OSD: published from this
+            // same device read so the OSD needs no poll of its own
+            setLockKeyState({ caps: !!kb.capsLock, num: !!kb.numLock })
             if (kb.active_layout_index === lastIndex) return
             const wasFirst = lastIndex === null
             lastIndex = kb.active_layout_index
@@ -83,9 +92,10 @@ function hyprlandSource(): LayoutSource {
 
     let lastIndex: number | null = null
     refresh()
-    // signal for instant updates, poll as fallback
+    // signal for instant updates, poll as fallback. 1s also drives caps/num
+    // lock detection (no separate lock-keys poll elsewhere).
     hyprland.connect("keyboard-layout", refresh)
-    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
         refresh()
         return GLib.SOURCE_CONTINUE
     })
@@ -118,7 +128,9 @@ function swaySource(msgCmd: string): LayoutSource {
     const [activeIndex, setActiveIndex] = createState(0)
     let identifier = ""
 
-    const poll = createPoll("", 1000, async () => {
+    // 3s: a layout indicator doesn't need sub-second latency, and this
+    // spawns swaymsg/i3msg for the shell's lifetime otherwise
+    const poll = createPoll("", 3000, async () => {
         // swallow failures (binary missing, IPC down): keep old value
         try {
             return await execAsync(`${msgCmd} -t get_inputs`)
