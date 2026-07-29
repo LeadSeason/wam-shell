@@ -2,7 +2,7 @@ import AstalMpris from "gi://AstalMpris?version=0.1"
 import Gdk from "gi://Gdk?version=4.0"
 import Pango from "gi://Pango?version=1.0"
 import { Gtk } from "ags/gtk4"
-import { With, createBinding, createComputed } from "gnim"
+import { With, createBinding, createComputed, onCleanup } from "gnim"
 import Config from "../../../config"
 import CommandRegistry from "../../../lib/requestHandler"
 import { activePlayer } from "../../../lib/mpris"
@@ -17,6 +17,8 @@ function MediaWidget({ player, monitor, resolveIcon }: {
     resolveIcon: (name: string | null | undefined) => string | null
 }) {
     const status = createBinding(player, "playbackStatus")
+    const position = createBinding(player, "position")
+    const length = createBinding(player, "length")
 
     const label = createComputed(
         [createBinding(player, "title"), createBinding(player, "artist")],
@@ -26,7 +28,12 @@ function MediaWidget({ player, monitor, resolveIcon }: {
 
     let mediaBox: Gtk.Box
 
-    return <box cssClasses={["media"]} spacing={6} $={(self) => { mediaBox = self }}>
+    return <box
+        cssClasses={["media"]}
+        orientation={Gtk.Orientation.VERTICAL}
+        $={(self) => { mediaBox = self }}
+    >
+        <box>
         <box spacing={6}>
             {/* left click: popup below the pill, right click: play/pause */}
             <Gtk.GestureClick
@@ -80,6 +87,30 @@ function MediaWidget({ player, monitor, resolveIcon }: {
                 <image iconName="media-skip-forward-symbolic" />
             </button>
         </>}
+        </box>
+        {/* progress through the track: fills left to right so the pill
+            shows where playback begins and ends */}
+        <Gtk.DrawingArea
+            cssClasses={["mediaProgress"]}
+            heightRequest={2}
+            $={(self) => {
+                const unsub = position.subscribe(() => self.queue_draw())
+                onCleanup(unsub)
+                self.set_draw_func((area, cr: any, w: number, h: number) => {
+                    const c = area.get_color()
+                    cr.setSourceRGBA(c.red, c.green, c.blue, 0.25)
+                    cr.rectangle(0, 0, w, h)
+                    cr.fill()
+                    const len = length.get()
+                    if (len > 0) {
+                        const frac = Math.min(1, Math.max(0, position.get() / len))
+                        cr.setSourceRGBA(c.red, c.green, c.blue, 0.95)
+                        cr.rectangle(0, 0, w * frac, h)
+                        cr.fill()
+                    }
+                })
+            }}
+        />
     </box>
 }
 

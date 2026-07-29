@@ -72,11 +72,17 @@ window.Bar {
         border-radius: s.$radius;
         margin: s.$padding-small s.$padding;
         padding: 1px s.$padding;
-        border: solid 2px transparent;
+        // framed by default so it reads as clickable, not just text
+        background-color: t.$surface050;
+        border: solid 2px t.$accent20;
 
         &:hover {
-            background-color: t.$accent10;
-            border: solid 2px t.$accent10;
+            background-color: t.$accent20;
+            border: solid 2px t.$accent40;
+        }
+
+        .mediaProgress {
+            color: t.$accent;
         }
 
         button {
