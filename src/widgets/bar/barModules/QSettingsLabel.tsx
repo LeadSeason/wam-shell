@@ -37,7 +37,12 @@ function audioWidget(driver: AstalWp.Endpoint): Gtk.MenuButton {
     }
 
     // This show it initially once.
-    createBinding(driver, "volume").subscribe(show)
+    // disposers released when the bar is destroyed (monitor hotplug) —
+    // Battery() in this file already follows the same pattern
+    const disposers = [
+        createBinding(driver, "volume").subscribe(show),
+    ]
+    onCleanup(() => { for (const d of disposers) d() })
     const [tooltip, setTooltip] = createState("")
 
     const updateTooltip = () => {
@@ -45,8 +50,8 @@ function audioWidget(driver: AstalWp.Endpoint): Gtk.MenuButton {
 ${driver.description}`) // Keep this indent. New line.
     }
     updateTooltip()
-    createBinding(driver, "name").subscribe(() => { updateTooltip() })
-    createBinding(driver, "description").subscribe(() => { updateTooltip() })
+    disposers.push(createBinding(driver, "name").subscribe(() => { updateTooltip() }))
+    disposers.push(createBinding(driver, "description").subscribe(() => { updateTooltip() }))
 
     return (<box
         tooltipMarkup={tooltip}
