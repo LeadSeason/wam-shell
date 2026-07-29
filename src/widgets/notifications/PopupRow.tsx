@@ -64,7 +64,7 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
     // row destroyed while hovered (dismissed from center, replaced by a
     // burst, ...) must not leak the freeze count
     onCleanup(() => { if (hovered.get()) setPopupHovered(false) })
-    onCleanup(() => { pillBox = null; hoverBox = null })
+    onCleanup(() => { pillBox = null; hoverBox = null; rev = null })
 
     // --- countdown: critical banners stick until dismissed -------------
     const total = Config.notifications.popupTimeout
@@ -148,9 +148,11 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
     return <revealer
         $={(self) => {
             rev = self
-            // slide in after the widget is realized
+            // slide in after the widget is realized; the row may be
+            // destroyed before the idle runs (instant resolve, burst
+            // past MAX_POPUPS) — guard like syncWidth does
             GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-                self.revealChild = true
+                if (rev) rev.revealChild = true
                 return GLib.SOURCE_REMOVE
             })
         }}
