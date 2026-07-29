@@ -90,9 +90,19 @@ function deviceInfo(path: string): { name: string, icon: string, address: string
 
 /** show the request, or queue it behind the current one */
 function present(req: PairingRequest) {
-    if (pairingRequest.get() === null) setPairingRequest(req)
-    else queue.push(req)
+    if (pairingRequest.get() === null) {
+        setPairingRequest(req)
+        // the prompt is visible now — its timeout starts here, not at
+        // enqueue time, or queued prompts expire before being shown
+        armByRespond.get(req.respond)?.()
+    } else {
+        queue.push(req)
+    }
 }
+
+// respond fn -> arm fn: starts the bluez answer timeout once the
+// request is the active prompt
+const armByRespond = new Map<PairingRequest["respond"], () => void>()
 
 /** wrap an invocation answer with queue advance and exactly-once */
 function makeResponder(
@@ -105,12 +115,16 @@ function makeResponder(
     const advance = () => {
         setPairingRequest(null)
         const next = queue.shift()
-        if (next) setPairingRequest(next)
+        if (next) {
+            setPairingRequest(next)
+            armByRespond.get(next.respond)?.()
+        }
     }
 
     const finish = (accept: boolean, input?: string) => {
         if (done) return
         done = true
+        armByRespond.delete(finish)
         if (timer) {
             GLib.source_remove(timer)
             timer = 0
@@ -130,20 +144,26 @@ function makeResponder(
         advance()
     }
 
-    // bluez cancels the pairing if the agent does not answer in time
+    // bluez cancels the pairing if the agent does not answer in time.
+    // Armed when the prompt becomes active (see present/advance), not
+    // here — a queued prompt must not expire unseen.
     if (invocation) {
-        timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, PROMPT_TIMEOUT_MS, () => {
-            timer = 0
-            if (done) return GLib.SOURCE_REMOVE
-            done = true
-            try {
-                invocation.return_dbus_error(
-                    "org.bluez.Error.Canceled", "Pairing prompt timed out")
-            } catch (e) {
-                console.warn("bluetooth agent: timeout reply failed:", e)
-            }
-            advance()
-            return GLib.SOURCE_REMOVE
+        armByRespond.set(finish, () => {
+            if (timer || done) return
+            timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, PROMPT_TIMEOUT_MS, () => {
+                timer = 0
+                if (done) return GLib.SOURCE_REMOVE
+                done = true
+                armByRespond.delete(finish)
+                try {
+                    invocation.return_dbus_error(
+                        "org.bluez.Error.Canceled", "Pairing prompt timed out")
+                } catch (e) {
+                    console.warn("bluetooth agent: timeout reply failed:", e)
+                }
+                advance()
+                return GLib.SOURCE_REMOVE
+            })
         })
     }
     return finish
