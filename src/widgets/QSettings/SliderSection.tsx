@@ -1,6 +1,5 @@
 import AstalWp from "gi://AstalWp?version=0.1";
 import Gtk from "gi://Gtk?version=4.0";
-import GLib from "gi://GLib?version=2.0";
 import Pango from "gi://Pango?version=1.0";
 import { execAsync } from "ags/process";
 import Config from "../../config";
@@ -160,25 +159,6 @@ function BrightnessSlider() {
 
     const screen = createBinding(brightness, "screen")
 
-    // slowly rotate the icon while outdoor mode is on, like day rolling in
-    const [angle, setAngle] = createState(0)
-    let spinSource: number | null = null
-    hyprsunset.outdoor.subscribe(() => {
-        if (hyprsunset.outdoor.get()) {
-            if (spinSource !== null) return
-            spinSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
-                setAngle(a => (a + 6) % 360)
-                return GLib.SOURCE_CONTINUE
-            })
-        } else {
-            if (spinSource !== null) {
-                GLib.source_remove(spinSource)
-                spinSource = null
-            }
-            setAngle(0)
-        }
-    })
-
     let scrollAcc = 0
     const previous = createBinding(brightness, "previous")
     return <box cssClasses={hyprsunset.outdoor.as(v => v ? ["sliderRow", "overdrive"] : ["sliderRow"])}>
@@ -194,7 +174,9 @@ function BrightnessSlider() {
                 }} />
             <image
                 iconName={"display-brightness-symbolic"}
-                css={angle.as(a => `transform: rotate(${a}deg);`)}
+                // spin while outdoor mode is on via a CSS animation
+                // (.overdrive .brightnessSpin) instead of a 50ms JS timer
+                cssClasses={["brightnessSpin"]}
             />
         </box>
         <slider

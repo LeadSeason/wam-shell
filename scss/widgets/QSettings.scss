@@ -143,6 +143,16 @@ window#QSettings {
         slider highlight {
             background-color: t.$peach;
         }
+        // the sun icon spins while outdoor is on; driven by the
+        // compositor instead of a 50ms JS timer
+        .brightnessSpin {
+            animation: wam-brightness-spin 3s linear infinite;
+        }
+    }
+
+    @keyframes wam-brightness-spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
     }
 
     // device name overlaid on the volume sliders
