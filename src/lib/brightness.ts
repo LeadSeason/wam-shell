@@ -103,10 +103,19 @@ export default class Brightness extends GObject.Object {
         super()
 
         // remember the level before every effective change (slider,
-        // scroll, keybinds, sleep-timer dim) for restorePrevious()
+        // scroll, keybinds, sleep-timer dim) for restorePrevious().
+        // Epsilon-guarded: after a write, the astal/sysfs read-back
+        // fires again with the raw-quantized value (±1 raw step) and
+        // must not register as a new change, or it clobbers previous
+        // with the value the user just set. Sub-epsilon changes keep
+        // accumulating into the next significant one (last is not
+        // advanced on noise).
+        const eps = maxBrightness > 0
+            ? Math.min(0.03, 1.5 / maxBrightness)
+            : 0.02
         let last = this.#screen
         this.connect("notify::screen", () => {
-            if (this.#screen === last) return
+            if (Math.abs(this.#screen - last) < eps) return
             this.#previous = last
             last = this.#screen
             this.notify("previous")
