@@ -48,9 +48,10 @@ function audioWidget(driver: AstalWp.Endpoint): Gtk.MenuButton {
 
     const updateTooltip = () => {
         // device names/descriptions are hardware-controlled ("Tom &
-        // Jerry's Headphones") — tooltipMarkup parses Pango markup
-        setTooltip(`${GLib.markup_escape_text(driver.name, -1)}  
-${GLib.markup_escape_text(driver.description, -1)}`) // Keep this indent. New line.
+        // Jerry's Headphones") — tooltipMarkup parses Pango markup;
+        // either can also be null transiently
+        setTooltip(`${GLib.markup_escape_text(driver.name ?? "", -1)}  
+${GLib.markup_escape_text(driver.description ?? "", -1)}`) // Keep this indent. New line.
     }
     updateTooltip()
     disposers.push(createBinding(driver, "name").subscribe(() => { updateTooltip() }))
