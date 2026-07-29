@@ -25,7 +25,7 @@ function update() {
 
 registry.connect("item-added", (_, itemId: string) => {
     const item = registry.get_item(itemId)
-    console.log("Tray item added:", `${item.tooltip_markup || item.get_title() || "?"} (id: ${item.get_id()})`)
+    console.debug("Tray item added:", `${item.tooltip_markup || item.get_title() || "?"} (id: ${item.get_id()})`)
     items.set(itemId, item)
     item.connect("notify::status", update)
     update()

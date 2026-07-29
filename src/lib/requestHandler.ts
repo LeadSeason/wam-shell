@@ -77,7 +77,7 @@ class CommandRegistry {
             const result = await entry.main(argv)
             return `${Config.instanceName}: ${result}`
         } catch (err) {
-            console.log(`Error: Error: ${(err as Error).message}`)
+            console.warn(`Request error: ${(err as Error).message}`)
             return `${Config.instanceName} Error: ${(err as Error).message}`
         }
     }
