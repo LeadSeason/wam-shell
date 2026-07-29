@@ -115,11 +115,12 @@ function applyGamma() {
 // Watch the daemon for external gamma/temperature changes (keybinds,
 // other tools). Skipped briefly after our own applies so a mid-drag
 // read can't fight the debounced apply above. hyprland only — hyprctl
-// does not exist elsewhere. 1s is plenty for external changes; 250ms
-// spawned 8 processes per second for the shell's lifetime.
+// does not exist elsewhere. 3s: external gamma changes are not
+// sub-second-critical, and this spawns two hyprctl forks per tick for
+// the shell's lifetime on a laptop.
 let watchRunning = false
 if (Config.desktopSession === "hyprland")
-GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
+GLib.timeout_add(GLib.PRIORITY_DEFAULT, 3000, () => {
     if (watchRunning) return GLib.SOURCE_CONTINUE
     watchRunning = true
     Promise.all([
