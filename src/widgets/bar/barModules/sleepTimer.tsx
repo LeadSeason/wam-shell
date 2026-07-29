@@ -1,15 +1,21 @@
 import { Gtk } from "ags/gtk4"
-import { formatRemaining, remaining } from "../../../lib/sleepTimer"
+import { createComputed } from "gnim"
+import { formatRemaining, paused, remaining, toggleSleepTimerPause } from "../../../lib/sleepTimer"
 
 // Sleep timer countdown (lib/sleepTimer). Only visible while a timer
-// is running, so it costs no panel space otherwise.
+// is running, so it costs no panel space otherwise. Click pauses /
+// resumes the countdown.
 export default function SleepTimer() {
-    return <box
-        cssClasses={["sleepTimer"]}
-        spacing={4}
+    return <button
+        cssClasses={createComputed([remaining, paused],
+            (s, p) => ["sleepTimer", ...(s > 0 && p ? ["paused"] : [])])}
+        tooltipText={paused.as(p => p ? "Resume the sleep timer" : "Pause the sleep timer")}
         visible={remaining.as(s => s > 0)}
+        onClicked={() => toggleSleepTimerPause()}
     >
-        <image iconName="alarm-symbolic" />
-        <label label={remaining.as(formatRemaining)} />
-    </box>
+        <box spacing={4}>
+            <image iconName="alarm-symbolic" />
+            <label label={remaining.as(formatRemaining)} />
+        </box>
+    </button>
 }

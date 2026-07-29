@@ -196,3 +196,7 @@ window.Bar {
         color: t.$red;
     }
 }
+// sleep timer countdown while paused
+window.Bar .sleepTimer.paused {
+    opacity: 0.5;
+}

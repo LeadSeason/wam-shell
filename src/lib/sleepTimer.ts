@@ -12,11 +12,34 @@ const mpris = AstalMpris.get_default()
 const [remaining, setRemaining] = createState(0)
 export { remaining }
 
+// countdown frozen with time still left
+const [paused, setPaused] = createState(false)
+export { paused }
+
 let timerSource = 0
+
+function arm() {
+    timerSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
+        if (remaining.get() <= 1) {
+            fire()
+            return GLib.SOURCE_REMOVE
+        }
+        setRemaining(remaining.get() - 1)
+        return GLib.SOURCE_CONTINUE
+    })
+}
+
+function disarm() {
+    if (timerSource) {
+        GLib.source_remove(timerSource)
+        timerSource = 0
+    }
+}
 
 function fire() {
     timerSource = 0
     setRemaining(0)
+    setPaused(false)
     for (const p of mpris.players) {
         if (p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING && p.canPause) {
             try { p.pause() } catch (e) { console.warn("sleepTimer: pause failed:", e) }
@@ -28,22 +51,24 @@ export function startSleepTimer(minutes: number) {
     cancelSleepTimer()
     if (minutes <= 0) return
     setRemaining(minutes * 60)
-    timerSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
-        if (remaining.get() <= 1) {
-            fire()
-            return GLib.SOURCE_REMOVE
-        }
-        setRemaining(remaining.get() - 1)
-        return GLib.SOURCE_CONTINUE
-    })
+    arm()
 }
 
 export function cancelSleepTimer() {
-    if (timerSource) {
-        GLib.source_remove(timerSource)
-        timerSource = 0
-    }
+    disarm()
     setRemaining(0)
+    setPaused(false)
+}
+
+export function toggleSleepTimerPause() {
+    if (remaining.get() <= 0) return
+    if (paused.get()) {
+        setPaused(false)
+        arm()
+    } else {
+        disarm()
+        setPaused(true)
+    }
 }
 
 export function formatRemaining(seconds: number): string {

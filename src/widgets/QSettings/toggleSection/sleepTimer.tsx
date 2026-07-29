@@ -1,8 +1,8 @@
 import { Gtk } from "ags/gtk4";
-import { Accessor, Setter } from "gnim";
+import { Accessor, createComputed, Setter } from "gnim";
 import Config from "../../../config";
 import { DropdownButton } from "./ToggleButton";
-import { cancelSleepTimer, formatRemaining, remaining, startSleepTimer } from "../../../lib/sleepTimer";
+import { cancelSleepTimer, formatRemaining, paused, remaining, startSleepTimer } from "../../../lib/sleepTimer";
 
 // Sleep timer toggle: main click cancels a running timer or opens the
 // duration dropdown; the dropdown starts the timer for the picked
@@ -23,7 +23,10 @@ export function SleepTimerButton({ activeDropdown, setActiveDropdown, dropdownIn
         dropdownIndex={dropdownIndex}
         icon={"alarm-symbolic"}
         label={"Sleep Timer"}
-        subtitle={remaining.as(s => s > 0 ? formatRemaining(s) : "Off")}
+        subtitle={createComputed([remaining, paused],
+            (s, p) => s > 0
+                ? `${formatRemaining(s)}${p ? " (paused)" : ""}`
+                : "Off")}
         isActive={remaining.as(s => s > 0)}
         activate={() => {
             // running: cancel. otherwise open the duration dropdown
