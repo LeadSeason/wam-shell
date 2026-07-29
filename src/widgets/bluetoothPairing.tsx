@@ -5,6 +5,13 @@ import { pairingRequest, btPaneOpen, PairingRequest } from "../lib/bluetoothAgen
 export function PromptContent({ req }: { req: PairingRequest }) {
     let entry: Gtk.Entry | null = null
 
+    // empty pin/passkey answers fail the pairing anyway (passkey even
+    // becomes "0") — don't send them
+    const confirm = (text?: string) => {
+        if ((req.kind === "pin" || req.kind === "passkey") && !text) return
+        req.respond(true, text)
+    }
+
     const title = req.kind === "authorize"
         ? `Allow ${req.deviceName} to connect?`
         : req.kind === "display"
@@ -44,7 +51,7 @@ export function PromptContent({ req }: { req: PairingRequest }) {
                 maxLength={req.kind === "pin" ? 16 : 6}
                 inputPurpose={Gtk.InputPurpose.DIGITS}
                 xalign={0.5}
-                onActivate={(self: Gtk.Entry) => req.respond(true, self.get_text())}
+                onActivate={(self: Gtk.Entry) => confirm(self.get_text())}
             />
         }
         <box cssClasses={["buttons"]} spacing={8} halign={Gtk.Align.END}>
@@ -59,7 +66,7 @@ export function PromptContent({ req }: { req: PairingRequest }) {
                     <button
                         cssName={"button"}
                         cssClasses={["confirm"]}
-                        onClicked={() => req.respond(true, entry?.get_text())}
+                        onClicked={() => confirm(entry?.get_text())}
                     >
                         <label label={req.kind === "authorize" ? "Allow" : "Confirm"} />
                     </button>
