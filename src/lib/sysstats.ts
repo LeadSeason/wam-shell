@@ -134,7 +134,11 @@ const poll = createPoll("", INTERVAL, async () => {
 })
 
 // createPoll is lazy until subscribed; keep it alive while stats are on
-if (Config.quicksettings.showStats || Config.quicksettings.statsOnPanel)
+// (panel lists are authoritative: a "stats" entry in any [[panel]]
+// renders the widget regardless of the legacy toggles)
+if (Config.quicksettings.showStats || Config.quicksettings.statsOnPanel
+    || Config.panels.some(p =>
+        [...p.left, ...p.center, ...p.right].includes("stats")))
     poll.subscribe(() => { })
 
 export function formatRate(bytesPerSec: number): string {
