@@ -130,7 +130,7 @@ function Battery() {
         return `${prefix} ${percentage}% ${parts.join(" ")} ${suffix}`;
     };
 
-    const [showPrec, setShowPrec] = createState(false)
+    const [showPrec, setShowPrec] = createState(!bat.charging && bat.percentage < .20)
     const [batTime, setBatTime] = createState(batTimeConvert(
         (bat.charging) ? bat.timeToFull : bat.timeToEmpty, bat.charging))
 
@@ -150,16 +150,11 @@ function Battery() {
             setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))
     }))
 
-    disposers.push(createBinding(bat, "percentage").subscribe(() => {
-        let v = bat.percentage
-        if (!bat.charging) {
-            if (v < .20) {
-                setShowPrec(true)
-            } else {
-                setShowPrec(false)
-            }
-        }
-    }))
+    const updateLow = () => setShowPrec(!bat.charging && bat.percentage < .20)
+    disposers.push(createBinding(bat, "percentage").subscribe(updateLow))
+    // plugging in while low must clear the styling even if the
+    // percentage has not moved yet
+    disposers.push(createBinding(bat, "charging").subscribe(updateLow))
     return (<box
         tooltipText={batTime}
         cssClasses={showPrec.as((v) => v ? ["batLow"] : [])}
