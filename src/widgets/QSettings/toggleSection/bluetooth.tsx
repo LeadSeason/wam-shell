@@ -114,7 +114,7 @@ function adapterPath(): string {
 
 // discovery start/stop must also be async: the sync versions block the
 // main loop (observed 25s) when bluez is busy e.g. pairing
-function startDiscoveryAsync(): void {
+function startDiscoveryAsync(retried = false): void {
     Gio.DBus.system.call(
         "org.bluez", adapterPath(), "org.bluez.Adapter1", "StartDiscovery",
         null, null, Gio.DBusCallFlags.NONE, -1, null,
@@ -124,6 +124,15 @@ function startDiscoveryAsync(): void {
             } catch (e) {
                 // benign: already discovering (proxy property can be stale)
                 if ((e as Error).message?.includes("already in progress")) return
+                // the adapter is briefly NotReady while powering on:
+                // retry once, or discovery silently never starts
+                if (!retried && (e as Error).message?.includes("NotReady")) {
+                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+                        startDiscoveryAsync(true)
+                        return GLib.SOURCE_REMOVE
+                    })
+                    return
+                }
                 console.warn("bluetooth start discovery failed:", e)
             }
         },
@@ -138,8 +147,13 @@ function stopDiscoveryAsync(): void {
             try {
                 systemCallFinish(res)
             } catch (e) {
-                // benign: the discovering proxy property can be stale
-                if ((e as Error).message?.includes("No discovery started")) return
+                // benign: the discovering proxy property can be stale,
+                // and StopDiscovery while the adapter is powering down
+                // (toggle off) always fails NotReady — bluez kills
+                // discovery on power-down anyway
+                const msg = (e as Error).message ?? ""
+                if (msg.includes("No discovery started")) return
+                if (msg.includes("NotReady")) return
                 console.warn("bluetooth stop discovery failed:", e)
             }
         },
