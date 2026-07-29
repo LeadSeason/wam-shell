@@ -12,7 +12,12 @@ export interface VpnStatus {
 
 const [status, setStatus] = createState<VpnStatus>({ connected: false, relay: "" })
 
+// skip ticks while a previous refresh is still pending: a wedged
+// mullvad daemon would otherwise accumulate one blocked process per tick
+let refreshing = false
 export async function refreshVpn() {
+    if (refreshing) return
+    refreshing = true
     try {
         const out = await execAsync(["mullvad", "status"])
         const connected = out.trimStart().startsWith("Connected")
@@ -20,6 +25,8 @@ export async function refreshVpn() {
         setStatus({ connected, relay })
     } catch {
         // daemon down, leave state as is
+    } finally {
+        refreshing = false
     }
 }
 
