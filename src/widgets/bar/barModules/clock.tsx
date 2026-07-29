@@ -6,12 +6,14 @@ import GLib from "gi://GLib?version=2.0"
 
 export default function Clock() {
     // @TODO, Better to have single instance?, instead per display.
-    const time = createPoll("", 1000, () => {
-        return GLib.DateTime.new_now_local().format("%H:%M:%S")!
+    // one poll for both: the date used to tick a second timer every
+    // second (per monitor) for a value that changes once a day
+    const now = createPoll(["", ""] as [string, string], 1000, () => {
+        const dt = GLib.DateTime.new_now_local()
+        return [dt.format("%H:%M:%S")!, dt.format("%d.%m.%Y")!] as [string, string]
     })
-    const date = createPoll("", 1000, () => {
-        return GLib.DateTime.new_now_local().format("%d.%m.%Y")!
-    })
+    const time = now.as(([t]) => t)
+    const date = now.as(([, d]) => d)
 
     return (
         <menubutton cssName={"clock"}>
