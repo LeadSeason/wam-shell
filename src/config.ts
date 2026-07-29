@@ -255,6 +255,21 @@ function getBarMonitors(): string[] {
     return m.filter(x => typeof x === "string" && x !== "")
 }
 
+function getSleepTimerConfig() {
+    const s = configData.sleep_timer ?? {}
+    const get = (key: string, fallback: any) => s[key] ?? configData[key] ?? fallback
+
+    let presets = get("presets", [10, 15, 20, 30, 45, 60])
+    if (!Array.isArray(presets)
+        || presets.length === 0
+        || presets.some((p: any) => typeof p !== "number" || p <= 0)) {
+        console.error(`Config "sleep_timer.presets" must be a non-empty list of positive numbers, got "${JSON.stringify(presets)}"`)
+        presets = [10, 15, 20, 30, 45, 60]
+    }
+
+    return { presets }
+}
+
 function getNotificationsConfig() {
     const n = configData.notifications ?? {}
     const get = (key: string, fallback: any) => n[key] ?? configData[key] ?? fallback
@@ -445,6 +460,7 @@ export default class Config {
     static theme = getTheme(configData)
     static osd = getOsdConfig()
     static notifications = getNotificationsConfig()
+    static sleepTimer = getSleepTimerConfig()
 
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`

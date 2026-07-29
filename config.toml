@@ -217,3 +217,11 @@
 # arch_updates_threshold - Check updates module
 # The minimum amount of updates required to show a update icon.
 # arch_updates_threshold = 50
+# [sleep_timer] - quick settings sleep timer (pauses all playing media
+#                 after the picked duration)
+# presets - preset durations in minutes shown in the dropdown. custom
+#           values can always be typed in the entry. must be a
+#           non-empty list of positive numbers.
+#           default [10, 15, 20, 30, 45, 60]
+# [sleep_timer]
+# presets = [10, 15, 20, 30, 45, 60]

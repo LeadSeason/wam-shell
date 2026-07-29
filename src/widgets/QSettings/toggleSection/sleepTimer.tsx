@@ -1,5 +1,6 @@
 import { Gtk } from "ags/gtk4";
 import { Accessor, Setter } from "gnim";
+import Config from "../../../config";
 import { DropdownButton } from "./ToggleButton";
 import { cancelSleepTimer, formatRemaining, remaining, startSleepTimer } from "../../../lib/sleepTimer";
 
@@ -7,7 +8,7 @@ import { cancelSleepTimer, formatRemaining, remaining, startSleepTimer } from ".
 // duration dropdown; the dropdown starts the timer for the picked
 // duration (presets or a custom minute count).
 
-const PRESETS = [15, 30, 45, 60]
+const PRESETS = Config.sleepTimer.presets
 
 interface dropdownProps {
     activeDropdown: Accessor<number>
