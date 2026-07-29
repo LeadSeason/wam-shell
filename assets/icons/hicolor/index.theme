@@ -1,0 +1,36 @@
+[Icon Theme]
+Name=Hicolor
+Comment=Fallback icon theme (wam-shell bundled icons)
+Hidden=true
+Directories=scalable/status,scalable/categories,scalable/mimetypes,scalable/devices,scalable/places,scalable/actions
+
+[scalable/actions]
+Context=Actions
+Size=16
+Type=Scalable
+
+[scalable/categories]
+Context=Categories
+Size=16
+Type=Scalable
+
+[scalable/devices]
+Context=Devices
+Size=16
+Type=Scalable
+
+[scalable/mimetypes]
+Context=Mimetypes
+Size=16
+Type=Scalable
+
+[scalable/places]
+Context=Places
+Size=16
+Type=Scalable
+
+[scalable/status]
+Context=Status
+Size=16
+Type=Scalable
+

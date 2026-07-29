@@ -30,6 +30,12 @@ function matchMonitor(wanted: string[], m: Gdk.Monitor): boolean {
 }
 
 function main() {
+    // bundled fallback icons (assets/icons): core UI icon names must
+    // resolve even when the system icon theme lacks them (old adwaita,
+    // minimal/custom themes). System themes take precedence.
+    Gtk.IconTheme.get_for_display(Gdk.Display.get_default()!)
+        .add_search_path(`${Config.instanceSrcDir}/assets/icons`)
+
     if (Config.swayGaps && (Config.desktopSession == "sway" || Config.desktopSession == "i3"))
         SwayGaps.get_default()
 
