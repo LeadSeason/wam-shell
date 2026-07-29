@@ -58,3 +58,22 @@ for item in $(busctl --user get-property org.kde.StatusNotifierWatcher /StatusNo
   busctl --user get-property "$bus" "$path" org.kde.StatusNotifierItem Id 2>/dev/null | cut -d'"' -f2
 done
 ```
+
+## Icon spacing (`tray.spacing`)
+
+`spacing` controls the gap **between tray icons** (never the gap
+between the tray widget and other panel widgets — that is CSS
+territory, `.trayItem` / panel margins):
+
+- `0` (default): no inline margins are set, so stylesheet rules control
+  the gap — override freely in `scss/user.scss`:
+
+  ```scss
+  .trayItem { margin-right: 12px; }
+  ```
+
+- non-zero: a **multiplier** of the 6px base unit
+  (`$bar-widget-spacing` in `scss/conf.scss`), applied as an inline
+  margin on each icon: `spacing = 2` → 12px, `spacing = 3` → 18px.
+  Inline styles beat the stylesheet, so a non-zero value always wins
+  over CSS.

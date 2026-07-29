@@ -63,12 +63,19 @@ export default function Tray({ filter, iconSize = 16, pill = false, spacing = Co
         filter ? items.filter(filter) : items
     )
 
+    // spacing semantics: 0 = no inline margins, so stylesheet rules
+    // (incl. user.scss) control the icon gap; >0 = multiplier of the
+    // 6px base unit ($bar-widget-spacing in conf.scss), applied as an
+    // inline margin on each icon
+    const BASE = 6
+    const gap = spacing > 0 ? spacing * BASE : null
+
     return (
         <Gtk.FlowBox
             maxChildrenPerLine={8}
             selectionMode={Gtk.SelectionMode.NONE}
-            columnSpacing={spacing}
-            rowSpacing={spacing}
+            columnSpacing={0}
+            rowSpacing={gap ?? 0}
             // only has an effect inside the quick settings window
             cssClasses={["QSSection"]}
         >
@@ -108,9 +115,10 @@ export default function Tray({ filter, iconSize = 16, pill = false, spacing = Co
                         tooltipMarkup={tooltip}
                         direction={Gtk.ArrowType.DOWN}
                         cssClasses={["trayItem"]}
-                        css={pill
-                            ? `min-width: ${iconSize + 22}px; min-height: ${iconSize + 22}px;`
-                            : ""}
+                        css={[
+                            gap !== null ? `margin-right: ${gap}px;` : "",
+                            pill ? `min-width: ${iconSize + 22}px; min-height: ${iconSize + 22}px;` : "",
+                        ].filter(Boolean).join(" ") || ""}
                     >
                         <image gicon={gicon} pixelSize={iconSize} />
                         {menuModel}
