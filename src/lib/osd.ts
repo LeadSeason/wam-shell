@@ -192,6 +192,8 @@ if (Config.desktopSession === "hyprland" && Config.osd.enabled && Config.osd.loc
             if (!kb) return
             const cur = { caps: !!kb.capsLock, num: !!kb.numLock }
             if (prev && (cur.caps !== prev.caps || cur.num !== prev.num)) {
+                // two independent checks: a tick where both flip must
+                // not drop the num-lock banner behind the caps one
                 if (cur.caps !== prev.caps) {
                     show({
                         icon: cur.caps
@@ -201,7 +203,8 @@ if (Config.desktopSession === "hyprland" && Config.osd.enabled && Config.osd.loc
                         label: "Caps Lock",
                         over: cur.caps, // tints the icon
                     }, "lockKeys")
-                } else {
+                }
+                if (cur.num !== prev.num) {
                     show({
                         icon: "input-keyboard-symbolic",
                         value: null,
