@@ -93,17 +93,20 @@ window#QSettings {
 
     .QSHeader {
         background-color: t.$base;
-        .QSPFP {
-            border-radius: s.$radius;
-            border: solid 2px color.mix(t.$mantle, transparent, 60%);
+        // avatar: circle-cropped inside its frame; the ring color comes
+        // from the css `color` (cairo picks it up)
+        .batteryRing {
+            color: t.$accent;
         }
-        .QSBat {
-            margin-left: s.$gap;
-            font-size: 14px;
-            -gtk-icon-size: 14px;
-            image {
-                margin-right: s.$padding-small;
-            }
+        .avatarFrame {
+            border-radius: 999px;
+        }
+        .whoName {
+            font-weight: bold;
+        }
+        .whoSub {
+            font-size: s.$font-small;
+            color: t.$subtext0;
         }
         button {
             background: t.$surface070;

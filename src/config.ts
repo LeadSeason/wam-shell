@@ -200,6 +200,30 @@ function getQSettingsConfig() {
         showStats: get("show_stats", false),
         statsOnPanel: get("stats_on_panel", false),
         statsInterval,
+        // header avatar: absolute path to an image; empty = the login
+        // avatar from AccountsService, else the OS icon
+        avatar: get("avatar", ""),
+        showAvatar: get("show_avatar", true),
+        // charge cap in percent: the header ring treats this as full.
+        // explicit config wins; otherwise auto-detect from sysfs
+        // (charge_control_end_threshold, e.g. Lenovo/ASUS limits);
+        // default 100 when neither is available
+        batteryFullAt: (() => {
+            const explicit = configData.quicksettings?.battery_full_at
+                ?? configData.battery_full_at
+            if (typeof explicit === "number" && explicit > 0 && explicit <= 100)
+                return explicit
+            for (const bat of ["BAT0", "BAT1", "BAT2"]) {
+                const p = `/sys/class/power_supply/${bat}/charge_control_end_threshold`
+                try {
+                    if (isFile(p)) {
+                        const v = Number(readFile(p).trim())
+                        if (v > 0 && v <= 100) return v
+                    }
+                } catch { }
+            }
+            return 100
+        })(),
     }
 }
 

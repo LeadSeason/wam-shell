@@ -145,6 +145,15 @@
 #                  percentages) on the panel. default false
 # stats_interval - milliseconds between stat updates. lower = smoother
 #                  graphs, higher cpu cost. default 1000
+# show_avatar - show the avatar in the popup header. default true
+# avatar - absolute path to the avatar image. square crop recommended,
+#          ~96x96px (resize with scripts/prepare-avatar.sh). empty
+#          (default) = the login avatar from AccountsService, falling
+#          back to the OS icon
+# battery_full_at - charge cap in percent; the header ring treats this
+#                   as full. default: auto-detected from sysfs
+#                   (charge_control_end_threshold) when exposed, else
+#                   100. set explicitly to override
 # [quicksettings]
 # close_delay = 350
 # show_battery_percentage = true
@@ -152,6 +161,9 @@
 # show_stats = false
 # stats_on_panel = false
 # stats_interval = 1000
+# show_avatar = true
+# avatar = ""
+# battery_full_at = 100
 
 # [bluetooth] - bluetooth quick settings pane
 # notifications - send a notification when a device connects/disconnects

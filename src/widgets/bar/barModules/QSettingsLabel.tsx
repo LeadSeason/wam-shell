@@ -122,6 +122,13 @@ function Battery() {
     const batIcon = createBinding(bat, "batteryIconName")
 
     const batTimeConvert = (timeRemaining: number, charging: boolean): string => {
+        // at the charge limit UPower still reports a timeToFull even
+        // though nothing is charging; its charging state flickers at
+        // the cap too, so judge by percentage alone
+        const cap = Config.quicksettings.batteryFullAt
+        if (bat.percentage * 100 >= cap - 2)
+            return `${Math.floor(bat.percentage * 100)}% · Charge limit`;
+
         if (timeRemaining <= 0) return charging ? "Fully charged" : "Unknown ammount of time left";
 
         const hours = Math.floor(timeRemaining / 3600);

@@ -1,16 +1,105 @@
 import { Gtk } from "ags/gtk4";
 import Pango from "gi://Pango?version=1.0";
 import GLib from "gi://GLib?version=2.0";
+import Gio from "gi://Gio?version=2.0";
 import { execAsync } from "ags/process";
 import { createPoll } from "ags/time";
 import AstalBattery from "gi://AstalBattery?version=0.1";
-import { createBinding, createState } from "gnim";
+import { Accessor, createBinding, createComputed, createState, onCleanup } from "gnim";
 import Config from "../../config";
+import { isFile } from "../../lib/utils";
 import { confirmDialog } from "../dialog";
 
-function BatWidget() {
+// avatar sources, in order: configured absolute path, the login avatar
+// from AccountsService, the OS icon (same as the panel's osIcon)
+function resolveAvatar(): { file: string | null, icon: string } {
+    const configured = Config.quicksettings.avatar
+    if (configured && isFile(configured)) return { file: configured, icon: "" }
+    try {
+        const kf = new GLib.KeyFile()
+        kf.load_from_file(
+            `/var/lib/AccountsService/users/${GLib.get_user_name()}`,
+            GLib.KeyFileFlags.NONE)
+        const icon = kf.get_string("User", "Icon")
+        if (icon && isFile(icon)) return { file: icon, icon: "" }
+    } catch { }
+    return { file: null, icon: Config.osIcon }
+}
+
+// battery level as a static ring around the avatar (same draw pattern
+// as the notification countdown ring)
+function Avatar() {
+    const avatar = resolveAvatar()
     const bat = AstalBattery.get_default()
-    const batIcon = createBinding(bat, "batteryIconName")
+    const pct = createBinding(bat, "percentage")
+
+    function drawRing(area: Gtk.DrawingArea, cr: any, w: number, h: number) {
+        if (!bat.isPresent) return
+        const c = area.get_color()
+        const r = Math.min(w, h) / 2 - 2.5
+        const cx = w / 2
+        const cy = h / 2
+        cr.setLineWidth(3)
+        cr.arc(cx, cy, r, 0, Math.PI * 2)
+        cr.setSourceRGBA(c.red, c.green, c.blue, 0.2)
+        cr.stroke()
+        // show relative to the configured charge cap (battery_full_at),
+        // ceiled to 1% steps. At the charge limit itself the ring
+        // closes completely, matching the "charge limit" text
+        const cap = Config.quicksettings.batteryFullAt / 100
+        // judge by percentage alone: UPower's charging state flickers
+        // at the cap ("not charging" with a bogus time)
+        const atLimit = pct.get() * 100 >= Config.quicksettings.batteryFullAt - 2
+        const frac = atLimit
+            ? 1
+            : Math.min(1, Math.ceil((pct.get() / cap) * 100) / 100)
+        if (frac > 0.005) {
+            cr.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2)
+            cr.setSourceRGBA(c.red, c.green, c.blue, 0.95)
+            cr.stroke()
+        }
+    }
+
+    return <overlay
+        widthRequest={48}
+        heightRequest={48}
+        $={(self) => {
+            // gnim overlays only reliably keep the first JSX child —
+            // add the frame imperatively (same pattern as PopupRow)
+            self.add_overlay(
+                <box
+                    cssClasses={["avatarFrame"]}
+                    halign={Gtk.Align.CENTER}
+                    valign={Gtk.Align.CENTER}
+                    widthRequest={36}
+                    heightRequest={36}
+                    overflow={Gtk.Overflow.HIDDEN}
+                >
+                    {avatar.file
+                        ? <Gtk.Picture
+                            file={Gio.File.new_for_path(avatar.file)}
+                            contentFit={Gtk.ContentFit.COVER}
+                            canShrink
+                        />
+                        : <image iconName={avatar.icon} pixelSize={24} />}
+                </box> as Gtk.Widget)
+        }}
+    >
+        <Gtk.DrawingArea
+            cssClasses={["batteryRing"]}
+            widthRequest={48}
+            heightRequest={48}
+            $={(self) => {
+                const unsub = pct.subscribe(() => self.queue_draw())
+                onCleanup(unsub)
+                self.set_draw_func(drawRing)
+            }}
+        />
+    </overlay>
+}
+
+function useBatteryLine(): { line: Accessor<string> } {
+    const bat = AstalBattery.get_default()
     const batProc = createBinding(bat, "percentage")
 
     const batTimeConvert = (timeRemaining: number, charging: boolean): string => {
@@ -67,18 +156,19 @@ function BatWidget() {
     createBinding(bat, "timeToFull").subscribe(updateBatTime)
     createBinding(bat, "charging").subscribe(updateBatTime)
 
-    return <box cssClasses={["QSBat"]} orientation={Gtk.Orientation.VERTICAL}>
-        <box>
-            <image iconName={batIcon} />
-            <label label={batProc.as(v => `${(v * 100).toFixed(0)} %`)} />
-        </box>
-        <label
-            label={batTime}
-            xalign={0}
-            maxWidthChars={20}
-            ellipsize={Pango.EllipsizeMode.END}
-        />
-    </box>
+    const chargingB = createBinding(bat, "charging")
+    return {
+        line: createComputed([batProc, chargingB, batTime], (p, charging, t) => {
+            const pct = `${(p * 100).toFixed(0)}%`
+            // at the charge limit UPower still reports a bogus
+            // timeToFull although nothing is charging (a known quirk)
+            // judge by percentage alone: UPower's charging state also
+            // flickers at the cap ("not charging" with a bogus time)
+            if (p * 100 >= Config.quicksettings.batteryFullAt - 2)
+                return `${pct} · charge limit`
+            return t ? `${pct} · ${t}` : pct
+        }),
+    }
 }
 
 const uptimeConvert = (uptimeOutput: string): string => {
@@ -128,51 +218,25 @@ const loadConvert = (uptimeOutput: string): string => {
     return `Load ${one} ${five} ${fifteen}`;
 };
 
-function Uptime() {
-    const [uptime, setUptime] = createState("")
-    const [sysLoad, setSysLoad] = createState("")
+function useUptimeLine(): { line: Accessor<string> } {
+    const [line, setLine] = createState("")
     const poll = createPoll("", 30_000, async () => {
         let val = ""
-        await execAsync("uptime").then((v) => {
-            val = v
-        })
+        await execAsync("uptime").then((v) => { val = v })
         return val
     })
     poll.subscribe(() => {
-        let v = poll.get()
-        setUptime(uptimeConvert(v))
-        setSysLoad(loadConvert(v))
+        const v = poll.get()
+        const up = uptimeConvert(v)
+        const load = loadConvert(v)
+        setLine(load ? `${up} · ${load}` : up)
     })
-    // xalign Aligns text to the left side
-    return <box cssClasses={["QSBat"]} orientation={Gtk.Orientation.VERTICAL}>
-        <label
-            xalign={0}
-            label={uptime}
-            maxWidthChars={20}
-            ellipsize={Pango.EllipsizeMode.END}
-        />
-        <label
-            xalign={0}
-            label={sysLoad}
-            maxWidthChars={20}
-            ellipsize={Pango.EllipsizeMode.END}
-        />
-    </box>
+    return { line }
 }
 
 export function HeaderSection() {
-    // @TODO default avatar "avatar-default-symbolic"
-    // @TODO make avatar a circle or make the corners rounded, Css cannot do this
-    // @TODO Implement functions
-    // @TODO have a Are you sure warning before turning the computer off.
-
-    let batWidget = <></>
     const bat = AstalBattery.get_default()
-    if (bat.isPresent) {
-        batWidget = <BatWidget />
-    } else {
-        batWidget = <Uptime />
-    }
+    const { line } = bat.isPresent ? useBatteryLine() : useUptimeLine()
 
     // loginctl needs the session id; the compositor's locker handles the
     // actual Lock signal. Empty when not under systemd-logind.
@@ -181,10 +245,23 @@ export function HeaderSection() {
         execAsync(["loginctl", "lock-session", sessionId]).catch(e => console.warn("lock failed:", e))
 
     return <box cssClasses={["QSHeader", "QSSection"]}>
-        <image cssClasses={["QSPFP"]} file={`${Config.instanceSrcDir}/assets/pfp.jpg`} pixelSize={32} />
-        {batWidget}
+        {Config.quicksettings.showAvatar && <Avatar />}
+        <box orientation={Gtk.Orientation.VERTICAL} valign={Gtk.Align.CENTER} hexpand marginStart={8}>
+            <label
+                cssClasses={["whoName"]}
+                label={GLib.get_user_name() ?? ""}
+                xalign={0}
+                ellipsize={Pango.EllipsizeMode.END}
+            />
+            <label
+                cssClasses={["whoSub"]}
+                label={line}
+                xalign={0}
+                ellipsize={Pango.EllipsizeMode.END}
+            />
+        </box>
         <button
-            hexpand halign={Gtk.Align.END}
+            halign={Gtk.Align.END}
             iconName={"system-lock-screen-symbolic"}
             tooltipText={"Lock session"}
             onClicked={lock}
