@@ -39,9 +39,12 @@
 # dark_theme - applied when Dark Style turns on. default
 #              "catppuccin-mocha"
 # light_theme - applied when it turns off. default "catppuccin-latte"
+# follow_system - also follow the system color scheme at startup, so
+#                 Dark Style survives a shell restart. default true
 # [appearance]
 # dark_theme = "catppuccin-mocha"
 # light_theme = "catppuccin-latte"
+# follow_system = true
 
 # bar_monitors - list of monitors that get a panel. Entries match the
 #                connector ("HDMI-A-1"), the model ("X34 P") or a

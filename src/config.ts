@@ -1,4 +1,5 @@
 import GLib from "gi://GLib?version=2.0"
+import Gio from "gi://Gio?version=2.0"
 import toml from "toml"
 import { exec } from "ags/process"
 import { readFile } from "ags/file"
@@ -267,6 +268,25 @@ function getAppearanceConfig() {
         // themes applied when Dark Style toggles on/off
         darkTheme: themeOr("dark_theme", "catppuccin-mocha"),
         lightTheme: themeOr("light_theme", "catppuccin-latte"),
+        // also follow the system color scheme at startup
+        followSystem: get("follow_system", true),
+    }
+}
+
+// resolve the theme, following the system color scheme when enabled:
+// Dark Style left off must survive a shell restart
+function resolveTheme(data: Record<string, any>): string {
+    const theme = getTheme(data)
+    const appearance = getAppearanceConfig()
+    if (!appearance.followSystem) return theme
+    try {
+        const s = new Gio.Settings({ schema_id: "org.gnome.desktop.interface" })
+        return s.get_string("color-scheme").includes("prefer-dark")
+            ? appearance.darkTheme
+            : appearance.lightTheme
+    } catch {
+        // schema not installed — keep the configured theme
+        return theme
     }
 }
 
@@ -519,7 +539,7 @@ export default class Config {
     static hyprsunset = getHyprsunsetConfig()
     static barMonitors = getBarMonitors()
     static panels = getPanelsConfig()
-    static theme = getTheme(configData)
+    static theme = resolveTheme(configData)
     static appearance = getAppearanceConfig()
     static osd = getOsdConfig()
     static notifications = getNotificationsConfig()
@@ -536,6 +556,6 @@ export default class Config {
 // on reloadStyle without a restart.
 export function reloadTheme(): string {
     const data = parseToml(readRawFile(findConfigFile()))
-    Config.theme = getTheme(data)
+    Config.theme = resolveTheme(data)
     return Config.theme
 }
