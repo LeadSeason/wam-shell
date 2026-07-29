@@ -271,6 +271,12 @@ function getNotificationsConfig() {
         position = "topRight"
     }
 
+    let daemon = get("daemon", "auto")
+    if (!["auto", "wam-shell", "system"].includes(daemon)) {
+        console.error(`Config "notifications.daemon" must be "auto", "wam-shell" or "system", got "${daemon}"`)
+        daemon = "auto"
+    }
+
     return {
         // transient banners for incoming notifications
         popups: get("popups", true),
@@ -278,6 +284,9 @@ function getNotificationsConfig() {
         // low urgency drains in half the time)
         popupTimeout,
         position: position as "topRight" | "topCenter",
+        // whose notification daemon is used: auto = the system's if one
+        // is running, ours otherwise
+        daemon: daemon as "auto" | "wam-shell" | "system",
     }
 }
 

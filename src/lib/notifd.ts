@@ -1,11 +1,39 @@
 import AstalNotifd from "gi://AstalNotifd?version=0.1"
+import Gio from "gi://Gio?version=2.0"
+import GLib from "gi://GLib?version=2.0"
 import { Accessor, createBinding, createState } from "gnim"
 import { createPoll } from "ags/time"
+import Config from "../config"
 
 // Shared notification daemon state. The first instantiation becomes
 // the daemon (so swaync must not run alongside).
 
 const notifd = AstalNotifd.get_default()
+
+// Whose daemon handles notifications (notifications.daemon):
+// "wam-shell" always ours, "system" never, "auto" ours only when no
+// other daemon owns org.freedesktop.Notifications at startup. When the
+// name is already taken astal backs off (it does not steal it), so the
+// owner being someone else means a system daemon was there first.
+function detectSystemDaemon(): boolean {
+    try {
+        const reply = Gio.DBus.session.call_sync(
+            "org.freedesktop.DBus", "/org/freedesktop/DBus",
+            "org.freedesktop.DBus", "GetNameOwner",
+            new GLib.Variant("(s)", ["org.freedesktop.Notifications"]),
+            new GLib.VariantType("(s)"), Gio.DBusCallFlags.NONE, 500, null)
+        const owner = reply.get_child_value(0).get_string()[0]
+        return owner !== Gio.DBus.session.get_unique_name()
+    } catch {
+        return false // name has no owner
+    }
+}
+
+const mode = Config.notifications.daemon
+export const useOurs = mode === "wam-shell" ? true
+    : mode === "system" ? false
+    : !detectSystemDaemon()
+if (!useOurs) console.log("Notifications: using the system daemon")
 
 const notifications = createBinding(notifd, "notifications")
 export const count = notifications.as(n => n.length)
@@ -59,6 +87,7 @@ export function removePopup(id: number) {
 }
 
 notifd.connect("notified", (_s, id) => {
+    if (!useOurs) return
     const n = notifd.get_notification(id)
     if (!n) return
     // DND silences popups; critical notifications still break through

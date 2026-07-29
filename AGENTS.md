@@ -2,8 +2,11 @@
 
 ## Runtime services
 
-- Notifications come from AstalNotifd — the shell IS the notification
-  daemon. Do not run swaync alongside; remove it from autostart.
+- Notifications come from AstalNotifd — by default the shell IS the
+  notification daemon. If the user runs another daemon (swaync, dunst),
+  the shell defers to it at startup (`[notifications] daemon`, default
+  "auto"); "wam-shell"/"system" force one or the other. Running swaync
+  alongside is still not recommended.
 - The app launcher and notification center toggle via request
   commands: `ags request -i wam-shell launcher` and
   `ags request -i wam-shell notifications` (bind these in the
