@@ -16,7 +16,9 @@ export default function Scratchpad() {
     let contentBox: Gtk.Box
     let searchEntry: Gtk.Entry
     const [revealer, setReveler] = createState(false)
-    let gtkIconTheme = new Gtk.IconTheme() // Will be replaced layer
+    // get_for_display, not a bare IconTheme: without a display has_icon
+    // returns false and rows built before the window ref run get no icons
+    let gtkIconTheme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default()!)
 
     const sway = Sway.get_default()
 
