@@ -178,11 +178,15 @@
 #                 default 5000
 # position - where banners appear: "topRight" or "topCenter".
 #            default "topRight"
+# popup_width - fixed banner width in pixels. the whole stack is the
+#               same width and does not resize as notifications arrive
+#               and expire. default 460
 # [notifications]
 # daemon = "auto"
 # popups = true
 # popup_timeout = 5000
 # position = "topRight"
+# popup_width = 460
 
 # [media] - panel media controls (mpris) + popup
 # enabled - show the media widget in the legacy (non-[[panel]]) bar

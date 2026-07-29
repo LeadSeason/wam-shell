@@ -14,9 +14,11 @@ export default function NotificationPopups({ gdkMonitor }: { gdkMonitor: Gdk.Mon
 
     const position = Config.notifications.position
     const anchor = position === "topCenter" ? TOP : TOP | RIGHT
+    // 38px bar + gap: the pill's top edge used to overlap the bar by
+    // 4px, and hovering it flapped between bar and banner hover areas
     const margins = position === "topCenter"
-        ? { marginTop: 34 }
-        : { marginTop: 34, marginRight: 12 }
+        ? { marginTop: 42 }
+        : { marginTop: 42, marginRight: 12 }
 
     let isFocused
     if (Config.desktopSession === "hyprland") {

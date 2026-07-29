@@ -60,14 +60,35 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
 
     const [hovered, setHovered] = createState(false)
 
+    // collapse on leave is debounced: expanding shifts the layout
+    // (small appName row takes the top), which can momentarily push
+    // the pointer out of the widget and back in — without a grace
+    // period that reads as a flicker loop
+    let leaveSource: number | null = null
     function hover(h: boolean) {
-        setHovered(h)
-        setPopupHovered(h)
+        if (h) {
+            if (leaveSource !== null) {
+                GLib.source_remove(leaveSource)
+                leaveSource = null
+            }
+            setHovered(true)
+            setPopupHovered(true)
+        } else if (leaveSource === null) {
+            leaveSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
+                leaveSource = null
+                setHovered(false)
+                setPopupHovered(false)
+                return GLib.SOURCE_REMOVE
+            })
+        }
     }
     // row destroyed while hovered (dismissed from center, replaced by a
     // burst, ...) must not leak the freeze count
-    onCleanup(() => { if (hovered.get()) setPopupHovered(false) })
-    onCleanup(() => { pillBox = null; hoverBox = null; rev = null })
+    onCleanup(() => {
+        if (leaveSource !== null) GLib.source_remove(leaveSource)
+        if (hovered.get()) setPopupHovered(false)
+    })
+    onCleanup(() => { rev = null })
 
     // --- countdown: critical banners stick until dismissed -------------
     const total = Config.notifications.popupTimeout
@@ -131,33 +152,13 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
     // buttons that must not trigger the whole-card click
     const interactiveButtons: Gtk.Widget[] = []
     let pressOnButton = false
-    let pillBox: Gtk.Box | null = null
-    let hoverBox: Gtk.Box | null = null
-
-    // the window is right-anchored, so if the unfolded state is narrower
-    // than the pill, hovering visibly shifts the banner right. Pin the
-    // hover state's min width to the pill's natural width: hover may
-    // grow left, never shrink right.
-    function syncWidth() {
-        if (!pillBox || !hoverBox) return
-        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-            if (!pillBox || !hoverBox) return GLib.SOURCE_REMOVE
-            const [, nat] = pillBox.measure(Gtk.Orientation.HORIZONTAL, -1)
-            hoverBox.widthRequest = nat
-            return GLib.SOURCE_REMOVE
-        })
-    }
-
-    const inlineText = body !== ""
-        ? `${summary}  ·  ${stripMarkup(body)}`
-        : summary
 
     return <revealer
         $={(self) => {
             rev = self
             // slide in after the widget is realized; the row may be
             // destroyed before the idle runs (instant resolve, burst
-            // past MAX_POPUPS) — guard like syncWidth does
+            // past MAX_POPUPS) — guard like the pill/hover boxes do
             GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
                 if (rev) rev.revealChild = true
                 return GLib.SOURCE_REMOVE
@@ -171,6 +172,9 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
             cssClasses={hovered.as((h) => [
                 "popup", ...urgencyClass(n), ...(h ? ["open"] : []),
             ])}
+            // fixed width: content-driven sizing made the whole stack
+            // resize on every arrival/expiry
+            widthRequest={Config.notifications.popupWidth}
             // clip children to the (rounded) outline: during the
             // pill->card morph the square image would otherwise stick
             // out of the still-rounded border
@@ -231,34 +235,51 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
                     heightRequest={RING_SIZE}
                 />
             </overlay>
-            {/* pill state: single truncated line */}
+            {/* pill state: bold summary on line one, body (plain,
+                markup stripped) on line two when present. Same top
+                lines as the expanded card, so unfolding only ever
+                ADDS rows below — no content jump */}
             <box
-                $={(self) => { pillBox = self; syncWidth() }}
-                valign={Gtk.Align.CENTER}
+                orientation={Gtk.Orientation.VERTICAL}
+                valign={Gtk.Align.START}
                 visible={hovered.as((h) => !h)}
             >
-                <label
-                    cssClasses={["inline"]}
-                    label={inlineText}
-                    xalign={0}
-                    maxWidthChars={56}
-                    ellipsize={Pango.EllipsizeMode.END}
-                />
+                <box spacing={6}>
+                    <label
+                        cssClasses={["summary"]}
+                        label={summary}
+                        xalign={0}
+                        hexpand
+                        maxWidthChars={42}
+                        ellipsize={Pango.EllipsizeMode.END}
+                    />
+                </box>
+                {body !== "" &&
+                    <label
+                        cssClasses={["inline"]}
+                        label={stripMarkup(body)}
+                        xalign={0}
+                        maxWidthChars={42}
+                        ellipsize={Pango.EllipsizeMode.END}
+                    />
+                }
             </box>
             {/* hover state: unfolds, timer frozen */}
             <box
-                $={(self) => { hoverBox = self; syncWidth() }}
+                hexpand
                 orientation={Gtk.Orientation.VERTICAL}
                 spacing={2}
-                valign={Gtk.Align.CENTER}
+                valign={Gtk.Align.START}
                 visible={hovered}
             >
                 <box spacing={6}>
                     <label
-                        cssClasses={["appName"]}
-                        label={n.get_app_name() || "unknown"}
+                        cssClasses={["summary"]}
+                        label={summary}
                         xalign={0}
                         hexpand
+                        maxWidthChars={42}
+                        ellipsize={Pango.EllipsizeMode.END}
                     />
                     <button
                         $={(self) => { interactiveButtons.push(self) }}
@@ -271,27 +292,18 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
                         <image iconName="window-close-symbolic" />
                     </button>
                 </box>
-                <box orientation={Gtk.Orientation.VERTICAL} spacing={2}>
+                {body !== "" &&
                     <label
-                        cssClasses={["summary"]}
-                        label={summary}
+                        cssClasses={["body"]}
+                        label={safeMarkup(body)}
+                        useMarkup
                         xalign={0}
-                        maxWidthChars={48}
+                        wrap
+                        maxWidthChars={42}
+                        lines={4}
                         ellipsize={Pango.EllipsizeMode.END}
                     />
-                    {body !== "" &&
-                        <label
-                            cssClasses={["body"]}
-                            label={safeMarkup(body)}
-                            useMarkup
-                            xalign={0}
-                            wrap
-                            maxWidthChars={60}
-                            lines={4}
-                            ellipsize={Pango.EllipsizeMode.END}
-                        />
-                    }
-                </box>
+                }
                 {imageTexture &&
                     // hard bound the image: the texture is pre-scaled at
                     // 2x for hidpi, and Picture sizes itself to the

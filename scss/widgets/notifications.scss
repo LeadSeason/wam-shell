@@ -138,18 +138,15 @@ window.NotificationPopups {
 
         .ring { color: t.$accent; }
 
-        .inline {
-            font-size: s.$font-small;
-        }
-        .appName {
-            font-size: s.$font-small;
-            color: t.$subtext0;
-        }
+        // pill text at full size (was font-small — hard to read at a
+        // glance)
         .summary {
             font-weight: bold;
         }
         .body {
-            font-size: s.$font-small;
+            color: t.$subtext1;
+        }
+        .inline {
             color: t.$subtext1;
         }
         .image {

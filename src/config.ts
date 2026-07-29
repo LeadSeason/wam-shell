@@ -326,6 +326,16 @@ function getNotificationsConfig() {
         // low urgency drains in half the time)
         popupTimeout,
         position: position as "topRight" | "topCenter",
+        // fixed banner width in px: the stack must not resize as
+        // notifications arrive and expire
+        popupWidth: (() => {
+            const w = get("popup_width", 460)
+            if (typeof w !== "number" || w <= 0) {
+                console.error(`Config "notifications.popup_width" must be a positive number, got "${w}"`)
+                return 460
+            }
+            return w
+        })(),
         // whose notification daemon is used: auto = the system's if one
         // is running, ours otherwise
         daemon: daemon as "auto" | "wam-shell" | "system",
