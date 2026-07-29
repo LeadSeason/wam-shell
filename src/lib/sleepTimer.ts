@@ -38,6 +38,12 @@ function disarm() {
     }
 }
 
+// restore-on-extend state: the levels at the last fire. In-memory
+// only, like the rest of the timer — a shell restart leaves
+// brightness wherever it is and forgets the pre-dim level.
+let preDimLevel: number | null = null
+let dimmedToLevel: number | null = null
+
 function fire() {
     timerSource = 0
     setRemaining(0)
@@ -51,13 +57,30 @@ function fire() {
     if (Config.sleepTimer.dim) {
         const brightness = Brightness.get_default()
         if (brightness.screenIsPresent) {
-            brightness.screen = Math.max(0.10, brightness.screen / 2)
+            preDimLevel = brightness.screen
+            dimmedToLevel = Math.max(0.10, preDimLevel / 2)
+            brightness.screen = dimmedToLevel
         }
     }
 }
 
+// extending after a fire means the user is back at the machine:
+// restore the pre-dim brightness — unless they adjusted it themselves
+// meanwhile (their explicit change always wins)
+function restoreDim() {
+    if (preDimLevel === null || dimmedToLevel === null) return
+    const brightness = Brightness.get_default()
+    if (brightness.screenIsPresent
+        && Math.abs(brightness.screen - dimmedToLevel) < 0.02) {
+        brightness.screen = preDimLevel
+    }
+    preDimLevel = null
+    dimmedToLevel = null
+}
+
 export function startSleepTimer(minutes: number) {
     cancelSleepTimer()
+    restoreDim()
     if (minutes <= 0) return
     setRemaining(minutes * 60)
     arm()
