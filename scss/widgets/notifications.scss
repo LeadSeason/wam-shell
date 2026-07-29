@@ -105,8 +105,18 @@ window.NotificationPopups {
         background: t.$crust;
         color: t.$text;
         border-radius: 999px;
-        border: solid 2px color.mix(t.$surface0, transparent, 60%);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        // accent-tinted border + subtle shadow: visible against both
+        // light and dark backgrounds without compositor blur
+        border: solid 2px t.$accent40;
+        // urgency spine, integrated into the border (follows the pill's
+        // rounding, unlike a rail widget)
+        border-left: solid 4px t.$accent;
+        // subtle on purpose: a big blur reads as a square silhouette
+        // behind the rounded pill
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+        // slower than the global 200ms: the pill->card radius morph
+        // looked yanky at full speed
+        transition: border-radius 350ms ease;
         // identical padding in both states: only the radius morphs on
         // hover, so the pill doesn't shift when it unfolds
         padding: 5px 12px 5px 5px;
@@ -117,10 +127,12 @@ window.NotificationPopups {
 
         &.critical {
             border-color: t.$red40;
+            border-left-color: t.$red;
             .ring { color: t.$red; }
             .summary { color: t.$red; }
         }
         &.low {
+            border-left-color: t.$surface0;
             .inline, .summary { color: t.$subtext0; }
         }
 

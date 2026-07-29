@@ -1,5 +1,6 @@
 import { Gtk, Gdk } from "ags/gtk4"
 import GLib from "gi://GLib?version=2.0"
+import Graphene from "gi://Graphene?version=1.0"
 import GdkPixbuf from "gi://GdkPixbuf?version=2.0"
 import AstalNotifd from "gi://AstalNotifd?version=0.1"
 import Pango from "gi://Pango?version=1.0"
@@ -126,6 +127,10 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
     }
 
     let rev: Gtk.Revealer | null = null
+    let outerBox: Gtk.Box | null = null
+    // buttons that must not trigger the whole-card click
+    const interactiveButtons: Gtk.Widget[] = []
+    let pressOnButton = false
     let pillBox: Gtk.Box | null = null
     let hoverBox: Gtk.Box | null = null
 
@@ -162,11 +167,34 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
         transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
     >
         <box
+            $={(self) => { outerBox = self }}
             cssClasses={hovered.as((h) => [
                 "popup", ...urgencyClass(n), ...(h ? ["open"] : []),
             ])}
+            // clip children to the (rounded) outline: during the
+            // pill->card morph the square image would otherwise stick
+            // out of the still-rounded border
+            overflow={Gtk.Overflow.HIDDEN}
             spacing={8}
         >
+            {/* the whole banner is clickable: invoke the default action,
+                or dismiss the banner when there is none — except presses
+                that land on the action/dismiss buttons */}
+            <Gtk.GestureClick
+                button={1}
+                onPressed={(_g, _n, x, y) => {
+                    pressOnButton = interactiveButtons.some((w) => {
+                        if (!outerBox) return false
+                        const [, rect] = w.compute_bounds(outerBox)
+                        return rect.contains_point(new Graphene.Point({ x, y }))
+                    })
+                }}
+                onReleased={() => {
+                    if (pressOnButton) return
+                    if (hasDefault) n.invoke("default")
+                    else removePopup(n.id)
+                }}
+            />
             <Gtk.EventControllerMotion
                 onEnter={() => hover(true)}
                 onLeave={() => hover(false)}
@@ -209,9 +237,6 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
                 valign={Gtk.Align.CENTER}
                 visible={hovered.as((h) => !h)}
             >
-                {hasDefault &&
-                    <Gtk.GestureClick button={1} onReleased={() => n.invoke("default")} />
-                }
                 <label
                     cssClasses={["inline"]}
                     label={inlineText}
@@ -236,6 +261,7 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
                         hexpand
                     />
                     <button
+                        $={(self) => { interactiveButtons.push(self) }}
                         cssClasses={["dismiss"]}
                         onClicked={() => {
                             removePopup(n.id)
@@ -245,12 +271,7 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
                         <image iconName="window-close-symbolic" />
                     </button>
                 </box>
-                {/* default-action click covers only the text, not the
-                    header buttons or action pills */}
                 <box orientation={Gtk.Orientation.VERTICAL} spacing={2}>
-                    {hasDefault &&
-                        <Gtk.GestureClick button={1} onReleased={() => n.invoke("default")} />
-                    }
                     <label
                         cssClasses={["summary"]}
                         label={summary}
@@ -266,21 +287,37 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
                             xalign={0}
                             wrap
                             maxWidthChars={60}
+                            lines={4}
+                            ellipsize={Pango.EllipsizeMode.END}
                         />
                     }
                 </box>
                 {imageTexture &&
-                    <Gtk.Picture
+                    // hard bound the image: the texture is pre-scaled at
+                    // 2x for hidpi, and Picture sizes itself to the
+                    // texture — on scale-1 displays that renders double
+                    // size. The box clamps the height; hexpand lets it
+                    // span the full card width (COVER crops).
+                    <box
                         cssClasses={["image"]}
-                        paintable={imageTexture}
-                        contentFit={Gtk.ContentFit.COVER}
-                        canShrink={true}
-                    />
+                        heightRequest={110}
+                        hexpand
+                        overflow={Gtk.Overflow.HIDDEN}
+                    >
+                        <Gtk.Picture
+                            paintable={imageTexture}
+                            contentFit={Gtk.ContentFit.COVER}
+                            canShrink={true}
+                        />
+                    </box>
                 }
                 {actions.length > 0 &&
                     <box cssClasses={["actions"]} spacing={6}>
                         {actions.map((a) =>
-                            <button onClicked={() => n.invoke(a.get_id())}>
+                            <button
+                                $={(self) => { interactiveButtons.push(self) }}
+                                onClicked={() => n.invoke(a.get_id())}
+                            >
                                 <label label={a.get_label()} />
                             </button>
                         )}

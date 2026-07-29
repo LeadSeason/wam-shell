@@ -88,12 +88,21 @@ export default function NotificationRow({ n }: { n: AstalNotifd.Notification }) 
                 />
             }
             {imageTexture &&
-                <Gtk.Picture
+                // hard bound the image: the texture is pre-scaled at 2x
+                // for hidpi, and Picture sizes itself to the texture —
+                // on scale-1 displays that renders double size
+                <box
                     cssClasses={["image"]}
-                    paintable={imageTexture}
-                    contentFit={Gtk.ContentFit.COVER}
-                    canShrink={true}
-                />
+                    widthRequest={320}
+                    heightRequest={120}
+                    overflow={Gtk.Overflow.HIDDEN}
+                >
+                    <Gtk.Picture
+                        paintable={imageTexture}
+                        contentFit={Gtk.ContentFit.COVER}
+                        canShrink={true}
+                    />
+                </box>
             }
         </box>
         {actions.length > 0 &&
