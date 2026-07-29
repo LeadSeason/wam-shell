@@ -17,6 +17,11 @@ const registry = CommandRegistry.get_default()
 export const [popupAnchor, setPopupAnchor] =
     createState<{ x: number, monitor: Gdk.Monitor } | null>(null)
 
+// the popup window stays mounted (hidden) after close so its reveal
+// animation can play. PopupContent owns a 1s seek-position poll and must
+// not keep ticking once closed, so it is only mounted while visible.
+const [popupVisible, setPopupVisible] = createState(false)
+
 // the popup appears where the pill is: centered for the center section,
 // top-left/top-right for the side sections
 function mediaAnchor(): number {
@@ -214,6 +219,8 @@ function show() {
         GLib.source_remove(hideSource)
         hideSource = null
     }
+    // mount PopupContent (and its seek poll) before presenting
+    setPopupVisible(true)
     // drop directly below the pill when its position is known
     const anchor = popupAnchor.get()
     if (anchor) win!.gdkmonitor = anchor.monitor
@@ -227,6 +234,9 @@ function hide() {
     hideSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
         hideSource = null
         win!.hide()
+        // unmount PopupContent now the slide-out has played: this tears
+        // down the 1s seek-position poll instead of ticking forever
+        setPopupVisible(false)
         overrideActivePlayer(null)
         return GLib.SOURCE_REMOVE
     })
@@ -282,7 +292,8 @@ function ensureWindow() {
                 transitionDuration={200}
                 transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
             >
-            <With value={activePlayer}>
+            <With value={createComputed([activePlayer, popupVisible],
+                (p, vis) => vis ? p : null)}>
                 {(player) => player
                     ? <PopupContent player={player} />
                     : <box cssClasses={["mediaPopup", "empty"]} halign={Gtk.Align.CENTER}>
