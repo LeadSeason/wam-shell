@@ -13,6 +13,8 @@ const LOW_BATTERY = 20
 interface WatchState {
     connected: boolean
     batteryWarned: boolean
+    device: AstalBluetooth.Device
+    handlerIds: number[]
 }
 const watched = new Map<string, WatchState>()
 
@@ -46,11 +48,17 @@ function notify(summary: string, body: string, icon: string, urgency: number) {
 
 function watchDevice(device: AstalBluetooth.Device) {
     const address = device.address
-    if (watched.has(address)) return
+    if (watched.get(address)?.device === device) return
+    // bluez can recreate the device object: drop the stale handlers
+    unwatchDevice(address)
+    const handlerIds: number[] = []
     // seed current state: only changes after startup notify
-    watched.set(address, { connected: device.connected, batteryWarned: false })
+    watched.set(address, {
+        connected: device.connected, batteryWarned: false,
+        device, handlerIds,
+    })
 
-    device.connect("notify::connected", () => {
+    handlerIds.push(device.connect("notify::connected", () => {
         if (!Config.bluetooth.notifications) return
         const state = watched.get(address)
         if (!state || state.connected === device.connected) return
@@ -63,9 +71,9 @@ function watchDevice(device: AstalBluetooth.Device) {
             device.icon || "bluetooth-symbolic",
             0, // low urgency
         )
-    })
+    }))
 
-    device.connect("notify::battery-percentage", () => {
+    handlerIds.push(device.connect("notify::battery-percentage", () => {
         if (!Config.bluetooth.notifications) return
         const state = watched.get(address)
         const battery = device.batteryPercentage
@@ -82,12 +90,23 @@ function watchDevice(device: AstalBluetooth.Device) {
         } else if (battery > LOW_BATTERY) {
             state.batteryWarned = false
         }
-    })
+    }))
+}
+
+function unwatchDevice(address: string) {
+    const state = watched.get(address)
+    if (!state) return
+    for (const id of state.handlerIds) state.device.disconnect(id)
+    watched.delete(address)
 }
 
 // the adapter can appear after shell start (rfkill unblock, bluez
 // restart, hotplug) — watch devices whenever one shows up
 function watchAllDevices() {
+    const live = new Set(bluetooth.devices.map(d => d.address))
+    for (const address of [...watched.keys()]) {
+        if (!live.has(address)) unwatchDevice(address)
+    }
     for (const device of bluetooth.devices) watchDevice(device)
 }
 
