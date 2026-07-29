@@ -1,4 +1,5 @@
 import GObject, { register, getter, setter } from "ags/gobject"
+import GLib from "gi://GLib?version=2.0"
 import { exec } from "ags/process"
 import { readFile } from "ags/file"
 import AstalBrightness from "gi://AstalBrightness"
@@ -109,16 +110,26 @@ export default class Brightness extends GObject.Object {
         // must not register as a new change, or it clobbers previous
         // with the value the user just set. Sub-epsilon changes keep
         // accumulating into the next significant one (last is not
-        // advanced on noise).
+        // advanced on noise). The snapshot is debounced: a slider drag
+        // fires per motion event, so `previous` is only recorded once
+        // the changes settle — it always holds the pre-drag level.
         const eps = maxBrightness > 0
             ? Math.min(0.03, 1.5 / maxBrightness)
             : 0.02
         let last = this.#screen
+        let burstStart = -1
+        let settleSource = 0
         this.connect("notify::screen", () => {
             if (Math.abs(this.#screen - last) < eps) return
-            this.#previous = last
-            last = this.#screen
-            this.notify("previous")
+            if (settleSource === 0) burstStart = last
+            if (settleSource !== 0) GLib.source_remove(settleSource)
+            settleSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+                settleSource = 0
+                this.#previous = burstStart
+                last = this.#screen
+                this.notify("previous")
+                return GLib.SOURCE_REMOVE
+            })
         })
 
         if (this.#useGammaDim) {

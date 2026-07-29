@@ -213,16 +213,21 @@ function BrightnessSlider() {
                 (outdoor, v) => outdoor ? `${OUTDOOR_GAMMA}%` : `${Math.floor(v * 100)}%`
             )} />
         {/* undo the last change (any source: slider, scroll, keybinds,
-            sleep-timer dim); toggles between the two levels */}
+            sleep-timer dim); toggles between the two levels. Always
+            visible, dimmed/inert until a value has been recorded */}
         <box
             cssName="button"
-            cssClasses={["brightnessRestore"]}
-            tooltipText={previous.as(p => `Restore previous brightness (${Math.round(p * 100)}%)`)}
-            visible={previous.as(p => p >= 0)}
+            cssClasses={previous.as(p =>
+                ["brightnessRestore", ...(p < 0 ? ["disabled"] : [])])}
+            tooltipText={previous.as(p => p < 0
+                ? "Nothing to restore yet"
+                : `Restore previous brightness (${Math.round(p * 100)}%)`)}
         >
             <Gtk.GestureClick
                 button={1}
-                onPressed={() => brightness.restorePrevious()} />
+                onPressed={() => {
+                    if (previous.get() >= 0) brightness.restorePrevious()
+                }} />
             <image iconName={"edit-undo-symbolic"} />
         </box>
     </box>
