@@ -28,6 +28,19 @@ export async function reloadStyle() {
     }
 }
 
+/** switch the shell theme live (Dark Style toggle). Not persisted —
+ *  the config file's theme key wins again on restart. */
+export function setThemeLive(theme: string) {
+    try {
+        Config.theme = theme
+        exec(`cp ${Config.instanceSrcDir}/scss/theme/${theme}.scss ${Config.instanceSrcDir}/scss/theme/active-theme.scss`)
+        exec(`sass ${Config.scssPath} ${Config.cssPath}`)
+        app.apply_css(Config.cssPath)
+    } catch (e) {
+        console.warn("setThemeLive failed:", e)
+    }
+}
+
 registry.register({
     name: ["reloadStyle", "reloadstyle", "style"],
     description: "Reloads the style",

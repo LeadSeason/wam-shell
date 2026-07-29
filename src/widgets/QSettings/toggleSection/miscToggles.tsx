@@ -3,6 +3,8 @@ import { exec, execAsync } from "ags/process";
 import Gio from "gi://Gio?version=2.0";
 import AstalNetwork from "gi://AstalNetwork?version=0.1";
 import { DropdownButton } from "./ToggleButton";
+import Config from "../../../config";
+import { setThemeLive } from "../../../lib/style";
 import hyprsunset, { setNightLightEnabled, tempBackend } from "../../../lib/hyprsunset";
 
 const has = (bin: string) => {
@@ -50,6 +52,10 @@ export function DarkStyleButton() {
             const next = !active.get()
             settings!.set_string("color-scheme", next ? "prefer-dark" : "default")
             // the changed signal flips `active`; no manual setActive needed
+            // the shell itself follows (appearance.dark/light_theme)
+            setThemeLive(next
+                ? Config.appearance.darkTheme
+                : Config.appearance.lightTheme)
         }}
     />
 }

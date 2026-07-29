@@ -32,6 +32,17 @@
 #         catppuccin-frappe, catppuccin-latte, gruvbox
 # theme = "catppuccin-mocha"
 
+# [appearance] - themes applied when the Dark Style quick settings
+#                toggle flips (the shell follows the app's color
+#                scheme). live only: the theme key above wins again on
+#                restart
+# dark_theme - applied when Dark Style turns on. default
+#              "catppuccin-mocha"
+# light_theme - applied when it turns off. default "catppuccin-latte"
+# [appearance]
+# dark_theme = "catppuccin-mocha"
+# light_theme = "catppuccin-latte"
+
 # bar_monitors - list of monitors that get a panel. Entries match the
 #                connector ("HDMI-A-1"), the model ("X34 P") or a
 #                substring of the description ("Acer"). Unset or empty
@@ -218,8 +229,7 @@
 # The minimum amount of updates required to show a update icon.
 # arch_updates_threshold = 50
 # [sleep_timer] - quick settings sleep timer (pauses all playing media
-#                 after the picked duration)
-# enabled - show the sleep timer toggle in quick settings. default true
+#                 after the picked duration)# enabled - show the sleep timer toggle in quick settings. default true
 # presets - preset durations in minutes shown in the dropdown. custom
 #           values can always be typed in the entry. must be a
 #           non-empty list of positive numbers.

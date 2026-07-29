@@ -229,6 +229,23 @@ function getMediaConfig() {
     }
 }
 
+function getAppearanceConfig() {
+    const a = configData.appearance ?? {}
+    const get = (key: string, fallback: any) => a[key] ?? configData[key] ?? fallback
+
+    const themeOr = (key: string, fallback: string) => {
+        const t = get(key, fallback)
+        return typeof t === "string" && isFile(`${instanceSrcDir}/scss/theme/${t}.scss`)
+            ? t : fallback
+    }
+
+    return {
+        // themes applied when Dark Style toggles on/off
+        darkTheme: themeOr("dark_theme", "catppuccin-mocha"),
+        lightTheme: themeOr("light_theme", "catppuccin-latte"),
+    }
+}
+
 function getHyprsunsetConfig() {    const h = configData.hyprsunset ?? {}
     const get = (key: string, fallback: any) => h[key] ?? configData[key] ?? fallback
 
@@ -469,6 +486,7 @@ export default class Config {
     static barMonitors = getBarMonitors()
     static panels = getPanelsConfig()
     static theme = getTheme(configData)
+    static appearance = getAppearanceConfig()
     static osd = getOsdConfig()
     static notifications = getNotificationsConfig()
     static sleepTimer = getSleepTimerConfig()
