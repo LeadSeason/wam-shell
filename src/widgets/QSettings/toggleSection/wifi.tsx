@@ -196,7 +196,10 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
             }
             const restore = () => {
                 if (previous && previous !== ap.ssid) {
-                    execAsync(["nmcli", "connection", "up", "id", previous])
+                    // profile names differ from SSIDs ("Tenzin 1" for
+                    // SSID "Tenzin") — nmcli needs the profile name
+                    const prevId = savedNetworks.get().get(previous) ?? previous
+                    execAsync(["nmcli", "connection", "up", "id", prevId])
                         .catch(e => console.warn("wifi restore failed:", e))
                 }
             }
