@@ -1,6 +1,8 @@
 import GLib from "gi://GLib?version=2.0"
 import AstalMpris from "gi://AstalMpris?version=0.1"
 import { createState } from "gnim"
+import Config from "../config"
+import Brightness from "./brightness"
 
 // Sleep timer: pauses every playing MPRIS player when it fires. The
 // user picks the duration when starting (QS sleep timer dropdown).
@@ -43,6 +45,13 @@ function fire() {
     for (const p of mpris.players) {
         if (p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING && p.canPause) {
             try { p.pause() } catch (e) { console.warn("sleepTimer: pause failed:", e) }
+        }
+    }
+    // dim to half the current brightness, never below 10%
+    if (Config.sleepTimer.dim) {
+        const brightness = Brightness.get_default()
+        if (brightness.screenIsPresent) {
+            brightness.screen = Math.max(0.10, brightness.screen / 2)
         }
     }
 }

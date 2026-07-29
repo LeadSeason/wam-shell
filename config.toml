@@ -227,7 +227,10 @@
 # on_panel - show the countdown on the panel while a timer runs.
 #            click it to pause/resume. default true. position it like
 #            any other widget: "sleeptimer" in a [[panel]] list
+# dim - when the timer fires, dim the screen to half its current
+#       brightness (never below 10%). default true
 # [sleep_timer]
 # enabled = true
 # presets = [10, 15, 20, 30, 45, 60]
 # on_panel = true
+# dim = true
