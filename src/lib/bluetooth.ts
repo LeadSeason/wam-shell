@@ -85,11 +85,16 @@ function watchDevice(device: AstalBluetooth.Device) {
     })
 }
 
-if (bluetooth.adapter) {
+// the adapter can appear after shell start (rfkill unblock, bluez
+// restart, hotplug) — watch devices whenever one shows up
+function watchAllDevices() {
     for (const device of bluetooth.devices) watchDevice(device)
-    bluetooth.connect("notify::devices", () => {
-        for (const device of bluetooth.devices) watchDevice(device)
-    })
 }
+
+bluetooth.connect("notify::devices", watchAllDevices)
+bluetooth.connect("notify::adapter", () => {
+    if (bluetooth.adapter) watchAllDevices()
+})
+if (bluetooth.adapter) watchAllDevices()
 
 export default bluetooth
