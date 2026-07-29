@@ -1,4 +1,5 @@
 import GObject, { getter, register } from "ags/gobject"
+import GLib from "gi://GLib?version=2.0"
 import i3ipc from "gi://i3ipc"
 
 @register({ GTypeName: "Sway" })
@@ -67,70 +68,49 @@ export default class Sway extends GObject.Object {
         }
         if (!this.ok) return
 
-        // i3ipc message() blocks the main loop; don't pile up round-trips
-        // on rapid event bursts (the fetch always reads current state)
-        let fetching = false
-        this.#i3conn.on("workspace", async (conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
-            if (fetching) return
-            fetching = true
-            try {
-                const workspaces = await JSON.parse(conn.message(i3ipc.MessageType.GET_WORKSPACES, ""));
-                this.#wss = workspaces;
+        // i3ipc message() blocks the main loop, so an event per focus
+        // change / title update / move used to cost up to 3 blocking
+        // round-trips each. Coalesce bursts: one trailing fetch 50ms
+        // after the last event reads the current state once.
+        const pending = new Set<"ws" | "win" | "out">()
+        let fetchSource = 0
+        const scheduleFetch = (kind: "ws" | "win" | "out") => {
+            pending.add(kind)
+            if (fetchSource) return
+            fetchSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+                fetchSource = 0
+                const kinds = new Set(pending)
+                pending.clear()
+                const conn = this.#i3conn
+                try {
+                    if (kinds.has("ws")) {
+                        this.#wss = JSON.parse(conn.message(i3ipc.MessageType.GET_WORKSPACES, ""));
+                        this.notify("wss")
+                        this.notify("focused")
+                        this.notify("urgent")
+                        this.notify("rename")
+                    }
+                    if (kinds.has("ws") || kinds.has("win")) {
+                        this.#tree = JSON.parse(conn.message(i3ipc.MessageType.GET_TREE, ""));
+                        this.notify("tree")
+                    }
+                    if (kinds.has("ws") || kinds.has("out")) {
+                        this.#outputs = JSON.parse(conn.message(i3ipc.MessageType.GET_OUTPUTS, ""));
+                        this.notify("outputs")
+                    }
+                } catch (e) {
+                    console.error("Sway: IPC fetch failed:", e)
+                }
+                return GLib.SOURCE_REMOVE
+            })
+        }
 
-                const tree = await JSON.parse(conn.message(i3ipc.MessageType.GET_TREE, ""));
-                this.#tree = tree;
-                this.notify("tree")
-
-                // workspace focus may have moved to another output
-                const outputs = await JSON.parse(conn.message(i3ipc.MessageType.GET_OUTPUTS, ""));
-                this.#outputs = outputs;
-                this.notify("outputs")
-            } catch (e) {
-                console.error("Sway: IPC fetch failed:", e)
-            } finally {
-                fetching = false
-            }
-
-            switch (event.change) {
-                case "focus":
-                    this.notify("focused")
-                    break;
-
-                case "urgent":
-                    this.notify("urgent")
-                    break;
-
-                case "rename":
-                    this.notify("rename")
-                    break;
-
-                default:
-                    this.notify("wss")
-                    break;
-            }
-        });
-
-        this.#i3conn.on("output", async (conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
-            const v = await JSON.parse(conn.message(i3ipc.MessageType.GET_OUTPUTS, ""));
-            this.#outputs = v;
-            this.notify("outputs");
-        });
+        this.#i3conn.on("workspace", () => scheduleFetch("ws"))
+        this.#i3conn.on("output", () => scheduleFetch("out"))
 
         // window open/close/move/focus: refresh the tree so workspace
         // icons and hide_empty stay current
-        this.#i3conn.on("window", async (conn: i3ipc.Connection) => {
-            if (fetching) return
-            fetching = true
-            try {
-                const tree = await JSON.parse(conn.message(i3ipc.MessageType.GET_TREE, ""));
-                this.#tree = tree;
-                this.notify("tree")
-            } catch (e) {
-                console.error("Sway: IPC fetch failed:", e)
-            } finally {
-                fetching = false
-            }
-        });
+        this.#i3conn.on("window", () => scheduleFetch("win"))
     }
 }
 
