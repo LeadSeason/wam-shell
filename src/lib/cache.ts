@@ -1,5 +1,5 @@
 import GLib from "gi://GLib";
-import { readFile, readFileAsync, writeFile, writeFileAsync } from "ags/file";
+import { readFile, writeFileAsync } from "ags/file";
 import GObject, { register, property, getter } from "ags/gobject"
 import Config from "../config";
 import { isFile } from "./utils";
@@ -59,9 +59,11 @@ function getCacheData(): cacheType {
 
 async function saveCacheData(data: cacheType) {
     data.lastSave = Date.now();
-    // Write to a temporary file then swap them.
-    // may cause data corruption if application is closed while writing.
-    writeFile(cacheFile, JSON.stringify(data))
+    // write to a temp file then swap: a crash mid-write must not leave
+    // a truncated cache behind
+    const tmp = `${cacheFile}.tmp`
+    await writeFileAsync(tmp, JSON.stringify(data))
+    GLib.rename(tmp, cacheFile)
 }
 
 @register({ GTypeName: "Cache" })
@@ -81,17 +83,13 @@ export default class Cache extends GObject.Object {
     }
 
     set data(data: cacheType) {
-        let cache = this.#cache;
-        // Merge cache and new data
-        Object.assign(cache, data)
-        if (cache === this.#cache) {
-            this.#cache = cache;
-            saveCacheData(this.#cache)
-            .then(() => {/*
-                @TODO: Create cacheType constructor so we can notify that the
-                data has changed.
-                this.notify("data")*/})
-        }
+        // merge into the existing cache and persist
+        Object.assign(this.#cache, data)
+        saveCacheData(this.#cache)
+        .then(() => {/*
+            @TODO: Create cacheType constructor so we can notify that the
+            data has changed.
+            this.notify("data")*/})
     }
 }
 
