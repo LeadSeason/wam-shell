@@ -180,6 +180,7 @@ function BrightnessSlider() {
     })
 
     let scrollAcc = 0
+    const previous = createBinding(brightness, "previous")
     return <box cssClasses={hyprsunset.outdoor.as(v => v ? ["sliderRow", "overdrive"] : ["sliderRow"])}>
         <box cssName="button" tooltipText={"Click: reset to 100%, scroll: outdoor mode"}>
             <Gtk.GestureClick
@@ -229,6 +230,19 @@ function BrightnessSlider() {
                 // show the effective gamma: outdoor boost or slider value
                 (outdoor, v) => outdoor ? `${OUTDOOR_GAMMA}%` : `${Math.floor(v * 100)}%`
             )} />
+        {/* undo the last change (any source: slider, scroll, keybinds,
+            sleep-timer dim); toggles between the two levels */}
+        <box
+            cssName="button"
+            cssClasses={["brightnessRestore"]}
+            tooltipText={previous.as(p => `Restore previous brightness (${Math.round(p * 100)}%)`)}
+            visible={previous.as(p => p >= 0)}
+        >
+            <Gtk.GestureClick
+                button={1}
+                onPressed={() => brightness.restorePrevious()} />
+            <image iconName={"edit-undo-symbolic"} />
+        </box>
     </box>
 }
 

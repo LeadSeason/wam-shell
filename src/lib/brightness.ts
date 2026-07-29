@@ -55,9 +55,21 @@ export default class Brightness extends GObject.Object {
     #screen = hasBacklight ? abScreen.brightness : hyprsunset.dim.get()
     #useGammaDim = useGammaDim
     #screenIsPresent = screenIsPresent
+    // last level before the most recent change, -1 = none yet
+    #previous = -1
 
     @getter(Number)
     get screen() { return this.#screen }
+
+    @getter(Number)
+    get previous() { return this.#previous }
+
+    /** jump back to the previous level; the tracking hook then holds
+     *  the level we just left, so this toggles between the two */
+    restorePrevious() {
+        if (this.#previous < 0) return
+        this.screen = this.#previous
+    }
 
     @setter(Number)
     set screen(percent) {
@@ -89,6 +101,16 @@ export default class Brightness extends GObject.Object {
 
     constructor() {
         super()
+
+        // remember the level before every effective change (slider,
+        // scroll, keybinds, sleep-timer dim) for restorePrevious()
+        let last = this.#screen
+        this.connect("notify::screen", () => {
+            if (this.#screen === last) return
+            this.#previous = last
+            last = this.#screen
+            this.notify("previous")
+        })
 
         if (this.#useGammaDim) {
             // gamma-dim path: keep the slider's value in sync with the
