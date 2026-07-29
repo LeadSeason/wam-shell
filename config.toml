@@ -29,7 +29,7 @@
 
 # theme - color theme, a file in scss/theme/<name>.scss. shipped:
 #         catppuccin-mocha (default), catppuccin-macchiato,
-#         catppuccin-frappe, catppuccin-latte, gruvbox
+#         catppuccin-frappe, catppuccin-latte, gruvbox, gruvbox-light
 # theme = "catppuccin-mocha"
 
 # [appearance] - themes applied when the Dark Style quick settings
