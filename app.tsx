@@ -89,7 +89,13 @@ if (!GLib.file_test(Config.instanceCacheDir, GLib.FileTest.IS_DIR)) {
     console.log("Created dir:", Config.instanceCacheDir)
 }
 
-compileScss()
+// a style failure (missing sass, unreadable theme) must not take the
+// whole shell down with it — reloadStyle already tolerates the same
+try {
+    compileScss()
+} catch (e) {
+    console.error("Failed to compile styles, starting unstyled:", e)
+}
 
 console.log("InstancePath:", Config.instanceSrcDir)
 console.log("InstanceCacheDir:", Config.instanceCacheDir)
