@@ -23,15 +23,23 @@ export function NightLightButton() {
 
 export function DarkStyleButton() {
     if (!has("gsettings")) return <></>
+    // Gio.Settings throws synchronously if the schema isn't installed
+    // (the gsettings binary can exist without it); keep QSettings alive
+    let settings: Gio.Settings | null = null
+    try {
+        settings = new Gio.Settings({ schema_id: "org.gnome.desktop.interface" })
+    } catch (e) {
+        console.warn("Dark Style: schema unavailable:", e)
+        return <></>
+    }
     const [active, setActive] = createState(false)
     // Gio.Settings emits "changed" so external changes (other tools,
     // gsettings CLI) reflect without re-reading on a timer
-    const settings = new Gio.Settings({ schema_id: "org.gnome.desktop.interface" })
     const sync = () => setActive(
-        settings.get_string("color-scheme").includes("prefer-dark"))
+        settings!.get_string("color-scheme").includes("prefer-dark"))
     sync()
-    const h = settings.connect("changed::color-scheme", sync)
-    onCleanup(() => settings.disconnect(h))
+    const h = settings!.connect("changed::color-scheme", sync)
+    onCleanup(() => settings!.disconnect(h))
 
     return <DropdownButton
         icon={"weather-clear-night-symbolic"}
@@ -40,7 +48,7 @@ export function DarkStyleButton() {
         isActive={active}
         activate={() => {
             const next = !active.get()
-            settings.set_string("color-scheme", next ? "prefer-dark" : "default")
+            settings!.set_string("color-scheme", next ? "prefer-dark" : "default")
             // the changed signal flips `active`; no manual setActive needed
         }}
     />
