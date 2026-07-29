@@ -24,7 +24,7 @@ export function overrideActivePlayer(player: AstalMpris.Player | null) {
     pick()
 }
 
-const hooked: AstalMpris.Player[] = []
+const hooked = new Map<AstalMpris.Player, (() => void)[]>()
 function pick() {
     const list = players.get()
     const override = overridePlayer.get()
@@ -36,11 +36,19 @@ function pick() {
             : eligible.find(p =>
                 p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING)
             ?? eligible[0] ?? null)
+    // release players that quit (browsers spawn one per tab/stream)
+    for (const [p, unsubs] of hooked) {
+        if (!list.includes(p)) {
+            for (const u of unsubs) u()
+            hooked.delete(p)
+        }
+    }
     for (const p of list) {
-        if (!hooked.includes(p)) {
-            hooked.push(p)
-            createBinding(p, "playbackStatus").subscribe(pick)
-            createBinding(p, "title").subscribe(pick)
+        if (!hooked.has(p)) {
+            hooked.set(p, [
+                createBinding(p, "playbackStatus").subscribe(pick),
+                createBinding(p, "title").subscribe(pick),
+            ])
         }
     }
 }
