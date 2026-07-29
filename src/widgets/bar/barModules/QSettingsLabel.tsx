@@ -1,4 +1,5 @@
 import { Gtk } from "ags/gtk4"
+import GLib from "gi://GLib?version=2.0"
 import { timeout } from "ags/time"
 import AstalWp from "gi://AstalWp?version=0.1"
 import { createBinding, createState, onCleanup } from "gnim"
@@ -46,8 +47,10 @@ function audioWidget(driver: AstalWp.Endpoint): Gtk.MenuButton {
     const [tooltip, setTooltip] = createState("")
 
     const updateTooltip = () => {
-        setTooltip(`${driver.name}  
-${driver.description}`) // Keep this indent. New line.
+        // device names/descriptions are hardware-controlled ("Tom &
+        // Jerry's Headphones") — tooltipMarkup parses Pango markup
+        setTooltip(`${GLib.markup_escape_text(driver.name, -1)}  
+${GLib.markup_escape_text(driver.description, -1)}`) // Keep this indent. New line.
     }
     updateTooltip()
     disposers.push(createBinding(driver, "name").subscribe(() => { updateTooltip() }))
