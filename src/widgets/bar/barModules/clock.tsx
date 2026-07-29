@@ -2,16 +2,18 @@ import { Gtk } from "ags/gtk4"
 import { createPoll } from "ags/time"
 import GLib from "gi://GLib?version=2.0"
 
-// @TODO, Show upcoming events somehow? to work with Microsoft?, caldav? 
+// @TODO, Show upcoming events somehow? to work with Microsoft?, caldav?
+
+// one shared poll for every bar (one per monitor previously): the date
+// changes once a day and the time once a second, so a single 1s source
+// serves all clocks. createPoll is lazy until subscribed, so this costs
+// nothing when no clock is rendered.
+const now = createPoll(["", ""] as [string, string], 1000, () => {
+    const dt = GLib.DateTime.new_now_local()
+    return [dt.format("%H:%M:%S")!, dt.format("%d.%m.%Y")!] as [string, string]
+})
 
 export default function Clock() {
-    // @TODO, Better to have single instance?, instead per display.
-    // one poll for both: the date used to tick a second timer every
-    // second (per monitor) for a value that changes once a day
-    const now = createPoll(["", ""] as [string, string], 1000, () => {
-        const dt = GLib.DateTime.new_now_local()
-        return [dt.format("%H:%M:%S")!, dt.format("%d.%m.%Y")!] as [string, string]
-    })
     const time = now.as(([t]) => t)
     const date = now.as(([, d]) => d)
 
