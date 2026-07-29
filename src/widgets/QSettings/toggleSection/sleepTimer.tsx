@@ -17,6 +17,7 @@ interface dropdownProps {
 }
 
 export function SleepTimerButton({ activeDropdown, setActiveDropdown, dropdownIndex }: dropdownProps) {
+    if (!Config.sleepTimer.enabled) return <></>
     return <DropdownButton
         activeDropdown={activeDropdown}
         setActiveDropdown={setActiveDropdown}
@@ -38,6 +39,7 @@ export function SleepTimerButton({ activeDropdown, setActiveDropdown, dropdownIn
 }
 
 export function SleepTimerWidget({ activeDropdown: revealChild, dropdownIndex: index }: Omit<dropdownProps, "setActiveDropdown">) {
+    if (!Config.sleepTimer.enabled) return <></>
     let entry: Gtk.Entry | null = null
 
     const startCustom = () => {

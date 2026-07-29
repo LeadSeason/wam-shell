@@ -269,6 +269,8 @@ function getSleepTimerConfig() {
 
     return {
         presets,
+        // show the sleep timer toggle in quick settings
+        enabled: get("enabled", true),
         // show the countdown on the panel while a timer runs.
         // Section-only lookup, NOT the usual top-level fallback: the
         // tray's top-level on_panel key would leak in otherwise

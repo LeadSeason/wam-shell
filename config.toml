@@ -219,12 +219,15 @@
 # arch_updates_threshold = 50
 # [sleep_timer] - quick settings sleep timer (pauses all playing media
 #                 after the picked duration)
+# enabled - show the sleep timer toggle in quick settings. default true
 # presets - preset durations in minutes shown in the dropdown. custom
 #           values can always be typed in the entry. must be a
 #           non-empty list of positive numbers.
 #           default [10, 15, 20, 30, 45, 60]
 # on_panel - show the countdown on the panel while a timer runs.
-#            click it to pause/resume. default true
+#            click it to pause/resume. default true. position it like
+#            any other widget: "sleeptimer" in a [[panel]] list
 # [sleep_timer]
+# enabled = true
 # presets = [10, 15, 20, 30, 45, 60]
 # on_panel = true
