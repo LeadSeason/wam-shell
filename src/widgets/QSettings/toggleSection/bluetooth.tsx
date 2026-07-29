@@ -10,6 +10,8 @@ import { pairingRequest, setBtPaneOpen, dismissPairingPrompt } from "../../../li
 import { PromptContent } from "../../bluetoothPairing";
 import AstalWp from "gi://AstalWp?version=0.1";
 
+// null when PipeWire/WirePlumber is absent (see SliderSection's guard);
+// the profile selector below dereferences wp.audio, so guard every use
 const wp = AstalWp.get_default()
 
 /** audio profile (A2DP/HFP/…) selector for a connected bluetooth device,
@@ -530,8 +532,9 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
                         while the device is connected. The wp device has
                         no name/MAC — match by bluetooth icon + the
                         device description pipewire copies from bluez.
-                        audio is null without PipeWire/WirePlumber */}
-                    {wp.audio && <With value={createBinding(wp.audio, "devices").as(ds => {
+                        audio is null without PipeWire/WirePlumber,
+                        and wp itself is null without WirePlumber */}
+                    {wp?.audio && <With value={createBinding(wp.audio, "devices").as(ds => {
                         const wanted = (device.alias || device.name).toLowerCase()
                         return (ds ?? []).find(d =>
                             d.icon?.includes("bluetooth") &&
