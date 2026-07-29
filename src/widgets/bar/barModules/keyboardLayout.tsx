@@ -1,5 +1,5 @@
 import { Gtk } from "ags/gtk4"
-import { createComputed } from "gnim"
+import { createComputed, For } from "gnim"
 import {
     ensureLayoutSource, flag, LayoutSource,
 } from "../../../lib/kbLayout"
@@ -30,20 +30,26 @@ function LayoutDropdown({ source }: { source: LayoutSource }) {
             $={(self) => { pop = self as Gtk.Popover }}
         >
             <box orientation={Gtk.Orientation.VERTICAL}>
-                {names.get().map((n, i) =>
-                    <button
-                        cssClasses={activeIndex.as(a => a === i ? ["active"] : [])}
-                        onClicked={() => {
-                            source.switchTo(i)
-                            pop?.popdown()
-                        }}
-                    >
-                        <box spacing={8}>
-                            <label label={flag(layouts.get()[i] ?? "") || "  "} />
-                            <label label={n} xalign={0} />
-                        </box>
-                    </button>
-                )}
+                {/* names arrive async after startup; a static snapshot
+                    stays empty for the shell's lifetime */}
+                <For each={names}>
+                    {(n, i) =>
+                        <button
+                            cssClasses={createComputed([activeIndex, i],
+                                (a, idx) => a === idx ? ["active"] : [])}
+                            onClicked={() => {
+                                source.switchTo(i.get())
+                                pop?.popdown()
+                            }}
+                        >
+                            <box spacing={8}>
+                                <label label={createComputed([layouts, i],
+                                    (ls, idx) => flag(ls[idx] ?? "") || "  ")} />
+                                <label label={n} xalign={0} />
+                            </box>
+                        </button>
+                    }
+                </For>
             </box>
         </popover>
     </menubutton>
