@@ -1,5 +1,5 @@
 import AstalMpris from "gi://AstalMpris?version=0.1"
-import { Accessor, createBinding, createState } from "gnim"
+import { Accessor, createBinding, createState, onCleanup } from "gnim"
 import { downloadCover } from "./coverArt"
 
 // Shared MPRIS state + helpers, used by the QS media section and the
@@ -59,7 +59,8 @@ pick()
 // downloaded once into the cache dir and the local copy is used
 // (downloadCover handles dedup, timeouts and partial files)
 
-/** cover art url as a state, re-resolving when the track changes */
+/** cover art url as a state, re-resolving when the track changes.
+ *  The binding subscription is tied to the calling component's scope. */
 export function coverState(player: AstalMpris.Player): Accessor<string> {
     const cover = createBinding(player, "coverArt")
     const [local, setLocal] = createState("")
@@ -79,7 +80,8 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
             })
             .catch((e) => console.warn("cover download failed:", e))
     }
-    cover.subscribe(update)
+    const unsub = cover.subscribe(update)
+    onCleanup(unsub)
     update()
     return local
 }
