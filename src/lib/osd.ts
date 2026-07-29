@@ -171,11 +171,12 @@ if (Config.desktopSession === "hyprland" && Config.osd.enabled) {
 }
 
 // caps/num lock (hyprland only, no event exists — poll and diff).
-// execAsync: a synchronous hyprctl call on a timer can stall the main loop
+// execAsync: a synchronous hyprctl call on a timer can stall the main loop.
+// 500ms: still snappy for an OSD, half the process churn of 250ms.
 if (Config.desktopSession === "hyprland" && Config.osd.enabled && Config.osd.lockKeys) {
     let prev: { caps: boolean, num: boolean } | null = null
     let running = false
-    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
+    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
         if (running) return GLib.SOURCE_CONTINUE
         running = true
         execAsync("hyprctl devices -j").then((out) => {
