@@ -27,11 +27,15 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
     // window opens on an existing (empty, hidden) workspace
     const [hyprlandWorkspacesList, setList] =
         createState<AstalHyprland.Workspace[]>([])
-    const hookedClients = new Set<AstalHyprland.Workspace>()
+    // per-workspace clients subscriptions; hyprland destroys and
+    // recreates workspace objects reusing the same id, so entries must
+    // be pruned — a plain Set grows with dead GObjects all session
+    const hookedClients = new Map<AstalHyprland.Workspace, () => void>()
     // released when the bar is destroyed (monitor hotplug)
     const disposers: (() => void)[] = []
     onCleanup(() => {
         for (const d of disposers) d()
+        for (const unsub of hookedClients.values()) unsub()
     })
 
     const compute = () => {
@@ -48,12 +52,16 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
     }
 
     const hook = (wss: AstalHyprland.Workspace[]) => {
-        // keyed by object identity: hyprland destroys and recreates
-        // workspaces reusing the same id
+        // prune workspace objects hyprland destroyed
+        for (const [ws, unsub] of hookedClients) {
+            if (!wss.includes(ws)) {
+                unsub()
+                hookedClients.delete(ws)
+            }
+        }
         for (const ws of wss) {
             if (hookedClients.has(ws)) continue
-            hookedClients.add(ws)
-            disposers.push(createBinding(ws, "clients").subscribe(compute))
+            hookedClients.set(ws, createBinding(ws, "clients").subscribe(compute))
         }
     }
 
