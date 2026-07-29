@@ -143,17 +143,21 @@ hookMedia(mpris.players)
 
 // keyboard layout switches (hyprland, sway, i3). The source is shared
 // with the bar widget but does not depend on it being on any panel.
-ensureLayoutSource()
-layoutOsdText.subscribe(() => {
-    const text = layoutOsdText.get()
-    if (!text) return
-    show({
-        icon: "", // flag only, no icon
-        value: null, // no bar, just the flag + name
-        label: text,
-        over: false,
-    }, "layout")
-})
+// Only start it when the layout OSD is on — on sway/i3 it polls
+// swaymsg/i3-msg every second otherwise.
+if (Config.osd.enabled && Config.osd.layout) {
+    ensureLayoutSource()
+    layoutOsdText.subscribe(() => {
+        const text = layoutOsdText.get()
+        if (!text) return
+        show({
+            icon: "", // flag only, no icon
+            value: null, // no bar, just the flag + name
+            label: text,
+            over: false,
+        }, "layout")
+    })
+}
 
 // the layer close/resize animation replays the OSD's last frame as a
 // ghost on hide — disable animations for our namespace. lua configs
