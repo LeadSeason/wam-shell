@@ -123,6 +123,10 @@ export default function Scratchpad() {
     function showScratchpad(): [boolean, string] {
         if (win) {
             if (!win.is_visible()) {
+                // cancel a pending hide: toggling back open within the
+                // 50ms animation window must not hide right after
+                hideTimer?.cancel()
+                hideTimer = null
                 win.present()
                 return [true, "Scratchpad, window show"]
             } else {
@@ -147,10 +151,13 @@ Shows / hides the scratchpad tool on request.
             return showScratchpad()[1]
         }
     })
+    let hideTimer: ReturnType<typeof timeout> | null = null
     function hide() {
         setReveler(false)
         // give some time for the animation to play.
-        timeout(50, () => {
+        hideTimer?.cancel()
+        hideTimer = timeout(50, () => {
+            hideTimer = null
             win.hide()
         })
     }
