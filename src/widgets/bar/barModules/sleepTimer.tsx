@@ -16,7 +16,10 @@ export default function SleepTimer() {
     >
         <box spacing={4}>
             <image iconName="alarm-symbolic" />
-            <label label={remaining.as(formatRemaining)} />
+            {/* fixed request: mm:ss must not resize the module and
+                shift neighbours as the digits change (custom timers
+                above 99 minutes may still grow past it) */}
+            <label widthChars={5} label={remaining.as(formatRemaining)} />
         </box>
     </button>
 }
