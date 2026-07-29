@@ -5,6 +5,7 @@ import { execAsync } from "ags/process";
 import { createPoll } from "ags/time";
 import AstalBattery from "gi://AstalBattery?version=0.1";
 import { createBinding, createState } from "gnim";
+import Config from "../../config";
 
 function BatWidget() {
     const bat = AstalBattery.get_default()
@@ -173,7 +174,7 @@ export function HeaderSection() {
     }
 
     return <box cssClasses={["QSHeader", "QSSection"]}>
-        <image cssClasses={["QSPFP"]} file={"assets/pfp.jpg"} pixelSize={32} />
+        <image cssClasses={["QSPFP"]} file={`${Config.instanceSrcDir}/assets/pfp.jpg`} pixelSize={32} />
         {batWidget}
         <button hexpand halign={Gtk.Align.END} iconName={"system-lock-screen-symbolic"} />
         <button iconName={"system-log-out-symbolic"} />
