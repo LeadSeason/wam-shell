@@ -60,13 +60,17 @@ export function StatsSection() {
                 `${ram.get()}%  ${used}/${total} GB`)}
             hist={ramHist}
         />
-        <With value={gpu}>
-            {(g) => g !== null &&
+        {/* gate on null-ness only: With re-executes on every value
+            change, and gpu updates every tick — the whole row (labels,
+            graph) was rebuilt per poll */}
+        <With value={gpu.as(g => g !== null)}>
+            {(present) => present &&
                 <StatRow
                     name="GPU"
                     className="statGpu"
-                    value={vram.as(([used, total]) =>
-                        `${g}% ${gpuTemp.get()}°C  ${used}/${total} MiB`)}
+                    value={createComputed([gpu, gpuTemp, vram],
+                        (g, t, [used, total]) =>
+                            `${g}% ${t}°C  ${used}/${total} MiB`)}
                     hist={gpuHist}
                 />}
         </With>
