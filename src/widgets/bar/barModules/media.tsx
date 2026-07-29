@@ -117,8 +117,13 @@ function MediaWidget({ player, monitor, resolveIcon }: {
 export default function Media({ monitor }: { monitor: Gdk.Monitor }) {
     const resolveIcon = createIconResolver(
         Gtk.IconTheme.get_for_display(monitor.display))
-    return <With value={activePlayer}>
-        {(player) => player &&
-            <MediaWidget player={player} monitor={monitor} resolveIcon={resolveIcon} />}
-    </With>
+    // stable slot: the With mounts the widget late (first player), which
+    // would otherwise append it at the end of the bar section instead of
+    // keeping its configured position
+    return <box visible={activePlayer.as(p => p !== null)}>
+        <With value={activePlayer}>
+            {(player) => player &&
+                <MediaWidget player={player} monitor={monitor} resolveIcon={resolveIcon} />}
+        </With>
+    </box>
 }
