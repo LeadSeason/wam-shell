@@ -6,6 +6,7 @@ import { createPoll } from "ags/time";
 import AstalBattery from "gi://AstalBattery?version=0.1";
 import { createBinding, createState } from "gnim";
 import Config from "../../config";
+import { confirmDialog } from "../dialog";
 
 function BatWidget() {
     const bat = AstalBattery.get_default()
@@ -173,11 +174,37 @@ export function HeaderSection() {
         batWidget = <Uptime />
     }
 
+    // loginctl needs the session id; the compositor's locker handles the
+    // actual Lock signal. Empty when not under systemd-logind.
+    const sessionId = GLib.getenv("XDG_SESSION_ID") ?? ""
+    const lock = () => sessionId &&
+        execAsync(["loginctl", "lock-session", sessionId]).catch(e => console.warn("lock failed:", e))
+
     return <box cssClasses={["QSHeader", "QSSection"]}>
         <image cssClasses={["QSPFP"]} file={`${Config.instanceSrcDir}/assets/pfp.jpg`} pixelSize={32} />
         {batWidget}
-        <button hexpand halign={Gtk.Align.END} iconName={"system-lock-screen-symbolic"} />
-        <button iconName={"system-log-out-symbolic"} />
-        <button iconName={"system-shutdown-symbolic"} />
+        <button
+            hexpand halign={Gtk.Align.END}
+            iconName={"system-lock-screen-symbolic"}
+            tooltipText={"Lock session"}
+            onClicked={lock}
+        />
+        <button
+            iconName={"system-log-out-symbolic"}
+            tooltipText={"Log out"}
+            onClicked={async () => {
+                if (await confirmDialog({ text: "Log out?", subtext: "Ends the current session", yesButton: "Log out" }))
+                    sessionId && execAsync(["loginctl", "terminate-session", sessionId])
+                        .catch(e => console.warn("logout failed:", e))
+            }}
+        />
+        <button
+            iconName={"system-shutdown-symbolic"}
+            tooltipText={"Shut down"}
+            onClicked={async () => {
+                if (await confirmDialog({ text: "Shut down?", subtext: "Powers off the machine", yesButton: "Shut down" }))
+                    execAsync(["systemctl", "poweroff"]).catch(e => console.warn("poweroff failed:", e))
+            }}
+        />
     </box>;
 }
