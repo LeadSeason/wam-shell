@@ -192,7 +192,9 @@ function Updates() {
                 onPressed={() => {
                     // @TODO Run independent of shell, we don't want to stop
                     // updating mid update.
-                    execAsync(`bash -c 'kitty --hold -e ${Config.instanceSrcDir}/scripts/archlinux-update.sh'`)
+                    execAsync(["kitty", "--hold", "-e",
+                        `${Config.instanceSrcDir}/scripts/archlinux-update.sh`])
+                        .catch(e => console.warn("updates launcher failed:", e))
                 }}
             />
             <label
