@@ -36,7 +36,9 @@ function loadTexture(path: string, w: number, h: number): Gdk.Texture | null {
     }
 }
 
-const TICK_MS = 50
+// 200ms (5fps) is visually identical to 50ms for the countdown ring but
+// a quarter of the queue_draw wakeups per banner
+const TICK_MS = 200
 const RING_SIZE = 40
 
 export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
