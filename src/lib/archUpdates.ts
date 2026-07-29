@@ -33,7 +33,16 @@ export default class ArchUpdates extends GObject.Object {
         const updatesFile = Config.pendingUpdates;
 
         const updatesFileUpdate = async (path: string) => {
-            const v = await readFileAsync(path);
+            // the daemon rewrites the file non-atomically; a momentary
+            // missing/unreadable file must not become an unhandled
+            // rejection and drop the update cycle
+            let v: string
+            try {
+                v = await readFileAsync(path);
+            } catch (e) {
+                console.warn("archUpdates: read failed:", e)
+                return
+            }
             this.#updates = v;
             // count non-empty lines (robust to a missing trailing newline)
             this.#updatesnum = v.split(/\r\n|\r|\n/)
