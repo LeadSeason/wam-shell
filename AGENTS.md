@@ -38,6 +38,9 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 
 - One logical change per commit; split unrelated changes into separate
   commits when asked.
+- Before merging a branch, do a code review of its changes
+  (correctness, races, leaks, consistency) unless one was already done
+  in this session.
 - Verify the shell starts clean before committing:
   `ags quit -i wam-shell; timeout 8 ags run app.tsx` (no Gjs-CRITICAL /
   JS ERROR output).
