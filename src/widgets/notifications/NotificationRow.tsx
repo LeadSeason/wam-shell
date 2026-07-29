@@ -1,11 +1,22 @@
-import { Gtk } from "ags/gtk4"
-import Gio from "gi://Gio?version=2.0"
+import { Gtk, Gdk } from "ags/gtk4"
 import AstalNotifd from "gi://AstalNotifd?version=0.1"
+import GdkPixbuf from "gi://GdkPixbuf?version=2.0"
 import Pango from "gi://Pango?version=1.0"
 import { relTime, timeTick } from "../../lib/notifd"
 
 function isPath(image: string | null): image is string {
     return !!image && (image.startsWith("/") || image.startsWith("file://"))
+}
+
+// Gtk.Picture can never be shrunk below its texture's natural size by
+// width/height-request, so scale the image data itself (2x for hidpi)
+function loadTexture(path: string, w: number, h: number): Gdk.Texture | null {
+    try {
+        const pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, w, h, true)
+        return Gdk.Texture.new_for_pixbuf(pixbuf)
+    } catch {
+        return null
+    }
 }
 
 function urgencyClass(n: AstalNotifd.Notification): string[] {
@@ -21,6 +32,9 @@ export default function NotificationRow({ n }: { n: AstalNotifd.Notification }) 
     const headerIcon = isPath(image)
         ? (n.get_app_icon() || "application-x-executable-symbolic")
         : (image || n.get_app_icon() || "application-x-executable-symbolic")
+    const imageTexture = isPath(image)
+        ? loadTexture(image.replace(/^file:\/\//, ""), 640, 240)
+        : null
 
     const actions = n.get_actions().filter((a) => a.get_id() !== "default")
     const hasDefault = n.get_actions().some((a) => a.get_id() === "default")
@@ -72,15 +86,12 @@ export default function NotificationRow({ n }: { n: AstalNotifd.Notification }) 
                     maxWidthChars={40}
                 />
             }
-            {isPath(image) &&
+            {imageTexture &&
                 <Gtk.Picture
                     cssClasses={["image"]}
-                    file={Gio.File.new_for_path(image.replace(/^file:\/\//, ""))}
+                    paintable={imageTexture}
                     contentFit={Gtk.ContentFit.COVER}
-                    // bound both axes: under COVER the picture requests the
-                    // image's full natural size otherwise
-                    heightRequest={120}
-                    widthRequest={320}
+                    canShrink={true}
                 />
             }
         </box>

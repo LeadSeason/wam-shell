@@ -148,6 +148,21 @@
 # [bluetooth]
 # notifications = true
 
+# [notifications] - notification banners + center
+# popups - show transient banners (pill with countdown ring) for incoming
+#          notifications. they follow the focused monitor, freeze and
+#          unfold on hover, and respect do-not-disturb (critical still
+#          breaks through). default true
+# popup_timeout - milliseconds before a popup hides itself. low urgency
+#                 drains in half the time; critical stays until dismissed.
+#                 default 5000
+# position - where banners appear: "topRight" or "topCenter".
+#            default "topRight"
+# [notifications]
+# popups = true
+# popup_timeout = 5000
+# position = "topRight"
+
 # [media] - panel media controls (mpris) + popup
 # enabled - show the media widget in the legacy (non-[[panel]]) bar
 #           layout. default false. panel lists always render it
@@ -187,7 +202,6 @@
 # brightness = true
 # layout = true
 # lock_keys = true
-# notification = true
 # media = true
 
 # arch_updates_threshold - Check updates module

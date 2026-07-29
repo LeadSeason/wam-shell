@@ -17,6 +17,7 @@ import Dialog from "./src/widgets/dialog"
 import BluetoothPairing from "./src/widgets/bluetoothPairing"
 import { startBluetoothAgent } from "./src/lib/bluetoothAgent"
 import MediaPopup from "./src/widgets/mediaPopup"
+import NotificationPopups from "./src/widgets/notifications/popups"
 
 
 function matchMonitor(wanted: string[], m: Gdk.Monitor): boolean {
@@ -73,7 +74,13 @@ function main() {
             {(monitor) => <OSD gdkMonitor={monitor} />}
         </For>)
 
-    return [bars, osds]
+    const notifPopups = !Config.notifications.popups ? null
+        : (<For each={createBinding(app, "monitors")}
+            cleanup={(win) => (win as Gtk.Window).destroy()}>
+            {(monitor) => <NotificationPopups gdkMonitor={monitor} />}
+        </For>)
+
+    return [bars, osds, notifPopups]
 }
 
 if (!GLib.file_test(Config.instanceCacheDir, GLib.FileTest.IS_DIR)) {

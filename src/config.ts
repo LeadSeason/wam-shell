@@ -255,6 +255,32 @@ function getBarMonitors(): string[] {
     return m.filter(x => typeof x === "string" && x !== "")
 }
 
+function getNotificationsConfig() {
+    const n = configData.notifications ?? {}
+    const get = (key: string, fallback: any) => n[key] ?? configData[key] ?? fallback
+
+    let popupTimeout = get("popup_timeout", 5000)
+    if (typeof popupTimeout !== "number" || popupTimeout <= 0) {
+        console.error(`Config "notifications.popup_timeout" must be a positive number, got "${popupTimeout}"`)
+        popupTimeout = 5000
+    }
+
+    let position = get("position", "topRight")
+    if (!["topRight", "topCenter"].includes(position)) {
+        console.error(`Config "notifications.position" must be "topRight" or "topCenter", got "${position}"`)
+        position = "topRight"
+    }
+
+    return {
+        // transient banners for incoming notifications
+        popups: get("popups", true),
+        // ms before a popup auto-hides (critical stays until dismissed,
+        // low urgency drains in half the time)
+        popupTimeout,
+        position: position as "topRight" | "topCenter",
+    }
+}
+
 function getOsdConfig() {
     const o = configData.osd ?? {}
     const get = (key: string, fallback: any) => o[key] ?? configData[key] ?? fallback
@@ -282,7 +308,6 @@ function getOsdConfig() {
         layout: get("layout", true),
         lockKeys: get("lock_keys", true),
         media: get("media", true),
-        notification: get("notification", true),
     }
 }
 
@@ -402,6 +427,7 @@ export default class Config {
     static panels = getPanelsConfig()
     static theme = getTheme(configData)
     static osd = getOsdConfig()
+    static notifications = getNotificationsConfig()
 
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`

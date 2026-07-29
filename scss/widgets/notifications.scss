@@ -92,3 +92,73 @@ window.Notifications {
         }
     }
 }
+
+// Transient popup banners (pill + countdown ring).
+// Widget classes: .popup (banner, pill shape), .popup.open (hover-unfolded
+// card), .popup.critical / .popup.low (urgency), .ring (countdown arc —
+// its css `color` is what the cairo draw picks up), .inline (pill line),
+// .appName/.summary/.body/.actions/.dismiss (unfolded state).
+window.NotificationPopups {
+    background: transparent;
+
+    .popup {
+        background: t.$crust;
+        color: t.$text;
+        border-radius: 999px;
+        border: solid 2px color.mix(t.$surface0, transparent, 60%);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        // identical padding in both states: only the radius morphs on
+        // hover, so the pill doesn't shift when it unfolds
+        padding: 5px 12px 5px 5px;
+
+        &.open {
+            border-radius: s.$radius;
+        }
+
+        &.critical {
+            border-color: t.$red40;
+            .ring { color: t.$red; }
+            .summary { color: t.$red; }
+        }
+        &.low {
+            .inline, .summary { color: t.$subtext0; }
+        }
+
+        .ring { color: t.$accent; }
+
+        .inline {
+            font-size: s.$font-small;
+        }
+        .appName {
+            font-size: s.$font-small;
+            color: t.$subtext0;
+        }
+        .summary {
+            font-weight: bold;
+        }
+        .body {
+            font-size: s.$font-small;
+            color: t.$subtext1;
+        }
+        .image {
+            border-radius: s.$radius;
+            margin-top: 4px;
+        }
+        .dismiss {
+            padding: 0 4px;
+        }
+        .actions {
+            margin-top: 4px;
+        }
+    }
+
+    button {
+        border-radius: 999px;
+        border: solid 2px transparent;
+        padding: 1px 8px;
+        &:hover {
+            background-color: t.$accent20;
+            border: solid 2px t.$accent20;
+        }
+    }
+}

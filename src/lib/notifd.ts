@@ -1,5 +1,5 @@
 import AstalNotifd from "gi://AstalNotifd?version=0.1"
-import { Accessor, createBinding } from "gnim"
+import { Accessor, createBinding, createState } from "gnim"
 import { createPoll } from "ags/time"
 
 // Shared notification daemon state. The first instantiation becomes
@@ -43,6 +43,45 @@ export const grouped: Accessor<NotificationGroup[]> =
 
 // ticks once a minute while subscribed, so relative timestamps stay fresh
 export const timeTick = createPoll(0, 60_000, () => Date.now())
+
+// --- transient popups -------------------------------------------------
+
+// notifications currently shown as popup banners. Expiry is handled by
+// the row widget (it owns the countdown); hiding a popup never dismisses
+// the notification from the center.
+const MAX_POPUPS = 4
+
+const [popupsState, setPopups] = createState<AstalNotifd.Notification[]>([])
+export const popups: Accessor<AstalNotifd.Notification[]> = popupsState
+
+export function removePopup(id: number) {
+    setPopups(popupsState.get().filter((n) => n.id !== id))
+}
+
+notifd.connect("notified", (_s, id) => {
+    const n = notifd.get_notification(id)
+    if (!n) return
+    // DND silences popups; critical notifications still break through
+    if (notifd.dontDisturb && n.urgency !== AstalNotifd.Urgency.CRITICAL) return
+
+    const current = popupsState.get()
+    if (current.some((p) => p.id === id)) return
+    setPopups([...current, n].slice(-MAX_POPUPS))
+})
+
+// dismissed/expired elsewhere (center, app) -> drop the banner too
+notifd.connect("resolved", (_s, id) => removePopup(id))
+
+// hovering ANY banner freezes every countdown: if a banner above the
+// hovered one expired mid-interaction, the stack would shift and yank
+// the hovered banner out from under the pointer
+let hoverCount = 0
+export function setPopupHovered(hovered: boolean) {
+    hoverCount = Math.max(0, hoverCount + (hovered ? 1 : -1))
+}
+export function anyPopupHovered(): boolean {
+    return hoverCount > 0
+}
 
 export function relTime(unixSeconds: number, nowMs: number): string {
     const diff = Math.max(0, Math.floor(nowMs / 1000 - unixSeconds))
