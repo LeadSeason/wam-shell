@@ -156,9 +156,8 @@ function useBatteryLine(): { line: Accessor<string> } {
     createBinding(bat, "timeToFull").subscribe(updateBatTime)
     createBinding(bat, "charging").subscribe(updateBatTime)
 
-    const chargingB = createBinding(bat, "charging")
     return {
-        line: createComputed([batProc, chargingB, batTime], (p, charging, t) => {
+        line: createComputed([batProc, batTime], (p, t) => {
             const pct = `${(p * 100).toFixed(0)}%`
             // at the charge limit UPower still reports a bogus
             // timeToFull although nothing is charging (a known quirk)
