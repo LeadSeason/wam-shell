@@ -57,11 +57,13 @@ function hookEndpoint(
     let hooked: AstalWp.Endpoint | null = null
     let disposers: (() => void)[] = []
     const hook = (ep: AstalWp.Endpoint | null) => {
-        if (!ep || ep === hooked) return
+        if (ep === hooked) return
         // unsubscribe the old endpoint, its changes aren't the default's
+        // (also when the default device disappears entirely: ep = null)
         for (const d of disposers) d()
         disposers = []
         hooked = ep
+        if (!ep) return
         disposers.push(createBinding(ep, "volume").subscribe(() => {
             show({
                 icon: ep.mute ? mutedIcon : ep.volumeIcon,
