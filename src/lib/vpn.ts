@@ -35,9 +35,13 @@ export const hasMullvad = (() => {
     try { exec("which mullvad"); return true } catch { return false }
 })()
 
+// 15s: a VPN state change needs no 5s latency, and this spawns mullvad
+// (a forked process) for the shell's lifetime otherwise. RefreshVpn is
+// also called manually on connect/disconnect, so the indicator still
+// flips promptly on user action.
 if (hasMullvad) {
     refreshVpn()
-    GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 5, () => {
+    GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 15, () => {
         refreshVpn()
         return GLib.SOURCE_CONTINUE
     })
