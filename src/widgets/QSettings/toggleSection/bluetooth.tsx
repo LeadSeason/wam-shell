@@ -267,20 +267,34 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
             return GLib.SOURCE_REMOVE
         })
     }
-    const hookedDevices = new Set<AstalBluetooth.Device>()
+    const hookedDevices = new Map<string, { d: AstalBluetooth.Device, ids: number[] }>()
     function hookDevice(d: AstalBluetooth.Device) {
-        if (hookedDevices.has(d)) return
-        hookedDevices.add(d)
-        d.connect("notify::paired", refreshDeviceList)
-        d.connect("notify::connected", refreshDeviceList)
-        // devices are often discovered unnamed; when the name resolves a
-        // moment later (property change, no list change) they must enter
-        // the available list then, not never
-        d.connect("notify::name", refreshDeviceList)
-        d.connect("notify::alias", refreshDeviceList)
+        const existing = hookedDevices.get(d.address)
+        if (existing?.d === d) return
+        // bluez can recreate the device object for the same address:
+        // drop the handlers on the stale object before re-hooking
+        if (existing) for (const id of existing.ids) existing.d.disconnect(id)
+        hookedDevices.set(d.address, { d, ids: [
+            d.connect("notify::paired", refreshDeviceList),
+            d.connect("notify::connected", refreshDeviceList),
+            // devices are often discovered unnamed; when the name resolves a
+            // moment later (property change, no list change) they must enter
+            // the available list then, not never
+            d.connect("notify::name", refreshDeviceList),
+            d.connect("notify::alias", refreshDeviceList),
+        ]})
+    }
+    function pruneDevices() {
+        const live = new Set(bluetooth.devices.map(d => d.address))
+        for (const [addr, h] of hookedDevices) {
+            if (live.has(addr)) continue
+            for (const id of h.ids) h.d.disconnect(id)
+            hookedDevices.delete(addr)
+        }
     }
     createBinding(bluetooth, "devices").subscribe(() => {
         bluetooth.devices.forEach(hookDevice)
+        pruneDevices()
         refreshDeviceList()
     })
     bluetooth.devices.forEach(hookDevice)
