@@ -10,15 +10,17 @@ import { requestHandler } from "./src/lib/requestHandler"
 import { Gtk, Gdk } from "ags/gtk4"
 import swayScratchpad from "./src/widgets/sway-scratchpad"
 import QSettings from "./src/widgets/QSettings"
-import Notifications from "./src/widgets/notifications"
-import Launcher from "./src/widgets/launcher"
 import SwayGaps from "./src/lib/swayGaps"
 import Dialog from "./src/widgets/dialog"
 import BluetoothPairing from "./src/widgets/bluetoothPairing"
 import { startBluetoothAgent } from "./src/lib/bluetoothAgent"
-import MediaPopup from "./src/widgets/mediaPopup"
 import NotificationPopups from "./src/widgets/notifications/popups"
 import { useOurs } from "./src/lib/notifd"
+// request-driven windows register their toggle command at import and
+// build their window lazily on first use instead of at startup
+import "./src/widgets/notifications"
+import "./src/widgets/launcher"
+import "./src/widgets/mediaPopup"
 
 
 function matchMonitor(wanted: string[], m: Gdk.Monitor): boolean {
@@ -51,10 +53,7 @@ function main() {
     const qSettings = QSettings() as Gtk.Window
     app.add_window(qSettings)
 
-    app.add_window(Notifications() as Gtk.Window)
-    app.add_window(Launcher() as Gtk.Window)
     app.add_window(BluetoothPairing() as Gtk.Window)
-    app.add_window(MediaPopup() as Gtk.Window)
     startBluetoothAgent()
 
     const bars = Config.panels.length === 0

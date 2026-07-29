@@ -3,7 +3,8 @@ import GLib from "gi://GLib?version=2.0"
 import Pango from "gi://Pango?version=1.0"
 import Graphene from "gi://Graphene?version=1.0"
 import AstalMpris from "gi://AstalMpris?version=0.1"
-import { For, With, createBinding, createComputed, createState, onCleanup } from "gnim"
+import app from "ags/gtk4/app"
+import { For, With, createBinding, createComputed, createRoot, createState, onCleanup } from "gnim"
 import { createPoll } from "ags/time"
 import CommandRegistry from "../lib/requestHandler"
 import { activePlayer, coverState, formatTime, overrideActivePlayer, players } from "../lib/mpris"
@@ -201,81 +202,86 @@ function PopupContent({ player }: { player: AstalMpris.Player }) {
     </box>
 }
 
-export default function MediaPopup() {
-    let win: Astal.Window
-    let rev: Gtk.Revealer
-    let hideSource: number | null = null
+// the request is registered eagerly (import side effect), but the
+// window is built lazily on first toggle — no need to construct it
+// at shell startup
+let win: Astal.Window | null = null
+let rev: Gtk.Revealer | null = null
+let hideSource: number | null = null
 
-    function show() {
-        if (hideSource !== null) {
-            GLib.source_remove(hideSource)
-            hideSource = null
-        }
-        // drop directly below the pill when its position is known
-        const anchor = popupAnchor.get()
-        if (anchor) win.gdkmonitor = anchor.monitor
-        win.present()
-        rev.revealChild = true
+function show() {
+    if (hideSource !== null) {
+        GLib.source_remove(hideSource)
+        hideSource = null
     }
+    // drop directly below the pill when its position is known
+    const anchor = popupAnchor.get()
+    if (anchor) win!.gdkmonitor = anchor.monitor
+    win!.present()
+    rev!.revealChild = true
+}
 
-    function hide() {
-        rev.revealChild = false
-        if (hideSource !== null) GLib.source_remove(hideSource)
-        hideSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
-            hideSource = null
-            win.hide()
-            overrideActivePlayer(null)
-            return GLib.SOURCE_REMOVE
-        })
-    }
-
-    registry.register({
-        name: ["media", "mediaPopup"],
-        description: "Toggle the media controls popup",
-        main: () => {
-            if (!win) return "no window"
-            if (win.is_visible()) {
-                hide()
-                return "hidden"
-            }
-            show()
-            return "shown"
-        }
+function hide() {
+    rev!.revealChild = false
+    if (hideSource !== null) GLib.source_remove(hideSource)
+    hideSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+        hideSource = null
+        win!.hide()
+        overrideActivePlayer(null)
+        return GLib.SOURCE_REMOVE
     })
+}
 
-    function onKey(_e: Gtk.EventControllerKey, keyValue: number) {
-        if (keyValue === Gdk.KEY_Escape) hide()
+registry.register({
+    name: ["media", "mediaPopup"],
+    description: "Toggle the media controls popup",
+    main: () => {
+        ensureWindow()
+        if (win!.is_visible()) {
+            hide()
+            return "hidden"
+        }
+        show()
+        return "shown"
     }
+})
 
-    function onClick(_e: Gtk.GestureClick, _: number, x: number, y: number) {
-        const [, rect] = win.get_child()!.compute_bounds(win)
-        if (!rect.contains_point(new Graphene.Point({ x, y }))) hide()
-    }
+function onKey(_e: Gtk.EventControllerKey, keyValue: number) {
+    if (keyValue === Gdk.KEY_Escape) hide()
+}
 
-    return <window
-        $={(self) => { win = self }}
-        name="MediaPopup"
-        class="MediaPopup"
-        namespace="media-popup"
-        anchor={popupAnchor.as(a => a
-            ? (Astal.WindowAnchor.TOP | Astal.WindowAnchor.LEFT)
-            : mediaAnchor())}
-        marginTop={30}
-        marginRight={12}
-        // pill center minus half the popup width (360)
-        marginLeft={popupAnchor.as(a => a
-            ? Math.max(0, Math.round(a.x - 180))
-            : 12)}
-        keymode={Astal.Keymode.EXCLUSIVE}
-        visible={false}
-    >
-        <Gtk.EventControllerKey onKeyPressed={onKey} />
-        <Gtk.GestureClick onPressed={onClick} />
-        <revealer
-            $={(self) => { rev = self }}
-            transitionDuration={200}
-            transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
+function onClick(_e: Gtk.GestureClick, _: number, x: number, y: number) {
+    const [, rect] = win!.get_child()!.compute_bounds(win!)
+    if (!rect.contains_point(new Graphene.Point({ x, y }))) hide()
+}
+
+function ensureWindow() {
+    if (win) return
+    createRoot(() => {
+        app.add_window(<window
+            $={(self) => { win = self }}
+            name="MediaPopup"
+            class="MediaPopup"
+            namespace="media-popup"
+            anchor={popupAnchor.as(a => a
+                ? (Astal.WindowAnchor.TOP | Astal.WindowAnchor.LEFT)
+                : mediaAnchor())}
+            marginTop={30}
+            marginRight={12}
+            // pill center minus half the popup width (360)
+            marginLeft={popupAnchor.as(a => a
+                ? Math.max(0, Math.round(a.x - 180))
+                : 12)}
+            keymode={Astal.Keymode.EXCLUSIVE}
+            visible={false}
         >
+            <Gtk.EventControllerKey onKeyPressed={onKey} />
+            <Gtk.GestureClick onPressed={onClick} />
+            <revealer
+                $={(self) => { rev = self }}
+                transitionDuration={200}
+                transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
+            >
             <With value={activePlayer}>
                 {(player) => player
                     ? <PopupContent player={player} />
@@ -284,6 +290,7 @@ export default function MediaPopup() {
                         <label label={"Nothing playing"} />
                     </box>}
             </With>
-        </revealer>
-    </window>
+            </revealer>
+        </window> as Gtk.Window)
+    })
 }
