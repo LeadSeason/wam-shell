@@ -33,15 +33,7 @@ window.Bar {
         .statNet { color: t.$mauve; }
         .statGraph {
             min-height: 12px;
-            box {
-                min-width: 2px;
-                margin-left: 1px;
-                border-radius: 1px;
-            }
         }
-        .statCpu box { background-color: t.$blue; }
-        .statRam box { background-color: t.$green; }
-        .statGpu box { background-color: t.$peach; }
     }
 
     // gap between panel widgets; GTK css has no box spacing, so margins

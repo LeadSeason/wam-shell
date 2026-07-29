@@ -366,15 +366,11 @@ window#QSettings {
     }
     .statGraph {
         min-height: 24px;
-        box {
-            min-width: 2px;
-            margin-left: 1px;
-            border-radius: 1px;
-        }
     }
-    .statCpu box { background-color: t.$blue; }
-    .statRam box { background-color: t.$green; }
-    .statGpu box { background-color: t.$peach; }
+    // bars are cairo-drawn from the DrawingArea foreground colour
+    .statCpu { color: t.$blue; }
+    .statRam { color: t.$green; }
+    .statGpu { color: t.$peach; }
 
     // tray icons inside the popup: bigger, on their own pills
     // (pill size is set inline from tray.popup_icon_size, gaps from the

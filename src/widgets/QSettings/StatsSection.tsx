@@ -1,5 +1,5 @@
 import Gtk from "gi://Gtk?version=4.0";
-import { Accessor, createComputed, For, With } from "gnim";
+import { Accessor, createComputed, With, onCleanup } from "gnim";
 import {
     cpu, ram, gpu, gpuTemp, netDown, netUp,
     cpuHist, ramHist, gpuHist, formatRate,
@@ -14,20 +14,40 @@ export function Graph({ hist, className, height = GRAPH_HEIGHT, hexpand = true }
     height?: number
     hexpand?: boolean
 }) {
-    return <box
+    // a single DrawingArea replaces one <box> child per sample (up to 64
+    // per stat), each tick rebuilding the lot. The colour comes from the
+    // widget's CSS `color` (.statCpu/.statRam/.statGpu).
+    return <Gtk.DrawingArea
         cssClasses={["statGraph", className]}
         valign={Gtk.Align.END}
         halign={Gtk.Align.END}
         hexpand={hexpand}
-    >
-        <For each={hist}>
-            {(s) => <box
-                valign={Gtk.Align.END}
-                css={`min-height: ${
-                    Math.max(1, Math.round(s.v / 100 * height))}px;`}
-            />}
-        </For>
-    </box>
+        $={(self) => {
+            self.set_content_height(height)
+            const redraw = () => {
+                // 2px per bar natural width (matches the old min-width: 2px
+                // child boxes); hexpand grows it and bars spread to fill
+                self.set_content_width(Math.max(1, hist.get().length) * 2)
+                self.queue_draw()
+            }
+            self.set_draw_func((_da: Gtk.DrawingArea, cr: any, w: number, h: number) => {
+                const samples = hist.get()
+                const n = samples.length
+                if (n === 0) return
+                const c = self.get_color()
+                cr.setSourceRGBA(c.red, c.green, c.blue, c.alpha)
+                const bw = w / n
+                for (let i = 0; i < n; i++) {
+                    const bh = Math.max(1, Math.round(samples[i].v / 100 * h))
+                    cr.rectangle(i * bw, h - bh, Math.max(1, bw), bh)
+                }
+                cr.fill()
+            })
+            const unsub = hist.subscribe(redraw)
+            onCleanup(unsub)
+            redraw()
+        }}
+    />
 }
 
 function StatRow({ name, value, hist, className }: {
