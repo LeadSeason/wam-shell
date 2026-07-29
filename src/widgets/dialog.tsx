@@ -31,12 +31,29 @@ class Dialog {
         return this.instance
     }
 
+    private hideSource: ReturnType<typeof timeout> | null = null
+
     hide = () => {
         this.revealer.reveal_child = false
         // give some time for the animation to play.
-        timeout(50, () => {
+        this.hideSource?.cancel()
+        this.hideSource = timeout(50, () => {
+            this.hideSource = null
             this.win.hide()
         })
+    }
+
+    // unconditional present: Show() toggles, and calling it while the
+    // hide timeout above is still pending would hide instead of show —
+    // a second confirmDialog awaited right after the first then
+    // resolved false without ever appearing
+    present = () => {
+        if (this.hideSource !== null) {
+            this.hideSource.cancel()
+            this.hideSource = null
+        }
+        this.revealer.reveal_child = true
+        this.win.present()
     }
 
     Show = (): boolean => {
@@ -182,7 +199,7 @@ export async function confirmDialog({
                 </box>
             </box>
         </box>);
-        dialog.Show();
+        dialog.present();
         unsub = createBinding(dialog.win, "visible").subscribe(() => {
             if (!dialog.win.get_visible()) {
                 done(false);
