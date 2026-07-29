@@ -60,10 +60,11 @@ function main() {
         // panel mode: one bar per matching [[panel]] per monitor
         : (<For each={createBinding(app, "monitors").as(ms =>
             ms.flatMap(m => Config.panels
-                .filter(p => matchMonitor(p.monitors, m))
-                .map(panel => ({ monitor: m, panel }))))}
-            id={({ monitor, panel }) =>
-                `${monitor.get_connector()}/${panel.position}/${panel.class}`}
+                .map((panel, i) => ({ monitor: m, panel, i }))
+                .filter(p => matchMonitor(p.panel.monitors, p.monitor))))}
+            // key by config index: two panels with the same position and
+            // no class would otherwise collide and silently drop a bar
+            id={({ monitor, i }) => `${monitor.get_connector()}/${i}`}
             cleanup={(win) => (win as Gtk.Window).destroy()}>
             {({ monitor, panel }) => <Bar gdkMonitor={monitor} panel={panel} />}
         </For>)
