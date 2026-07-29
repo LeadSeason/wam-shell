@@ -9,39 +9,44 @@ window.OSDWindow {
     // .osd-volume, .osd-microphone, .osd-brightness, .osd-layout,
     // .osd-lockKeys — e.g. .OSD.osd-brightness { ... }
     .OSD {
+        border-radius: calc(s.$radius * 2);
         background: color.mix(t.$crust, transparent, 90%);
         color: t.$text;
-        border-radius: calc(s.$radius * 2);
-        border: solid 2px color.mix(t.$surface0, transparent, 60%);
         padding: 10px 16px;
         margin: 8px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        box-shadow: 3px 3px 7px 0 rgba(0, 0, 0, 0.4);
+        border: solid 2px t.$surface1;
 
-        // icon size is styled here, not in the widget
         image {
-            -gtk-icon-size: 20px;
+            -gtk-icon-size: 28px;
+        }
+
+        label {
+            font-size: 18px;
         }
     }
 
-    // the bar: trough is background-color, fill is a background-image
-    // sized in % from the widget — so min-width/min-height fully
-    // control its size from css
-    .osdBar {
-        min-width: 10em;
-        min-height: 8px;
-        border-radius: 4px;
-        background-color: t.$surface0;
-        background-image: linear-gradient(to right, t.$accent, t.$accent);
-        background-repeat: no-repeat;
-        transition: background-size 100ms;
+    // levelbar blocks: filled uses accent, empty uses surface; the
+    // overflow region (>100% overdrive) is tinted
+    levelbar {
+        block.high, block:not(.empty) {
+            min-height: 14px;
+            border-radius: 20px;
+            background-color: t.$accent;
+        }
+
+        block.empty {
+            border-radius: 20px;
+            background-color: t.$surface1;
+        }
+
+        block.overflow {
+            border-radius: 20px;
+            background-color: t.$peach;
+        }
     }
-    .osdBar.over {
-        background-image: linear-gradient(to right, t.$peach, t.$peach);
-    }
+
     // caps lock state tint
     .osdOn { color: t.$green; }
     .osdOff { color: t.$subtext0; }
-    label {
-        font-size: s.$font-small;
-    }
 }

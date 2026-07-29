@@ -259,10 +259,10 @@ function getOsdConfig() {
     const o = configData.osd ?? {}
     const get = (key: string, fallback: any) => o[key] ?? configData[key] ?? fallback
 
-    let position = get("position", "bottom")
-    if (!["bottom", "center", "top"].includes(position)) {
-        console.error(`Config "osd.position" must be "bottom", "center" or "top", got "${position}"`)
-        position = "bottom"
+    let position = get("position", "topLeft")
+    if (!["bottom", "center", "top", "topLeft"].includes(position)) {
+        console.error(`Config "osd.position" must be "bottom", "center", "top" or "topLeft", got "${position}"`)
+        position = "topLeft"
     }
 
     let timeout = get("timeout", 2000)
@@ -273,7 +273,7 @@ function getOsdConfig() {
 
     return {
         enabled: get("enabled", true),
-        position: position as "bottom" | "center" | "top",
+        position: position as "bottom" | "center" | "top" | "topLeft",
         timeout,
         // per-trigger toggles
         volume: get("volume", true),

@@ -6,10 +6,10 @@ import { createBinding, With } from "gnim"
 import AstalHyprland from "gi://AstalHyprland"
 import Config from "../../config"
 import Sway from "../../lib/sway"
-import { content, visible } from "../../lib/osd"
+import { content, dismiss, hoverBlock, setHoverBlock, visible } from "../../lib/osd"
 
 export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
-    const { TOP, BOTTOM } = Astal.WindowAnchor
+    const { TOP, BOTTOM, LEFT } = Astal.WindowAnchor
 
     // show only on the focused monitor
     let isFocused
@@ -28,10 +28,15 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
         isFocused = app.monitors[0] === gdkMonitor
     }
 
+    // placement: bottom/top are centered horizontally, center fully
+    // centered, topLeft hugs the corner (old-shell design)
     const anchor = Config.osd.position === "bottom" ? BOTTOM
-        : Config.osd.position === "top" ? TOP : 0
-    const margin = Config.osd.position === "center" ? {} :
-        { [Config.osd.position === "bottom" ? "marginBottom" : "marginTop"]: 60 }
+        : Config.osd.position === "top" ? TOP
+        : Config.osd.position === "topLeft" ? TOP | LEFT : 0
+    const margin = Config.osd.position === "bottom" ? { marginBottom: 60 }
+        : Config.osd.position === "top" ? { marginTop: 60 }
+        : Config.osd.position === "topLeft" ? { marginTop: 20, marginLeft: 40 }
+        : {}
 
     let win: Astal.Window
     let rev: Gtk.Revealer
@@ -77,6 +82,12 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
         application={app}
         {...margin}
     >
+        {/* click dismisses; hovering blocks the hide timer */}
+        <Gtk.GestureClick button={1} onPressed={dismiss} />
+        <Gtk.EventControllerMotion
+            onEnter={() => setHoverBlock(true)}
+            onLeave={() => setHoverBlock(false)}
+        />
         <revealer
             $={(self) => { rev = self }}
             revealChild={false}
@@ -91,13 +102,17 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
                 />
                 <With value={content}>
                     {(c) => c.value !== null &&
-                        <box
-                            cssClasses={["osdBar", c.over ? "over" : ""]}
-                            // fill is a background-size percentage so the
-                            // bar's size is fully controlled from scss;
-                            // clamp: negative size is invalid css
-                            css={`background-size: ${
-                                Math.max(0, Math.round((c.value ?? 0) * 100))}% 100%;`}
+                        <levelbar
+                            $={(self) => {
+                                // blocks past 100% get .overflow (peach)
+                                self.add_offset_value("overflow", 1.0)
+                            }}
+                            valign={Gtk.Align.CENTER}
+                            widthRequest={200}
+                            value={content.as(c =>
+                                Math.min(c.value ?? 0, c.valueMax))}
+                            minValue={0}
+                            maxValue={content.as(c => c.valueMax)}
                         />}
                 </With>
                 <label

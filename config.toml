@@ -174,7 +174,7 @@
 # [osd] - on-screen display for volume/mic/brightness/lock-key/layout
 #         changes
 # enabled - default true
-# position - "bottom", "center" or "top". default "bottom"
+# position - "bottom", "center", "top" or "topLeft". default "topLeft"
 # timeout - milliseconds before the OSD hides. default 2000
 # volume, microphone, brightness, layout, lock_keys, media - per-trigger
 #           toggles. default true

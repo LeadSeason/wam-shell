@@ -16,16 +16,19 @@ import notifd from "./notifd"
 
 export interface OsdContent {
     icon: string
-    value: number | null  // 0..1 for the bar, null = no bar
+    value: number | null  // level for the bar, null = no bar
+    valueMax: number      // bar max: 1 normally, 1.5 for audio overdrive
     label: string
     over: boolean  // overdrive styling (>100%, outdoor, caps on)
     kind: string   // volume|microphone|brightness|layout|lockKeys
 }
 
 export const [content, setContent] = createState<OsdContent>({
-    icon: "", value: 0, label: "", over: false, kind: "",
+    icon: "", value: 0, valueMax: 1, label: "", over: false, kind: "",
 })
 export const [visible, setVisible] = createState(false)
+// hovering the OSD blocks the hide timer (re-arms on leave)
+export const [hoverBlock, setHoverBlock] = createState(false)
 
 let hideSource: number | null = null
 // swallow trigger events fired at startup (initial binding values)
@@ -33,18 +36,36 @@ const graceUntil = Date.now() + 1500
 
 type OsdKind = "volume" | "microphone" | "brightness" | "layout" | "lockKeys" | "media" | "notification"
 
-function show(c: Omit<OsdContent, "kind">, kind: OsdKind) {
+function show(c: Omit<OsdContent, "kind" | "valueMax"> & { valueMax?: number }, kind: OsdKind) {
     if (!Config.osd.enabled) return
     if (!Config.osd[kind]) return
     if (Date.now() < graceUntil) return
-    setContent({ ...c, kind })
+    setContent({ valueMax: 1, ...c, kind })
     setVisible(true)
     if (hideSource !== null) GLib.source_remove(hideSource)
     hideSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Config.osd.timeout, () => {
+        // hovering keeps it on screen: re-arm instead of hiding
+        if (hoverBlock.get()) {
+            hideSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+                hideSource = null
+                setVisible(false)
+                return GLib.SOURCE_REMOVE
+            })
+            return GLib.SOURCE_CONTINUE
+        }
         hideSource = null
         setVisible(false)
         return GLib.SOURCE_REMOVE
     })
+}
+
+/** dismiss immediately (click on the OSD) */
+export function dismiss() {
+    if (hideSource !== null) {
+        GLib.source_remove(hideSource)
+        hideSource = null
+    }
+    setVisible(false)
 }
 
 // volume + microphone
@@ -66,7 +87,8 @@ function hookEndpoint(
         disposers.push(createBinding(ep, "volume").subscribe(() => {
             show({
                 icon: ep.mute ? mutedIcon : ep.volumeIcon,
-                value: Math.min(ep.volume, 1),
+                value: ep.volume,
+                valueMax: 1.5, // overdrive headroom, like the old design
                 label: `${Math.round(ep.volume * 100)}%`,
                 over: ep.volume > 1.01,
             }, kind)
