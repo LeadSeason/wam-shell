@@ -6,6 +6,11 @@ import { Accessor, For, With, createBinding, createComputed } from "ags"
 import { Gtk } from "ags/gtk4";
 import GObject from "ags/gobject";
 
+// per-workspace icon-box memo: keyed by workspace id, value is the last
+// built box + the icon list it was built from. Lets a focus/title-only
+// tree change skip rebuilding every workspace's icons.
+const wsIconCache = new Map<number, { key: string, box: Gtk.Box }>()
+
 function focus_workspace(sway: Sway, ws: any) {
     sway.message(
         `mouse_warping output; workspace number ${ws.num}; mouse_warping container`
@@ -129,21 +134,29 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
                         const hasNodes = workspaceNode.nodes && workspaceNode.nodes.length > 0;
                         const hasFloating = workspaceNode.floating_nodes && workspaceNode.floating_nodes.length > 0;
 
-                        return <box $={(self) => {
-                            const leafNodes = [
-                                ...(hasNodes ? getLeafNodes(workspaceNode.nodes) : []),
-                                ...(hasFloating ? getLeafNodes(workspaceNode.floating_nodes) : []),
-                            ]
+                        const leafNodes = [
+                            ...(hasNodes ? getLeafNodes(workspaceNode.nodes) : []),
+                            ...(hasFloating ? getLeafNodes(workspaceNode.floating_nodes) : []),
+                        ]
+                        let iconNames = leafNodes.map(swayNodeToIconName)
+                        if (Config.workspaces.collapseIcons) {
+                            iconNames = [...new Set(iconNames)]
+                        }
 
-                            let iconNames = leafNodes.map(swayNodeToIconName)
-                            if (Config.workspaces.collapseIcons) {
-                                iconNames = [...new Set(iconNames)]
-                            }
-
+                        // The tree fires on every focus/title change; rebuilding
+                        // the icon box for every workspace each time is wasteful
+                        // when the window set is unchanged. Memoize by the
+                        // resolved icon list (window class) and reuse the box.
+                        const key = iconNames.join("\u0000")
+                        const cached = wsIconCache.get(workspace.id)
+                        if (cached && cached.key === key) return cached.box
+                        const box = (<box $={(self) => {
                             iconNames.forEach(name => {
                                 self.append(<image iconName={name} /> as Gtk.Widget)
                             });
-                        }} />
+                        }} />) as Gtk.Box
+                        wsIconCache.set(workspace.id, { key, box })
+                        return box
                     })
                 return (
                     <button
