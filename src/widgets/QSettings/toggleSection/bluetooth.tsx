@@ -515,15 +515,16 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
                     {/* pipewire card profiles (A2DP/HFP…), only exists
                         while the device is connected. The wp device has
                         no name/MAC — match by bluetooth icon + the
-                        device description pipewire copies from bluez */}
-                    <With value={createBinding(wp.audio, "devices").as(ds => {
+                        device description pipewire copies from bluez.
+                        audio is null without PipeWire/WirePlumber */}
+                    {wp.audio && <With value={createBinding(wp.audio, "devices").as(ds => {
                         const wanted = (device.alias || device.name).toLowerCase()
                         return (ds ?? []).find(d =>
                             d.icon?.includes("bluetooth") &&
                             d.description?.toLowerCase() === wanted) ?? null
                     })}>
                         {(wpDev) => wpDev && <ProfileSelector wpDev={wpDev} />}
-                    </With>
+                    </With>}
                 </box>
             </revealer>
         </box>
