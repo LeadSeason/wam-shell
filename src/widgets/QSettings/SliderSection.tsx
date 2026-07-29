@@ -92,8 +92,9 @@ function VolSlider({
                     arg1: number
                 ) => {
                     // pipewire reports negative volume when scrolled
-                    // past zero, which breaks css and the OSD
-                    endpoint.volume = Math.max(0, endpoint.volume - arg1 / 100);
+                    // past zero, which breaks css and the OSD; clamp the
+                    // top like the drag path does
+                    endpoint.volume = Math.min(maxValue, Math.max(0, endpoint.volume - arg1 / 100));
                     return true;
                 }} />
             <Gtk.GestureClick
@@ -125,7 +126,7 @@ function VolSlider({
             <Gtk.EventControllerScroll
                 flags={Gtk.EventControllerScrollFlags.VERTICAL}
                 onScroll={(_source, _dx, dy) => {
-                    endpoint.volume = Math.max(0, endpoint.volume - dy / 100)
+                    endpoint.volume = Math.min(maxValue, Math.max(0, endpoint.volume - dy / 100))
                     return true
                 }}
             />
