@@ -2,7 +2,7 @@ import { Gtk } from "ags/gtk4"
 import GLib from "gi://GLib?version=2.0"
 import { timeout } from "ags/time"
 import AstalWp from "gi://AstalWp?version=0.1"
-import { createBinding, createState, onCleanup } from "gnim"
+import { createBinding, createState, onCleanup, With } from "gnim"
 import CommandRegistry from "../../../lib/requestHandler"
 import { SliderSection } from "../../QSettings/SliderSection"
 import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1"
@@ -213,38 +213,32 @@ function ButtonLabel() {
     const bat = AstalBattery.get_default()
 
     const wp = AstalWp.get_default()
-    // null when pipewire has no devices; audioWidget can't take null
-    const speaker = wp?.defaultSpeaker ?? null
-    const microphone = wp?.defaultMicrophone ?? null
 
-    const labelBox = new Gtk.Box()
-    labelBox.spacing = 12
+    // audio widgets re-bind to the current default device: snapshotting
+    // wp.defaultSpeaker once left scroll/volume controlling the old
+    // endpoint after the user switched outputs (the OSD path rebinds;
+    // the bar did not)
+    return <box spacing={12}>
+        {wp && <With value={createBinding(wp, "defaultSpeaker")}>
+            {(speaker) => speaker && audioWidget(speaker)}
+        </With>}
+        {wp && <With value={createBinding(wp, "defaultMicrophone")}>
+            {(microphone) => microphone && audioWidget(microphone)}
+        </With>}
+        {powerProfile()}
+        {vpnIndicator()}
+        {bat.isPresent && <Battery />}
+        {Config.pendingUpdates && <Updates />}
 
-    if (speaker) labelBox.append(audioWidget(speaker))
-    if (microphone) labelBox.append(audioWidget(microphone))
-    labelBox.append(powerProfile())
-    labelBox.append(vpnIndicator())
-    if (bat.isPresent) {
-        labelBox.append(Battery())
-    }
-
-    if (Config.pendingUpdates) {
-        labelBox.append(Updates())
-    }
-
-    // Dot shown when a nested tray item needs attention
-    if (!Config.tray.onPanel) {
-        labelBox.append(
+        {/* Dot shown when a nested tray item needs attention */}
+        {!Config.tray.onPanel &&
             <label
                 label="●"
                 cssClasses={["tray-attention"]}
                 visible={trayNeedsAttention}
                 tooltipText={"A tray item needs attention"}
-            /> as Gtk.Widget
-        )
-    }
-
-    return labelBox
+            />}
+    </box>
 }
 
 
