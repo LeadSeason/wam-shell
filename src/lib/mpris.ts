@@ -1,9 +1,6 @@
 import AstalMpris from "gi://AstalMpris?version=0.1"
-import GLib from "gi://GLib?version=2.0"
 import { Accessor, createBinding, createState } from "gnim"
-import { execAsync } from "ags/process"
-import Config from "../config"
-import { isFile } from "./utils"
+import { downloadCover } from "./coverArt"
 
 // Shared MPRIS state + helpers, used by the QS media section and the
 // panel media widget/popup.
@@ -52,11 +49,7 @@ pick()
 
 // GTK css can only load local files; remote (http) cover art is
 // downloaded once into the cache dir and the local copy is used
-function coverCachePath(url: string): string {
-    const hash = GLib.compute_checksum_for_string(
-        GLib.ChecksumType.MD5, url, -1)
-    return `${Config.instanceCacheDir}/cover-${hash}`
-}
+// (downloadCover handles dedup, timeouts and partial files)
 
 /** cover art url as a state, re-resolving when the track changes */
 export function coverState(player: AstalMpris.Player): Accessor<string> {
@@ -69,11 +62,9 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
         // astal gives bare paths (no file:// scheme) for local art
         if (url.startsWith("/")) return setLocal(`file://${url}`)
         if (!url.startsWith("http")) return setLocal(url)
-        const path = coverCachePath(url)
-        if (isFile(path)) return setLocal(`file://${path}`)
         setLocal("")
-        execAsync(["curl", "-sL", "--fail", url, "-o", path])
-            .then(() => {
+        downloadCover(url)
+            .then((path) => {
                 // a track change during the download must not let the
                 // older cover overwrite the newer one
                 if (cover.get() === url) setLocal(`file://${path}`)
