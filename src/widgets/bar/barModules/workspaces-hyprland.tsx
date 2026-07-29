@@ -17,10 +17,7 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
         return <image iconName={icon} />
     }
 
-    const [displayName, setDisplayName] = createState(monitor.get_connector())
-    setTimeout(() => {
-        setDisplayName(monitor.get_connector())
-    })
+    const displayName = monitor.get_connector()
 
     // recompute when the workspace list, the focus, or any workspace's
     // clients change — the workspaces binding alone does not fire when a
@@ -42,7 +39,7 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
         const focused = hyprland.focusedWorkspace
         setList(hyprland.workspaces
             // id < 0 are special workspaces (scratchpad)
-            .filter((ws) => ws.id > 0 && ws.monitor?.name === displayName.get())
+            .filter((ws) => ws.id > 0 && ws.monitor?.name === displayName)
             .filter((ws) =>
                 !Config.workspaces.hideEmpty ||
                 ws.clients.length > 0 ||
