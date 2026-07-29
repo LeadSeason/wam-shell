@@ -38,7 +38,9 @@ function Player({ player }: { player: AstalMpris.Player }) {
                 {(c) => c
                     ? <box
                         cssClasses={["mediaCover"]}
-                        css={`background-image: url('${c}');`}
+                        // the path comes from player metadata — escape
+                        // quotes/backslashes before CSS interpolation
+                        css={`background-image: url('${c.replace(/['\\]/g, "\\$&")}');`}
                     />
                     : <box cssClasses={["mediaCover", "mediaCoverFallback"]}>
                         <image iconName="audio-x-generic-symbolic" />
