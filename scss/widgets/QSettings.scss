@@ -271,7 +271,7 @@ window#QSettings {
         }
     }
 
-    .btDetails {
+    .btDetails, .wifiDetails {
         margin: 2px 8px 6px 32px;
 
         .key {
@@ -291,6 +291,45 @@ window#QSettings {
             &.active label {
                 color: t.$accent;
                 font-weight: bold;
+            }
+        }
+    }
+
+    .wifiAp {
+        &.busy {
+            opacity: 0.45;
+        }
+
+        .status {
+            font-size: s.$font-small;
+            color: t.$subtext0;
+
+            &.error {
+                color: t.$red;
+            }
+        }
+        .details, .forget {
+            padding: 0 4px;
+        }
+    }
+
+    .wifiPrompt {
+        padding: 8px;
+
+        .title {
+            font-weight: bold;
+        }
+
+        entry {
+            background-color: t.$base;
+            border-radius: s.$radius;
+            padding: 6px 8px;
+        }
+
+        button.confirm {
+            background-color: color.mix(t.$accent, transparent, 55%);
+            &:hover {
+                background-color: color.mix(t.$accent, transparent, 40%);
             }
         }
     }

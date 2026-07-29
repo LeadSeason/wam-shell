@@ -28,7 +28,7 @@ export function ToggleSection({ onNavigate }: { onNavigate: (pane: string) => vo
             >
                 <WifiButton navigate={() => onNavigate("wifi")} />
                 <BluetoothButton navigate={() => onNavigate("bluetooth")} />
-                <WiredButton />
+                <WiredButton navigate={() => onNavigate("wired")} />
                 <PowerProfilesButton navigate={() => onNavigate("powerprofiles")} />
                 <SwayGapsButton
                     activeDropdown={activeDropdownIndex}

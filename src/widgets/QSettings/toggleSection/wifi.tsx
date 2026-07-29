@@ -1,7 +1,38 @@
-import { Accessor, createBinding, createComputed, createState, For } from "gnim";
+import { Accessor, createBinding, createComputed, createState, For, With } from "gnim";
 import { DropdownButton } from "./ToggleButton";
 import AstalNetwork from "gi://AstalNetwork?version=0.1";
+import NM from "gi://NM?version=1.0";
+import { execAsync } from "ags/process";
 import { Gtk } from "ags/gtk4";
+import Pango from "gi://Pango?version=1.0";
+
+// NM.Client is also how we detect saved networks. ap.get_connections()
+// (per-AP) CRASHES on stale/dropped access point objects (nm-access-point
+// assertion + segfault) — never call methods on AP objects, read the
+// client's connection list instead. Match by SSID, not profile name:
+// they differ ("Tenzin 1" for SSID "Tenzin")
+const nmClient = NM.Client.new(null)
+
+const [savedNetworks, setSavedNetworks] =
+    createState<Map<string, string>>(new Map())
+
+function ssidOf(c: NM.RemoteConnection): string | null {
+    const bytes = c.get_setting_wireless()?.get_ssid()
+    if (!bytes) return null
+    return new TextDecoder().decode(bytes.get_data() ?? new Uint8Array())
+}
+
+function refreshSaved() {
+    const map = new Map<string, string>()
+    for (const c of nmClient.get_connections()) {
+        const ssid = ssidOf(c)
+        if (ssid) map.set(ssid, c.get_id())
+    }
+    setSavedNetworks(map)
+}
+nmClient.connect("connection-added", refreshSaved)
+nmClient.connect("connection-removed", refreshSaved)
+refreshSaved()
 
 interface wifiPaneProps {
     /** current pane name, rescans when this pane becomes visible */
@@ -29,32 +60,360 @@ export function WifiButton({ navigate }: { navigate: () => void }) {
     />
 }
 
+// NM 80211ApSecurityFlags key-mgmt bits
+const KEY_MGMT_PSK = 0x100
+const KEY_MGMT_802_1X = 0x200
+const KEY_MGMT_SAE = 0x400
+
+function securityOf(ap: AstalNetwork.AccessPoint): string {
+    if (ap.rsnFlags & KEY_MGMT_SAE) return "WPA3"
+    if (ap.rsnFlags & KEY_MGMT_PSK) return "WPA2"
+    if (ap.rsnFlags & KEY_MGMT_802_1X) return "Enterprise"
+    if (ap.rsnFlags !== 0) return "WPA2"
+    if (ap.wpaFlags !== 0) return "WPA"
+    return "Open"
+}
+
+const secured = (ap: AstalNetwork.AccessPoint) =>
+    ap.rsnFlags !== 0 || ap.wpaFlags !== 0
+
+function bandOf(ap: AstalNetwork.AccessPoint): string {
+    if (ap.frequency >= 5925) return "6GHz"
+    if (ap.frequency >= 5000) return "5GHz"
+    return "2.4GHz"
+}
+
+function channelOf(freq: number): number {
+    if (freq === 2484) return 14
+    if (freq < 2484) return (freq - 2407) / 5
+    if (freq < 5000) return (freq - 2510) / 5 + 15 // rough
+    return (freq - 5000) / 5
+}
+
 export function WifiWidget({ pane, name }: wifiPaneProps) {
     const wifi = AstalNetwork.get_default().wifi
     if (!wifi) return <></>
 
-    // rescan whenever this pane becomes visible
+    // scan whenever this pane becomes visible — same pulse feedback as
+    // the rescan button so the refresh is visible
     // (subscribe callbacks receive no value, read it)
     pane.subscribe(() => {
-        if (pane.get() === name) wifi.scan()
+        if (pane.get() === name) rescan()
+        else setPrompt(null)  // drop a stale prompt when leaving the pane
     })
 
-    const accessPoints = createBinding(wifi, "accessPoints").as(aps =>
-        [...aps]
-            .filter(ap => ap.ssid) // skip hidden networks
-            .sort((a, b) => b.strength - a.strength)
-            .slice(0, 8)
-    )
-
-    // the same SSID is often broadcast on multiple bands, group by band
-    const band = (ap: AstalNetwork.AccessPoint): string => {
-        if (ap.frequency >= 5925) return "6GHz"
-        if (ap.frequency >= 5000) return "5GHz"
-        return "2.4GHz"
+    // rescan pulse feedback, same as bluetooth
+    const [rescanning, setRescanning] = createState(false)
+    let rescanToken = 0
+    function rescan() {
+        wifi.scan()
+        setRescanning(true)
+        const token = ++rescanToken
+        setTimeout(() => { if (token === rescanToken) setRescanning(false) }, 3000)
     }
 
-    // per-band state so group headers don't rebuild on every scan;
-    // rows update through the band's own accessor
+    // password prompt: replaces the pane content while set
+    interface Prompt {
+        ssid: string
+        ap: AstalNetwork.AccessPoint | null  // null = hidden join
+        /** row connect() so prompt-driven connects share pending/error */
+        onConnect?: (password: string) => void
+    }
+    const [prompt, setPrompt] = createState<Prompt | null>(null)
+
+    // bssid of the AP currently being connected, null when idle —
+    // pane-wide mutual exclusion for connection attempts
+    const [connectingBssid, setConnectingBssid] =
+        createState<string | null>(null)
+
+    const accessPoints = createBinding(wifi, "accessPoints").as(aps =>
+        [...aps].filter(ap => ap.ssid))
+
+    const known = (ap: AstalNetwork.AccessPoint) =>
+        savedNetworks.get().has(ap.ssid)
+    // nmcli needs the profile name, which may differ from the SSID
+    const profileId = (ap: AstalNetwork.AccessPoint) =>
+        savedNetworks.get().get(ap.ssid) ?? ap.ssid
+
+    function iface(): string | null {
+        return wifi.device?.get_iface() ?? null
+    }
+
+    function disconnect() {
+        const dev = iface()
+        if (dev) execAsync(["nmcli", "device", "disconnect", dev])
+            .catch(e => console.warn("wifi disconnect failed:", e))
+    }
+
+    function ApRow({ ap }: { ap: AstalNetwork.AccessPoint }) {
+        const [error, setError] = createState("")
+        const [detailsOpen, setDetailsOpen] = createState(false)
+        const [autoconnect, setAutoconnect] = createState<boolean | null>(null)
+        let errorToken = 0
+
+        // one connection attempt at a time, pane-wide: while any AP is
+        // connecting, all rows are blocked (busy) and only the in-flight
+        // one shows "Connecting…"
+        const pending = connectingBssid.as(b => b === ap.bssid)
+        const busy = connectingBssid.as(b => b !== null)
+
+        const active = createBinding(wifi, "activeAccessPoint")
+            .as(activeAp => activeAp?.bssid === ap.bssid)
+        const isKnown = savedNetworks.as(map => map.has(ap.ssid))
+
+        function fail(msg: string, e: unknown) {
+            console.warn(`wifi: ${msg}:`, e)
+            setConnectingBssid(null)
+            setError(msg)
+            const token = ++errorToken
+            setTimeout(() => { if (token === errorToken) setError("") }, 4000)
+        }
+
+        const status = createComputed(
+            [active, pending, error, isKnown],
+            (active, pending, error, known) => {
+                if (error) return error
+                if (pending) return "Connecting…"
+                if (active) return "Connected"
+                if (known) return `Known · ${ap.strength}%`
+                return `${ap.strength}%`
+            })
+        const statusClass = error.as(e => e ? ["status", "error"] : ["status"])
+
+        function connect(password?: string) {
+            // remember where we were: restore the previous network if
+            // this attempt fails
+            const previous = wifi.ssid || null
+            setConnectingBssid(ap.bssid)
+            let args: string[]
+            if (password) {
+                args = ["nmcli", "device", "wifi", "connect", ap.ssid,
+                    "password", password]
+            } else if (isKnown.get()) {
+                args = ["nmcli", "connection", "up", "id", profileId(ap)]
+            } else {
+                args = ["nmcli", "device", "wifi", "connect", ap.ssid]
+            }
+            const restore = () => {
+                if (previous && previous !== ap.ssid) {
+                    execAsync(["nmcli", "connection", "up", "id", previous])
+                        .catch(e => console.warn("wifi restore failed:", e))
+                }
+            }
+            // AstalNetwork.activate() fire-and-reports: it can return
+            // success in ~30ms without the connection becoming active.
+            // nmcli blocks until the connection is really up (or errors)
+            execAsync(args)
+                .then(() => setConnectingBssid(null))
+                .catch(e => {
+                    // known network with no stored secret: the activation
+                    // fails immediately — ask for the password instead
+                    if (!password && `${e}`.match(/secrets were required|password/i)) {
+                        setConnectingBssid(null)
+                        setPrompt({ ssid: ap.ssid, ap, onConnect: connect })
+                        return
+                    }
+                    restore()
+                    fail("Connection failed", e)
+                })
+            // bluez-grade hang guard: NM may never answer on some failures
+            setTimeout(() => {
+                if (connectingBssid.get() === ap.bssid) {
+                    restore()
+                    fail("Connection failed", "timed out")
+                }
+            }, 45_000)
+        }
+
+        function onClick() {
+            if (busy.get()) return
+            setError("")
+            if (active.get()) return disconnect()
+            if (!secured(ap)) return connect()
+            if (!isKnown.get())
+                return setPrompt({ ssid: ap.ssid, ap, onConnect: connect })
+            // known + secured: a saved connection without a stored PSK
+            // makes "connection up" fail after a dead agent round-trip
+            // (and pops the nm-applet modal for an already-aborted
+            // activation). Check for a stored secret first — secretless
+            // goes straight to our prompt
+            execAsync(["nmcli", "-s", "-t", "-f",
+                "802-11-wireless-security.psk", "connection", "show", profileId(ap)])
+                .then(out => {
+                    const psk = out.trim()
+                        .replace(/^802-11-wireless-security\.psk:/, "")
+                    if (psk) connect()
+                    else setPrompt({ ssid: ap.ssid, ap, onConnect: connect })
+                })
+                .catch(() => connect())
+        }
+
+        function toggleAutoconnect() {
+            const next = autoconnect.get() !== true
+            setAutoconnect(next)
+            execAsync(["nmcli", "connection", "modify", profileId(ap),
+                "connection.autoconnect", next ? "yes" : "no"])
+                .catch(e => {
+                    setAutoconnect(!next)
+                    console.warn("wifi autoconnect failed:", e)
+                })
+        }
+
+        function loadAutoconnect() {
+            if (autoconnect.get() !== null) return
+            execAsync(["nmcli", "-t", "-f", "connection.autoconnect",
+                "connection", "show", profileId(ap)])
+                .then(out => setAutoconnect(out.trim().endsWith("yes")))
+                .catch(() => { })
+        }
+
+        const sec = securityOf(ap)
+        const details: [string, string][] = [
+            ["BSSID", ap.bssid],
+            ["Band", `${bandOf(ap)} (ch ${Math.round(channelOf(ap.frequency))})`],
+            ["Max bitrate", ap.maxBitrate > 0
+                ? `${Math.round(ap.maxBitrate / 1000)} Mb/s` : "—"],
+            ["Security", sec],
+        ]
+
+        return <box orientation={Gtk.Orientation.VERTICAL}>
+            <box
+                cssName={"button"}
+                cssClasses={active.as(a => a ? ["wifiAp", "active"] : ["wifiAp"])}
+                // dim rows blocked while another network connects
+                css={connectingBssid.as(b =>
+                    b !== null && b !== ap.bssid ? "opacity: 0.45;" : "")}
+                spacing={5}
+            >
+                {/* gesture only on the info area: nested buttons must not
+                    re-trigger the row click */}
+                <box spacing={5} hexpand>
+                    <Gtk.GestureClick button={1} onPressed={onClick} />
+                    <image iconName={createBinding(ap, "iconName")} />
+                    <box orientation={Gtk.Orientation.VERTICAL} hexpand>
+                        <label label={ap.ssid} xalign={0}
+                            maxWidthChars={24}
+                            ellipsize={Pango.EllipsizeMode.END} />
+                        <label cssClasses={statusClass} label={status} xalign={0} />
+                    </box>
+                </box>
+                {secured(ap) &&
+                    <image iconName="changes-prevent-symbolic" pixelSize={12} />}
+                <button
+                    cssClasses={["details"]}
+                    tooltipText={"Network details"}
+                    onClicked={() => {
+                        const opening = !detailsOpen.get()
+                        setDetailsOpen(opening)
+                        if (opening && isKnown.get()) loadAutoconnect()
+                    }}
+                >
+                    <image iconName={detailsOpen.as(o => o
+                        ? "pan-up-symbolic"
+                        : "dialog-information-symbolic")} />
+                </button>
+                <button
+                    cssClasses={["forget"]}
+                    visible={createComputed([active, isKnown],
+                        (a, k) => !a && k)}
+                    tooltipText={"Forget network"}
+                    onClicked={() => {
+                        execAsync(["nmcli", "connection", "delete", "id", profileId(ap)])
+                            .catch(e => console.warn("wifi forget failed:", e))
+                    }}
+                >
+                    <image iconName="user-trash-symbolic" />
+                </button>
+            </box>
+            <revealer
+                revealChild={detailsOpen}
+                transitionDuration={150}
+                transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
+            >
+                <box cssClasses={["wifiDetails"]} orientation={Gtk.Orientation.VERTICAL}>
+                    {details.map(([key, value]) =>
+                        <box>
+                            <label cssClasses={["key"]} label={key} xalign={0} hexpand />
+                            <label
+                                cssClasses={["value"]}
+                                label={value}
+                                xalign={1}
+                                maxWidthChars={24}
+                                ellipsize={Pango.EllipsizeMode.END}
+                            />
+                        </box>
+                    )}
+                    <box
+                        visible={isKnown}
+                        cssName={"button"}
+                        spacing={5}
+                        cssClasses={autoconnect.as(a => a === true ? ["active"] : [""])}
+                    >
+                        <Gtk.GestureClick button={1} onPressed={toggleAutoconnect} />
+                        <label label={"Auto-connect"} hexpand xalign={0} />
+                        <image iconName={autoconnect.as(a => a === true
+                            ? "object-select-symbolic"
+                            : "window-close-symbolic")} />
+                    </box>
+                </box>
+            </revealer>
+        </box>
+    }
+
+    function PasswordPrompt({ p }: { p: Prompt }) {
+        let entry: Gtk.Entry | null = null
+        let ssidEntry: Gtk.Entry | null = null
+
+        function submit() {
+            const password = entry?.get_text() ?? ""
+            if (p.ap) {
+                p.onConnect?.(password)
+            } else {
+                const ssid = ssidEntry?.get_text() ?? ""
+                if (!ssid) return
+                const args = ["nmcli", "device", "wifi", "connect", ssid]
+                if (password) args.push("password", password)
+                args.push("hidden", "yes")
+                execAsync(args).catch(e => console.warn("wifi hidden join failed:", e))
+            }
+            setPrompt(null)
+        }
+
+        return <box cssClasses={["wifiPrompt"]} orientation={Gtk.Orientation.VERTICAL} spacing={10}>
+            <label
+                cssClasses={["title"]}
+                label={p.ap ? `Connect to ${p.ssid}` : "Join hidden network"}
+                xalign={0}
+            />
+            {!p.ap &&
+                <Gtk.Entry
+                    $={(self) => { ssidEntry = self }}
+                    placeholderText={"Network name (SSID)"}
+                    onActivate={submit}
+                />
+            }
+            <Gtk.Entry
+                $={(self) => { entry = self; self.grab_focus() }}
+                placeholderText={"Password (empty for open)"}
+                visibility={false}
+                inputPurpose={Gtk.InputPurpose.PASSWORD}
+                onActivate={submit}
+            />
+            <box spacing={8} halign={Gtk.Align.END}>
+                <button cssName={"button"} onClicked={() => setPrompt(null)}>
+                    <label label={"Cancel"} />
+                </button>
+                <button
+                    cssName={"button"}
+                    cssClasses={["confirm"]}
+                    onClicked={submit}
+                >
+                    <label label={"Connect"} />
+                </button>
+            </box>
+        </box>
+    }
+
     const bandNames = ["6GHz", "5GHz", "2.4GHz"]
     const bandStates = new Map(
         bandNames.map(b => [b, createState<AstalNetwork.AccessPoint[]>([])]))
@@ -63,52 +422,90 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
     const updateBands = () => {
         const byBand = new Map<string, AstalNetwork.AccessPoint[]>()
         for (const ap of accessPoints.get()) {
-            const b = band(ap)
+            const b = bandOf(ap)
             if (!byBand.has(b)) byBand.set(b, [])
             byBand.get(b)!.push(ap)
         }
+        // known first, then by strength
         for (const b of bandNames) {
             const [, setAps] = bandStates.get(b)!
-            setAps(byBand.get(b) ?? [])
+            setAps((byBand.get(b) ?? [])
+                .sort((a, c) => Number(known(c)) - Number(known(a))
+                    || c.strength - a.strength)
+                .slice(0, 8))
         }
         setVisibleBands(bandNames.filter(b => byBand.has(b)))
     }
     accessPoints.subscribe(updateBands)
     updateBands()
 
-    function ApRow({ ap }: { ap: AstalNetwork.AccessPoint }) {
-        const active = createBinding(wifi, "activeAccessPoint")
-            .as(activeAp => activeAp?.bssid === ap.bssid ? ["active"] : [""])
-        return (
-            <box cssName={"button"} cssClasses={active} spacing={5}>
-                <Gtk.GestureClick
-                    button={1}
-                    onPressed={() => {
-                        // only works for known networks, new
-                        // networks need a password prompt
-                        ap.activate(null).catch((e) => console.warn("wifi connect failed:", e))
-                    }}
-                />
-                <image iconName={createBinding(ap, "iconName")} />
-                <label label={ap.ssid} hexpand xalign={0} />
-            </box>
-        )
-    }
-
     return <box orientation={Gtk.Orientation.VERTICAL}>
-        <For each={visibleBands}>
-            {(b) => (
+        <With value={prompt}>
+            {(p) => p && <PasswordPrompt p={p} />}
+        </With>
+        <box
+            orientation={Gtk.Orientation.VERTICAL}
+            visible={prompt.as(p => p === null)}
+        >
+            <box visible={createBinding(wifi, "enabled").as(e => !e)}>
+                <box
+                    cssName={"button"}
+                    spacing={5}
+                >
+                    <Gtk.GestureClick button={1} onPressed={() => wifi.set_enabled(true)} />
+                    <image iconName="network-wireless-disabled-symbolic" />
+                    <label label={"Wi-Fi is off — Turn on"} hexpand xalign={0} />
+                </box>
+            </box>
+            <box orientation={Gtk.Orientation.VERTICAL} visible={createBinding(wifi, "enabled")}>
+                <box>
+                    <label label={"Networks"} cssClasses={["btSection"]} xalign={0} hexpand />
+                    <button
+                        cssClasses={["rescan"]}
+                        tooltipText={"Scan again"}
+                        sensitive={rescanning.as(r => !r)}
+                        onClicked={rescan}
+                    >
+                        <box>
+                            <Gtk.Spinner
+                                $={(self) => self.start()}
+                                visible={rescanning}
+                            />
+                            <image
+                                iconName="view-refresh-symbolic"
+                                visible={rescanning.as(r => !r)}
+                            />
+                        </box>
+                    </button>
+                </box>
+                {/* For in its own container: it re-appends children at
+                    the parent's end on every update, which would float
+                    the join row above the bands */}
                 <box orientation={Gtk.Orientation.VERTICAL}>
-                    <label
-                        label={b}
-                        cssClasses={["wifiBand"]}
-                        xalign={0}
-                    />
-                    <For each={bandStates.get(b)![0]}>
-                        {(ap) => <ApRow ap={ap} />}
+                    <For each={visibleBands}>
+                        {(b) => (
+                            <box orientation={Gtk.Orientation.VERTICAL}>
+                                <label
+                                    label={b}
+                                    cssClasses={["wifiBand"]}
+                                    xalign={0}
+                                />
+                                <For each={bandStates.get(b)![0]}>
+                                    {(ap) => <ApRow ap={ap} />}
+                                </For>
+                            </box>
+                        )}
                     </For>
                 </box>
-            )}
-        </For>
+                <box
+                    cssName={"button"}
+                    spacing={5}
+                >
+                    <Gtk.GestureClick button={1} onPressed={() => setPrompt({ ssid: "", ap: null })} />
+                    <image iconName="list-add-symbolic" />
+                    <label label={"Join hidden network…"} hexpand xalign={0} />
+                </box>
+            </box>
+        </box>
     </box>
 }

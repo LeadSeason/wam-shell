@@ -16,6 +16,7 @@ import { SliderSection } from "./SliderSection";
 import { MediaSection } from "./MediaSection";
 import { StatsSection } from "./StatsSection";
 import { WifiWidget } from "./toggleSection/wifi";
+import { WiredWidget } from "./toggleSection/wired";
 import { BluetoothWidget } from "./toggleSection/bluetooth";
 import { PowerProfilesWidget } from "./toggleSection/powerProfile";
 
@@ -230,6 +231,10 @@ export default function QSettings() {
                     <box $type="named" name="bluetooth" orientation={Gtk.Orientation.VERTICAL}>
                         <PaneHeader title="Bluetooth" onBack={() => setPane("main")} />
                         <BluetoothWidget pane={pane} name="bluetooth" />
+                    </box>
+                    <box $type="named" name="wired" orientation={Gtk.Orientation.VERTICAL}>
+                        <PaneHeader title="Wired" onBack={() => setPane("main")} />
+                        <WiredWidget pane={pane} name="wired" />
                     </box>
                     <box $type="named" name="powerprofiles" orientation={Gtk.Orientation.VERTICAL}>
                         <PaneHeader title="Power Mode" onBack={() => setPane("main")} />
