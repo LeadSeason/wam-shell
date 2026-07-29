@@ -358,6 +358,7 @@ export interface PanelConfig {
 const PANEL_WIDGETS = [
     "osicon", "workspaces", "clock", "stats",
     "tray", "quicksettings", "language", "notifications", "media",
+    "sleeptimer",
 ]
 
 function getPanelsConfig(): PanelConfig[] {

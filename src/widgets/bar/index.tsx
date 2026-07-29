@@ -16,6 +16,7 @@ import KeyboardLayout from "./barModules/keyboardLayout"
 import SysStats from "./barModules/sysStats"
 import QSettingsLabel from "./barModules/QSettingsLabel"
 import Media from "./barModules/media"
+import SleepTimer from "./barModules/sleepTimer"
 
 function trayWidgetFor(gdkMonitor: Gdk.Monitor) {
     if (Config.tray.onPanel) {
@@ -50,6 +51,7 @@ function moduleFor(name: string, gdkMonitor: Gdk.Monitor) {
         case "language": return <KeyboardLayout />
         case "notifications": return <SwayNC />
         case "media": return <Media monitor={gdkMonitor} />
+        case "sleeptimer": return <SleepTimer />
         default: return null
     }
 }
@@ -114,6 +116,7 @@ export default function Bar({ gdkMonitor, panel }: {
                 <Clock />
             </box>
             <box $type="end">
+                <SleepTimer />
                 {Config.quicksettings.statsOnPanel && <SysStats />}
                 {Config.media.enabled && <Media monitor={gdkMonitor} />}
                 {Config.tray.position == "left" && trayWidget}

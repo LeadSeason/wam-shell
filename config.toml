@@ -50,7 +50,7 @@
 #         in scss (e.g. class = "laptop" -> window.Bar.laptop). optional
 # left/center/right - widget lists. Available widgets:
 #                osicon, workspaces, clock, stats, tray, quicksettings,
-#                language, notifications
+#                language, notifications, media, sleeptimer
 #                The lists are authoritative: a listed widget always
 #                renders, regardless of global toggles like
 #                stats_on_panel or workspaces.enabled (those only apply
