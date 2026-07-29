@@ -412,7 +412,15 @@ export default class Config {
     static osIcon = getOsIcon()
     static desktopSession = getDesktopSession()
     static pendingUpdates = getPendingUpdateDaemonStatus()
-    static updatesThreshold = configData.arch_updates_threshold || 50
+    static updatesThreshold = (() => {
+        const v = configData.arch_updates_threshold
+        if (v === undefined) return 50
+        if (typeof v !== "number" || v < 0) {
+            console.error(`Config "arch_updates_threshold" must be a non-negative number, got "${v}"`)
+            return 50
+        }
+        return v
+    })()
 
     static swayGaps = (configData.sway_gaps === undefined) ? true : configData.sway_gaps
     static swayGapsSizeDefault = 10
