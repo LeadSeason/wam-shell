@@ -267,7 +267,11 @@ function getSleepTimerConfig() {
         presets = [10, 15, 20, 30, 45, 60]
     }
 
-    return { presets }
+    return {
+        presets,
+        // show the countdown on the panel while a timer runs
+        onPanel: get("on_panel", true),
+    }
 }
 
 function getNotificationsConfig() {

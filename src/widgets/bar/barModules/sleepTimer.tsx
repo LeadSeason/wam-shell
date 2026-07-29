@@ -1,16 +1,17 @@
 import { Gtk } from "ags/gtk4"
 import { createComputed } from "gnim"
+import Config from "../../../config"
 import { formatRemaining, paused, remaining, toggleSleepTimerPause } from "../../../lib/sleepTimer"
 
 // Sleep timer countdown (lib/sleepTimer). Only visible while a timer
-// is running, so it costs no panel space otherwise. Click pauses /
-// resumes the countdown.
+// is running (and sleep_timer.on_panel is on), so it costs no panel
+// space otherwise. Click pauses / resumes the countdown.
 export default function SleepTimer() {
     return <button
         cssClasses={createComputed([remaining, paused],
             (s, p) => ["sleepTimer", ...(s > 0 && p ? ["paused"] : [])])}
         tooltipText={paused.as(p => p ? "Resume the sleep timer" : "Pause the sleep timer")}
-        visible={remaining.as(s => s > 0)}
+        visible={remaining.as(s => s > 0 && Config.sleepTimer.onPanel)}
         onClicked={() => toggleSleepTimerPause()}
     >
         <box spacing={4}>

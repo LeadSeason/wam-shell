@@ -223,5 +223,8 @@
 #           values can always be typed in the entry. must be a
 #           non-empty list of positive numbers.
 #           default [10, 15, 20, 30, 45, 60]
+# on_panel - show the countdown on the panel while a timer runs.
+#            click it to pause/resume. default true
 # [sleep_timer]
 # presets = [10, 15, 20, 30, 45, 60]
+# on_panel = true
