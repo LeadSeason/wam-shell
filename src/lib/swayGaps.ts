@@ -18,7 +18,12 @@ export default class SwayGaps extends GObject.Object {
 
     #sway = Sway.get_default();
     #cache = Cache.get_default();
-    #conn = i3ipc.Connection.new(null)
+    // i3ipc.Connection.new throws on a stale I3SOCK — tolerate it like
+    // Sway.ok does, otherwise the QS toggle section dies with us
+    #conn: i3ipc.Connection | null = (() => {
+        try { return i3ipc.Connection.new(null) }
+        catch (e) { console.warn("swayGaps: no IPC connection:", e); return null }
+    })()
 
     #gapState: boolean = (this.#cache.data.gaps === undefined) ?
         false : this.#cache.data.gaps
@@ -54,6 +59,7 @@ export default class SwayGaps extends GObject.Object {
     }
 
     #applyGaps(force: boolean = false) {
+        if (!this.#sway.ok) return
         let size = this.#gapState ? this.#gapSize : 0
         if (size != this.#lastAppliedValue || force) {
             this.#sway.message_async(
@@ -72,7 +78,7 @@ export default class SwayGaps extends GObject.Object {
         // Ensure that correct state is applied when shell launches
         this.#applyGaps(true)
 
-        this.#conn.on("workspace",
+        this.#conn?.on("workspace",
             async (conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
                 if (event.change === "init") {
                     console.log("New Workspace Init, Setting size...")
