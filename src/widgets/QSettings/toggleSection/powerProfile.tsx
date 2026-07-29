@@ -40,7 +40,7 @@ export function PowerProfilesWidget() {
                         button={1}
                         onPressed={() => {
                             execAsync(["powerprofilesctl", "set", profile.profile])
-                                .catch((e) => console.error(e))
+                                .catch((e) => console.warn(e))
                         }}
                     />
                     <label label={profile.profile} hexpand xalign={0} />

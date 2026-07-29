@@ -33,7 +33,7 @@ function DeviceList({ endpoints, collapse }: {
                             // astal's set_is_default doesn't switch the
                             // default, wpctl does
                             execAsync(["wpctl", "set-default", ep.id.toString()])
-                                .catch((e) => console.error(e))
+                                .catch((e) => console.warn(e))
                             collapse()
                         }}
                     />

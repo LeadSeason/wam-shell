@@ -13,7 +13,7 @@ export function VpnButton() {
         activate={() => {
             execAsync(["mullvad", vpnStatus.get().connected ? "disconnect" : "connect"])
                 .then(() => refreshVpn())
-                .catch((e) => console.error(e))
+                .catch((e) => console.warn(e))
         }}
     />
 }

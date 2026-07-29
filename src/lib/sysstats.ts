@@ -93,7 +93,7 @@ const poll = createPoll("", INTERVAL, async () => {
 
     try {
     const step = (label: string, fn: () => void) => {
-        try { fn() } catch (e) { console.error(`sysstats ${label}:`, e) }
+        try { fn() } catch (e) { console.warn(`sysstats ${label}:`, e) }
     }
     step("cpu", () => {
         const c = readCpu()
