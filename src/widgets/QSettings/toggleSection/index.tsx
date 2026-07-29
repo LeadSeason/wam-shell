@@ -6,6 +6,7 @@ import { WifiButton } from "./wifi";
 import { BluetoothButton } from "./bluetooth";
 import { WiredButton } from "./wired";
 import { NightLightButton, DarkStyleButton, AirplaneModeButton } from "./miscToggles";
+import { SleepTimerButton, SleepTimerWidget } from "./sleepTimer";
 import { VpnButton } from "./vpn";
 
 /**
@@ -38,10 +39,17 @@ export function ToggleSection({ onNavigate }: { onNavigate: (pane: string) => vo
                 <DarkStyleButton />
                 <VpnButton />
                 <AirplaneModeButton />
+                <SleepTimerButton
+                    activeDropdown={activeDropdownIndex}
+                    setActiveDropdown={setActiveDropdownIndex}
+                    dropdownIndex={2} />
             </Gtk.FlowBox>
             <SwayGapsWidget
                 activeDropdown={activeDropdownIndex}
                 dropdownIndex={1} />
+            <SleepTimerWidget
+                activeDropdown={activeDropdownIndex}
+                dropdownIndex={2} />
 
         </box>),
         reset() {
