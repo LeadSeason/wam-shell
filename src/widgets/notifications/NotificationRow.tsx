@@ -3,6 +3,7 @@ import AstalNotifd from "gi://AstalNotifd?version=0.1"
 import GdkPixbuf from "gi://GdkPixbuf?version=2.0"
 import Pango from "gi://Pango?version=1.0"
 import { relTime, timeTick } from "../../lib/notifd"
+import { safeMarkup } from "../../lib/utils"
 
 function isPath(image: string | null): image is string {
     return !!image && (image.startsWith("/") || image.startsWith("file://"))
@@ -79,7 +80,7 @@ export default function NotificationRow({ n }: { n: AstalNotifd.Notification }) 
             {n.get_body() !== "" &&
                 <label
                     cssClasses={["body"]}
-                    label={n.get_body()}
+                    label={safeMarkup(n.get_body())}
                     useMarkup
                     xalign={0}
                     wrap

@@ -6,6 +6,7 @@ import Pango from "gi://Pango?version=1.0"
 import { createState, onCleanup } from "gnim"
 import Config from "../../config"
 import { anyPopupHovered, removePopup, setPopupHovered } from "../../lib/notifd"
+import { safeMarkup } from "../../lib/utils"
 
 function isPath(image: string | null): image is string {
     return !!image && (image.startsWith("/") || image.startsWith("file://"))
@@ -256,7 +257,7 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
                     {body !== "" &&
                         <label
                             cssClasses={["body"]}
-                            label={body}
+                            label={safeMarkup(body)}
                             useMarkup
                             xalign={0}
                             wrap
