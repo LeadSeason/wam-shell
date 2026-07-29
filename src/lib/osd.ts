@@ -118,13 +118,19 @@ createBinding(brightness, "screen").subscribe(() => {
 // media (mpris): show the track when it changes. The bar is the
 // position at show time, the icon the cover art when already cached.
 const mpris = AstalMpris.get_default()
-const hookedPlayers = new Set<AstalMpris.Player>()
+const hookedPlayers = new Map<AstalMpris.Player, () => void>()
 const hookMedia = (list: AstalMpris.Player[]) => {
+    // release players that quit, their subscriptions keep them alive
+    for (const [p, unsub] of hookedPlayers) {
+        if (!list.includes(p)) {
+            unsub()
+            hookedPlayers.delete(p)
+        }
+    }
     for (const p of list) {
         if (hookedPlayers.has(p)) continue
-        hookedPlayers.add(p)
         let lastTitle = p.title
-        createBinding(p, "title").subscribe(() => {
+        hookedPlayers.set(p, createBinding(p, "title").subscribe(() => {
             if (!p.title || p.title === lastTitle) return
             lastTitle = p.title
             show({
@@ -135,7 +141,7 @@ const hookMedia = (list: AstalMpris.Player[]) => {
                 label: `${p.title}${p.artist ? ` — ${p.artist}` : ""}`,
                 over: false,
             }, "media")
-        })
+        }))
     }
 }
 createBinding(mpris, "players").subscribe(() => hookMedia(mpris.players))
