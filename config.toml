@@ -64,7 +64,7 @@
 #         in scss (e.g. class = "laptop" -> window.Bar.laptop). optional
 # left/center/right - widget lists. Available widgets:
 #                osicon, workspaces, clock, stats, tray, quicksettings,
-#                language, notifications, media, sleeptimer
+#                language, notifications, media, sleeptimer, harvest
 #                The lists are authoritative: a listed widget always
 #                renders, regardless of global toggles like
 #                stats_on_panel or workspaces.enabled (those only apply
@@ -263,3 +263,39 @@
 # presets = [10, 15, 20, 30, 45, 60]
 # on_panel = true
 # dim = true
+
+# [harvest] - Harvest time tracking (getharvest.com): running timer on the
+#             panel + start/stop/resume from quick settings
+# Auth: create a Personal Access Token at id.getharvest.com (Developers
+# section), note the token and your account id, and put them in
+# ~/.config/wam-shell/harvest.env (chmod 600), NOT in this file:
+#   HARVEST_TOKEN=...
+#   HARVEST_ACCOUNT_ID=...
+# The same names as real environment variables also work and win over the
+# file. Without credentials the widget stays off, even when enabled.
+#
+# enabled - master toggle (requires the credentials above). default false
+# on_panel - show the timer on the panel: elapsed while running, the day
+#            total when idle inside work hours. left-click opens the
+#            picker popup, right-click stops/resumes. default true.
+#            position it like any other widget: "harvest" in a
+#            [[panel]] list
+# poll_interval - seconds between syncs with Harvest. clamped to >= 15.
+#                 default 30
+# recents - recent project/task pairs listed in the quick settings
+#           dropdown. default 5
+# work_start / work_end - "HH:MM". when both are set the panel widget also
+#           shows while idle inside this window (dimmed, with the day
+#           total). windows may wrap midnight ("22:00"-"06:00"). default
+#           empty = the widget only appears while a timer runs
+# mask_when_sharing - while screen sharing, hide project/task from the
+#           panel (tooltip included) and show only icon + elapsed with a
+#           .sharing indicator. default true
+# [harvest]
+# enabled = false
+# on_panel = true
+# poll_interval = 30
+# recents = 5
+# work_start = ""
+# work_end = ""
+# mask_when_sharing = true

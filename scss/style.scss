@@ -11,6 +11,7 @@
 @use "widgets/notifications.scss";
 @use "widgets/launcher.scss";
 @use "widgets/mediaPopup.scss";
+@use "widgets/harvestPopup.scss";
 
 // user overrides always win (gitignored, created if missing)
 @use "user.scss";

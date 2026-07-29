@@ -21,6 +21,7 @@ import { useOurs } from "./src/lib/notifd"
 import "./src/widgets/notifications"
 import "./src/widgets/launcher"
 import "./src/widgets/mediaPopup"
+import "./src/widgets/harvestPopup"
 
 
 function matchMonitor(wanted: string[], m: Gdk.Monitor): boolean {

@@ -17,6 +17,7 @@ import SysStats from "./barModules/sysStats"
 import QSettingsLabel from "./barModules/QSettingsLabel"
 import Media from "./barModules/media"
 import SleepTimer from "./barModules/sleepTimer"
+import HarvestTimer from "./barModules/harvest"
 
 function trayWidgetFor(gdkMonitor: Gdk.Monitor) {
     if (Config.tray.onPanel) {
@@ -52,6 +53,7 @@ function moduleFor(name: string, gdkMonitor: Gdk.Monitor) {
         case "notifications": return <SwayNC />
         case "media": return <Media monitor={gdkMonitor} />
         case "sleeptimer": return <SleepTimer />
+        case "harvest": return <HarvestTimer monitor={gdkMonitor} />
         default: return null
     }
 }
@@ -114,6 +116,7 @@ export default function Bar({ gdkMonitor, panel }: {
             </box>
             <box $type="center">
                 <Clock />
+                <HarvestTimer monitor={gdkMonitor} />
             </box>
             <box $type="end">
                 <SleepTimer />
