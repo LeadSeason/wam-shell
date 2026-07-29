@@ -86,19 +86,21 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
     // IPC dead (stale socket, sway not running): show nothing
     if (!sway.ok) return <></>
 
-    const displayName = monitor.get_connector()
+    // connector can be null at construction (monitor still initializing):
+    // make it a computed dep so the list recomputes when it arrives
+    const displayName = createBinding(monitor, "connector")
 
     const swayWorkspacesList = createComputed(
-        [createBinding(sway, "wss"), createBinding(sway, "tree"), createBinding(sway, "focused")],
+        [createBinding(sway, "wss"), createBinding(sway, "tree"), createBinding(sway, "focused"), displayName],
         (wss) => {
             return wss.filter((ws) => {
-                if (ws.output !== displayName) return false;
+                if (ws.output !== displayName.get()) return false;
                 if (!Config.workspaces.hideEmpty) return true;
                 if (ws.id === sway.focused) return true;
 
                 // workspaceList doesn't contain child nodes, look them up in the tree
                 const wsNode = sway.tree
-                    .find((output) => output.name === displayName)
+                    .find((output) => output.name === displayName.get())
                     ?.nodes.find((node) => node.id === ws.id);
                 if (!wsNode) return true;  // can't tell, keep it
 
@@ -126,7 +128,7 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
                         // 1st find: get the display from tree root
                         // 2nt find: find the correct workspace from outputs workspaces
                         // This is needed because workspaceList doesn't contain the child nodes
-                        let workspaceNode = sway.tree.find(i => i.name === displayName)?.nodes.find(i => i.id === workspace.id) as Node
+                        let workspaceNode = sway.tree.find(i => i.name === displayName.get())?.nodes.find(i => i.id === workspace.id) as Node
                         if (workspaceNode == undefined)
                             return <box />  // Remove workplaces that failed to find
 

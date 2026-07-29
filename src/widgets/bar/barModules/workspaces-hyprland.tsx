@@ -17,7 +17,9 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
         return <image iconName={icon} />
     }
 
-    const displayName = monitor.get_connector()
+    // connector can be null at construction (monitor still initializing):
+    // bind it and recompute when it arrives instead of reading it once
+    const displayName = createBinding(monitor, "connector")
 
     // recompute when the workspace list, the focus, or any workspace's
     // clients change — the workspaces binding alone does not fire when a
@@ -39,7 +41,7 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
         const focused = hyprland.focusedWorkspace
         setList(hyprland.workspaces
             // id < 0 are special workspaces (scratchpad)
-            .filter((ws) => ws.id > 0 && ws.monitor?.name === displayName)
+            .filter((ws) => ws.id > 0 && ws.monitor?.name === displayName.get())
             .filter((ws) =>
                 !Config.workspaces.hideEmpty ||
                 ws.clients.length > 0 ||
@@ -67,6 +69,7 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
         compute()
     }))
     disposers.push(createBinding(hyprland, "focusedWorkspace").subscribe(compute))
+    disposers.push(displayName.subscribe(compute))
     hook(hyprland.workspaces)
     compute()
 
