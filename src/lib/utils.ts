@@ -12,7 +12,9 @@ import Pango from "gi://Pango?version=1.0";
  * @param path Path to a file
  */
 export function isFile(path: string): boolean {
-    return GLib.file_test(path, GLib.FileTest.EXISTS)
+    // IS_REGULAR, not EXISTS: a directory at the expected path must not
+    // pass (a "config.toml" directory, a cache dir named like a cover…)
+    return GLib.file_test(path, GLib.FileTest.IS_REGULAR)
 }
 
 /**
