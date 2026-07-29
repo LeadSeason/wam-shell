@@ -15,17 +15,25 @@ export default function Tray({ filter, iconSize = 16, pill = false, spacing = Co
 
     // AppImage-based apps ship their icons outside the icon theme and
     // point to them via IconThemePath, which GTK does not search by
-    // default. Register each item's path so its icon resolves.
+    // default. Register each item's path so its icon resolves. Track
+    // which live item provided each path so the bookkeeping stays
+    // bounded (GTK4 has no icon-theme path removal, so the theme keeps
+    // a retired path, but the map no longer grows without bound).
     const iconTheme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default()!)
-    const addedPaths = new Set<string>()
+    const pathOwners = new Map<string, Set<string>>() // path -> item ids
 
     registry.connect("item-added", (_, item_id) => {
         const t = registry.get_item(item_id)
 
         const path = t.iconThemePath
-        if (path && !addedPaths.has(path)) {
-            addedPaths.add(path)
-            iconTheme.add_search_path(path)
+        if (path) {
+            let owners = pathOwners.get(path)
+            if (!owners) {
+                owners = new Set()
+                pathOwners.set(path, owners)
+                iconTheme.add_search_path(path)
+            }
+            owners.add(item_id)
         }
 
         setTrayItems((items) => {
@@ -37,6 +45,12 @@ export default function Tray({ filter, iconSize = 16, pill = false, spacing = Co
     })
 
     registry.connect("item-removed", (_, item_id) => {
+        // drop this item's claim on any path it owned; entries whose
+        // last owner left are pruned so the map tracks live items only
+        for (const [path, owners] of pathOwners) {
+            if (owners.delete(item_id) && owners.size === 0)
+                pathOwners.delete(path)
+        }
         // Filter on item.get_item_id() NOT item.get_id().
         setTrayItems((items) =>
             items.filter((item) => item.get_item_id() !== item_id)
