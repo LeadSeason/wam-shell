@@ -7,7 +7,7 @@ import { Gtk } from "ags/gtk4";
 import GObject from "ags/gobject";
 
 function focus_workspace(sway: Sway, ws: any) {
-    sway.message_async(
+    sway.message(
         `mouse_warping output; workspace number ${ws.num}; mouse_warping container`
     );
 }

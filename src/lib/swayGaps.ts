@@ -62,7 +62,7 @@ export default class SwayGaps extends GObject.Object {
         if (!this.#sway.ok) return
         let size = this.#gapState ? this.#gapSize : 0
         if (size != this.#lastAppliedValue || force) {
-            this.#sway.message_async(
+            this.#sway.message(
                 `gaps inner all set ${size}; gaps outer all set ${size}`
             )
             this.#lastAppliedValue = size

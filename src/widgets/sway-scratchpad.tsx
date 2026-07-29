@@ -56,7 +56,7 @@ export default function Scratchpad() {
     }
 
     function openApp(app: Node) {
-        sway.message_async(`[con_id=${app.id}] scratchpad show`)
+        sway.message(`[con_id=${app.id}] scratchpad show`)
         hide()
         return
     }

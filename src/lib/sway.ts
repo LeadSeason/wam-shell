@@ -47,11 +47,11 @@ export default class Sway extends GObject.Object {
         return this.#wss
     }
 
+    // i3ipc.Connection.message() is synchronous and blocks the main loop
+    // for one IPC round-trip. Fine for one-shot commands; the event-driven
+    // reads in the constructor are coalesced (50ms) to avoid burst stalls.
     message (message: string): Commands {
         return JSON.parse(this.#i3conn.message(i3ipc.MessageType.COMMAND, message));
-    }
-    async message_async (message: string): Promise<Commands> {
-        return await JSON.parse(this.#i3conn.message(i3ipc.MessageType.COMMAND, message));
     }
 
     constructor() {
