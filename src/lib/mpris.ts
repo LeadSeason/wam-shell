@@ -73,7 +73,11 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
         if (isFile(path)) return setLocal(`file://${path}`)
         setLocal("")
         execAsync(["curl", "-sL", "--fail", url, "-o", path])
-            .then(() => setLocal(`file://${path}`))
+            .then(() => {
+                // a track change during the download must not let the
+                // older cover overwrite the newer one
+                if (cover.get() === url) setLocal(`file://${path}`)
+            })
             .catch((e) => console.warn("cover download failed:", e))
     }
     cover.subscribe(update)
