@@ -1,5 +1,5 @@
 import Gtk from "gi://Gtk?version=4.0";
-import { Accessor, For, With } from "gnim";
+import { Accessor, createComputed, For, With } from "gnim";
 import {
     cpu, ram, gpu, gpuTemp, netDown, netUp,
     cpuHist, ramHist, gpuHist, formatRate,
@@ -49,7 +49,8 @@ export function StatsSection() {
         <StatRow
             name="CPU"
             className="statCpu"
-            value={loadAvg.as(l => `${cpu.get()}%  load ${l.toFixed(2)}`)}
+            value={createComputed([cpu, loadAvg],
+                (c, l) => `${c}%  load ${l.toFixed(2)}`)}
             hist={cpuHist}
         />
         <StatRow
