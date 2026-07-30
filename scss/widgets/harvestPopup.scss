@@ -1,0 +1,100 @@
+@use "../theme/active-theme.scss" as t;
+@use "../conf.scss" as s;
+@use "sass:color";
+
+window.HarvestPopup {
+    background: transparent;
+
+    .harvestPopup {
+        background: t.$crust;
+        color: t.$text;
+        border-radius: s.$radius;
+        border: solid 2px color.mix(t.$surface0, transparent, 60%);
+        margin: 5px 12px 12px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        padding: 12px;
+
+        .elapsed {
+            font-size: 1.4em;
+            font-weight: bold;
+            &.dim {
+                font-size: 1em;
+                color: t.$subtext0;
+            }
+        }
+
+        // Harvest brand orange (conf.scss) on the header icons
+        .harvestIcon {
+            color: s.$harvest-orange;
+        }
+
+        // "New Time Entry" form, in the style of Harvest's own widget
+        .title {
+            font-weight: bold;
+        }
+        .duration {
+            color: t.$subtext0;
+        }
+        // inline selector list: themed container, no popup resizing
+        .ddList {
+            margin: 2px 0 6px;
+            padding: 6px;
+            border-radius: s.$radius;
+            background-color: t.$base;
+            border: solid 2px t.$accent20;
+        }
+
+        button {
+            margin: 2px 0;
+            padding: 4px 10px;
+            border-radius: s.$radius;
+            background-color: t.$surface050;
+            border: solid 2px t.$accent20;
+
+            &:hover {
+                background-color: t.$accent20;
+                border-color: t.$accent40;
+            }
+            &:active {
+                background-color: t.$accent40;
+                border-color: t.$accent40;
+            }
+            &:disabled {
+                opacity: 0.35;
+            }
+
+            &.start {
+                background-color: t.$green;
+                border-color: color.mix(t.$green, t.$crust, 70%);
+                color: t.$crust;
+                &:hover {
+                    background-color: color.mix(t.$green, t.$text, 88%);
+                }
+            }
+
+            &.stop {
+                background-color: color.mix(t.$red, transparent, 75%);
+                border-color: color.mix(t.$red, transparent, 55%);
+                &:hover {
+                    background-color: color.mix(t.$red, transparent, 60%);
+                }
+            }
+
+            &.confirm {
+                background-color: color.mix(t.$accent, transparent, 55%);
+                border-color: color.mix(t.$accent, transparent, 40%);
+                &:hover {
+                    background-color: color.mix(t.$accent, transparent, 40%);
+                }
+            }
+        }
+
+        // section titles inside the popup ("Resume")
+        .section {
+            font-size: s.$font-small;
+            font-weight: bold;
+            color: t.$subtext0;
+            margin-top: 4px;
+        }
+    }
+}

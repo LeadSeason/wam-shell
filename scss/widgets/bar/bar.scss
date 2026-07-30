@@ -42,7 +42,7 @@ window.Bar {
     // per-widget spacing: override margins on the widget's class, e.g.
     // .sysStats { margin-right: 12px; }
     // classes: .osIcon, workspaces, clock button, .sysStats, .sleepTimer, .trayItem,
-    // .QSettings, .keyboardLayout, .swayNC, .media
+    // .QSettings, .keyboardLayout, .swayNC, .media, .harvest
 
     clock button,
     .osIcon,
@@ -94,6 +94,53 @@ window.Bar {
             &:disabled {
                 opacity: 0.35;
             }
+        }
+    }
+
+    .harvest {
+        border-radius: s.$radius;
+        margin: s.$padding-small s.$padding;
+        padding: 1px s.$padding;
+        // framed by default so it reads as clickable, not just text
+        background-color: t.$surface050;
+        border: solid 2px t.$accent20;
+
+        &:hover {
+            background-color: t.$accent20;
+            border: solid 2px t.$accent40;
+        }
+
+        // Harvest brand orange (conf.scss), recolors the symbolic icon
+        .harvestIcon {
+            color: s.$harvest-orange;
+        }
+
+        // compact pause/resume button, same treatment as media controls
+        button.pp {
+            padding: 0 3px;
+            border-radius: s.$radius;
+            &:hover {
+                background-color: t.$accent10;
+            }
+            &:disabled {
+                opacity: 0.35;
+            }
+        }
+
+        // idle inside work hours: quiet, the day total is ambient info
+        &.idle {
+            opacity: 0.6;
+        }
+
+        // paused: dimmed like idle, the frozen elapsed says why
+        &.paused {
+            opacity: 0.6;
+        }
+
+        // masked while screen sharing: red "recording" tint on the icon,
+        // the widget hides the entry details itself
+        &.sharing .harvestIcon {
+            color: t.$red;
         }
     }
 

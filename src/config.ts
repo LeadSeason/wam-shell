@@ -341,6 +341,50 @@ function getSleepTimerConfig() {
     }
 }
 
+function getHarvestConfig() {
+    const h = configData.harvest ?? {}
+    const get = (key: string, fallback: any) => h[key] ?? configData[key] ?? fallback
+
+    let pollInterval = get("poll_interval", 10)
+    if (typeof pollInterval !== "number" || pollInterval <= 0) {
+        console.error(`Config "harvest.poll_interval" must be a positive number, got "${pollInterval}"`)
+        pollInterval = 10
+    }
+    // floor: a config typo must not throttle the Harvest account
+    if (pollInterval < 5) pollInterval = 5
+
+    let recents = get("recents", 5)
+    if (typeof recents !== "number" || recents <= 0) {
+        console.error(`Config "harvest.recents" must be a positive number, got "${recents}"`)
+        recents = 5
+    }
+
+    // both keys must hold "HH:MM" or the window is disabled
+    const hhmm = (v: any) => typeof v === "string" && /^([01]?\d|2[0-3]):[0-5]\d$/.test(v)
+    let workStart = get("work_start", "")
+    let workEnd = get("work_end", "")
+    if (!hhmm(workStart) || !hhmm(workEnd)) {
+        if (workStart !== "" || workEnd !== "") {
+            console.error(`Config "harvest.work_start"/"harvest.work_end" must both be "HH:MM", got "${workStart}"/"${workEnd}"; disabling the window`)
+        }
+        workStart = ""
+        workEnd = ""
+    }
+
+    return {
+        enabled: get("enabled", false),
+        // section-only lookup, NOT the usual top-level fallback: the
+        // tray's top-level on_panel key would leak in otherwise
+        onPanel: h["on_panel"] ?? true,
+        pollInterval,
+        recents,
+        workStart,
+        workEnd,
+        // while screen sharing, mask entry details on the panel
+        maskWhenSharing: get("mask_when_sharing", true),
+    }
+}
+
 function getNotificationsConfig() {
     const n = configData.notifications ?? {}
     const get = (key: string, fallback: any) => n[key] ?? configData[key] ?? fallback
@@ -439,7 +483,7 @@ export interface PanelConfig {
 const PANEL_WIDGETS = [
     "osicon", "workspaces", "clock", "stats",
     "tray", "quicksettings", "language", "notifications", "media",
-    "sleeptimer",
+    "sleeptimer", "harvest",
 ]
 
 function getPanelsConfig(): PanelConfig[] {
@@ -544,6 +588,7 @@ export default class Config {
     static osd = getOsdConfig()
     static notifications = getNotificationsConfig()
     static sleepTimer = getSleepTimerConfig()
+    static harvest = getHarvestConfig()
 
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`

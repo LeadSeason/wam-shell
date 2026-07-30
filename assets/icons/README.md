@@ -16,3 +16,6 @@ SVGs here (keep the category dirs + `index.theme` in sync — contexts
 must be standard: actions, status, devices, apps, categories,
 mimetypes, places, emblems; non-standard ones like Adwaita's
 `legacy`/`ui` do not resolve).
+
+`harvest-symbolic.svg` is an exception: an original drawing (the
+Harvest "H" mark), not an Adwaita copy.
