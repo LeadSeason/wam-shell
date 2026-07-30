@@ -449,94 +449,113 @@ function PausedEditor() {
     )
 }
 
-function IdleContent() {
-    // resume targets: paused first, then today's stopped entries, padded
-    // from the wide recents window; deduped by id, capped by config
-    const resumables = createComputed(
-        [Harvest.paused, Harvest.recentStopped, Harvest.recents],
-        (p, stopped, rec) => {
-            const out: Harvest.Entry[] = []
-            const seen = new Set<number>()
-            for (const e of [p, ...stopped, ...rec]) {
-                if (!e || seen.has(e.id)) continue
-                seen.add(e.id)
-                out.push(e)
-                if (out.length >= Config.harvest.recents) break
-            }
-            return out
-        },
-    )
-    // the new-entry form and resume list sit behind an expander: the
-    // compact default view is just the timer state and totals
-    const [expanded, setExpanded] = createState(false)
+// one timeline row: start time, client — project · task (task is the
+// visual primary), hours, notes on a dim second line when set. Stopped
+// entries resume on click; the running entry is highlighted, inert.
+function TimelineRow({ entry }: { entry: Harvest.Entry }) {
+    const esc = (s: string) => GLib.markup_escape_text(s, -1)
+    const time = Harvest.startTimeLabel(entry)
+    const isPaused = Harvest.paused.as(p => p?.id === entry.id)
+
+    const cssClasses = isPaused.as(p => [
+        "todayRow",
+        ...(entry.isRunning ? ["running"] : []),
+        ...(p ? ["paused"] : []),
+    ])
 
     return (
-        <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-            <box
-                spacing={8}
-                visible={createComputed(
-                    [Harvest.paused, Harvest.dayTotal],
-                    (p, t) => p !== null || t > 0,
-                )}
-            >
-                <image cssClasses={["harvestIcon"]} iconName="harvest-symbolic" pixelSize={20} />
-                {/* keyed on the entry id: in-place updates (a successful
-                hours edit) must not rebuild the editor under the user */}
-                <With value={Harvest.paused.as(p => p?.id ?? null)}>
-                    {id =>
-                        id !== null ? (
-                            <PausedEditor />
-                        ) : (
-                            <label
-                                cssClasses={["elapsed", "dim"]}
-                                hexpand
-                                xalign={0}
-                                label={Harvest.dayTotal.as(
-                                    t => `Today: ${Harvest.formatElapsed(t)}`,
-                                )}
-                            />
-                        )
-                    }
-                </With>
-            </box>
-            <button cssClasses={["ddButton"]} onClicked={() => setExpanded(!expanded.get())}>
-                <box>
-                    <label xalign={0} hexpand label={"Add or resume entry"} />
-                    <image
-                        iconName={expanded.as(e => (e ? "pan-up-symbolic" : "pan-down-symbolic"))}
+        <button
+            cssClasses={cssClasses}
+            sensitive={!entry.isRunning && Harvest.busy.as(b => !b)}
+            tooltipText={entryLabel(entry)}
+            onClicked={() => {
+                if (!entry.isRunning) Harvest.resumeEntry(entry)
+            }}
+        >
+            <box spacing={6}>
+                <label cssClasses={["rowTime"]} widthChars={5} xalign={0} label={time} />
+                <box orientation={Gtk.Orientation.VERTICAL} hexpand>
+                    <label
+                        xalign={0}
+                        useMarkup
+                        maxWidthChars={32}
+                        ellipsize={Pango.EllipsizeMode.END}
+                        label={`<span alpha="60%">${esc(`${entry.clientName} — ${entry.projectName} · `)}</span><b>${esc(entry.taskName)}</b>`}
+                    />
+                    <label
+                        cssClasses={["rowNotes"]}
+                        xalign={0}
+                        maxWidthChars={40}
+                        ellipsize={Pango.EllipsizeMode.END}
+                        visible={entry.notes !== ""}
+                        label={entry.notes}
                     />
                 </box>
-            </button>
-            <revealer revealChild={expanded}>
-                <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-                    <NewEntryForm onCancel={() => setExpanded(false)} />
-                    <box
-                        orientation={Gtk.Orientation.VERTICAL}
-                        spacing={2}
-                        visible={resumables.as(r => r.length > 0)}
-                    >
-                        <label cssClasses={["section"]} label={"Resume"} xalign={0} />
-                        <For each={resumables}>
-                            {(e: Harvest.Entry) => (
-                                <button
-                                    cssClasses={["resume"]}
-                                    sensitive={Harvest.busy.as(b => !b)}
-                                    tooltipText={entryLabel(e)}
-                                    onClicked={() => Harvest.resumeEntry(e)}
-                                >
-                                    <label
-                                        xalign={0}
-                                        hexpand
-                                        maxWidthChars={38}
-                                        ellipsize={Pango.EllipsizeMode.END}
-                                        label={entryLabel(e)}
-                                    />
-                                </button>
-                            )}
-                        </For>
-                    </box>
+                <label cssClasses={["dim"]} label={Harvest.formatElapsed(entry.hours * 3600)} />
+            </box>
+        </button>
+    )
+}
+
+// the entire day as a timeline, ascending by start time (lib sorts)
+function Timeline() {
+    return (
+        <box
+            orientation={Gtk.Orientation.VERTICAL}
+            spacing={4}
+            visible={Harvest.todayEntries.as(r => r.length > 0)}
+        >
+            <label cssClasses={["section"]} label={"Today"} xalign={0} />
+            <Gtk.ScrolledWindow
+                vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                hscrollbarPolicy={Gtk.PolicyType.NEVER}
+                propagateNaturalHeight
+                maxContentHeight={300}
+            >
+                <box orientation={Gtk.Orientation.VERTICAL} spacing={2}>
+                    <For each={Harvest.todayEntries}>
+                        {(e: Harvest.Entry) => <TimelineRow entry={e} />}
+                    </For>
                 </box>
-            </revealer>
+            </Gtk.ScrolledWindow>
+        </box>
+    )
+}
+
+// paused entry gets its own card: hours editor plus a resume button
+function PausedCard() {
+    return (
+        <box spacing={8} visible={Harvest.paused.as(p => p !== null)}>
+            <image cssClasses={["harvestIcon"]} iconName="harvest-symbolic" pixelSize={20} />
+            {/* keyed on the entry id: in-place updates (a successful
+            hours edit) must not rebuild the editor under the user */}
+            <With value={Harvest.paused.as(p => p?.id ?? null)}>
+                {id => (id !== null ? <PausedEditor /> : <></>)}
+            </With>
+            <button
+                cssClasses={["resumeNow"]}
+                sensitive={Harvest.busy.as(b => !b)}
+                tooltipText={"Resume"}
+                onClicked={() => Harvest.resumeLast()}
+            >
+                <image iconName="media-playback-start-symbolic" />
+            </button>
+        </box>
+    )
+}
+
+function Footer({ onNewEntry }: { onNewEntry: () => void }) {
+    return (
+        <box cssClasses={["footer"]}>
+            <label
+                cssClasses={["elapsed", "dim"]}
+                hexpand
+                xalign={0}
+                label={Harvest.dayTotal.as(t => `Today: ${Harvest.formatElapsed(t)}`)}
+            />
+            <button cssClasses={["newEntry"]} onClicked={onNewEntry}>
+                <label label={"+ New entry"} />
+            </button>
         </box>
     )
 }
@@ -545,6 +564,8 @@ function PopupContent() {
     // running section always built and visibility-toggled, never lazily
     // inserted: a <With> child created when the timer starts would be
     // re-appended *below* the idle content instead of taking the top
+    const [formOpen, setFormOpen] = createState(false)
+
     return (
         <box
             cssClasses={["harvestPopup"]}
@@ -560,7 +581,12 @@ function PopupContent() {
                 <RunningHeader />
                 <Gtk.Separator />
             </box>
-            <IdleContent />
+            <PausedCard />
+            <Timeline />
+            <Footer onNewEntry={() => setFormOpen(!formOpen.get())} />
+            <revealer revealChild={formOpen}>
+                <NewEntryForm onCancel={() => setFormOpen(false)} />
+            </revealer>
         </box>
     )
 }

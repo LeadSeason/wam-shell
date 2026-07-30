@@ -136,6 +136,10 @@ export { lastStopped }
 // today's stopped entries, most recently updated first (resume targets)
 const [recentStopped, setRecentStopped] = createState<Entry[]>([])
 export { recentStopped }
+// the full day as a timeline for the popup: every entry of today,
+// ascending by start time (see dayTimeline)
+const [todayEntries, setTodayEntries] = createState<Entry[]>([])
+export { todayEntries }
 // an entry the user "paused": stopped with intent to resume. Purely a UI
 // distinction — the API only knows start/stop, and restart keeps
 // accumulating on the same row (verified against the live API). Cleared
@@ -450,6 +454,28 @@ function adoptRunning(entry: Entry | null) {
     if (prev?.id !== entry?.id) refreshDayTotal()
 }
 
+// timeline order for the popup: ascending by start time; entries
+// without a start (manual) slot in by updatedAt
+export function dayTimeline(entries: Entry[]): Entry[] {
+    const key = (e: Entry): number => {
+        const start = startMs(e)
+        if (start !== null) return start
+        const updated = Date.parse(e.updatedAt)
+        return Number.isNaN(updated) ? 0 : updated
+    }
+    return [...entries].sort((a, b) => key(a) - key(b))
+}
+
+// "HH:MM" (24h) for a timeline row, "" for manual entries with no start
+export function startTimeLabel(e: Entry): string {
+    const ms = startMs(e)
+    if (ms === null) return ""
+    const d = new Date(ms)
+    const hh = String(d.getHours()).padStart(2, "0")
+    const mm = String(d.getMinutes()).padStart(2, "0")
+    return `${hh}:${mm}`
+}
+
 let stoppedTodaySec = 0
 
 function refreshStoppedFromMap() {
@@ -460,6 +486,7 @@ function refreshStoppedFromMap() {
     refreshDayTotal()
     setLastStopped(stopped[0] ?? null)
     setRecentStopped(stopped.slice(0, 3))
+    setTodayEntries(dayTimeline([...todayMap.values()]))
 }
 
 function refreshDayTotal() {
