@@ -2,23 +2,20 @@ import Gdk from "gi://Gdk?version=4.0"
 import Sway, { Node } from "../../../lib/sway"
 import Config from "../../../config"
 import { createIconResolver } from "../../../lib/appIcon"
-import { Accessor, For, With, createBinding, createComputed } from "ags"
-import { Gtk } from "ags/gtk4";
-import GObject from "ags/gobject";
+import { Accessor, For, With, createBinding, createComputed } from "gnim"
+import { Gtk } from "ags/gtk4"
+import GObject from "ags/gobject"
 
 // per-workspace icon-box memo: keyed by workspace id, value is the last
 // built box + the icon list it was built from. Lets a focus/title-only
 // tree change skip rebuilding every workspace's icons.
-const wsIconCache = new Map<number, { key: string, box: Gtk.Box }>()
+const wsIconCache = new Map<number, { key: string; box: Gtk.Box }>()
 
 function focus_workspace(sway: Sway, ws: any) {
-    sway.message(
-        `mouse_warping output; workspace number ${ws.num}; mouse_warping container`
-    );
+    sway.message(`mouse_warping output; workspace number ${ws.num}; mouse_warping container`)
 }
 
-export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
-
+export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
     const resolveAppIcon = createIconResolver(Gtk.IconTheme.get_for_display(monitor.display))
 
     function swayNodeToIconName(node: Node): string {
@@ -29,21 +26,22 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
                 node.window_properties?.instance,
                 node.window_properties?.title,
                 node.window_properties?.window_role,
-                node.window_properties?.window_type
+                node.window_properties?.window_type,
             ]
 
             // Steam app icon lookup
             if (node.window_properties?.instance?.startsWith("steam_app_")) {
-                // Replaces "steam_app_" -> "steam_icon_" while keeping the numbers 
-                elements.push(node.window_properties.instance.replace(/^steam_app_(\d+)$/, "steam_icon_$1"))
+                // Replaces "steam_app_" -> "steam_icon_" while keeping the numbers
+                elements.push(
+                    node.window_properties.instance.replace(/^steam_app_(\d+)$/, "steam_icon_$1"),
+                )
             }
-        }
-        else {
+        } else {
             // Wayland app
             elements = [
                 node?.app_id,
-                (node.name != null) ? node.name.split(" ")[0] : null,
-                (node.name != null) ? node.name : null
+                node.name != null ? node.name.split(" ")[0] : null,
+                node.name != null ? node.name : null,
             ]
         }
         for (const element of elements) {
@@ -56,33 +54,34 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
 
     /**
      * Yeah idk how this works, gpt fixed it for me
-     * @param root - i3 tree root, or node with nodes 
+     * @param root - i3 tree root, or node with nodes
      * @returns Nodes without any child nodes (basically just apps)
      */
     function getLeafNodes(root: Node[]): Node[] {
-        const result: Node[] = [];
+        const result: Node[] = []
 
         for (const child of root) {
-            const hasNodes = child.nodes && child.nodes.length > 0;
-            const hasFloating = child.floating_nodes && child.floating_nodes.length > 0;
+            const hasNodes = child.nodes && child.nodes.length > 0
+            const hasFloating = child.floating_nodes && child.floating_nodes.length > 0
 
             if (hasNodes || hasFloating) {
                 if (hasNodes) {
-                    result.push(...getLeafNodes(child.nodes!));
+                    result.push(...getLeafNodes(child.nodes!))
                 }
                 if (hasFloating) {
-                    result.push(...getLeafNodes(child.floating_nodes!));
+                    result.push(...getLeafNodes(child.floating_nodes!))
                 }
             } else {
-                if (child.type === "con" || child.type === "floating_con") // Must be con, Not Output
-                    result.push(child);  // It's a leaf — no children
+                if (child.type === "con" || child.type === "floating_con")
+                    // Must be con, Not Output
+                    result.push(child) // It's a leaf — no children
             }
         }
 
-        return result;
+        return result
     }
 
-    const sway = Sway.get_default();
+    const sway = Sway.get_default()
     // IPC dead (stale socket, sway not running): show nothing
     if (!sway.ok) return <></>
 
@@ -91,30 +90,37 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
     const displayName = createBinding(monitor, "connector")
 
     const swayWorkspacesList = createComputed(
-        [createBinding(sway, "wss"), createBinding(sway, "tree"), createBinding(sway, "focused"), displayName],
-        (wss) => {
-            return wss.filter((ws) => {
-                if (ws.output !== displayName.get()) return false;
-                if (!Config.workspaces.hideEmpty) return true;
-                if (ws.id === sway.focused) return true;
+        [
+            createBinding(sway, "wss"),
+            createBinding(sway, "tree"),
+            createBinding(sway, "focused"),
+            displayName,
+        ],
+        wss => {
+            return wss.filter(ws => {
+                if (ws.output !== displayName.get()) return false
+                if (!Config.workspaces.hideEmpty) return true
+                if (ws.id === sway.focused) return true
 
                 // workspaceList doesn't contain child nodes, look them up in the tree
                 const wsNode = sway.tree
-                    .find((output) => output.name === displayName.get())
-                    ?.nodes.find((node) => node.id === ws.id);
-                if (!wsNode) return true;  // can't tell, keep it
+                    .find(output => output.name === displayName.get())
+                    ?.nodes.find(node => node.id === ws.id)
+                if (!wsNode) return true // can't tell, keep it
 
-                return (wsNode.nodes?.length ?? 0) > 0 || (wsNode.floating_nodes?.length ?? 0) > 0;
-            });
-        });
+                return (wsNode.nodes?.length ?? 0) > 0 || (wsNode.floating_nodes?.length ?? 0) > 0
+            })
+        },
+    )
 
-    return <box cssName={"workspaces"}>
-        <For each={swayWorkspacesList}>
-            {(workspace) => {
-                const focused = createBinding(sway, "focused")
-                    .as(id => workspace.id === id ? ["active"] : [])
-                const name = createBinding(sway, "wss")
-                    .as((wss) => {
+    return (
+        <box cssName={"workspaces"}>
+            <For each={swayWorkspacesList}>
+                {workspace => {
+                    const focused = createBinding(sway, "focused").as(id =>
+                        workspace.id === id ? ["active"] : [],
+                    )
+                    const name = createBinding(sway, "wss").as(wss => {
                         let workspaceName = wss.find(ws => workspace.id === ws.id)?.name
 
                         if (workspaceName) {
@@ -123,18 +129,22 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
 
                         return workspace.id.toString()
                     })
-                const apps: Accessor<GObject.Object | undefined> = createBinding(sway, "tree")
-                    .as((_) => {
+                    const apps: Accessor<GObject.Object | undefined> = createBinding(
+                        sway,
+                        "tree",
+                    ).as(_ => {
                         // 1st find: get the display from tree root
                         // 2nt find: find the correct workspace from outputs workspaces
                         // This is needed because workspaceList doesn't contain the child nodes
-                        let workspaceNode = sway.tree.find(i => i.name === displayName.get())?.nodes.find(i => i.id === workspace.id) as Node
-                        if (workspaceNode == undefined)
-                            return <box />  // Remove workplaces that failed to find
+                        let workspaceNode = sway.tree
+                            .find(i => i.name === displayName.get())
+                            ?.nodes.find(i => i.id === workspace.id) as Node
+                        if (workspaceNode == undefined) return <box /> // Remove workplaces that failed to find
 
                         // Remove workspace without nodes
-                        const hasNodes = workspaceNode.nodes && workspaceNode.nodes.length > 0;
-                        const hasFloating = workspaceNode.floating_nodes && workspaceNode.floating_nodes.length > 0;
+                        const hasNodes = workspaceNode.nodes && workspaceNode.nodes.length > 0
+                        const hasFloating =
+                            workspaceNode.floating_nodes && workspaceNode.floating_nodes.length > 0
 
                         const leafNodes = [
                             ...(hasNodes ? getLeafNodes(workspaceNode.nodes) : []),
@@ -152,31 +162,34 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
                         const key = iconNames.join("\u0000")
                         const cached = wsIconCache.get(workspace.id)
                         if (cached && cached.key === key) return cached.box
-                        const box = (<box $={(self) => {
-                            iconNames.forEach(name => {
-                                self.append(<image iconName={name} /> as Gtk.Widget)
-                            });
-                        }} />) as Gtk.Box
+                        const box = (
+                            <box
+                                $={self => {
+                                    iconNames.forEach(name => {
+                                        self.append((<image iconName={name} />) as Gtk.Widget)
+                                    })
+                                }}
+                            />
+                        ) as Gtk.Box
                         wsIconCache.set(workspace.id, { key, box })
                         return box
                     })
-                return (
-                    <button
-                        cssName={"workspace"}
-                        cssClasses={focused}
-                        onClicked={() => focus_workspace(sway, workspace)}
-                    >
-                        <box>
-                            {Config.workspaces.showLabels && <label label={name} />}
-                            {Config.workspaces.showIcons &&
-                                <With value={apps}>
-                                    {(value) => value}
-                                </With>
-                            }
-                        </box>
-                    </button>
-                );
-            }}
-        </For>
-    </box>
+                    return (
+                        <button
+                            cssName={"workspace"}
+                            cssClasses={focused}
+                            onClicked={() => focus_workspace(sway, workspace)}
+                        >
+                            <box>
+                                {Config.workspaces.showLabels && <label label={name} />}
+                                {Config.workspaces.showIcons && (
+                                    <With value={apps}>{value => value}</With>
+                                )}
+                            </box>
+                        </button>
+                    )
+                }}
+            </For>
+        </box>
+    )
 }

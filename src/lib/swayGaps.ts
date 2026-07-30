@@ -1,35 +1,36 @@
-import GObject from "gnim/gobject";
+import GObject from "ags/gobject"
 import { register, getter, setter } from "ags/gobject"
 import GLib from "gi://GLib?version=2.0"
-import i3ipc from "gi://i3ipc?version=1.0";
+import i3ipc from "gi://i3ipc?version=1.0"
 import Sway from "./sway"
-import CommandRegistry from "./requestHandler";
-import Cache from "./cache";
+import CommandRegistry from "./requestHandler"
+import Cache from "./cache"
 
 @register({ GTypeName: "SwayGaps" })
 export default class SwayGaps extends GObject.Object {
     static instance: SwayGaps
 
     static get_default() {
-        if (!this.instance)
-            this.instance = new SwayGaps()
+        if (!this.instance) this.instance = new SwayGaps()
 
         return this.instance
     }
 
-    #sway = Sway.get_default();
-    #cache = Cache.get_default();
+    #sway = Sway.get_default()
+    #cache = Cache.get_default()
     // i3ipc.Connection.new throws on a stale I3SOCK — tolerate it like
     // Sway.ok does, otherwise the QS toggle section dies with us
     #conn: i3ipc.Connection | null = (() => {
-        try { return i3ipc.Connection.new(null) }
-        catch (e) { console.warn("swayGaps: no IPC connection:", e); return null }
+        try {
+            return i3ipc.Connection.new(null)
+        } catch (e) {
+            console.warn("swayGaps: no IPC connection:", e)
+            return null
+        }
     })()
 
-    #gapState: boolean = (this.#cache.data.gaps === undefined) ?
-        false : this.#cache.data.gaps
-    #gapSize: number = (this.#cache.data.gapsSize === undefined) ?
-        10 : this.#cache.data.gapsSize
+    #gapState: boolean = this.#cache.data.gaps === undefined ? false : this.#cache.data.gaps
+    #gapSize: number = this.#cache.data.gapsSize === undefined ? 10 : this.#cache.data.gapsSize
     // Last applied value, Useful for skipping unnecessary operations
     #lastAppliedValue: number = -1
     // debounce source for cache writes (brightness.ts pattern): a
@@ -72,9 +73,7 @@ export default class SwayGaps extends GObject.Object {
         if (!this.#sway.ok) return
         let size = this.#gapState ? this.#gapSize : 0
         if (size != this.#lastAppliedValue || force) {
-            this.#sway.message(
-                `gaps inner all set ${size}; gaps outer all set ${size}`
-            )
+            this.#sway.message(`gaps inner all set ${size}; gaps outer all set ${size}`)
             this.#lastAppliedValue = size
         }
     }
@@ -88,14 +87,12 @@ export default class SwayGaps extends GObject.Object {
         // Ensure that correct state is applied when shell launches
         this.#applyGaps(true)
 
-        this.#conn?.on("workspace",
-            async (conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
-                if (event.change === "init") {
-                    console.log("New Workspace Init, Setting size...")
-                    this.#applyGaps(true)
-                }
+        this.#conn?.on("workspace", async (conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
+            if (event.change === "init") {
+                console.log("New Workspace Init, Setting size...")
+                this.#applyGaps(true)
             }
-        )
+        })
 
         const registry = CommandRegistry.get_default()
 
@@ -105,7 +102,7 @@ export default class SwayGaps extends GObject.Object {
             main: () => {
                 this.toggleGaps()
                 return `Toggled gaps: ${this.#gapState}`
-            }
+            },
         })
     }
 }

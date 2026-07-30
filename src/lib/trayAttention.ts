@@ -1,5 +1,5 @@
 import AstalTray from "gi://AstalTray"
-import { createState } from "ags"
+import { createState } from "gnim"
 import { isPinned } from "./trayPinned"
 
 // Tracks whether any tray item reports Status.NeedsAttention.
@@ -25,7 +25,10 @@ function update() {
 
 registry.connect("item-added", (_, itemId: string) => {
     const item = registry.get_item(itemId)
-    console.log("Tray item added:", `${item.tooltip_markup || item.get_title() || "?"} (id: ${item.get_id()})`)
+    console.log(
+        "Tray item added:",
+        `${item.tooltip_markup || item.get_title() || "?"} (id: ${item.get_id()})`,
+    )
     items.set(itemId, item)
     item.connect("notify::status", update)
     update()

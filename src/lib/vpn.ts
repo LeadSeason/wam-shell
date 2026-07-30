@@ -1,6 +1,6 @@
 import GLib from "gi://GLib?version=2.0"
 import { execAsync } from "ags/process"
-import { createState } from "ags"
+import { createState } from "gnim"
 import { streamLines } from "./utils"
 
 // Shared Mullvad VPN state. `mullvad status listen` streams tunnel

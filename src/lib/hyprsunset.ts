@@ -1,5 +1,5 @@
 import { exec, execAsync } from "ags/process"
-import { createState } from "ags"
+import { createState } from "gnim"
 import GLib from "gi://GLib?version=2.0"
 import Config from "../config"
 
@@ -33,7 +33,7 @@ export const tempBackend: TempBackend = (() => {
         exec(`gsettings get ${GSCHEMA} night-light-enabled`)
         exec("pgrep -x gnome-settings-daemon")
         return "gsettings"
-    } catch { }
+    } catch {}
     return "none"
 })()
 
@@ -54,7 +54,7 @@ if (tempBackend === "hyprctl") {
     try {
         const enabled = exec(`gsettings get ${GSCHEMA} night-light-enabled`).trim()
         setNightLight(enabled === "true")
-    } catch { }
+    } catch {}
 }
 
 function currentTemp(): number {
@@ -70,23 +70,31 @@ function applyTemp() {
     const nl = nightLight.get()
     switch (tempBackend) {
         case "hyprctl":
-            execAsync(["hyprctl", "hyprsunset", "temperature", String(currentTemp())])
-                .catch(() => { })
+            execAsync(["hyprctl", "hyprsunset", "temperature", String(currentTemp())]).catch(
+                () => {},
+            )
             break
         case "gsettings":
             if (nl)
-                execAsync(["gsettings", "set", GSCHEMA,
-                    "night-light-temperature", String(Config.hyprsunset.nightTemp)])
-                    .catch(() => { })
-            execAsync(["gsettings", "set", GSCHEMA,
-                "night-light-enabled", nl ? "true" : "false"])
-                .catch(() => { })
+                execAsync([
+                    "gsettings",
+                    "set",
+                    GSCHEMA,
+                    "night-light-temperature",
+                    String(Config.hyprsunset.nightTemp),
+                ]).catch(() => {})
+            execAsync([
+                "gsettings",
+                "set",
+                GSCHEMA,
+                "night-light-enabled",
+                nl ? "true" : "false",
+            ]).catch(() => {})
             break
         case "gammastep":
-            execAsync(nl
-                ? ["gammastep", "-O", String(Config.hyprsunset.nightTemp)]
-                : ["gammastep", "-x"])
-                .catch(() => { })
+            execAsync(
+                nl ? ["gammastep", "-O", String(Config.hyprsunset.nightTemp)] : ["gammastep", "-x"],
+            ).catch(() => {})
             break
     }
 }
@@ -106,8 +114,7 @@ function applyGamma() {
         const gamma = pendingGamma
         pendingGamma = null
         lastApply = Date.now()
-        execAsync(["hyprctl", "hyprsunset", "gamma", String(gamma)])
-            .catch(() => { })
+        execAsync(["hyprctl", "hyprsunset", "gamma", String(gamma)]).catch(() => {})
         return GLib.SOURCE_REMOVE
     })
 }
@@ -148,15 +155,17 @@ export function refreshHyprsunset() {
                 if (nl !== nightLight.get()) setNightLight(nl)
             }
         })
-        .catch(() => { })
-        .finally(() => { watchRunning = false })
+        .catch(() => {})
+        .finally(() => {
+            watchRunning = false
+        })
 }
 
 if (Config.desktopSession === "hyprland")
-GLib.timeout_add(GLib.PRIORITY_DEFAULT, 30000, () => {
-    refreshHyprsunset()
-    return GLib.SOURCE_CONTINUE
-})
+    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 30000, () => {
+        refreshHyprsunset()
+        return GLib.SOURCE_CONTINUE
+    })
 
 export function setNightLightEnabled(v: boolean) {
     setNightLight(v)
