@@ -22,6 +22,7 @@ import "./src/widgets/notifications"
 import "./src/widgets/launcher"
 import "./src/widgets/mediaPopup"
 import "./src/widgets/harvestPopup"
+import { init as initHarvest } from "./src/lib/harvest"
 
 
 function matchMonitor(wanted: string[], m: Gdk.Monitor): boolean {
@@ -39,6 +40,8 @@ function main() {
     // minimal/custom themes). System themes take precedence.
     Gtk.IconTheme.get_for_display(Gdk.Display.get_default()!)
         .add_search_path(`${Config.instanceSrcDir}/assets/icons`)
+
+    initHarvest()
 
     if (Config.swayGaps && (Config.desktopSession == "sway" || Config.desktopSession == "i3"))
         SwayGaps.get_default()
