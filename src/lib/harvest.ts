@@ -875,6 +875,49 @@ export function setNotes(text: string): boolean {
     return true
 }
 
+// edit the accrued time of a stopped entry (the paused one in the UI).
+// Duration accounts PATCH raw hours; timestamp accounts get the same
+// duration expressed as a started/ended window instead. Same return
+// contract as setNotes: false = not attempted, the field stays dirty
+export function setHours(entry: Entry, hours: number): boolean {
+    // the server stores hundredths of an hour
+    hours = Math.round(hours * 100) / 100
+    if (hours <= 0 || entry.isRunning || mutInFlight || authDisabled.get()) return false
+    mutate(done => {
+        const body: Record<string, any> = {}
+        if (wantsTimestampTimers) {
+            const start = startMs(entry)
+            if (start !== null) {
+                const fmt = (ms: number) =>
+                    GLib.DateTime.new_from_unix_local(Math.round(ms / 1000))
+                        .format(clockFmt())!
+                        .toLowerCase()
+                body.started_time = fmt(start)
+                body.ended_time = fmt(start + hours * 3_600_000)
+            } else {
+                // no parseable start to hang a window on; raw hours may
+                // still be accepted
+                body.hours = hours
+            }
+        } else {
+            body.hours = hours
+        }
+        request("PATCH", `/time_entries/${entry.id}`, body, r => {
+            try {
+                if (r.ok && r.json) {
+                    const e = mapEntry(r.json)
+                    if (e.spentDate === localDay()) todayMap.set(e.id, e)
+                    refreshStoppedFromMap()
+                    if (paused.get()?.id === e.id) setPaused(e)
+                } else console.warn(`Harvest: hours update failed (status ${r.status})`)
+            } finally {
+                done()
+            }
+        })
+    })
+    return true
+}
+
 // stale-while-revalidate when the picker popup opens; age-gated so
 // fidgety toggling doesn't burn request quota
 export function refreshSlow() {

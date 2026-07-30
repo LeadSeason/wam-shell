@@ -35,6 +35,13 @@ window.HarvestPopup {
         .duration {
             color: t.$subtext0;
         }
+        // the paused-hours editor must read as an input, not a label
+        .pausedEdit {
+            background-color: t.$base;
+            border: solid 2px t.$accent20;
+            border-radius: s.$radius;
+            padding: 2px 6px;
+        }
         // inline selector list: themed container, no popup resizing
         .ddList {
             margin: 2px 0 6px;
