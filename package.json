@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "start": "ags run app.tsx",
+    "start": "bash scripts/start.sh",
     "debug": "GTK_DEBUG=interactive ags run app.tsx",
     "setup": "bash scripts/setup.sh",
     "test": "bash tests/run.sh",
