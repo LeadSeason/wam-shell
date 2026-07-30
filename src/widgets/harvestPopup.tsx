@@ -467,7 +467,7 @@ function TimelineRow({ entry }: { entry: Harvest.Entry }) {
         <button
             cssClasses={cssClasses}
             sensitive={!entry.isRunning && Harvest.busy.as(b => !b)}
-            tooltipText={entryLabel(entry)}
+            tooltipText={entry.notes ? `${entryLabel(entry)}\n${entry.notes}` : entryLabel(entry)}
             onClicked={() => {
                 if (!entry.isRunning) Harvest.resumeEntry(entry)
             }}
