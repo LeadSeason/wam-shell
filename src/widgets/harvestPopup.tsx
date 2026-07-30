@@ -172,6 +172,9 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
     const [projectOpen, setProjectOpen] = createState(false)
     const [taskOpen, setTaskOpen] = createState(false)
     const [query, setQuery] = createState("")
+    // the action button says what it will do: a duration logs (saves) a
+    // completed entry, empty/zero starts a live timer
+    const [actionLabel, setActionLabel] = createState("Start")
 
     const labelOf = (p: Harvest.Project) => `${p.clientName} — ${p.projectName}`
 
@@ -361,6 +364,9 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
                     cssClasses={["duration"]}
                     placeholderText={Harvest.formatElapsed(0)}
                     widthChars={5}
+                    onChanged={self =>
+                        setActionLabel((parseDuration(self.get_text()) ?? 0) > 0 ? "Save" : "Start")
+                    }
                     onActivate={start}
                 />
             </box>
@@ -369,7 +375,7 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
                     <label label={"Cancel"} />
                 </button>
                 <button cssClasses={["start"]} sensitive={canStart} onClicked={start}>
-                    <label label={"Start"} />
+                    <label label={actionLabel} />
                 </button>
             </box>
         </box>
