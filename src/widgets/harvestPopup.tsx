@@ -400,9 +400,9 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
                         }
                         onActivate={start}
                     />
-                    {/* fill the column so input and buttons share both
-                    edges; homogeneous gives the buttons equal width */}
-                    <box hexpand homogeneous spacing={6}>
+                    {/* natural width only: hexpand here would compete
+                    with the notes box for the row's slack */}
+                    <box homogeneous spacing={6}>
                         <button onClicked={onCancel}>
                             <label label={"Cancel"} />
                         </button>
