@@ -51,6 +51,11 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   the bundler needs static imports.
 - `pnpm test:smoke` (opt-in) boots the real shell as an isolated
   `wam-shell-test` instance and asserts a clean startup.
+- `pnpm test:perf` (opt-in) measures an isolated `wam-shell-perf`
+  instance (tests/perf/run.sh): idle, churn and startup scenarios, one
+  single-line JSON blob per scenario on stdout. Requires
+  WAM_SHELL_METRICS instrumentation and refuses to run when no
+  notification daemon owns org.freedesktop.Notifications.
 - The harness runs on a live desktop session and must never disturb it:
   XDG_CONFIG_HOME / XDG_CACHE_HOME / HOME stay redirected to a tmp dir,
   no test imports modules that call `AstalX.get_default()` at import
