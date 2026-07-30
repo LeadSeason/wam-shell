@@ -1,8 +1,8 @@
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
-import { execAsync } from "ags/process"
+import { execAsync, timeoutAddSeconds, sourceRemove } from "./metrics"
 import { createState } from "gnim"
-import { streamLines } from "./utils"
+import { streamLines } from "./streamLines"
 
 // Shared Mullvad VPN state. `mullvad status listen` streams tunnel
 // state changes from one long-lived process; the 15s poll below is the
@@ -80,7 +80,7 @@ let disposed = false
 function startPolling() {
     if (pollSource || disposed) return
     refreshVpn()
-    pollSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 15, () => {
+    pollSource = timeoutAddSeconds("vpn:poll", GLib.PRIORITY_DEFAULT, 15, () => {
         refreshVpn()
         return GLib.SOURCE_CONTINUE
     })
@@ -90,7 +90,7 @@ function startPolling() {
 export function dispose() {
     disposed = true
     if (pollSource) {
-        GLib.source_remove(pollSource)
+        sourceRemove(pollSource)
         pollSource = 0
     }
     listenProc?.force_exit()

@@ -2,6 +2,7 @@ import Gio from "gi://Gio?version=2.0"
 import GLib from "gi://GLib?version=2.0"
 import { createState } from "gnim"
 import bluetooth from "./bluetooth"
+import { timeoutAdd, sourceRemove } from "./metrics"
 
 // BlueZ pairing agent (org.bluez.Agent1): answers confirmation / PIN /
 // passkey prompts during pairing. The GTK side lives in
@@ -125,7 +126,7 @@ function makeResponder(
         done = true
         armByRespond.delete(finish)
         if (timer) {
-            GLib.source_remove(timer)
+            sourceRemove(timer)
             timer = 0
         }
         if (invocation) {
@@ -151,22 +152,27 @@ function makeResponder(
     if (invocation) {
         armByRespond.set(finish, () => {
             if (timer || done) return
-            timer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, PROMPT_TIMEOUT_MS, () => {
-                timer = 0
-                if (done) return GLib.SOURCE_REMOVE
-                done = true
-                armByRespond.delete(finish)
-                try {
-                    invocation.return_dbus_error(
-                        "org.bluez.Error.Canceled",
-                        "Pairing prompt timed out",
-                    )
-                } catch (e) {
-                    console.warn("bluetooth agent: timeout reply failed:", e)
-                }
-                advance()
-                return GLib.SOURCE_REMOVE
-            })
+            timer = timeoutAdd(
+                "btAgent:promptTimeout",
+                GLib.PRIORITY_DEFAULT,
+                PROMPT_TIMEOUT_MS,
+                () => {
+                    timer = 0
+                    if (done) return GLib.SOURCE_REMOVE
+                    done = true
+                    armByRespond.delete(finish)
+                    try {
+                        invocation.return_dbus_error(
+                            "org.bluez.Error.Canceled",
+                            "Pairing prompt timed out",
+                        )
+                    } catch (e) {
+                        console.warn("bluetooth agent: timeout reply failed:", e)
+                    }
+                    advance()
+                    return GLib.SOURCE_REMOVE
+                },
+            )
         })
     }
     return finish
@@ -295,7 +301,7 @@ function register() {
                 // the bus briefly — retry once instead of giving up
                 if (!retried && (e as Error).message?.includes("AlreadyExists")) {
                     retried = true
-                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 2000, () => {
+                    timeoutAdd("btAgent:registerRetry", GLib.PRIORITY_DEFAULT, 2000, () => {
                         register()
                         return GLib.SOURCE_REMOVE
                     })

@@ -1,0 +1,14 @@
+# Perf harness fixture. run.sh copies this into a fresh per-leg tmp
+# XDG_CONFIG_HOME, so the developer's real ~/.config/wam-shell can
+# never leak into a measurement. Everything not set here stays at the
+# shell's built-in defaults — we want to measure what the code does.
+
+# separate instance: ags request -i targets the measured process, and
+# the two shells can't collide
+instance_name = "wam-shell-perf"
+
+# never let the measured instance acquire org.freedesktop.Notifications
+# on the developer's session bus — the single most user-hostile thing
+# this harness could do
+[notifications]
+daemon = "system"

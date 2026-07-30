@@ -1,6 +1,7 @@
 import GLib from "gi://GLib?version=2.0"
 import AstalWp from "gi://AstalWp?version=0.1"
 import { createState } from "gnim"
+import { timeoutAdd, connect, disconnect, sourceRemove } from "./metrics"
 
 // Screen-share detection, signal-driven through WirePlumber. A video
 // PRODUCER stream means a capture is active (portal screencast always
@@ -34,7 +35,7 @@ function evaluate() {
 // the mask doesn't flicker
 function scheduleEvaluate() {
     if (debounce) return
-    debounce = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 300, () => {
+    debounce = timeoutAdd("screenShare:debounce", GLib.PRIORITY_DEFAULT, 300, () => {
         debounce = 0
         evaluate()
         return GLib.SOURCE_REMOVE
@@ -51,7 +52,7 @@ export function enable() {
     started = true
     const video = AstalWp.get_default()?.video
     if (video) {
-        streamsHandler = video.connect("notify::streams", scheduleEvaluate)
+        streamsHandler = connect(video, "notify::streams", scheduleEvaluate)
         evaluate()
     } else {
         setSharing(true) // fail closed
@@ -62,11 +63,11 @@ export function enable() {
 // shell never calls it today: one place that tears everything down
 export function dispose() {
     if (debounce) {
-        GLib.source_remove(debounce)
+        sourceRemove(debounce)
         debounce = 0
     }
     const video = AstalWp.get_default()?.video
-    if (video && streamsHandler) video.disconnect(streamsHandler)
+    if (video && streamsHandler) disconnect(video, streamsHandler)
     streamsHandler = 0
     started = false
 }

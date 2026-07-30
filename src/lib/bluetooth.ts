@@ -2,6 +2,7 @@ import Gio from "gi://Gio?version=2.0"
 import GLib from "gi://GLib?version=2.0"
 import AstalBluetooth from "gi://AstalBluetooth?version=0.1"
 import Config from "../config"
+import { connect, disconnect } from "./metrics"
 
 // Shared bluetooth state + connect/battery event notifications.
 
@@ -67,7 +68,7 @@ function watchDevice(device: AstalBluetooth.Device) {
     })
 
     handlerIds.push(
-        device.connect("notify::connected", () => {
+        connect(device, "notify::connected", () => {
             if (!Config.bluetooth.notifications) return
             const state = watched.get(address)
             if (!state || state.connected === device.connected) return
@@ -84,7 +85,7 @@ function watchDevice(device: AstalBluetooth.Device) {
     )
 
     handlerIds.push(
-        device.connect("notify::battery-percentage", () => {
+        connect(device, "notify::battery-percentage", () => {
             if (!Config.bluetooth.notifications) return
             const state = watched.get(address)
             const battery = device.batteryPercentage
@@ -108,7 +109,7 @@ function watchDevice(device: AstalBluetooth.Device) {
 function unwatchDevice(address: string) {
     const state = watched.get(address)
     if (!state) return
-    for (const id of state.handlerIds) state.device.disconnect(id)
+    for (const id of state.handlerIds) disconnect(state.device, id)
     watched.delete(address)
 }
 
@@ -122,8 +123,8 @@ function watchAllDevices() {
     for (const device of bluetooth.devices) watchDevice(device)
 }
 
-bluetooth.connect("notify::devices", watchAllDevices)
-bluetooth.connect("notify::adapter", () => {
+connect(bluetooth, "notify::devices", watchAllDevices)
+connect(bluetooth, "notify::adapter", () => {
     if (bluetooth.adapter) watchAllDevices()
 })
 if (bluetooth.adapter) watchAllDevices()

@@ -1,6 +1,7 @@
 import GObject, { getter, register } from "ags/gobject"
 import GLib from "gi://GLib?version=2.0"
 import i3ipc from "gi://i3ipc"
+import { timeoutAdd } from "./metrics"
 
 @register({ GTypeName: "Sway" })
 export default class Sway extends GObject.Object {
@@ -77,7 +78,7 @@ export default class Sway extends GObject.Object {
         const scheduleFetch = (kind: "ws" | "win" | "out") => {
             pending.add(kind)
             if (fetchSource) return
-            fetchSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+            fetchSource = timeoutAdd("sway:fetchCoalesce", GLib.PRIORITY_DEFAULT, 50, () => {
                 fetchSource = 0
                 const kinds = new Set(pending)
                 pending.clear()

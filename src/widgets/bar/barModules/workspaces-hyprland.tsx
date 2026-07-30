@@ -1,6 +1,6 @@
 import Gdk from "gi://Gdk?version=4.0"
 import AstalHyprland from "gi://AstalHyprland?version=0.1"
-import { execAsync } from "ags/process"
+import { execAsync } from "../../../lib/metrics"
 import Config from "../../../config"
 import { createIconResolver } from "../../../lib/appIcon"
 import { For, createBinding, createState, onCleanup } from "gnim"

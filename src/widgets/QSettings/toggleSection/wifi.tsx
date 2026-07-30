@@ -2,7 +2,7 @@ import { Accessor, createBinding, createComputed, createState, For, With } from 
 import { DropdownButton } from "./ToggleButton"
 import AstalNetwork from "gi://AstalNetwork?version=0.1"
 import NM from "gi://NM?version=1.0"
-import { execAsync } from "ags/process"
+import { execAsync, connect } from "../../../lib/metrics"
 import { Gtk } from "ags/gtk4"
 import Pango from "gi://Pango?version=1.0"
 
@@ -29,8 +29,8 @@ function refreshSaved() {
     }
     setSavedNetworks(map)
 }
-nmClient.connect("connection-added", refreshSaved)
-nmClient.connect("connection-removed", refreshSaved)
+connect(nmClient, "connection-added", refreshSaved)
+connect(nmClient, "connection-removed", refreshSaved)
 refreshSaved()
 
 interface wifiPaneProps {

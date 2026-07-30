@@ -16,6 +16,8 @@ import BluetoothPairing from "./src/widgets/bluetoothPairing"
 import { startBluetoothAgent } from "./src/lib/bluetoothAgent"
 import NotificationPopups from "./src/widgets/notifications/popups"
 import { useOurs } from "./src/lib/notifd"
+// registers the "metrics" request command (inert unless WAM_SHELL_METRICS=1)
+import "./src/lib/metrics"
 // request-driven windows register their toggle command at import and
 // build their window lazily on first use instead of at startup
 import "./src/widgets/notifications"
@@ -23,6 +25,11 @@ import "./src/widgets/launcher"
 import "./src/widgets/mediaPopup"
 import "./src/widgets/harvestPopup"
 import { init as initHarvest } from "./src/lib/harvest"
+import { forceExitStreamedChildren } from "./src/lib/streamLines"
+
+// long-lived streamed children (mullvad listen, nvidia-smi --loop-ms)
+// must not outlive the shell
+app.connect("shutdown", forceExitStreamedChildren)
 
 function matchMonitor(wanted: string[], m: Gdk.Monitor): boolean {
     if (wanted.length === 0) return true

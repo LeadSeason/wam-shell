@@ -8,6 +8,7 @@ import { createState, onCleanup } from "gnim"
 import Config from "../../config"
 import { anyPopupHovered, removePopup, setPopupHovered } from "../../lib/notifd"
 import { safeMarkup } from "../../lib/utils"
+import { timeoutAdd, sourceRemove } from "../../lib/metrics"
 
 function isPath(image: string | null): image is string {
     return !!image && (image.startsWith("/") || image.startsWith("file://"))
@@ -74,13 +75,13 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
     function hover(h: boolean) {
         if (h) {
             if (leaveSource !== null) {
-                GLib.source_remove(leaveSource)
+                sourceRemove(leaveSource)
                 leaveSource = null
             }
             setHovered(true)
             setPopupHovered(true)
         } else if (leaveSource === null) {
-            leaveSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
+            leaveSource = timeoutAdd("notifPopup:leaveDebounce", GLib.PRIORITY_DEFAULT, 150, () => {
                 leaveSource = null
                 setHovered(false)
                 setPopupHovered(false)
@@ -91,7 +92,7 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
     // row destroyed while hovered (dismissed from center, replaced by a
     // burst, ...) must not leak the freeze count
     onCleanup(() => {
-        if (leaveSource !== null) GLib.source_remove(leaveSource)
+        if (leaveSource !== null) sourceRemove(leaveSource)
         if (hovered.get()) setPopupHovered(false)
     })
     onCleanup(() => {
@@ -112,7 +113,7 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
         if (expired) return
         expired = true
         if (rev) rev.revealChild = false
-        expireSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 220, () => {
+        expireSource = timeoutAdd("notifPopup:expire", GLib.PRIORITY_DEFAULT, 220, () => {
             expireSource = null
             removePopup(n.id)
             return GLib.SOURCE_REMOVE
@@ -121,27 +122,32 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
     // the delayed removePopup above must not fire after the row is
     // gone (every other source here is already onCleanup-tracked)
     onCleanup(() => {
-        if (expireSource !== null) GLib.source_remove(expireSource)
+        if (expireSource !== null) sourceRemove(expireSource)
     })
 
     // low urgency drains faster; critical never drains
     if (!critical) {
-        let tick: number | null = GLib.timeout_add(GLib.PRIORITY_DEFAULT, TICK_MS, () => {
-            const now = GLib.get_monotonic_time() / 1000
-            if (!anyPopupHovered()) {
-                remaining -= now - last
-                area?.queue_draw()
-                if (remaining <= 0) {
-                    expire()
-                    tick = null
-                    return GLib.SOURCE_REMOVE
+        let tick: number | null = timeoutAdd(
+            "notifPopup:ticker",
+            GLib.PRIORITY_DEFAULT,
+            TICK_MS,
+            () => {
+                const now = GLib.get_monotonic_time() / 1000
+                if (!anyPopupHovered()) {
+                    remaining -= now - last
+                    area?.queue_draw()
+                    if (remaining <= 0) {
+                        expire()
+                        tick = null
+                        return GLib.SOURCE_REMOVE
+                    }
                 }
-            }
-            last = now
-            return GLib.SOURCE_CONTINUE
-        })
+                last = now
+                return GLib.SOURCE_CONTINUE
+            },
+        )
         onCleanup(() => {
-            if (tick !== null) GLib.source_remove(tick)
+            if (tick !== null) sourceRemove(tick)
         })
     }
 

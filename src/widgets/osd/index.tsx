@@ -7,6 +7,7 @@ import AstalHyprland from "gi://AstalHyprland"
 import Config from "../../config"
 import Sway from "../../lib/sway"
 import { content, visible } from "../../lib/osd"
+import { timeoutAdd, sourceRemove } from "../../lib/metrics"
 
 export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
     const { TOP, BOTTOM } = Astal.WindowAnchor
@@ -50,7 +51,7 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
         const focused = typeof isFocused === "boolean" ? isFocused : isFocused.get()
         if (visible.get() && focused) {
             if (hideSource !== null) {
-                GLib.source_remove(hideSource)
+                sourceRemove(hideSource)
                 hideSource = null
             }
             win.present()
@@ -58,7 +59,7 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
         } else {
             rev.revealChild = false
             if (hideSource !== null) return
-            hideSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
+            hideSource = timeoutAdd("osd:hide", GLib.PRIORITY_DEFAULT, 250, () => {
                 hideSource = null
                 win.hide()
                 return GLib.SOURCE_REMOVE

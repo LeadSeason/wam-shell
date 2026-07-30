@@ -3,6 +3,7 @@ import Gio from "gi://Gio?version=2.0"
 import GLib from "gi://GLib?version=2.0"
 import { Accessor, createBinding, createState } from "gnim"
 import { createPoll } from "ags/time"
+import { connect } from "./metrics"
 import Config from "../config"
 
 // Shared notification daemon state. The first instantiation becomes
@@ -92,7 +93,7 @@ export function removePopup(id: number) {
     setPopups(popupsState.get().filter(n => n.id !== id))
 }
 
-notifd.connect("notified", (_s, id) => {
+connect(notifd, "notified", (_s: AstalNotifd.Notifd, id: number) => {
     if (!useOurs) return
     const n = notifd.get_notification(id)
     if (!n) return
@@ -105,7 +106,7 @@ notifd.connect("notified", (_s, id) => {
 })
 
 // dismissed/expired elsewhere (center, app) -> drop the banner too
-notifd.connect("resolved", (_s, id) => removePopup(id))
+connect(notifd, "resolved", (_s: AstalNotifd.Notifd, id: number) => removePopup(id))
 
 // hovering ANY banner freezes every countdown: if a banner above the
 // hovered one expired mid-interaction, the stack would shift and yank

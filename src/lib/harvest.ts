@@ -6,6 +6,14 @@ import { createState } from "gnim"
 import { readFile } from "ags/file"
 import Config from "../config"
 import { isFile } from "./utils"
+import {
+    timeoutAdd,
+    timeoutAddSeconds,
+    sourceRemove,
+    connect,
+    disconnect,
+    trackHttp,
+} from "./metrics"
 
 // Harvest time tracking (api v2). The widget mirrors timers that live on
 // Harvest's servers: nothing here owns a timer, a shell restart simply
@@ -258,7 +266,8 @@ interface Reply {
 
 // never log anything beyond method + path + status: headers carry the token
 function request(method: string, path: string, body: any, cb: (r: Reply) => void) {
-    const msg = Soup.Message.new(method, `${BASE}${path}`)
+    const url = `${BASE}${path}`
+    const msg = Soup.Message.new(method, url)
     if (!msg) {
         cb({
             ok: false,
@@ -282,6 +291,7 @@ function request(method: string, path: string, body: any, cb: (r: Reply) => void
         let reply: Reply
         try {
             const bytes = session.send_and_read_finish(res)
+            if (bytes) trackHttp(url, bytes.get_size())
             const text = bytes ? new TextDecoder().decode(bytes.get_data() ?? new Uint8Array()) : ""
             let json: any = null
             try {
@@ -327,10 +337,15 @@ function fetchAll(
         // one bounded retry on throttle: a 429 would otherwise silently
         // abandon the whole slow fetch
         if (r.status === 429 && !retried) {
-            GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, Math.max(r.retryAfter, 1), () => {
-                fetchAll(path, key, acc, cb, true)
-                return GLib.SOURCE_REMOVE
-            })
+            timeoutAddSeconds(
+                "harvest:fetchRetry",
+                GLib.PRIORITY_DEFAULT,
+                Math.max(r.retryAfter, 1),
+                () => {
+                    fetchAll(path, key, acc, cb, true)
+                    return GLib.SOURCE_REMOVE
+                },
+            )
             return
         }
         if (!r.ok || !r.json) {
@@ -377,9 +392,9 @@ function effectiveInterval(): number {
 
 function scheduleNext(retryAfter = 0) {
     if (authDisabled.get()) return
-    if (fastTimer) GLib.source_remove(fastTimer)
+    if (fastTimer) sourceRemove(fastTimer)
     const delay = Math.max(retryAfter, effectiveInterval())
-    fastTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, delay, () => {
+    fastTimer = timeoutAddSeconds("harvest:deltaPoll", GLib.PRIORITY_DEFAULT, delay, () => {
         fastTimer = 0
         deltaPoll()
         return GLib.SOURCE_REMOVE
@@ -638,12 +653,18 @@ function armTicker() {
         const secs = liveSeconds(cur)
         setElapsed(secs)
         refreshDayTotal()
-        tickerSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, msUntilNextChange(secs), fire)
+        tickerSource = timeoutAdd(
+            "harvest:ticker",
+            GLib.PRIORITY_DEFAULT,
+            msUntilNextChange(secs),
+            fire,
+        )
         return GLib.SOURCE_REMOVE
     }
     const cur = running.get()
     if (cur) {
-        tickerSource = GLib.timeout_add(
+        tickerSource = timeoutAdd(
+            "harvest:ticker",
             GLib.PRIORITY_DEFAULT,
             msUntilNextChange(liveSeconds(cur)),
             fire,
@@ -653,7 +674,7 @@ function armTicker() {
 
 function disarmTicker() {
     if (tickerSource) {
-        GLib.source_remove(tickerSource)
+        sourceRemove(tickerSource)
         tickerSource = 0
     }
 }
@@ -668,8 +689,8 @@ function msUntilMidnight(): number {
 
 // re-seed "today" at local midnight instead of waiting for the baseline
 function armRollover() {
-    if (rolloverTimer) GLib.source_remove(rolloverTimer)
-    rolloverTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, msUntilMidnight(), () => {
+    if (rolloverTimer) sourceRemove(rolloverTimer)
+    rolloverTimer = timeoutAdd("harvest:rollover", GLib.PRIORITY_DEFAULT, msUntilMidnight(), () => {
         rolloverTimer = 0
         fetchWindow()
         armRollover()
@@ -681,15 +702,15 @@ function disableAuth() {
     if (authDisabled.get()) return
     setAuthDisabled(true)
     if (fastTimer) {
-        GLib.source_remove(fastTimer)
+        sourceRemove(fastTimer)
         fastTimer = 0
     }
     if (slowTimer) {
-        GLib.source_remove(slowTimer)
+        sourceRemove(slowTimer)
         slowTimer = 0
     }
     if (baselineTimer) {
-        GLib.source_remove(baselineTimer)
+        sourceRemove(baselineTimer)
         baselineTimer = 0
     }
     console.warn("Harvest: disabling after repeated authentication failures")
@@ -1015,7 +1036,7 @@ function watchConnectivity() {
         },
     )
     const net = AstalNetwork.get_default()
-    connectivityHandler = net.connect("notify::connectivity", () => {
+    connectivityHandler = connect(net, "notify::connectivity", () => {
         if (net.connectivity !== AstalNetwork.Connectivity.FULL) return
         forgiveFailuresUntil = Date.now() + 30_000
         deltaPoll()
@@ -1030,19 +1051,19 @@ let connectivityHandler = 0
 // shell never calls it today: one place that tears everything down
 export function dispose() {
     if (fastTimer) {
-        GLib.source_remove(fastTimer)
+        sourceRemove(fastTimer)
         fastTimer = 0
     }
     if (slowTimer) {
-        GLib.source_remove(slowTimer)
+        sourceRemove(slowTimer)
         slowTimer = 0
     }
     if (baselineTimer) {
-        GLib.source_remove(baselineTimer)
+        sourceRemove(baselineTimer)
         baselineTimer = 0
     }
     if (rolloverTimer) {
-        GLib.source_remove(rolloverTimer)
+        sourceRemove(rolloverTimer)
         rolloverTimer = 0
     }
     disarmTicker()
@@ -1055,7 +1076,7 @@ export function dispose() {
         prepareSleepSub = 0
     }
     if (connectivityHandler) {
-        AstalNetwork.get_default().disconnect(connectivityHandler)
+        disconnect(AstalNetwork.get_default(), connectivityHandler)
         connectivityHandler = 0
     }
 }
@@ -1079,11 +1100,11 @@ export function init() {
         }
         baseline() // also seeds the high-water mark
         slowCycle()
-        slowTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 30 * 60, () => {
+        slowTimer = timeoutAddSeconds("harvest:slowCycle", GLib.PRIORITY_DEFAULT, 30 * 60, () => {
             slowCycle()
             return GLib.SOURCE_CONTINUE
         })
-        baselineTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 5 * 60, () => {
+        baselineTimer = timeoutAddSeconds("harvest:baseline", GLib.PRIORITY_DEFAULT, 5 * 60, () => {
             baseline()
             return GLib.SOURCE_CONTINUE
         })

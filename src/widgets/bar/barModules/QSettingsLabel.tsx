@@ -10,7 +10,7 @@ import AstalBattery from "gi://AstalBattery?version=0.1"
 import ArchUpdates from "../../../lib/archUpdates"
 import trayNeedsAttention from "../../../lib/trayAttention"
 import vpnStatus from "../../../lib/vpn"
-import { execAsync } from "ags/process"
+import { execAsync } from "../../../lib/metrics"
 import Config from "../../../config"
 
 const registry = CommandRegistry.get_default()

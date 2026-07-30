@@ -1,6 +1,6 @@
 import { Accessor, createState } from "gnim"
 import Gdk from "gi://Gdk?version=4.0"
-import { execAsync } from "ags/process"
+import { execAsync, connect } from "./metrics"
 import { createPoll } from "ags/time"
 import { readFile } from "ags/file"
 import AstalHyprland from "gi://AstalHyprland"
@@ -80,8 +80,8 @@ export function ensureLockSource(): void {
     }
     const read = () => setLockKeyState({ caps: kb.capsLockState, num: kb.numLockState })
     read() // the signals only fire on change, so seed the initial state
-    kb.connect("notify::caps-lock-state", read)
-    kb.connect("notify::num-lock-state", read)
+    connect(kb, "notify::caps-lock-state", read)
+    connect(kb, "notify::num-lock-state", read)
 }
 
 function hyprlandSource(): LayoutSource {
@@ -117,7 +117,7 @@ function hyprlandSource(): LayoutSource {
     refresh()
     // the keyboard-layout signal covers layout switches; lock keys come
     // from GDK (ensureLockSource), so no recurring hyprctl poll is needed
-    hyprland.connect("keyboard-layout", refresh)
+    connect(hyprland, "keyboard-layout", refresh)
 
     return {
         layouts,

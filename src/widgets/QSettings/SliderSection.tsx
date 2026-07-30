@@ -1,7 +1,7 @@
 import AstalWp from "gi://AstalWp?version=0.1"
 import Gtk from "gi://Gtk?version=4.0"
 import Pango from "gi://Pango?version=1.0"
-import { execAsync } from "ags/process"
+import { execAsync } from "../../lib/metrics"
 import Config from "../../config"
 import Brightness from "../../lib/brightness"
 import hyprsunset, { setOutdoorEnabled, OUTDOOR_GAMMA } from "../../lib/hyprsunset"
