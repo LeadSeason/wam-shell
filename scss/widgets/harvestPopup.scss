@@ -103,5 +103,46 @@ window.HarvestPopup {
             color: t.$subtext0;
             margin-top: 4px;
         }
+
+        // day timeline: one row per entry, start time left, hours right
+        .todayRow {
+            .rowTime {
+                font-size: s.$font-small;
+                color: t.$subtext0;
+            }
+            &.running .rowTime {
+                color: t.$harvest;
+                font-weight: bold;
+            }
+            &.paused .rowTime {
+                color: t.$yellow;
+            }
+            .rowNotes {
+                font-size: s.$font-small;
+                font-style: italic;
+                color: t.$subtext0;
+            }
+        }
+
+        // footer: day total left, the new-entry reveal right
+        .footer {
+            margin-top: 2px;
+        }
+        button.newEntry {
+            background-color: transparent;
+            border-color: color.mix(t.$harvest, transparent, 55%);
+            label {
+                color: t.$harvest;
+            }
+            &:hover {
+                background-color: color.mix(t.$harvest, transparent, 85%);
+                border-color: t.$harvest;
+            }
+        }
+
+        // resume button on the paused card
+        button.resumeNow {
+            padding: 4px 6px;
+        }
     }
 }
