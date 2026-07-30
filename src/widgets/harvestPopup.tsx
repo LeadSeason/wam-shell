@@ -5,7 +5,7 @@ import Graphene from "gi://Graphene?version=1.0"
 import app from "ags/gtk4/app"
 import { Accessor, For, With, createComputed, createRoot, createState, onCleanup } from "gnim"
 import CommandRegistry from "../lib/requestHandler"
-import { timeoutAdd, sourceRemove } from "../lib/metrics"
+import { timeoutAdd, sourceRemove, connect } from "../lib/metrics"
 import * as Harvest from "../lib/harvest"
 import Config from "../config"
 
@@ -55,60 +55,74 @@ function parseDuration(text: string): number | null {
 // but a different timer taking over always resets it (the header is
 // visibility-toggled now, not rebuilt per entry)
 function NotesRow() {
-    let entry: Gtk.Entry | null = null
+    let buffer: Gtk.TextBuffer | null = null
     // Save stays hidden until the text actually differs from the server
     const [dirty, setDirty] = createState(false)
     let focused = false
     let lastId: number | null = Harvest.running.get()?.id ?? null
 
     const serverNotes = () => Harvest.running.get()?.notes ?? ""
+    const currentText = () => buffer?.text ?? ""
     const save = () => {
-        if (!entry) return
+        if (!buffer) return
         // keep dirty when the update couldn't be attempted (busy), so the
         // text isn't silently dropped
-        if (Harvest.setNotes(entry.get_text())) setDirty(false)
+        if (Harvest.setNotes(currentText())) setDirty(false)
     }
 
     const unsub = Harvest.running.subscribe(() => {
-        if (!entry) return
+        if (!buffer) return
         const id = Harvest.running.get()?.id ?? null
         if (id !== lastId) {
             // a different timer now: drop edits belonging to the old one
             lastId = id
             setDirty(false)
-            entry.set_text(serverNotes())
+            buffer.set_text(serverNotes(), -1)
             return
         }
         if (dirty.get() || focused) return
-        entry.set_text(serverNotes())
+        buffer.set_text(serverNotes(), -1)
     })
     onCleanup(unsub)
 
     return (
         <box spacing={6} sensitive={Harvest.busy.as(b => !b)}>
-            <Gtk.Entry
-                $={self => {
-                    entry = self
-                    self.set_text(serverNotes())
-                }}
-                placeholderText={"Notes…"}
+            {/* multi-line: a single-line entry forces horizontal
+            scrolling for longer notes */}
+            <Gtk.ScrolledWindow
+                cssClasses={["input"]}
                 hexpand
-                onChanged={() => {
-                    setDirty(entry?.get_text() !== serverNotes())
-                }}
-                onActivate={save}
+                propagateNaturalHeight
+                minContentHeight={66}
+                maxContentHeight={132}
+                vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                hscrollbarPolicy={Gtk.PolicyType.NEVER}
             >
-                <Gtk.EventControllerFocus
-                    onEnter={() => {
-                        focused = true
+                <Gtk.TextView
+                    $={self => {
+                        buffer = self.buffer
+                        buffer.set_text(serverNotes(), -1)
+                        connect(buffer, "changed", () => setDirty(currentText() !== serverNotes()))
                     }}
-                    onLeave={() => {
-                        focused = false
-                        if (dirty.get()) save()
-                    }}
-                />
-            </Gtk.Entry>
-            <button cssClasses={["confirm"]} visible={dirty} onClicked={save}>
+                    wrapMode={Gtk.WrapMode.WORD_CHAR}
+                >
+                    <Gtk.EventControllerFocus
+                        onEnter={() => {
+                            focused = true
+                        }}
+                        onLeave={() => {
+                            focused = false
+                            if (dirty.get()) save()
+                        }}
+                    />
+                </Gtk.TextView>
+            </Gtk.ScrolledWindow>
+            <button
+                cssClasses={["confirm"]}
+                valign={Gtk.Align.START}
+                visible={dirty}
+                onClicked={save}
+            >
                 <label label={"Save"} />
             </button>
         </box>
