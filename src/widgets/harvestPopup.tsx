@@ -392,7 +392,7 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
                         }}
                         cssClasses={["input", "duration"]}
                         placeholderText={Harvest.formatElapsed(0)}
-                        widthChars={8}
+                        widthChars={5}
                         onChanged={self =>
                             setActionLabel(
                                 (parseDuration(self.get_text()) ?? 0) > 0 ? "Save" : "Start",
