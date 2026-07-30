@@ -43,6 +43,14 @@ class CommandRegistry {
         if (command.name.length === 0)
             throw new Error(`Command must have at least 1 name ${command}`)
 
+        // execute() picks the first matching entry, so a re-registered
+        // alias would silently shadow the new command — call it out
+        const taken = new Set(this.commands.flatMap(c =>
+            c.name.map(n => n.toLowerCase())))
+        const dupes = command.name.filter(n => taken.has(n.toLowerCase()))
+        if (dupes.length > 0)
+            console.warn(`Request: "${command.name[0]}" alias(es) already registered and will be shadowed: ${dupes.join(", ")}`)
+
         this.commands.push(command)
     }
 
@@ -52,12 +60,15 @@ class CommandRegistry {
      * @returns Returns the executed commands output string
      */
     async execute(argv: string[], silent: boolean = false): Promise<string> {
-        let requested_command = argv.shift()
+        // copy: call sites pass fixed lists (["notifications"], ...) and
+        // shift() would eat their first element
+        const args = [...argv]
+        let requested_command = args.shift()
 
         if (requested_command === undefined) return "<helper> help for list of commands"
 
         if (!silent) {
-            console.log(`Request: command(${requested_command}) args(${argv.join(", ")})`)
+            console.log(`Request: command(${requested_command}) args(${args.join(", ")})`)
         }
 
         // Typescript happy, Also sane default
@@ -74,7 +85,7 @@ class CommandRegistry {
         }
 
         try {
-            const result = await entry.main(argv)
+            const result = await entry.main(args)
             return `${Config.instanceName}: ${result}`
         } catch (err) {
             console.warn(`Request error: ${(err as Error).message}`)

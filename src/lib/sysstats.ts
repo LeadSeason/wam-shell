@@ -1,7 +1,6 @@
 import { createState } from "gnim"
 import { createPoll } from "ags/time"
-import { readFile } from "ags/file"
-import { exec } from "ags/process"
+import { readFileAsync } from "ags/file"
 import GLib from "gi://GLib?version=2.0"
 import Config from "../config"
 import { streamLines } from "./utils"
@@ -33,8 +32,8 @@ const push = (hist: { v: number }[], set: (v: { v: number }[]) => void, v: numbe
 
 // /proc/stat: user nice system idle iowait irq softirq steal
 let prevCpu: { idle: number, total: number } | null = null
-function readCpu(): number {
-    const fields = readFile("/proc/stat").split("\n")[0]
+async function readCpu(): Promise<number> {
+    const fields = (await readFileAsync("/proc/stat")).split("\n")[0]
         .split(/\s+/).slice(1).map(Number)
     const idle = fields[3] + fields[4]
     const total = fields.reduce((a, b) => a + b, 0)
@@ -45,8 +44,8 @@ function readCpu(): number {
     return Math.round(pct)
 }
 
-function readRam(): number {
-    const meminfo = readFile("/proc/meminfo")
+async function readRam(): Promise<number> {
+    const meminfo = await readFileAsync("/proc/meminfo")
     const total = Number(meminfo.match(/MemTotal:\s+(\d+)/)?.[1] ?? 0)
     const avail = Number(meminfo.match(/MemAvailable:\s+(\d+)/)?.[1] ?? 0)
     if (!total) return 0
@@ -55,15 +54,17 @@ function readRam(): number {
     return Math.round(100 * (1 - avail / total))
 }
 
-function readLoadAvg(): number {
-    return Number(readFile("/proc/loadavg").split(" ")[0]) || 0
+async function readLoadAvg(): Promise<number> {
+    return Number((await readFileAsync("/proc/loadavg")).split(" ")[0]) || 0
 }
 
 // /proc/net/dev: skip loopback and container/bridge interfaces
-let prevNet: { rx: number, tx: number } | null = null
-function readNet(intervalSec: number): [number, number] {
+// the rate divisor is the actual elapsed time: ticks slip while a
+// previous sample is in flight, and a fixed INTERVAL would inflate it
+let prevNet: { rx: number, tx: number, t: number } | null = null
+async function readNet(): Promise<[number, number]> {
     let rx = 0, tx = 0
-    for (const line of readFile("/proc/net/dev").split("\n").slice(2)) {
+    for (const line of (await readFileAsync("/proc/net/dev")).split("\n").slice(2)) {
         const m = line.match(/^\s*([^:]+):\s*(.*)$/)
         if (!m) continue
         const iface = m[1].trim()
@@ -73,37 +74,43 @@ function readNet(intervalSec: number): [number, number] {
         rx += Number(fields[0])
         tx += Number(fields[8])
     }
+    const now = GLib.get_monotonic_time() / 1000 // us -> ms
     let down = 0, up = 0
-    if (prevNet) {
-        down = Math.max(0, (rx - prevNet.rx) / intervalSec)
-        up = Math.max(0, (tx - prevNet.tx) / intervalSec)
+    if (prevNet && now > prevNet.t) {
+        const dt = (now - prevNet.t) / 1000
+        down = Math.max(0, (rx - prevNet.rx) / dt)
+        up = Math.max(0, (tx - prevNet.tx) / dt)
     }
-    prevNet = { rx, tx }
+    prevNet = { rx, tx, t: now }
     return [Math.round(down), Math.round(up)]
 }
 
 // probe once: no point spawning nvidia-smi at all without one
-const hasNvidia = (() => {
-    try { exec("which nvidia-smi"); return true } catch { return false }
-})()
+const hasNvidia = GLib.find_program_in_path("nvidia-smi") !== null
 
 const poll = createPoll("", INTERVAL, () => {
-    const step = (label: string, fn: () => void) => {
-        try { fn() } catch (e) { console.warn(`sysstats ${label}:`, e) }
+    const step = (label: string, fn: () => void | Promise<void>) => {
+        try {
+            const p = fn()
+            // async steps throw after step() returned; log them like
+            // the sync failures instead of losing them to unhandledrejection
+            if (p instanceof Promise)
+                p.catch((e) => console.warn(`sysstats ${label}:`, e))
+        } catch (e) { console.warn(`sysstats ${label}:`, e) }
     }
-    step("cpu", () => {
-        const c = readCpu()
+    step("cpu", async () => {
+        const c = await readCpu()
         setCpu(c)
         push(cpuHist.get(), setCpuHist, c)
     })
-    step("ram", () => {
-        const r = readRam()
+    step("ram", async () => {
+        const r = await readRam()
         setRam(r)
         push(ramHist.get(), setRamHist, r)
     })
-    step("load", () => setLoadAvg(readLoadAvg()))
-    step("net", () => {
-        const [down, up] = readNet(INTERVAL / 1000)
+    step("load", async () => setLoadAvg(await readLoadAvg()))
+    step("net", async () => {
+        const [down, up] = await readNet()
         setNetDown(down)
         setNetUp(up)
     })

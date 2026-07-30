@@ -16,15 +16,15 @@ export default class Sway extends GObject.Object {
     #i3conn!: i3ipc.Connection // assigned in the constructor's try
     #wss: Node[] = []
     #outputs: Displays = []
+    // placeholder only: the real root shape (output/child nodes) exists
+    // after the first GET_TREE fetch, until then tree reads see an
+    // empty root
     #tree: Node = { nodes: [] } as unknown as Node
     // false when the IPC socket is dead (stale I3SOCK, sway not running)
     ok = false
 
     @getter(Array)
     get wss () { return this.#wss };
-
-    @getter(Array)
-    get display () { return this.#outputs };
 
     @getter(Array)
     get tree () { return this.#tree.nodes };
@@ -40,11 +40,6 @@ export default class Sway extends GObject.Object {
     @getter(Number)
     get urgent() {
         return this.#wss.find(ws => ws.urgent)?.id ?? 0;
-    }
-
-    @getter(Array)
-    get rename () {
-        return this.#wss
     }
 
     // i3ipc.Connection.message() is synchronous and blocks the main loop
@@ -88,7 +83,6 @@ export default class Sway extends GObject.Object {
                         this.notify("wss")
                         this.notify("focused")
                         this.notify("urgent")
-                        this.notify("rename")
                     }
                     if (kinds.has("ws") || kinds.has("win")) {
                         this.#tree = JSON.parse(conn.message(i3ipc.MessageType.GET_TREE, ""));

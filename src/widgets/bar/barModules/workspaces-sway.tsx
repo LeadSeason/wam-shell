@@ -113,9 +113,9 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor; }) {
             {(workspace) => {
                 const focused = createBinding(sway, "focused")
                     .as(id => workspace.id === id ? ["active"] : [])
-                const name = createBinding(sway, "rename")
-                    .as((renameWorkspacesList) => {
-                        let workspaceName = renameWorkspacesList.find(renameWorkspace => workspace.id === renameWorkspace.id)?.name
+                const name = createBinding(sway, "wss")
+                    .as((wss) => {
+                        let workspaceName = wss.find(ws => workspace.id === ws.id)?.name
 
                         if (workspaceName) {
                             return workspaceName.split(":")[0] || workspace.id.toString()

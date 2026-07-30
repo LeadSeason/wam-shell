@@ -99,15 +99,20 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
     let expired = false
     let area: Gtk.DrawingArea | null = null
 
+    let expireSource: number | null = null
     function expire() {
         if (expired) return
         expired = true
         if (rev) rev.revealChild = false
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 220, () => {
+        expireSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 220, () => {
+            expireSource = null
             removePopup(n.id)
             return GLib.SOURCE_REMOVE
         })
     }
+    // the delayed removePopup above must not fire after the row is
+    // gone (every other source here is already onCleanup-tracked)
+    onCleanup(() => { if (expireSource !== null) GLib.source_remove(expireSource) })
 
     // low urgency drains faster; critical never drains
     if (!critical) {
