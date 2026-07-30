@@ -28,7 +28,7 @@ type TempBackend = "hyprctl" | "gsettings" | "gammastep" | "none"
 const GSCHEMA = "org.gnome.settings-daemon.plugins.color"
 export const tempBackend: TempBackend = (() => {
     if (Config.desktopSession === "hyprland") return "hyprctl"
-    try { exec("which gammastep"); return "gammastep" } catch { }
+    if (GLib.find_program_in_path("gammastep")) return "gammastep"
     try {
         exec(`gsettings get ${GSCHEMA} night-light-enabled`)
         exec("pgrep -x gnome-settings-daemon")

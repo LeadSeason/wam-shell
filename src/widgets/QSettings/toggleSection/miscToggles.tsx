@@ -1,5 +1,6 @@
 import { createBinding, createState, onCleanup } from "gnim";
-import { exec, execAsync } from "ags/process";
+import { execAsync } from "ags/process";
+import GLib from "gi://GLib?version=2.0";
 import Gio from "gi://Gio?version=2.0";
 import AstalNetwork from "gi://AstalNetwork?version=0.1";
 import { DropdownButton } from "./ToggleButton";
@@ -7,9 +8,7 @@ import Config from "../../../config";
 import { setThemeLive } from "../../../lib/style";
 import hyprsunset, { setNightLightEnabled, tempBackend } from "../../../lib/hyprsunset";
 
-const has = (bin: string) => {
-    try { exec(`which ${bin}`); return true } catch { return false }
-}
+const has = (bin: string) => GLib.find_program_in_path(bin) !== null
 
 export function NightLightButton() {
     // no night light backend (hyprctl, gsettings or gammastep)
@@ -25,23 +24,24 @@ export function NightLightButton() {
 
 export function DarkStyleButton() {
     if (!has("gsettings")) return <></>
-    // Gio.Settings throws synchronously if the schema isn't installed
-    // (the gsettings binary can exist without it); keep QSettings alive
-    let settings: Gio.Settings | null = null
-    try {
-        settings = new Gio.Settings({ schema_id: "org.gnome.desktop.interface" })
-    } catch (e) {
-        console.warn("Dark Style: schema unavailable:", e)
-        return <></>
-    }
+    // new Gio.Settings({schema_id}) on a missing schema aborts the
+    // process (a g_error, not a catchable exception) — the gsettings
+    // binary can exist without the schema. Look it up first; keep
+    // QSettings alive
+    const schema = Gio.SettingsSchemaSource.get_default()?.lookup(
+        "org.gnome.desktop.interface",
+        true,
+    )
+    if (!schema) return <></>
+    const settings = new Gio.Settings({ settings_schema: schema })
     const [active, setActive] = createState(false)
     // Gio.Settings emits "changed" so external changes (other tools,
     // gsettings CLI) reflect without re-reading on a timer
     const sync = () => setActive(
-        settings!.get_string("color-scheme").includes("prefer-dark"))
+        settings.get_string("color-scheme").includes("prefer-dark"))
     sync()
-    const h = settings!.connect("changed::color-scheme", sync)
-    onCleanup(() => settings!.disconnect(h))
+    const h = settings.connect("changed::color-scheme", sync)
+    onCleanup(() => settings.disconnect(h))
 
     return <DropdownButton
         icon={"weather-clear-night-symbolic"}
@@ -50,7 +50,7 @@ export function DarkStyleButton() {
         isActive={active}
         activate={() => {
             const next = !active.get()
-            settings!.set_string("color-scheme", next ? "prefer-dark" : "default")
+            settings.set_string("color-scheme", next ? "prefer-dark" : "default")
             // the changed signal flips `active`; no manual setActive needed
             // the shell itself follows (appearance.dark/light_theme)
             setThemeLive(next

@@ -1,5 +1,5 @@
 import GLib from "gi://GLib?version=2.0"
-import { exec, execAsync } from "ags/process"
+import { execAsync } from "ags/process"
 import { createState } from "ags"
 import { streamLines } from "./utils"
 
@@ -45,9 +45,7 @@ export async function refreshVpn() {
 }
 
 // probe once: no point spawning mullvad at all without one
-export const hasMullvad = (() => {
-    try { exec("which mullvad"); return true } catch { return false }
-})()
+export const hasMullvad = GLib.find_program_in_path("mullvad") !== null
 
 // The listener prints the state block on start and on every tunnel
 // state change. Blocks are not framed (no blank separators; same-state

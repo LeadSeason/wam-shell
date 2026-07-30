@@ -5,7 +5,25 @@ import AstalApps from "gi://AstalApps"
 // WM class names often don't match icon names (e.g. class "brave-browser"
 // -> Icon=brave-desktop, class "code" -> Icon=vscode). Resolve icons through
 // the desktop entry database, falling back to direct theme lookup.
+//
+// One resolver per icon theme: callers ask for one per widget (and per
+// monitor), but the app database + wmClassMap below are expensive to
+// build and identical for a given theme object
+const resolvers = new WeakMap<
+    Gtk.IconTheme,
+    (name: string | null | undefined) => string | null
+>()
+
 export function createIconResolver(theme: Gtk.IconTheme) {
+    let resolve = resolvers.get(theme)
+    if (resolve === undefined) {
+        resolve = buildIconResolver(theme)
+        resolvers.set(theme, resolve)
+    }
+    return resolve
+}
+
+function buildIconResolver(theme: Gtk.IconTheme) {
     const cache = new Map<string, string | null>()
     const apps = new AstalApps.Apps()
 

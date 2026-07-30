@@ -1,12 +1,12 @@
 import { createBinding } from "gnim";
-import { exec, execAsync } from "ags/process";
+import { execAsync } from "ags/process";
+import GLib from "gi://GLib?version=2.0";
 import { DropdownButton } from "./ToggleButton";
 import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1";
 import { Gtk } from "ags/gtk4";
 
-const hasPowerprofilesctl = (() => {
-    try { exec("which powerprofilesctl"); return true } catch { return false }
-})()
+const hasPowerprofilesctl =
+    GLib.find_program_in_path("powerprofilesctl") !== null
 
 export function PowerProfilesButton({ navigate }: { navigate: () => void }) {
     // power-profiles-daemon not installed

@@ -41,6 +41,14 @@ function loadXkbNames(): Record<string, string> {
     }
 }
 
+// parsed on first use, not at import: the file is ~1MB of XML and a
+// session may never render a layout name
+let xkbNamesCache: Record<string, string> | null = null
+function getXkbNames(): Record<string, string> {
+    if (xkbNamesCache === null) xkbNamesCache = loadXkbNames()
+    return xkbNamesCache
+}
+
 export interface LayoutSource {
     layouts: Accessor<string[]> // xkb codes ("" when unknown)
     names: Accessor<string[]>   // display name per index
@@ -78,7 +86,6 @@ export function ensureLockSource(): void {
 
 function hyprlandSource(): LayoutSource {
     const hyprland = AstalHyprland.get_default()
-    const xkbNames = loadXkbNames()
     const [layouts, setLayouts] = createState<string[]>([])
     const [variants, setVariants] = createState<string[]>([])
     const [activeIndex, setActiveIndex] = createState(0)
@@ -101,7 +108,7 @@ function hyprlandSource(): LayoutSource {
             lastIndex = kb.active_layout_index
             if (wasFirst) return
             const code = codes[kb.active_layout_index] ?? ""
-            const base = xkbNames[code] ?? code.toUpperCase()
+            const base = getXkbNames()[code] ?? code.toUpperCase()
             setLayoutOsdText(`${flag(code)} ${base}`.trim())
         }).catch((e) => console.error("keyboard layout:", e))
     }
@@ -115,7 +122,7 @@ function hyprlandSource(): LayoutSource {
     return {
         layouts,
         names: layouts.as(ls => ls.map((code, i) => {
-            const base = xkbNames[code] ?? code.toUpperCase()
+            const base = getXkbNames()[code] ?? code.toUpperCase()
             const v = variants.get()[i]
             return v ? `${base} (${v})` : base
         })),
@@ -129,11 +136,18 @@ function hyprlandSource(): LayoutSource {
 }
 
 function swaySource(msgCmd: string): LayoutSource {
-    // sway gives layout descriptions, not codes; reverse the xkb db
-    const xkbNames = loadXkbNames()
-    const descToCode: Record<string, string> = {}
-    for (const [code, desc] of Object.entries(xkbNames))
-        if (!(desc in descToCode)) descToCode[desc] = code
+    // sway gives layout descriptions, not codes; reverse the xkb db.
+    // built on first use — the poll tick below is the first consumer
+    let descToCode: Record<string, string> | null = null
+    function codeFor(desc: string): string {
+        if (descToCode === null) {
+            const map: Record<string, string> = {}
+            for (const [code, d] of Object.entries(getXkbNames()))
+                if (!(d in map)) map[d] = code
+            descToCode = map
+        }
+        return descToCode[desc] ?? ""
+    }
 
     const [layouts, setLayouts] = createState<string[]>([])
     const [names, setNames] = createState<string[]>([])
@@ -165,11 +179,11 @@ function swaySource(msgCmd: string): LayoutSource {
             identifier = kb.identifier
             const ns = kb.xkb_layout_names as string[]
             setNames(ns)
-            setLayouts(ns.map(n => descToCode[n] ?? ""))
+            setLayouts(ns.map(n => codeFor(n)))
             const idx = kb.xkb_active_layout_index ?? 0
             setActiveIndex(idx)
             if (prevIndex !== null && idx !== prevIndex) {
-                const code = descToCode[ns[idx]] ?? ""
+                const code = codeFor(ns[idx])
                 setLayoutOsdText(`${flag(code)} ${ns[idx]}`.trim())
             }
             prevIndex = idx

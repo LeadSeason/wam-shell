@@ -7,7 +7,7 @@ import { isFile } from "./lib/utils"
 
 // scss/theme/script paths resolve against the repo root. Launching from
 // another cwd breaks that; WAM_SHELL_DIR overrides when needed.
-const instanceSrcDir = GLib.getenv("WAM_SHELL_DIR") || exec("pwd").trim()
+const instanceSrcDir = GLib.getenv("WAM_SHELL_DIR") || GLib.get_current_dir()
 const userHomeDir = GLib.getenv("HOME");
 const xdgConfigHomeDir = GLib.getenv("XDG_CONFIG_HOME");
 const xdgRuntimeDir = GLib.getenv("XDG_RUNTIME_DIR");
@@ -279,15 +279,18 @@ function resolveTheme(data: Record<string, any>): string {
     const theme = getTheme(data)
     const appearance = getAppearanceConfig()
     if (!appearance.followSystem) return theme
-    try {
-        const s = new Gio.Settings({ schema_id: "org.gnome.desktop.interface" })
-        return s.get_string("color-scheme").includes("prefer-dark")
-            ? appearance.darkTheme
-            : appearance.lightTheme
-    } catch {
-        // schema not installed — keep the configured theme
-        return theme
-    }
+    // new Gio.Settings({schema_id}) on a missing schema aborts the
+    // process (a g_error, not a catchable exception) — look it up first
+    const schema = Gio.SettingsSchemaSource.get_default()?.lookup(
+        "org.gnome.desktop.interface",
+        true,
+    )
+    // schema not installed — keep the configured theme
+    if (!schema) return theme
+    const s = new Gio.Settings({ settings_schema: schema })
+    return s.get_string("color-scheme").includes("prefer-dark")
+        ? appearance.darkTheme
+        : appearance.lightTheme
 }
 
 function getHyprsunsetConfig() {    const h = configData.hyprsunset ?? {}
