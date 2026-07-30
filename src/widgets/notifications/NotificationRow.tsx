@@ -3,7 +3,7 @@ import AstalNotifd from "gi://AstalNotifd?version=0.1"
 import GdkPixbuf from "gi://GdkPixbuf?version=2.0"
 import Pango from "gi://Pango?version=1.0"
 import { relTime, timeTick } from "../../lib/notifd"
-import { safeMarkup } from "../../lib/utils"
+import { isRtl, rtlAlign, safeMarkup } from "../../lib/utils"
 
 function isPath(image: string | null): image is string {
     return !!image && (image.startsWith("/") || image.startsWith("file://"))
@@ -43,6 +43,13 @@ export default function NotificationRow({ n }: { n: AstalNotifd.Notification }) 
     const actions = n.get_actions().filter(a => a.get_id() !== "default")
     const hasDefault = n.get_actions().some(a => a.get_id() === "default")
 
+    const summary = n.get_summary() || n.get_app_name()
+    const body = n.get_body()
+    // the whole card aligns by the summary's base direction; the body
+    // needs an explicit RLM so small LTR lines follow it too
+    const rtl = isRtl(summary)
+    const bodyMarkup = rtl ? rtlAlign(safeMarkup(body)) : safeMarkup(body)
+
     return (
         <box
             cssClasses={["notification", ...urgencyClass(n)]}
@@ -73,17 +80,17 @@ export default function NotificationRow({ n }: { n: AstalNotifd.Notification }) 
                 )}
                 <label
                     cssClasses={["summary"]}
-                    label={n.get_summary() || n.get_app_name()}
-                    xalign={0}
+                    label={summary}
+                    xalign={rtl ? 1 : 0}
                     maxWidthChars={34}
                     ellipsize={Pango.EllipsizeMode.END}
                 />
-                {n.get_body() !== "" && (
+                {body !== "" && (
                     <label
                         cssClasses={["body"]}
-                        label={safeMarkup(n.get_body())}
+                        label={bodyMarkup}
                         useMarkup
-                        xalign={0}
+                        xalign={rtl ? 1 : 0}
                         wrap
                         maxWidthChars={40}
                     />
