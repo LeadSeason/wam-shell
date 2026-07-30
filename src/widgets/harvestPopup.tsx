@@ -600,7 +600,7 @@ function PopupContent() {
             cssClasses={["harvestPopup"]}
             orientation={Gtk.Orientation.VERTICAL}
             spacing={12}
-            widthRequest={442}
+            widthRequest={480}
         >
             <box
                 orientation={Gtk.Orientation.VERTICAL}
@@ -646,8 +646,8 @@ function show() {
 function popupMarginLeft(): number {
     const anchor = popupAnchor.get()
     if (!anchor) return 12
-    // window width: 442 request + horizontal margins
-    const POPUP_W = 442 + 24
+    // window width: 480 request + horizontal margins
+    const POPUP_W = 480 + 24
     const monW = anchor.monitor.get_geometry().width
     return Math.max(0, Math.min(Math.round(anchor.x - POPUP_W / 2), monW - POPUP_W))
 }
