@@ -104,6 +104,10 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 
 - One logical change per commit; split unrelated changes into separate
   commits when asked.
+- Always sync before merging: `git fetch origin`, then merge
+  `origin/develop` into the branch and resolve conflicts there, before
+  merging the branch into develop. Several sessions commit to develop;
+  a stale branch conflicts at PR time and has orphaned commits before.
 - Before merging a branch, do a code review of its changes
   (correctness, races, leaks, consistency) unless one was already done
   in this session.
