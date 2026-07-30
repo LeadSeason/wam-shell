@@ -19,14 +19,32 @@ const [paused, setPaused] = createState(false)
 export { paused }
 
 let timerSource = 0
+// wall-clock deadline, null = no timer running. Ticking down a counter
+// would lie: timeout callbacks don't fire while suspended and drift
+// under load, so the remainder is derived from the wall clock instead
+let deadline: number | null = null
+// seconds left when paused; on resume the deadline is pushed out by
+// this much, so the paused stretch doesn't count
+let pausedSeconds = 0
+
+function tickRemaining() {
+    if (deadline === null) return
+    setRemaining(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)))
+}
 
 function arm() {
     timerSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
-        if (remaining.get() <= 1) {
+        // the tick only refreshes the display and checks the deadline;
+        // after a suspend it simply fires late
+        if (deadline === null) {
+            timerSource = 0
+            return GLib.SOURCE_REMOVE
+        }
+        if (Date.now() >= deadline) {
             fire()
             return GLib.SOURCE_REMOVE
         }
-        setRemaining(remaining.get() - 1)
+        tickRemaining()
         return GLib.SOURCE_CONTINUE
     })
 }
@@ -46,6 +64,7 @@ let dimmedToLevel: number | null = null
 
 function fire() {
     timerSource = 0
+    deadline = null
     setRemaining(0)
     setPaused(false)
     for (const p of mpris.players) {
@@ -82,12 +101,14 @@ export function startSleepTimer(minutes: number) {
     cancelSleepTimer()
     restoreDim()
     if (minutes <= 0) return
-    setRemaining(minutes * 60)
+    deadline = Date.now() + minutes * 60_000
+    tickRemaining() // show the full duration immediately, not a tick late
     arm()
 }
 
 export function cancelSleepTimer() {
     disarm()
+    deadline = null
     setRemaining(0)
     setPaused(false)
 }
@@ -95,9 +116,13 @@ export function cancelSleepTimer() {
 export function toggleSleepTimerPause() {
     if (remaining.get() <= 0) return
     if (paused.get()) {
+        // re-apply the frozen remainder as a fresh deadline
+        deadline = Date.now() + pausedSeconds * 1000
         setPaused(false)
         arm()
     } else {
+        // freeze: stash what's left, stop the tick
+        pausedSeconds = remaining.get()
         disarm()
         setPaused(true)
     }

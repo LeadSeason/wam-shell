@@ -32,7 +32,7 @@ function getCacheData(): cacheType {
     // Initiate a clean file if it doesn't exist.
     if (!isFile(cacheFile)) {
         console.log(`Initialized cache file. Generated a new cache file in ${cacheFile}`)
-        saveCacheData(data)
+        saveCacheData(data).catch(logSaveError)
         data.lastSave = Date.now();
         return data
     }
@@ -57,11 +57,29 @@ function getCacheData(): cacheType {
     return data
 }
 
+// gjs exposes no getpid; the pid comes from procfs so concurrent shell
+// instances get distinct tmp names (random fallback still differs)
+const pid = (() => {
+    try {
+        return readFile("/proc/self/stat").split(" ")[0]
+    } catch {
+        return `${GLib.random_int()}`
+    }
+})()
+let writeCounter = 0
+
+// writes are fire-and-forget; without a handler a failed write is an
+// unhandled rejection
+const logSaveError = (e: unknown) => console.warn("cache: save failed:", e)
+
 async function saveCacheData(data: cacheType) {
     data.lastSave = Date.now();
     // write to a temp file then swap: a crash mid-write must not leave
-    // a truncated cache behind
-    const tmp = `${cacheFile}.tmp`
+    // a truncated cache behind. Unique tmp name per write: every
+    // `cache.data = ...` starts an async write, and overlapping writes
+    // (slider bursts) must not rename the tmp file out from under a
+    // write still in flight
+    const tmp = `${cacheFile}.tmp-${pid}-${writeCounter++}`
     await writeFileAsync(tmp, JSON.stringify(data))
     GLib.rename(tmp, cacheFile)
 }
@@ -86,10 +104,13 @@ export default class Cache extends GObject.Object {
         // merge into the existing cache and persist
         Object.assign(this.#cache, data)
         saveCacheData(this.#cache)
-        .then(() => {/*
+            .then(() => {
+                /*
             @TODO: Create cacheType constructor so we can notify that the
             data has changed.
-            this.notify("data")*/})
+            this.notify("data")*/
+            })
+            .catch(logSaveError)
     }
 }
 

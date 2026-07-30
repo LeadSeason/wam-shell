@@ -1,5 +1,6 @@
 import GObject from "gnim/gobject";
 import { register, getter, setter } from "ags/gobject"
+import GLib from "gi://GLib?version=2.0"
 import i3ipc from "gi://i3ipc?version=1.0";
 import Sway from "./sway"
 import CommandRegistry from "./requestHandler";
@@ -31,6 +32,10 @@ export default class SwayGaps extends GObject.Object {
         10 : this.#cache.data.gapsSize
     // Last applied value, Useful for skipping unnecessary operations
     #lastAppliedValue: number = -1
+    // debounce source for cache writes (brightness.ts pattern): a
+    // slider drag fires per motion event, but the file only needs the
+    // settled value — one write once the changes stop
+    #writeSource = 0
 
     @getter(Number)
     get gap_size(): number {
@@ -41,7 +46,12 @@ export default class SwayGaps extends GObject.Object {
     set gap_size(size: number) {
         this.#gapSize = Math.floor(size)
         this.notify("gap_size")
-        this.#cache.data = { gapsSize: this.#gapSize }
+        if (this.#writeSource !== 0) GLib.source_remove(this.#writeSource)
+        this.#writeSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+            this.#writeSource = 0
+            this.#cache.data = { gapsSize: this.#gapSize }
+            return GLib.SOURCE_REMOVE
+        })
         this.#applyGaps()
     }
 
