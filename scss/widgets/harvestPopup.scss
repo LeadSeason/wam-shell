@@ -23,9 +23,9 @@ window.HarvestPopup {
             }
         }
 
-        // Harvest brand orange (conf.scss) on the header icons
+        // Harvest brand color (theme variable, default #fa5d00)
         .harvestIcon {
-            color: s.$harvest-orange;
+            color: t.$harvest;
         }
 
         // "New Time Entry" form, in the style of Harvest's own widget

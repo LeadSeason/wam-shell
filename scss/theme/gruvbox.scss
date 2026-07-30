@@ -31,6 +31,9 @@ $crust: #17191a;
 /* define accent color to cooking later */
 $accent: $blue;
 
+// Harvest brand color; themes may override
+$harvest: #fa5d00;
+
 $accent10: color.mix($accent, transparent, 10%);
 $accent20: color.mix($accent, transparent, 20%);
 $accent30: color.mix($accent, transparent, 30%);

@@ -116,7 +116,7 @@ export default function Bar({ gdkMonitor, panel }: {
             </box>
             <box $type="center">
                 <Clock />
-                <HarvestTimer monitor={gdkMonitor} />
+                {Config.harvest.enabled && <HarvestTimer monitor={gdkMonitor} />}
             </box>
             <box $type="end">
                 <SleepTimer />
