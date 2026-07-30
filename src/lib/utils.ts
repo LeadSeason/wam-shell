@@ -25,7 +25,7 @@ export function isFile(path: string): boolean {
  */
 export function safeMarkup(s: string): string {
     try {
-        Pango.parse_markup(s, -1, 0)
+        Pango.parse_markup(s, -1, "\x00")
         return s
     } catch {
         return GLib.markup_escape_text(s, -1)
