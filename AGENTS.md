@@ -63,10 +63,11 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 
 ## Perf gate
 
-- Before completing any change under `src/lib/` or `src/widgets/`, run
-  `pnpm perf` and include the verdict line in your summary. If it
-  reports a regression, either fix it or state explicitly why the cost
-  is justified.
+- Run `pnpm perf` once at the end of a piece of work — before creating
+  the PR and/or merging, whichever comes last. Don't run it on every
+  intermediate iteration. Include the verdict line in your summary. If
+  it reports a regression, either fix it or state explicitly why the
+  cost is justified.
 - `pnpm perf` compares the working tree against the merge-base with
   origin/develop. Flags: `--base <ref>`, `--scenario <name>` (one
   scenario in about a minute), `--json` (full data).
