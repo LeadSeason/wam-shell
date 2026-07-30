@@ -113,9 +113,9 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
                                     // clamp: negative size is invalid css
                                     css={`
                                         background-size: ${Math.max(
-                                                0,
-                                                Math.round((c.value ?? 0) * 100),
-                                            )}%
+                                            0,
+                                            Math.round((c.value ?? 0) * 100),
+                                        )}%
                                             100%;
                                     `}
                                 />

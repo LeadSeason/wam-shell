@@ -201,7 +201,7 @@ function swaySource(msgCmd: string): LayoutSource {
     // input event, so the layout name streams over its own connection
     watchSwayInputs({
         onInputs: applyInputs,
-        onInputEvent: (ev) => {
+        onInputEvent: ev => {
             if (!ev?.input || ev.input.type !== "keyboard") return
             if (!identifier && ev.input.xkb_layout_names?.length) applyKeyboard(ev.input)
             else if (
