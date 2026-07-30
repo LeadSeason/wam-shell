@@ -25,7 +25,8 @@ chmod 700 "$TMP/rt"
 # payload + gjs launcher), not a plain .js — run it directly.
 ags bundle --gtk 4 tests/main.ts "$TMP/main"
 ags bundle --gtk 4 tests/config-dump.ts "$TMP/config-dump"
-chmod +x "$TMP/main" "$TMP/config-dump"
+ags bundle --gtk 4 tests/metrics-probe.ts "$TMP/metrics-probe"
+chmod +x "$TMP/main" "$TMP/config-dump" "$TMP/metrics-probe"
 
 # XDG_RUNTIME_DIR is redirected too (DBUS_SESSION_BUS_ADDRESS is explicit,
 # so the session bus stays reachable): the bundle wrapper would otherwise
@@ -38,4 +39,5 @@ WAM_SHELL_DIR="$ROOT" \
 DESKTOP_SESSION=hyprland \
 WAM_TEST_TMP="$TMP" \
 WAM_TEST_CONFIG_DUMP="$TMP/config-dump" \
+WAM_TEST_METRICS_PROBE="$TMP/metrics-probe" \
 "$TMP/main"

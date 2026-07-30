@@ -5,6 +5,7 @@ import "./kbLayout.test"
 import "./sysstats.test"
 import "./trayPinned.test"
 import "./config.test"
+import "./metrics.test"
 
 import { summary } from "./framework"
 
