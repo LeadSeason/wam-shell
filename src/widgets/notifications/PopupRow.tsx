@@ -7,7 +7,7 @@ import Pango from "gi://Pango?version=1.0"
 import { createState, onCleanup } from "gnim"
 import Config from "../../config"
 import { anyPopupHovered, removePopup, setPopupHovered } from "../../lib/notifd"
-import { safeMarkup } from "../../lib/utils"
+import { isRtl, rtlAlign, safeMarkup } from "../../lib/utils"
 
 function isPath(image: string | null): image is string {
     return !!image && (image.startsWith("/") || image.startsWith("file://"))
@@ -63,6 +63,11 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
 
     const summary = n.get_summary() || n.get_app_name()
     const body = n.get_body()
+    // the whole card aligns by the summary's base direction; the body
+    // needs an explicit RLM so small LTR lines follow it too
+    const rtl = isRtl(summary)
+    const bodyMarkup = rtl ? rtlAlign(safeMarkup(body)) : safeMarkup(body)
+    const inlineBody = rtl ? rtlAlign(stripMarkup(body)) : stripMarkup(body)
 
     const [hovered, setHovered] = createState(false)
 
@@ -268,7 +273,7 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
                         <label
                             cssClasses={["summary"]}
                             label={summary}
-                            xalign={0}
+                            xalign={rtl ? 1 : 0}
                             hexpand
                             maxWidthChars={42}
                             ellipsize={Pango.EllipsizeMode.END}
@@ -277,8 +282,8 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
                     {body !== "" && (
                         <label
                             cssClasses={["inline"]}
-                            label={stripMarkup(body)}
-                            xalign={0}
+                            label={inlineBody}
+                            xalign={rtl ? 1 : 0}
                             maxWidthChars={42}
                             ellipsize={Pango.EllipsizeMode.END}
                         />
@@ -296,7 +301,7 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
                         <label
                             cssClasses={["summary"]}
                             label={summary}
-                            xalign={0}
+                            xalign={rtl ? 1 : 0}
                             hexpand
                             maxWidthChars={42}
                             ellipsize={Pango.EllipsizeMode.END}
@@ -317,9 +322,9 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
                     {body !== "" && (
                         <label
                             cssClasses={["body"]}
-                            label={safeMarkup(body)}
+                            label={bodyMarkup}
                             useMarkup
-                            xalign={0}
+                            xalign={rtl ? 1 : 0}
                             wrap
                             maxWidthChars={42}
                             lines={4}
