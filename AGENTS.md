@@ -56,6 +56,11 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   single-line JSON blob per scenario on stdout. Requires
   WAM_SHELL_METRICS instrumentation and refuses to run when no
   notification daemon owns org.freedesktop.Notifications.
+- `pnpm test:perf:diff` (opt-in) compares the working tree against a
+  base ref (default: merge-base with origin/develop) in a git
+  worktree, sequentially. It gates only on counters (subprocess spawns,
+  alive timers, alive signal handlers, fd count) and exits non-zero on
+  any gated difference; timing/RSS/HTTP are report-only.
 - The harness runs on a live desktop session and must never disturb it:
   XDG_CONFIG_HOME / XDG_CACHE_HOME / HOME stay redirected to a tmp dir,
   no test imports modules that call `AstalX.get_default()` at import
