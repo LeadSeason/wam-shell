@@ -592,12 +592,15 @@ function PausedCard() {
 function Footer({ onNewEntry }: { onNewEntry: () => void }) {
     return (
         <box cssClasses={["footer"]}>
-            <label
-                cssClasses={["elapsed", "dim", "total"]}
-                hexpand
-                xalign={0}
-                label={Harvest.dayTotal.as(t => `Today: ${Harvest.formatElapsed(t)}`)}
-            />
+            {/* only the number is emphasized, "Today:" stays dim */}
+            <box hexpand spacing={4}>
+                <label cssClasses={["elapsed", "dim"]} xalign={0} label={"Today:"} />
+                <label
+                    cssClasses={["elapsed", "dim", "total"]}
+                    xalign={0}
+                    label={Harvest.dayTotal.as(t => Harvest.formatElapsed(t))}
+                />
+            </box>
             <button cssClasses={["newEntry"]} onClicked={onNewEntry}>
                 <label label={"+ New entry"} />
             </button>
