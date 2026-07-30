@@ -34,6 +34,24 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   the `theme` config key) — never hardcode hex in widget styles.
 - Shared spacing/radius values live in `scss/conf.scss`.
 
+## Tests
+
+- `pnpm test` runs the unit suite: tests in `tests/*.test.ts` are bundled
+  with `ags bundle` and run under `gjs` against the real modules (see
+  `tests/run.sh`). New suites must be registered in `tests/main.ts` —
+  the bundler needs static imports.
+- `pnpm test:smoke` (opt-in) boots the real shell as an isolated
+  `wam-shell-test` instance and asserts a clean startup.
+- The harness runs on a live desktop session and must never disturb it:
+  XDG_CONFIG_HOME / XDG_CACHE_HOME / HOME stay redirected to a tmp dir,
+  no test imports modules that call `AstalX.get_default()` at import
+  time (`notifd`, `osd`, `bluetooth`, `mpris`, `brightness`,
+  `hyprsunset`, `vpn`, `swayGaps`, …), nothing owns
+  `org.freedesktop.Notifications`, and `ags quit` is only ever called
+  with `-i wam-shell-test`.
+- A bare checkout is not runnable (`.sys/`, `node_modules/` are
+  gitignored): run `scripts/setup.sh` (or `pnpm i`) first.
+
 ## Commits
 
 - One logical change per commit; split unrelated changes into separate

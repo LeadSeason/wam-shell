@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Unit/integration test harness. Bundles tests with the project's own
+# toolchain (ags bundle) and runs them under gjs. Safe on a live session:
+# XDG_CONFIG_HOME / XDG_CACHE_HOME / HOME are redirected to a tmp dir, no
+# app instance is started, no D-Bus name is owned, nothing is killed.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+if [[ ! -e node_modules/ags || ! -e node_modules/gnim ]]; then
+    echo "error: node_modules/ags or node_modules/gnim missing." >&2
+    echo "a bare checkout is not runnable — run scripts/setup.sh (or pnpm i) first." >&2
+    exit 1
+fi
+command -v ags >/dev/null || { echo "error: ags not found in PATH" >&2; exit 1; }
+command -v gjs >/dev/null || { echo "error: gjs not found in PATH" >&2; exit 1; }
+
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+mkdir -p "$TMP/config" "$TMP/cache" "$TMP/home" "$TMP/rt"
+chmod 700 "$TMP/rt"
+
+# ags bundle emits a self-contained executable (bash wrapper + base64
+# payload + gjs launcher), not a plain .js — run it directly.
+ags bundle --gtk 4 tests/main.ts "$TMP/main"
+ags bundle --gtk 4 tests/config-dump.ts "$TMP/config-dump"
+chmod +x "$TMP/main" "$TMP/config-dump"
+
+# XDG_RUNTIME_DIR is redirected too (DBUS_SESSION_BUS_ADDRESS is explicit,
+# so the session bus stays reachable): the bundle wrapper would otherwise
+# write its decoded payload into the real /run/user/<uid>.
+XDG_CONFIG_HOME="$TMP/config" \
+XDG_CACHE_HOME="$TMP/cache" \
+XDG_RUNTIME_DIR="$TMP/rt" \
+HOME="$TMP/home" \
+WAM_SHELL_DIR="$ROOT" \
+DESKTOP_SESSION=hyprland \
+WAM_TEST_TMP="$TMP" \
+WAM_TEST_CONFIG_DUMP="$TMP/config-dump" \
+"$TMP/main"
