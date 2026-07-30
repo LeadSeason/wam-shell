@@ -34,6 +34,8 @@ window.HarvestPopup {
         }
         .duration {
             color: t.$subtext0;
+            font-size: 1.2em;
+            padding: 6px 10px;
         }
         // the paused-hours editor must read as an input, not a label
         .pausedEdit {
