@@ -136,8 +136,6 @@
 # [quicksettings] - Quick settings popup
 # Keys can be set inside a [quicksettings] section or flat at the top level.
 #
-# close_delay - milliseconds after the pointer leaves the popup before it
-#               closes. default 350
 # show_battery_percentage - show the battery percentage next to the battery
 #                           icon on the panel. default true
 # show_device_names - overlay the active input/output device name on the
@@ -158,7 +156,6 @@
 #                   (charge_control_end_threshold) when exposed, else
 #                   100. set explicitly to override
 # [quicksettings]
-# close_delay = 350
 # show_battery_percentage = true
 # show_device_names = false
 # show_stats = false

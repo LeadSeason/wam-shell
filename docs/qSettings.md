@@ -7,8 +7,7 @@ surface. Toggle it with the panel button or:
 ags request -i wam-shell qSettings
 ```
 
-It closes on ESC, on click-away, and shortly after the pointer leaves it
-(`quicksettings.close_delay`, default 350ms).
+It closes on ESC, on click-away, and on the panel button (it's a toggle).
 
 ## Layout (main pane)
 
@@ -30,8 +29,8 @@ It closes on ESC, on click-away, and shortly after the pointer leaves it
 
 ## Config
 
-See the commented keys in `config.toml`: `[quicksettings]` (delays,
-stats, avatar, charge cap), `[bluetooth]` (notifications), `[sleep_timer]`
+See the commented keys in `config.toml`: `[quicksettings]` (stats, avatar,
+charge cap), `[bluetooth]` (notifications), `[sleep_timer]`
 (presets, panel countdown, dim).
 
 ## Avatar

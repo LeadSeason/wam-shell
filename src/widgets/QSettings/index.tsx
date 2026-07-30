@@ -1,5 +1,4 @@
 import Graphene from "gi://Graphene?version=1.0"
-import GLib from "gi://GLib?version=2.0"
 
 import { Astal, Gdk, Gtk } from "ags/gtk4"
 import { timeout } from "ags/time"
@@ -43,7 +42,6 @@ export default function QSettings() {
     let hideTimer: ReturnType<typeof timeout> | null = null
 
     function hide() {
-        cancelClose()
         // For some reason it does'nt want to play the animation, Setting
         // timeout to 0 for this reason
         revealer.set_reveal_child(false)
@@ -58,8 +56,6 @@ export default function QSettings() {
     }
 
     function show() {
-        hasEntered = false
-        cancelClose()
         // a hide may have a pending win.hide(); cancel it
         hideTimer?.cancel()
         hideTimer = null
@@ -90,7 +86,7 @@ export default function QSettings() {
 
     registry.register({
         name: ["qSettingsShow"],
-        description: "Show QuickSettings without toggling (used for hover open)",
+        description: "Show QuickSettings without toggling",
         main: () => {
             if (win && !win.is_visible()) {
                 show()
@@ -118,61 +114,6 @@ export default function QSettings() {
             return
         }
     }
-
-    // close shortly after the pointer leaves the popup. Motion is tracked
-    // on the fullscreen overlay: tray popover menus are separate windows,
-    // so while the pointer is over one no motion reaches the overlay and
-    // no close is triggered.
-    let closeSource: number | null = null
-    function scheduleClose() {
-        if (closeSource !== null) return
-        closeSource = GLib.timeout_add(
-            GLib.PRIORITY_DEFAULT,
-            Config.quicksettings.closeDelay,
-            () => {
-                closeSource = null
-                if (win.is_visible()) hide()
-                return GLib.SOURCE_REMOVE
-            },
-        )
-    }
-    function cancelClose() {
-        if (closeSource !== null) {
-            GLib.source_remove(closeSource)
-            closeSource = null
-        }
-    }
-
-    // Only arm auto-close after the pointer has been inside the popup:
-    // when opened by hovering the bar button, the overlay appears under
-    // the pointer while it is still outside the popup, which would
-    // otherwise immediately schedule a close and flicker.
-    let hasEntered = false
-
-    function onMotion(_e: Gtk.EventControllerMotion, x: number, y: number) {
-        const [, rect] = contentBox.compute_bounds(win)
-
-        // The popup has a margin around it (for its shadow) which is
-        // outside its bounds: a pointer resting in that strip counts as
-        // outside while visually being on the popup, and if it overlaps
-        // the bar button it causes a close/open flicker loop. Treat a
-        // buffer around the popup as inside.
-        const BUFFER = 12
-        const { x: rx, y: ry } = rect.origin
-        const { width, height } = rect.size
-        const inside =
-            x >= rx - BUFFER &&
-            x <= rx + width + BUFFER &&
-            y >= ry - BUFFER &&
-            y <= ry + height + BUFFER
-
-        if (inside) {
-            hasEntered = true
-            cancelClose()
-        } else if (hasEntered) {
-            scheduleClose()
-        }
-    }
     return (
         <window
             $={ref => {
@@ -190,7 +131,6 @@ export default function QSettings() {
         >
             <Gtk.EventControllerKey onKeyPressed={onKey} />
             <Gtk.GestureClick onPressed={onClick} />
-            <Gtk.EventControllerMotion onMotion={onMotion} />
             <revealer
                 $={ref => (revealer = ref)}
                 transitionDuration={200}
