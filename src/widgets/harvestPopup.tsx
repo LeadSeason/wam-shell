@@ -176,7 +176,7 @@ function RunningHeader() {
 // natural width follows the selected text, resizing the whole popup.
 // Lives inside IdleContent's expander; Cancel collapses back to it
 function NewEntryForm({ onCancel }: { onCancel: () => void }) {
-    let notes: Gtk.Entry
+    let notesBuffer: Gtk.TextBuffer
     let duration: Gtk.Entry
     let search: Gtk.Entry
 
@@ -222,12 +222,12 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
         if (!p || !t) return
         const hours = parseDuration(duration.get_text())
         if (hours === null) return
-        const text = notes.get_text().trim() || undefined
+        const text = notesBuffer.text.trim() || undefined
         // 0 = start a live timer (replaces the running one); >0 = log a
         // completed entry and leave any running timer alone
         if (hours > 0) Harvest.addEntry(p.projectId, t.taskId, hours, text)
         else Harvest.startTimer(p.projectId, t.taskId, text)
-        notes.set_text("")
+        notesBuffer.set_text("", -1)
         duration.set_text("")
     }
 
@@ -364,23 +364,31 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
                 </revealer>
             </box>
 
-            {/* notes taking the row, duration adjacent on the right;
-            both styled as clearly bounded input boxes (.input) */}
-            <box spacing={6}>
-                <Gtk.Entry
-                    $={self => {
-                        notes = self
-                    }}
+            {/* notes taking the row (multi-line, grows downwards),
+            duration adjacent on the right; both bounded (.input) */}
+            <box spacing={6} valign={Gtk.Align.START}>
+                <Gtk.ScrolledWindow
                     cssClasses={["input"]}
-                    placeholderText={"Add Notes"}
                     hexpand
-                    onActivate={start}
-                />
+                    propagateNaturalHeight
+                    minContentHeight={66}
+                    maxContentHeight={132}
+                    vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                    hscrollbarPolicy={Gtk.PolicyType.NEVER}
+                >
+                    <Gtk.TextView
+                        $={self => {
+                            notesBuffer = self.buffer
+                        }}
+                        wrapMode={Gtk.WrapMode.WORD_CHAR}
+                    />
+                </Gtk.ScrolledWindow>
                 <Gtk.Entry
                     $={self => {
                         duration = self
                     }}
                     cssClasses={["input", "duration"]}
+                    valign={Gtk.Align.START}
                     placeholderText={Harvest.formatElapsed(0)}
                     widthChars={8}
                     onChanged={self =>
