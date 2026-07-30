@@ -56,7 +56,8 @@ function parseDuration(text: string): number | null {
 // visibility-toggled now, not rebuilt per entry)
 function NotesRow() {
     let entry: Gtk.Entry | null = null
-    let dirty = false
+    // Save stays hidden until the text actually differs from the server
+    const [dirty, setDirty] = createState(false)
     let focused = false
     let lastId: number | null = Harvest.running.get()?.id ?? null
 
@@ -65,7 +66,7 @@ function NotesRow() {
         if (!entry) return
         // keep dirty when the update couldn't be attempted (busy), so the
         // text isn't silently dropped
-        if (Harvest.setNotes(entry.get_text())) dirty = false
+        if (Harvest.setNotes(entry.get_text())) setDirty(false)
     }
 
     const unsub = Harvest.running.subscribe(() => {
@@ -74,11 +75,11 @@ function NotesRow() {
         if (id !== lastId) {
             // a different timer now: drop edits belonging to the old one
             lastId = id
-            dirty = false
+            setDirty(false)
             entry.set_text(serverNotes())
             return
         }
-        if (dirty || focused) return
+        if (dirty.get() || focused) return
         entry.set_text(serverNotes())
     })
     onCleanup(unsub)
@@ -93,7 +94,7 @@ function NotesRow() {
                 placeholderText={"Notes…"}
                 hexpand
                 onChanged={() => {
-                    dirty = entry?.get_text() !== serverNotes()
+                    setDirty(entry?.get_text() !== serverNotes())
                 }}
                 onActivate={save}
             >
@@ -103,11 +104,11 @@ function NotesRow() {
                     }}
                     onLeave={() => {
                         focused = false
-                        if (dirty) save()
+                        if (dirty.get()) save()
                     }}
                 />
             </Gtk.Entry>
-            <button cssClasses={["confirm"]} onClicked={save}>
+            <button cssClasses={["confirm"]} visible={dirty} onClicked={save}>
                 <label label={"Save"} />
             </button>
         </box>
