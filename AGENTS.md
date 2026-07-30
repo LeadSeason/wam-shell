@@ -43,6 +43,21 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   the `theme` config key) — never hardcode hex in widget styles.
 - Shared spacing/radius values live in `scss/conf.scss`.
 
+## Perf gate
+
+- Before completing any change under `src/lib/` or `src/widgets/`, run
+  `pnpm perf` and include the verdict line in your summary. If it
+  reports a regression, either fix it or state explicitly why the cost
+  is justified.
+- `pnpm perf` compares the working tree against the merge-base with
+  origin/develop. Flags: `--base <ref>`, `--scenario <name>` (one
+  scenario in about a minute), `--json` (full data).
+- Verdicts: `VERDICT: OK` (exit 0), `VERDICT: REGRESSION` (exit 1),
+  `VERDICT: INCONCLUSIVE` (exit 2 — never infer a pass from it; read
+  the reason and re-run).
+- Optional pre-push gate: `pnpm perf:install-hook` (opt-in, never
+  automatic). See `tests/perf/README.md` for design and limitations.
+
 ## Tests
 
 - `pnpm test` runs the unit suite: tests in `tests/*.test.ts` are bundled
@@ -55,12 +70,8 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   instance (tests/perf/run.sh): idle, churn and startup scenarios, one
   single-line JSON blob per scenario on stdout. Requires
   WAM_SHELL_METRICS instrumentation and refuses to run when no
-  notification daemon owns org.freedesktop.Notifications.
-- `pnpm test:perf:diff` (opt-in) compares the working tree against a
-  base ref (default: merge-base with origin/develop) in a git
-  worktree, sequentially. It gates only on counters (subprocess spawns,
-  alive timers, alive signal handlers, fd count) and exits non-zero on
-  any gated difference; timing/RSS/HTTP are report-only.
+  notification daemon owns org.freedesktop.Notifications. The A/B
+  comparison interface is `pnpm perf` (see "Perf gate").
 - The harness runs on a live desktop session and must never disturb it:
   XDG_CONFIG_HOME / XDG_CACHE_HOME / HOME stay redirected to a tmp dir,
   no test imports modules that call `AstalX.get_default()` at import
