@@ -48,14 +48,20 @@ export default function HarvestTimer({ monitor }: { monitor: Gdk.Monitor }) {
             : p ? Harvest.formatElapsed(p.hours * 3600)
                 : Harvest.formatElapsed(total))
 
-    const tooltip = createComputed([Harvest.running, Harvest.paused, masked],
-        (r, p, m) => {
+    const resumeTarget = createComputed(
+        [Harvest.paused, Harvest.recentStopped, Harvest.recents],
+        (p, stopped, rec) => p ?? stopped[0] ?? rec[0] ?? null)
+
+    const tooltip = createComputed(
+        [Harvest.running, Harvest.paused, resumeTarget, masked],
+        (r, p, t, m) => {
             if (m) return r || p
                 ? "Harvest timer (details hidden while sharing)"
-                : "Harvest · right-click to resume the last timer"
+                : "Harvest"
             if (r) return `${r.clientName} — ${r.projectName} · ${r.taskName} · right-click to stop`
             if (p) return `Paused: ${p.clientName} — ${p.projectName} · ${p.taskName} · right-click to resume`
-            return "Harvest · right-click to resume the last timer"
+            if (t) return `Right-click to resume: ${t.clientName} — ${t.projectName} · ${t.taskName}`
+            return "Harvest"
         })
 
     const cssClasses = createComputed([Harvest.running, Harvest.paused, masked],

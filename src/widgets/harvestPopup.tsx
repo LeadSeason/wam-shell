@@ -3,7 +3,7 @@ import GLib from "gi://GLib?version=2.0"
 import Pango from "gi://Pango?version=1.0"
 import Graphene from "gi://Graphene?version=1.0"
 import app from "ags/gtk4/app"
-import { For, With, createComputed, createRoot, createState } from "gnim"
+import { Accessor, For, With, createComputed, createRoot, createState } from "gnim"
 import CommandRegistry from "../lib/requestHandler"
 import * as Harvest from "../lib/harvest"
 import Config from "../config"
@@ -19,19 +19,18 @@ export const [popupAnchor, setPopupAnchor] =
     createState<{ x: number, monitor: Gdk.Monitor } | null>(null)
 
 // the popup appears where the pill is: centered for the center section,
-// top-left/top-right for the side sections
-function harvestAnchor(): number {
-    const { TOP, LEFT, RIGHT } = Astal.WindowAnchor
+// left/right for the side sections
+function fallbackAlign(): Gtk.Align {
     const zones = new Set<string>()
     for (const p of Config.panels) {
         if (p.left.includes("harvest")) zones.add("left")
         if (p.center.includes("harvest")) zones.add("center")
         if (p.right.includes("harvest")) zones.add("right")
     }
-    if (zones.has("center")) return TOP
-    if (zones.has("left") && !zones.has("right")) return TOP | LEFT
-    if (zones.has("right") && !zones.has("left")) return TOP | RIGHT
-    return zones.size === 0 ? TOP | RIGHT : TOP
+    if (zones.has("center")) return Gtk.Align.CENTER
+    if (zones.has("left") && !zones.has("right")) return Gtk.Align.START
+    if (zones.has("right") && !zones.has("left")) return Gtk.Align.END
+    return zones.size === 0 ? Gtk.Align.END : Gtk.Align.CENTER
 }
 
 const entryLabel = (e: Harvest.Entry) =>
@@ -94,90 +93,232 @@ function RunningHeader() {
             </button>
         </box>
         <label xalign={0} maxWidthChars={38} ellipsize={Pango.EllipsizeMode.END}
+            tooltipText={Harvest.running.as(r => r ? entryLabel(r) : "")}
             label={Harvest.running.as(r => r ? entryLabel(r) : "")} />
         <NotesRow />
     </box>
 }
 
-function IdleHeader() {
-    const resumeTarget = createComputed(
-        [Harvest.paused, Harvest.lastStopped, Harvest.recents],
-        (p, ls, rec) => p ?? ls ?? rec[0] ?? null)
+// the Harvest-style new-entry form. Inline expanding selectors rather
+// than Gtk.DropDown: dropdown popovers are unstyled here and their
+// natural width follows the selected text, resizing the whole popup
+function NewEntryForm() {
+    let notes: Gtk.Entry
+    let duration: Gtk.Entry
+    let search: Gtk.Entry
+
+    const [projectSel, setProjectSel] = createState(0)
+    const [taskSel, setTaskSel] = createState(0)
+    const [projectOpen, setProjectOpen] = createState(false)
+    const [taskOpen, setTaskOpen] = createState(false)
+    const [query, setQuery] = createState("")
+
+    const labelOf = (p: Harvest.Project) => `${p.clientName} — ${p.projectName}`
+
+    // rows carry their original index so filtering keeps the id mapping
+    const projectRows = createComputed([Harvest.projects, query], (ps, q) =>
+        ps.map((p, i) => ({ p, i }))
+            .filter(({ p }) => !q || labelOf(p).toLowerCase().includes(q.toLowerCase())))
+
+    const tasks = createComputed([Harvest.projects, projectSel],
+        (ps, sel) => ps[sel]?.tasks ?? [])
+
+    // "1.5" decimal hours or "1:30" h:mm; empty = 0 = start a live timer
+    function parseDuration(text: string): number | null {
+        const t = text.trim()
+        if (t === "") return 0
+        const colon = t.match(/^(\d+):([0-5]?\d)$/)
+        if (colon) return Number(colon[1]) + Number(colon[2]) / 60
+        const h = Number(t)
+        return Number.isFinite(h) && h >= 0 ? h : null
+    }
+
+    function start() {
+        const p = Harvest.projects.get()[projectSel.get()]
+        const t = p?.tasks[taskSel.get()]
+        if (!p || !t) return
+        const hours = parseDuration(duration.get_text())
+        if (hours === null) return
+        const text = notes.get_text().trim() || undefined
+        // 0 = start a live timer (replaces the running one); >0 = log a
+        // completed entry and leave any running timer alone
+        if (hours > 0) Harvest.addEntry(p.projectId, t.taskId, hours, text)
+        else Harvest.startTimer(p.projectId, t.taskId, text)
+        notes.set_text("")
+        duration.set_text("")
+    }
+
+    const canStart = createComputed([Harvest.projects, Harvest.busy],
+        (ps, b) => !b && ps.length > 0)
+
+    // one open selector at a time; opening the project list focuses its
+    // search entry so typing works immediately
+    const toggleProject = () => {
+        setTaskOpen(false)
+        const opening = !projectOpen.get()
+        setProjectOpen(opening)
+        if (opening) search.grab_focus()
+    }
+    const toggleTask = () => { setProjectOpen(false); setTaskOpen(!taskOpen.get()) }
+
+    function SelectorButton({ label, open, onClick, sensitive = true }: {
+        label: Accessor<string>, open: Accessor<boolean>,
+        onClick: () => void, sensitive?: boolean | Accessor<boolean>
+    }) {
+        return <button cssClasses={["ddButton"]} sensitive={sensitive} onClicked={onClick}>
+            <box>
+                <label xalign={0} hexpand maxWidthChars={30}
+                    ellipsize={Pango.EllipsizeMode.END} label={label} />
+                <image iconName={open.as(o => o ? "pan-up-symbolic" : "pan-down-symbolic")} />
+            </box>
+        </button>
+    }
+
     return <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-        <box spacing={8}>
+        <label cssClasses={["title"]} label={"New Time Entry"} halign={Gtk.Align.CENTER} />
+
+        <box orientation={Gtk.Orientation.VERTICAL}>
+            <SelectorButton
+                label={createComputed([Harvest.projects, projectSel],
+                    (ps, s) => ps[s] ? labelOf(ps[s]) : "Select project")}
+                open={projectOpen}
+                onClick={toggleProject}
+            />
+            <revealer revealChild={projectOpen}>
+                <box cssClasses={["ddList"]} orientation={Gtk.Orientation.VERTICAL} spacing={4}>
+                    <Gtk.Entry
+                        $={(self) => { search = self }}
+                        placeholderText={"Search…"}
+                        onChanged={(self) => setQuery(self.get_text())}
+                    />
+                    <Gtk.ScrolledWindow
+                        vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                        hscrollbarPolicy={Gtk.PolicyType.NEVER}
+                        propagateNaturalHeight
+                        maxContentHeight={180}
+                    >
+                        <box orientation={Gtk.Orientation.VERTICAL} spacing={2}>
+                            <For each={projectRows}>{({ p, i }: { p: Harvest.Project, i: number }) =>
+                                <button tooltipText={labelOf(p)} onClicked={() => {
+                                    setProjectSel(i)
+                                    setTaskSel(0)
+                                    setProjectOpen(false)
+                                    setQuery("")
+                                    search.set_text("")
+                                }}>
+                                    <label xalign={0} maxWidthChars={34}
+                                        ellipsize={Pango.EllipsizeMode.END} label={labelOf(p)} />
+                                </button>
+                            }</For>
+                        </box>
+                    </Gtk.ScrolledWindow>
+                </box>
+            </revealer>
+        </box>
+
+        <box orientation={Gtk.Orientation.VERTICAL}>
+            <SelectorButton
+                label={tasks.as(ts => ts[taskSel.get()]?.taskName ?? "Select task")}
+                open={taskOpen}
+                onClick={toggleTask}
+                sensitive={tasks.as(ts => ts.length > 0)}
+            />
+            <revealer revealChild={taskOpen}>
+                <box cssClasses={["ddList"]} orientation={Gtk.Orientation.VERTICAL} spacing={2}>
+                    <For each={tasks}>{(t: { taskId: number, taskName: string }, i: Accessor<number>) =>
+                        <button tooltipText={t.taskName}
+                            onClicked={() => { setTaskSel(i.get()); setTaskOpen(false) }}>
+                            <label xalign={0} maxWidthChars={34}
+                                ellipsize={Pango.EllipsizeMode.END} label={t.taskName} />
+                        </button>
+                    }</For>
+                </box>
+            </revealer>
+        </box>
+
+        <box spacing={6}>
+            <Gtk.Entry
+                $={(self) => { notes = self }}
+                placeholderText={"Add Notes"}
+                hexpand
+                onActivate={start}
+            />
+            <Gtk.Entry
+                $={(self) => { duration = self }}
+                cssClasses={["duration"]}
+                placeholderText={Harvest.formatElapsed(0)}
+                widthChars={5}
+                onActivate={start}
+            />
+        </box>
+        <box halign={Gtk.Align.END} spacing={6}>
+            <button onClicked={() => hide()}>
+                <label label={"Cancel"} />
+            </button>
+            <button cssClasses={["start"]} sensitive={canStart} onClicked={start}>
+                <label label={"Start"} />
+            </button>
+        </box>
+    </box>
+}
+
+function IdleContent() {
+    // up to three resume targets: paused first, then today's stopped
+    // entries, padded from the wide recents window; deduped by id
+    const resumables = createComputed(
+        [Harvest.paused, Harvest.recentStopped, Harvest.recents],
+        (p, stopped, rec) => {
+            const out: Harvest.Entry[] = []
+            const seen = new Set<number>()
+            for (const e of [p, ...stopped, ...rec]) {
+                if (!e || seen.has(e.id)) continue
+                seen.add(e.id)
+                out.push(e)
+                if (out.length >= 3) break
+            }
+            return out
+        })
+    return <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
+        <box spacing={8}
+            visible={createComputed([Harvest.paused, Harvest.dayTotal],
+                (p, t) => p !== null || t > 0)}>
             <image cssClasses={["harvestIcon"]} iconName="harvest-symbolic" pixelSize={20} />
             <label cssClasses={["elapsed", "dim"]} hexpand xalign={0}
                 label={createComputed([Harvest.paused, Harvest.dayTotal],
                     (p, t) => p
                         ? `Paused: ${Harvest.formatElapsed(p.hours * 3600)}`
-                        : t > 0 ? `Today: ${Harvest.formatElapsed(t)}`
-                            : "No time logged today")} />
+                        : `Today: ${Harvest.formatElapsed(t)}`)} />
         </box>
-        <button cssClasses={["resume"]} sensitive={Harvest.busy.as(b => !b)}
-            visible={resumeTarget.as(t => t !== null)}
-            onClicked={() => Harvest.resumeLast()}>
-            <label xalign={0} hexpand maxWidthChars={38}
-                ellipsize={Pango.EllipsizeMode.END}
-                label={resumeTarget.as(t => t ? `Resume: ${entryLabel(t)}` : "")} />
-        </button>
+        <NewEntryForm />
+        <box orientation={Gtk.Orientation.VERTICAL} spacing={2}
+            visible={resumables.as(r => r.length > 0)}>
+            <label cssClasses={["section"]} label={"Resume"} xalign={0} />
+            <For each={resumables}>{(e: Harvest.Entry) =>
+                <button cssClasses={["resume"]} sensitive={Harvest.busy.as(b => !b)}
+                    tooltipText={entryLabel(e)}
+                    onClicked={() => Harvest.resumeEntry(e)}>
+                    <label xalign={0} hexpand maxWidthChars={38}
+                        ellipsize={Pango.EllipsizeMode.END}
+                        label={entryLabel(e)} />
+                </button>
+            }</For>
+        </box>
     </box>
 }
 
-function Picker() {
-    const [expanded, setExpanded] = createState(0)
-    return <Gtk.ScrolledWindow
-        vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
-        hscrollbarPolicy={Gtk.PolicyType.NEVER}
-        propagateNaturalHeight
-        maxContentHeight={360}
-    >
-        <box orientation={Gtk.Orientation.VERTICAL} spacing={2}
-            sensitive={Harvest.busy.as(b => !b)}>
-            <For each={Harvest.recents}>{(e: Harvest.Entry) =>
-                <button onClicked={() => Harvest.startTimer(e.projectId, e.taskId)}>
-                    <label xalign={0} maxWidthChars={38}
-                        ellipsize={Pango.EllipsizeMode.END} label={entryLabel(e)} />
-                </button>
-            }</For>
-
-            <Gtk.Separator visible={Harvest.projects.as(p => p.length > 0)} />
-
-            <For each={Harvest.projects}>{(p: Harvest.Project) =>
-                <box orientation={Gtk.Orientation.VERTICAL}>
-                    {/* single-child rule: a Gtk.Button keeps only its last
-                        child, so label + icon go in one box */}
-                    <button onClicked={() =>
-                        setExpanded(expanded.get() === p.projectId ? 0 : p.projectId)}>
-                        <box>
-                            <label xalign={0} hexpand maxWidthChars={34}
-                                ellipsize={Pango.EllipsizeMode.END}
-                                label={`${p.clientName} — ${p.projectName}`} />
-                            <image iconName={expanded.as(id =>
-                                id === p.projectId ? "pan-up-symbolic" : "pan-down-symbolic")} />
-                        </box>
-                    </button>
-                    <revealer revealChild={expanded.as(id => id === p.projectId)}>
-                        <box cssClasses={["taskList"]} orientation={Gtk.Orientation.VERTICAL} spacing={2}>
-                            {p.tasks.map(t =>
-                                <button onClicked={() => Harvest.startTimer(p.projectId, t.taskId)}>
-                                    <label xalign={0} label={t.taskName} />
-                                </button>)}
-                        </box>
-                    </revealer>
-                </box>
-            }</For>
-        </box>
-    </Gtk.ScrolledWindow>
-}
-
 function PopupContent() {
+    // running = the timer on top of the same new-entry form, so a
+    // completed entry can be logged without stopping the live one
     return <box cssClasses={["harvestPopup"]} orientation={Gtk.Orientation.VERTICAL}
         spacing={10} widthRequest={340}>
         <With value={Harvest.running}>
-        {r => r ? <RunningHeader /> : <IdleHeader />}
+        {r => r &&
+            <box orientation={Gtk.Orientation.VERTICAL} spacing={10}>
+                <RunningHeader />
+                <Gtk.Separator />
+            </box>}
     </With>
-        <Gtk.Separator />
-        <Picker />
+        <IdleContent />
     </box>
 }
 
@@ -195,6 +336,8 @@ function show() {
     }
     // stale-while-revalidate the near-static data on open
     Harvest.refreshSlow()
+    // and sync anything that changed since the last tick right now
+    Harvest.deltaPoll()
     const anchor = popupAnchor.get()
     if (anchor) win!.gdkmonitor = anchor.monitor
     win!.present()
@@ -241,9 +384,15 @@ function onKey(_e: Gtk.EventControllerKey, keyValue: number) {
 }
 
 function onClick(_e: Gtk.GestureClick, _: number, x: number, y: number) {
-    const [, rect] = win!.get_child()!.compute_bounds(win!)
+    // the overlay is fullscreen; only clicks outside the card close it
+    const [, rect] = card!.compute_bounds(win!)
     if (!rect.contains_point(new Graphene.Point({ x, y }))) hide()
 }
+
+// fullscreen overlay with the card positioned inside (QSettings
+// pattern): an edge-anchored window grows with the inline selectors
+// but never shrinks back
+let card: Gtk.Box | null = null
 
 function ensureWindow() {
     if (win) return
@@ -253,13 +402,11 @@ function ensureWindow() {
             name="HarvestPopup"
             class="HarvestPopup"
             namespace="harvest-popup"
-            anchor={popupAnchor.as(a => a
-                ? (Astal.WindowAnchor.TOP | Astal.WindowAnchor.LEFT)
-                : harvestAnchor())}
-            marginTop={30}
-            marginRight={12}
-            marginLeft={popupAnchor.as(() => popupMarginLeft())}
-            keymode={Astal.Keymode.EXCLUSIVE}
+            anchor={Astal.WindowAnchor.TOP | Astal.WindowAnchor.BOTTOM
+                | Astal.WindowAnchor.LEFT | Astal.WindowAnchor.RIGHT}
+            // ON_DEMAND, not EXCLUSIVE: dropdown lists and text entries
+            // cannot grab the seat under EXCLUSIVE
+            keymode={Astal.Keymode.ON_DEMAND}
             visible={false}
         >
             <Gtk.EventControllerKey onKeyPressed={onKey} />
@@ -269,7 +416,17 @@ function ensureWindow() {
                 transitionDuration={200}
                 transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
             >
-                <PopupContent />
+                <box
+                    valign={Gtk.Align.START}
+                    halign={popupAnchor.as(a => a ? Gtk.Align.START : fallbackAlign())}
+                    marginTop={30}
+                    marginStart={popupAnchor.as(() => popupMarginLeft())}
+                    marginEnd={12}
+                >
+                    <box $={(self) => { card = self }}>
+                        <PopupContent />
+                    </box>
+                </box>
             </revealer>
         </window> as Gtk.Window)
     })

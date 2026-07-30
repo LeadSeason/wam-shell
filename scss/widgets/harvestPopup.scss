@@ -28,11 +28,53 @@ window.HarvestPopup {
             color: s.$harvest-orange;
         }
 
+        // "New Time Entry" form, in the style of Harvest's own widget
+        .title {
+            font-weight: bold;
+        }
+        .duration {
+            color: t.$subtext0;
+        }
+        // inline selector list: themed container, no popup resizing
+        .ddList {
+            margin: 2px 0 6px;
+            padding: 6px;
+            border-radius: s.$radius;
+            background-color: t.$base;
+            border: solid 2px t.$accent20;
+        }
+
         button {
             margin: 2px 0;
+            padding: 4px 10px;
+            border-radius: s.$radius;
+            background-color: t.$surface050;
+            border: solid 2px t.$accent20;
+
+            &:hover {
+                background-color: t.$accent20;
+                border-color: t.$accent40;
+            }
+            &:active {
+                background-color: t.$accent40;
+                border-color: t.$accent40;
+            }
+            &:disabled {
+                opacity: 0.35;
+            }
+
+            &.start {
+                background-color: t.$green;
+                border-color: color.mix(t.$green, t.$crust, 70%);
+                color: t.$crust;
+                &:hover {
+                    background-color: color.mix(t.$green, t.$text, 88%);
+                }
+            }
 
             &.stop {
                 background-color: color.mix(t.$red, transparent, 75%);
+                border-color: color.mix(t.$red, transparent, 55%);
                 &:hover {
                     background-color: color.mix(t.$red, transparent, 60%);
                 }
@@ -40,20 +82,19 @@ window.HarvestPopup {
 
             &.confirm {
                 background-color: color.mix(t.$accent, transparent, 55%);
+                border-color: color.mix(t.$accent, transparent, 40%);
                 &:hover {
                     background-color: color.mix(t.$accent, transparent, 40%);
                 }
             }
-
-            &.resume label {
-                font-weight: bold;
-                color: t.$accent;
-            }
         }
 
-        // tasks indent under their project
-        .taskList {
-            margin-left: s.$gap;
+        // section titles inside the popup ("Resume")
+        .section {
+            font-size: s.$font-small;
+            font-weight: bold;
+            color: t.$subtext0;
+            margin-top: 4px;
         }
     }
 }
