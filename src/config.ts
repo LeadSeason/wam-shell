@@ -345,13 +345,13 @@ function getHarvestConfig() {
     const h = configData.harvest ?? {}
     const get = (key: string, fallback: any) => h[key] ?? configData[key] ?? fallback
 
-    let pollInterval = get("poll_interval", 30)
+    let pollInterval = get("poll_interval", 10)
     if (typeof pollInterval !== "number" || pollInterval <= 0) {
         console.error(`Config "harvest.poll_interval" must be a positive number, got "${pollInterval}"`)
-        pollInterval = 30
+        pollInterval = 10
     }
     // floor: a config typo must not throttle the Harvest account
-    if (pollInterval < 15) pollInterval = 15
+    if (pollInterval < 5) pollInterval = 5
 
     let recents = get("recents", 5)
     if (typeof recents !== "number" || recents <= 0) {

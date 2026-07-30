@@ -1,7 +1,9 @@
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
 import Soup from "gi://Soup?version=3.0"
+import AstalNetwork from "gi://AstalNetwork?version=0.1"
 import { createState } from "gnim"
+import { readFile } from "ags/file"
 import Config from "../config"
 import { isFile } from "./utils"
 
@@ -106,6 +108,9 @@ const [recents, setRecents] = createState<Entry[]>([])
 export { recents }
 const [lastStopped, setLastStopped] = createState<Entry | null>(null)
 export { lastStopped }
+// today's stopped entries, most recently updated first (resume targets)
+const [recentStopped, setRecentStopped] = createState<Entry[]>([])
+export { recentStopped }
 // an entry the user "paused": stopped with intent to resume. Purely a UI
 // distinction — the API only knows start/stop, and restart keeps
 // accumulating on the same row (verified against the live API). Cleared
@@ -284,71 +289,169 @@ function fetchAll(path: string, key: string, acc: any[], cb: (items: any[] | nul
 
 let fastTimer = 0
 let slowTimer = 0
+let baselineTimer = 0
 let tickerSource = 0
 let authStrikes = 0
 let backoffLevel = 0
-let cycleGen = 0
+
+// delta sync state
+let userId = 0
+let highWater = 0          // ms epoch; from server updated_at values only
+let seeded = false         // the first baseline window has landed
+const todayMap = new Map<number, Entry>()
+// response ordering: a slower older poll must not overwrite a newer one
+let requestSeq = 0
+let lastAppliedSeq = 0
+// lock gating + post-resume failure forgiveness
+let locked = false
+let forgiveFailuresUntil = 0
 
 const BACKOFF_CAP = 600 // seconds
 
-function fastDelay(): number {
-    const base = Config.harvest.pollInterval * Math.pow(2, backoffLevel)
+function effectiveInterval(): number {
+    const base = (locked ? 60 : Config.harvest.pollInterval) * Math.pow(2, backoffLevel)
     return Math.min(base, BACKOFF_CAP)
 }
 
-function cycleDone(authFailed: boolean, failed: boolean, retryAfter = 0) {
-    if (authFailed) {
-        // one strike per cycle, not per request: a bad token fails every
-        // request in the batch from one cause
-        authStrikes++
-        if (authStrikes >= 2) disableAuth()
-    } else {
-        authStrikes = 0
-    }
-    if (failed) backoffLevel = Math.min(backoffLevel + 1, 5)
-    else backoffLevel = 0
-
+function scheduleNext(retryAfter = 0) {
     if (authDisabled.get()) return
-    const delay = Math.max(retryAfter, fastDelay())
     if (fastTimer) GLib.source_remove(fastTimer)
+    const delay = Math.max(retryAfter, effectiveInterval())
     fastTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, delay, () => {
         fastTimer = 0
-        fastCycle()
+        deltaPoll()
         return GLib.SOURCE_REMOVE
     })
 }
 
-function fastCycle() {
-    if (!active || authDisabled.get()) return
-    // generation guard: responses from an older cycle land after a
-    // mutation-triggered cycle and must not overwrite its fresher state
-    const gen = ++cycleGen
-    let pending = 2
-    let authFailed = false
-    let failed = false
-    let retryAfter = 0
-    const done = (r: Reply) => {
-        if (gen !== cycleGen) return
-        authFailed ||= r.authFailed
-        failed ||= !r.ok
-        retryAfter = Math.max(retryAfter, r.retryAfter)
-        if (--pending === 0) cycleDone(authFailed, failed, retryAfter)
+function settleCycle(authFailed: boolean, failed: boolean, retryAfter = 0) {
+    if (authFailed) {
+        // one strike per cycle, not per request: a bad token fails every
+        // request in the batch from one cause
+        authStrikes++
+        if (authStrikes >= 2) { disableAuth(); return }
+    } else {
+        authStrikes = 0
     }
+    // failures right after a resume/reconnect are the NIC coming up, not
+    // an outage — don't back off for them
+    if (failed && Date.now() > forgiveFailuresUntil) backoffLevel = Math.min(backoffLevel + 1, 5)
+    else if (!failed) backoffLevel = 0
+    scheduleNext(retryAfter)
+}
 
-    // authoritative running probe: unbounded in time, the only query that
-    // always sees a timer left running over a weekend
-    request("GET", "/time_entries?is_running=true", null, (r) => {
-        if (gen !== cycleGen) return
-        if (r.ok && r.json) adoptRunning((r.json.time_entries ?? [])[0] ?? null)
-        done(r)
+function adoptRunning(entry: Entry | null) {
+    const prev = running.get()
+    setRunning(entry)
+    if (entry) {
+        // a timer running means nothing is paused anymore
+        setPaused(null)
+        // keep ticking from the server's numbers, not our stale ones
+        setElapsed(liveSeconds(entry))
+        armTicker()
+    } else {
+        setElapsed(0)
+        disarmTicker()
+    }
+    if (prev?.id !== entry?.id) refreshDayTotal()
+}
+
+let stoppedTodaySec = 0
+
+function refreshStoppedFromMap() {
+    const stopped = [...todayMap.values()]
+        .filter(e => !e.isRunning)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    stoppedTodaySec = stopped.reduce((sum, e) => sum + e.hours * 3600, 0)
+    refreshDayTotal()
+    setLastStopped(stopped[0] ?? null)
+    setRecentStopped(stopped.slice(0, 3))
+}
+
+function refreshDayTotal() {
+    setDayTotal(stoppedTodaySec + (running.get() ? elapsed.get() : 0))
+}
+
+// apply a delta response: upsert today's entries, advance the high-water
+// mark (forward only), adopt running transitions
+function applyDelta(entries: Entry[]) {
+    const cur = running.get()
+    const runningEntry = entries.find(e => e.isRunning)
+    let transition = false
+    let maxUpdated = highWater
+    for (const e of entries) {
+        const t = Date.parse(e.updatedAt)
+        if (!Number.isNaN(t)) maxUpdated = Math.max(maxUpdated, t)
+        if (e.spentDate === localDay()) todayMap.set(e.id, e)
+        if (e.isRunning) {
+            if (cur?.id !== e.id) transition = true
+        } else if (cur && e.id === cur.id) {
+            transition = true
+        }
+    }
+    highWater = maxUpdated
+    if (runningEntry) adoptRunning(runningEntry)
+    else if (cur && entries.some(e => e.id === cur.id)) adoptRunning(null)
+    if (transition) fetchWindow()
+    refreshStoppedFromMap()
+}
+
+// one small delta request per fast tick; the highWater-2s overlap kills
+// the same-second boundary class and upserts are idempotent
+export function deltaPoll() {
+    if (!active || authDisabled.get()) return
+    if (!seeded) { scheduleNext(); return }
+    const seq = ++requestSeq
+    const since = new Date(Math.max(0, highWater - 2000)).toISOString()
+    const uid = userId ? `&user_id=${userId}` : ""
+    request("GET", `/time_entries?updated_since=${encodeURIComponent(since)}${uid}`, null, (r) => {
+        if (r.ok && r.json && seq > lastAppliedSeq) {
+            lastAppliedSeq = seq
+            applyDelta((r.json.time_entries ?? []).map(mapEntry))
+        }
+        settleCycle(r.authFailed, !r.ok, r.retryAfter)
     })
+}
 
-    // day total + resume target; ±1d widening keeps spent_date tz-safe
+// the ±1d window: re-seeds the today map and resume targets. Fired on
+// running transitions and as part of the baseline
+function fetchWindow() {
+    const seq = ++requestSeq
     request("GET", `/time_entries?from=${localDay(-1)}&to=${localDay(1)}`, null, (r) => {
-        if (gen !== cycleGen) return
-        if (r.ok && r.json) adoptWindow((r.json.time_entries ?? []).map(mapEntry))
-        done(r)
+        if (r.ok && r.json && seq > lastAppliedSeq) {
+            lastAppliedSeq = seq
+            todayMap.clear()
+            let maxUpdated = 0
+            for (const raw of r.json.time_entries ?? []) {
+                const e = mapEntry(raw)
+                if (e.spentDate === localDay()) todayMap.set(e.id, e)
+                const t = Date.parse(e.updatedAt)
+                if (!Number.isNaN(t)) maxUpdated = Math.max(maxUpdated, t)
+            }
+            // the high-water mark is seeded here once, then advanced by
+            // deltas only (forward only, never from the baseline)
+            if (!seeded) {
+                highWater = maxUpdated || Date.now() - 5 * 60_000
+                seeded = true
+            }
+            refreshStoppedFromMap()
+        }
     })
+}
+
+// correctness floor: the unbounded running probe (weekend timer, missed
+// stops) + the window (heals deletions and slipped deltas), every 5 min
+function baseline() {
+    if (!active || authDisabled.get()) return
+    const seq = ++requestSeq
+    request("GET", "/time_entries?is_running=true", null, (r) => {
+        if (r.ok && r.json && seq > lastAppliedSeq) {
+            lastAppliedSeq = seq
+            const raw = (r.json.time_entries ?? [])[0]
+            adoptRunning(raw ? mapEntry(raw) : null)
+        }
+    })
+    fetchWindow()
 }
 
 function slowCycle() {
@@ -392,41 +495,6 @@ function slowCycle() {
     })
 }
 
-function adoptRunning(raw: any) {
-    const prev = running.get()
-    const next = raw ? mapEntry(raw) : null
-    setRunning(next)
-    if (next) {
-        // a timer running means nothing is paused anymore
-        setPaused(null)
-        // keep ticking from the server's numbers, not our stale ones
-        setElapsed(liveSeconds(next))
-        armTicker()
-    } else {
-        setElapsed(0)
-        disarmTicker()
-    }
-    if (prev?.id !== next?.id) refreshDayTotal()
-}
-
-let stoppedTodaySec = 0
-
-function adoptWindow(entries: Entry[]) {
-    const today = localDay()
-    const todays = entries.filter(e => e.spentDate === today)
-    stoppedTodaySec = todays.filter(e => !e.isRunning)
-        .reduce((sum, e) => sum + e.hours * 3600, 0)
-    refreshDayTotal()
-    const stopped = todays
-        .filter(e => !e.isRunning && e.updatedAt)
-        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] ?? null
-    setLastStopped(stopped)
-}
-
-function refreshDayTotal() {
-    setDayTotal(stoppedTodaySec + (running.get() ? elapsed.get() : 0))
-}
-
 // 1s local ticker: the panel clock costs no API calls
 function armTicker() {
     if (tickerSource) return
@@ -451,6 +519,7 @@ function disableAuth() {
     setAuthDisabled(true)
     if (fastTimer) { GLib.source_remove(fastTimer); fastTimer = 0 }
     if (slowTimer) { GLib.source_remove(slowTimer); slowTimer = 0 }
+    if (baselineTimer) { GLib.source_remove(baselineTimer); baselineTimer = 0 }
     console.warn("Harvest: disabling after repeated authentication failures")
     notify("Harvest authentication failed",
         "Check ~/.config/wam-shell/harvest.env — the widget is disabled until the shell restarts.")
@@ -469,7 +538,7 @@ function mutate(work: (done: () => void) => void) {
     work(() => {
         mutInFlight = false
         setBusy(false)
-        fastCycle()
+        deltaPoll()
     })
 }
 
@@ -501,30 +570,58 @@ export function pauseTimer() {
     })
 }
 
-function createEntry(projectId: number, taskId: number, done: (ok: boolean) => void) {
+const clockFmt = () => accountClock === "24h" ? "%H:%M" : "%-I:%M%p"
+
+function createEntry(projectId: number, taskId: number, done: (ok: boolean) => void, notes?: string) {
     const body: Record<string, any> = {
         project_id: projectId,
         task_id: taskId,
         spent_date: localDay(),
     }
+    if (notes) body.notes = notes
     // timestamp accounts: started_time defaults to now, ended_time omitted
     // leaves it running; duration accounts: no hours = running
     if (wantsTimestampTimers) {
-        const fmt = accountClock === "24h" ? "%H:%M" : "%-I:%M%p"
-        body.started_time = GLib.DateTime.new_now_local().format(fmt)!
+        body.started_time = GLib.DateTime.new_now_local().format(clockFmt())!
             .toLowerCase()
     }
     request("POST", "/time_entries", body, (r) => {
-        if (r.ok && r.json) adoptRunning(r.json)
+        if (r.ok && r.json) adoptRunning(mapEntry(r.json))
         done(r.ok)
     })
 }
 
-export function startTimer(projectId: number, taskId: number) {
+// a completed entry with explicit hours; does not disturb the running timer
+export function addEntry(projectId: number, taskId: number, hours: number, notes?: string) {
+    if (hours <= 0) return
+    mutate((done) => {
+        const body: Record<string, any> = {
+            project_id: projectId,
+            task_id: taskId,
+            spent_date: localDay(),
+        }
+        if (notes) body.notes = notes
+        if (wantsTimestampTimers) {
+            // start/end form: derive the window from the duration
+            const end = GLib.DateTime.new_now_local()
+            const start = end.add_seconds(-Math.round(hours * 3600))!
+            body.started_time = start.format(clockFmt())!.toLowerCase()
+            body.ended_time = end.format(clockFmt())!.toLowerCase()
+        } else {
+            body.hours = hours
+        }
+        request("POST", "/time_entries", body, (r) => {
+            if (!r.ok) console.warn(`Harvest: add entry failed (status ${r.status})`)
+            done()
+        })
+    })
+}
+
+export function startTimer(projectId: number, taskId: number, notes?: string) {
     // single call: verified against the live API that POST auto-stops the
     // currently running entry, so no stop-first / rollback dance is needed
     mutate((done) => {
-        createEntry(projectId, taskId, () => done())
+        createEntry(projectId, taskId, () => done(), notes)
     })
 }
 
@@ -535,7 +632,7 @@ export function resumeEntry(entry: Entry) {
     if (entry.isRunning) return
     mutate((done) => {
         request("PATCH", `/time_entries/${entry.id}/restart`, null, (r) => {
-            if (r.ok && r.json) adoptRunning(r.json)
+            if (r.ok && r.json) adoptRunning(mapEntry(r.json))
             else console.warn(`Harvest: restart failed (status ${r.status})`)
             done()
         })
@@ -543,7 +640,7 @@ export function resumeEntry(entry: Entry) {
 }
 
 export function resumeLast() {
-    const target = paused.get() ?? lastStopped.get() ?? recents.get()[0] ?? null
+    const target = paused.get() ?? recentStopped.get()[0] ?? recents.get()[0] ?? null
     if (target) resumeEntry(target)
 }
 
@@ -552,7 +649,7 @@ export function setNotes(text: string) {
     if (!cur) return
     mutate((done) => {
         request("PATCH", `/time_entries/${cur.id}`, { notes: text }, (r) => {
-            if (r.ok && r.json) adoptRunning(r.json)
+            if (r.ok && r.json) adoptRunning(mapEntry(r.json))
             else console.warn(`Harvest: notes update failed (status ${r.status})`)
             done()
         })
@@ -562,6 +659,66 @@ export function setNotes(text: string) {
 // stale-while-revalidate when the quick settings dropdown opens
 export function refreshSlow() {
     slowCycle()
+}
+
+// -------------------------------------------------- lock + connectivity
+
+// locked/suspended are the only states where nobody reads the panel:
+// locked -> 60s ticks, unlock -> immediate poll. Watched via logind's
+// LockedHint on our session; skipped when the process has no session.
+function watchLock() {
+    let sessionPath: string
+    try {
+        const pid = Number(readFile("/proc/self/stat").split(" ")[0])
+        const reply = Gio.DBus.system.call_sync(
+            "org.freedesktop.login1", "/org/freedesktop/login1",
+            "org.freedesktop.login1.Manager", "GetSessionByPID",
+            new GLib.Variant("(u)", [pid]),
+            new GLib.VariantType("(o)"), Gio.DBusCallFlags.NONE, 1000, null)
+        sessionPath = reply.get_child_value(0).get_string()[0]
+    } catch {
+        return // not in a registered session: no lock gating
+    }
+    try {
+        const reply = Gio.DBus.system.call_sync(
+            "org.freedesktop.login1", sessionPath,
+            "org.freedesktop.DBus.Properties", "Get",
+            new GLib.Variant("(ss)", ["org.freedesktop.login1.Session", "LockedHint"]),
+            new GLib.VariantType("(v)"), Gio.DBusCallFlags.NONE, 1000, null)
+        locked = reply.get_child_value(0).get_variant().get_boolean()
+    } catch { }
+    Gio.DBus.system.signal_subscribe(
+        "org.freedesktop.login1", "org.freedesktop.DBus.Properties",
+        "PropertiesChanged", sessionPath, "org.freedesktop.login1.Session",
+        Gio.DBusSignalFlags.NONE,
+        (_c, _s, _p, _i, _sig, params) => {
+            const v = params.get_child_value(1).lookup_value("LockedHint", null)
+            if (!v) return
+            const nowLocked = v.get_boolean()
+            if (nowLocked === locked) return
+            locked = nowLocked
+            if (!locked) deltaPoll()
+        })
+}
+
+// resume from suspend: poll on the connectivity edge, not the sleep
+// signal (the NIC is still coming up then). Failures for ~30s after a
+// resume or reconnect are forgiven, not backed off.
+function watchConnectivity() {
+    Gio.DBus.system.signal_subscribe(
+        "org.freedesktop.login1", "org.freedesktop.login1.Manager",
+        "PrepareForSleep", null, null, Gio.DBusSignalFlags.NONE,
+        (_c, _s, _p, _i, _sig, params) => {
+            if (!params.get_child_value(0).get_boolean()) {
+                forgiveFailuresUntil = Date.now() + 30_000
+            }
+        })
+    const net = AstalNetwork.get_default()
+    net.connect("notify::connectivity", () => {
+        if (net.connectivity !== AstalNetwork.Connectivity.FULL) return
+        forgiveFailuresUntil = Date.now() + 30_000
+        deltaPoll()
+    })
 }
 
 // -------------------------------------------------------------- startup
@@ -576,16 +733,24 @@ if (active) {
             if (authStrikes >= 2) { disableAuth(); return }
         }
         setReady(true)
-        fastCycle()
+        baseline() // also seeds the high-water mark
         slowCycle()
         slowTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 30 * 60, () => {
             slowCycle()
             return GLib.SOURCE_CONTINUE
         })
+        baselineTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 5 * 60, () => {
+            baseline()
+            return GLib.SOURCE_CONTINUE
+        })
+        watchLock()
+        watchConnectivity()
+        scheduleNext() // delta loop; self-gates until seeded
     }
 
     request("GET", "/users/me", null, (r) => {
         if (r.ok && r.json) {
+            userId = Number(r.json.id) || 0
             console.log(`Harvest: signed in as ${r.json.first_name ?? ""} ${r.json.last_name ?? ""} (account timezone: ${r.json.timezone ?? "unknown"})`)
         }
         authFailed ||= r.authFailed

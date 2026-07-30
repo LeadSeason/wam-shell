@@ -280,8 +280,11 @@
 #            picker popup, right-click stops/resumes. default true.
 #            position it like any other widget: "harvest" in a
 #            [[panel]] list
-# poll_interval - seconds between syncs with Harvest. clamped to >= 15.
-#                 default 30
+# poll_interval - seconds between syncs with Harvest. the sync is a small
+#                 delta query (entries updated since the last seen
+#                 updated_at), usually empty; a full re-sync runs every
+#                 5 min. while the session is locked the interval is 60s.
+#                 clamped to >= 5. default 10
 # recents - recent project/task pairs listed in the quick settings
 #           dropdown. default 5
 # work_start / work_end - "HH:MM". when both are set the panel widget also
