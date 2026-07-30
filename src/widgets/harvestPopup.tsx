@@ -473,7 +473,16 @@ function TimelineRow({ entry }: { entry: Harvest.Entry }) {
             }}
         >
             <box spacing={6}>
-                <label cssClasses={["rowTime"]} widthChars={5} xalign={0} label={time} />
+                {/* collapsed, not blank: timestamp-mode accounts expose
+                start times only for the running timer, so most rows
+                have no time to show */}
+                <label
+                    cssClasses={["rowTime"]}
+                    widthChars={5}
+                    xalign={0}
+                    visible={time !== ""}
+                    label={time}
+                />
                 <box orientation={Gtk.Orientation.VERTICAL} hexpand>
                     <label
                         xalign={0}
