@@ -350,27 +350,28 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
                 </revealer>
             </box>
 
-            {/* notes gets the full row; the duration input sits below,
-            wider and larger (see .duration in harvestPopup.scss) */}
-            <Gtk.Entry
-                $={self => {
-                    notes = self
-                }}
-                placeholderText={"Add Notes"}
-                hexpand
-                onActivate={start}
-            />
+            {/* duration on the left, notes taking the rest of the row;
+            both styled as clearly bounded input boxes (.input) */}
             <box spacing={6}>
                 <Gtk.Entry
                     $={self => {
                         duration = self
                     }}
-                    cssClasses={["duration"]}
+                    cssClasses={["input", "duration"]}
                     placeholderText={Harvest.formatElapsed(0)}
                     widthChars={8}
                     onChanged={self =>
                         setActionLabel((parseDuration(self.get_text()) ?? 0) > 0 ? "Save" : "Start")
                     }
+                    onActivate={start}
+                />
+                <Gtk.Entry
+                    $={self => {
+                        notes = self
+                    }}
+                    cssClasses={["input"]}
+                    placeholderText={"Add Notes"}
+                    hexpand
                     onActivate={start}
                 />
             </box>

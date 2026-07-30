@@ -37,6 +37,13 @@ window.HarvestPopup {
             font-size: 1.2em;
             padding: 6px 10px;
         }
+        // clearly bounded input fields (new-entry form)
+        .input {
+            background-color: t.$base;
+            border: solid 2px t.$accent20;
+            border-radius: s.$radius;
+            padding: 2px 6px;
+        }
         // the paused-hours editor must read as an input, not a label
         .pausedEdit {
             background-color: t.$base;
