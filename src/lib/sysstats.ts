@@ -2,6 +2,7 @@ import { createState } from "gnim"
 import { createPoll } from "ags/time"
 import { readFileAsync } from "ags/file"
 import GLib from "gi://GLib?version=2.0"
+import Gio from "gi://Gio?version=2.0"
 import Config from "../config"
 import { streamLines } from "./utils"
 
@@ -159,22 +160,40 @@ function handleGpuLine(line: string) {
     push(gpuHist.get(), setGpuHist, util)
 }
 
+let gpuRestartSource = 0
+let gpuProc: Gio.Subprocess | null = null
+let gpuDisposed = false
+
 function scheduleGpuRestart() {
     setGpu(null)
+    if (gpuDisposed) return
     if (gpuRestarts >= GPU_MAX_RESTARTS) {
         console.warn("sysstats gpu: nvidia-smi keeps dying, giving up")
         return
     }
     gpuRestarts++
-    GLib.timeout_add(GLib.PRIORITY_DEFAULT, GPU_RESTART_DELAY, () => {
+    gpuRestartSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, GPU_RESTART_DELAY, () => {
+        gpuRestartSource = 0
         startGpuStream()
         return GLib.SOURCE_REMOVE
     })
 }
 
 function startGpuStream() {
-    const proc = streamLines(GPU_CMD, handleGpuLine, scheduleGpuRestart)
-    if (!proc) scheduleGpuRestart()
+    if (gpuDisposed) return
+    gpuProc = streamLines(GPU_CMD, handleGpuLine, scheduleGpuRestart)
+    if (!gpuProc) scheduleGpuRestart()
+}
+
+// convention for lib modules with long-lived sources (see AGENTS.md)
+export function dispose() {
+    gpuDisposed = true
+    if (gpuRestartSource) {
+        GLib.source_remove(gpuRestartSource)
+        gpuRestartSource = 0
+    }
+    gpuProc?.force_exit()
+    gpuProc = null
 }
 
 // createPoll is lazy until subscribed; keep it alive while stats are on

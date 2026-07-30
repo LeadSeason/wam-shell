@@ -1,4 +1,5 @@
 import GLib from "gi://GLib?version=2.0"
+import Gio from "gi://Gio?version=2.0"
 import { execAsync } from "ags/process"
 import { createState } from "gnim"
 import { streamLines } from "./utils"
@@ -72,20 +73,36 @@ function handleStatusLine(line: string) {
 // mullvad (a forked process) per tick, so the listener is preferred.
 // refreshVpn is also called manually on connect/disconnect, so the
 // indicator still flips promptly on user action.
+let pollSource = 0
+let listenProc: Gio.Subprocess | null = null
+let disposed = false
+
 function startPolling() {
+    if (pollSource || disposed) return
     refreshVpn()
-    GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 15, () => {
+    pollSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 15, () => {
         refreshVpn()
         return GLib.SOURCE_CONTINUE
     })
+}
+
+// convention for lib modules with long-lived sources (see AGENTS.md)
+export function dispose() {
+    disposed = true
+    if (pollSource) {
+        GLib.source_remove(pollSource)
+        pollSource = 0
+    }
+    listenProc?.force_exit()
+    listenProc = null
 }
 
 if (hasMullvad) {
     // on spawn failure or unexpected exit (daemon restart, CLI without
     // listen) fall back to the poll for the rest of the session
     const cmd = ["mullvad", "status", "listen"]
-    const proc = streamLines(cmd, handleStatusLine, startPolling)
-    if (!proc) startPolling()
+    listenProc = streamLines(cmd, handleStatusLine, startPolling)
+    if (!listenProc) startPolling()
 }
 
 export default status

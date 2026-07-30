@@ -34,6 +34,12 @@ function fetchCover(url: string): Promise<Uint8Array> {
                 const type = msg.get_response_headers().get_one("Content-Type") ?? ""
                 if (!type.startsWith("image/"))
                     throw new Error(`not an image (${type || "no content-type"}): ${url}`)
+                // reject on a declared oversized body before finishing;
+                // the read itself is still fully buffered, so the byte
+                // check below stays as the actual enforcement
+                const declared = Number(msg.get_response_headers().get_one("Content-Length")) || 0
+                if (declared > MAX_COVER_BYTES)
+                    throw new Error(`cover too large (${declared} bytes declared): ${url}`)
                 const data = session.send_and_read_finish(res)?.get_data()
                 if (!data || data.length === 0) throw new Error(`empty response: ${url}`)
                 if (data.length > MAX_COVER_BYTES)

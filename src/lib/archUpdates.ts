@@ -38,9 +38,9 @@ export default class ArchUpdates extends GObject.Object {
         const updatesFile = Config.pendingUpdates
 
         const updatesFileUpdate = async (path: string) => {
-            // the daemon rewrites the file non-atomically; a momentary
-            // missing/unreadable file must not become an unhandled
-            // rejection and drop the update cycle
+            // the daemon swaps the file atomically via mv; a momentary
+            // missing/unreadable file (before the first write lands) must
+            // not become an unhandled rejection and drop the update cycle
             let v: string
             try {
                 v = await readFileAsync(path)

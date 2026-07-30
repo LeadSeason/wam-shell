@@ -53,16 +53,23 @@ function syncActiveTheme(): boolean {
     return true
 }
 
-// user.scss holds personal overrides (gitignored, created if missing)
-function ensureUserScss() {
+// user.scss holds personal overrides (gitignored, created if missing).
+// Returns the path in use: the tree, or the cache-dir fallback on
+// read-only installs
+function ensureUserScss(): string {
     const path = `${scssDir}/user.scss`
-    if (isFile(path)) return
+    if (isFile(path)) return path
     try {
         GLib.file_set_contents(path, "")
+        return path
     } catch {
         // read-only source tree: an empty file in the cache dir still
         // satisfies the `@use "user.scss"` through the load path
-        GLib.file_set_contents(`${Config.instanceCacheDir}/user.scss`, "")
+        const fallback = `${Config.instanceCacheDir}/user.scss`
+        try {
+            GLib.file_set_contents(fallback, "")
+        } catch {}
+        return fallback
     }
 }
 
@@ -101,7 +108,7 @@ function newestMtime(dir: string): number {
     }
 }
 
-function cssIsFresh(): boolean {
+function cssIsFresh(userScss: string): boolean {
     try {
         const cssMtime = mtimeUsec(
             Gio.File.new_for_path(Config.cssPath).query_info(
@@ -110,7 +117,21 @@ function cssIsFresh(): boolean {
                 null,
             ),
         )
-        return newestMtime(scssDir) <= cssMtime
+        let newest = newestMtime(scssDir)
+        // a fallback user.scss lives outside the tree the sweep covers
+        if (userScss.startsWith(Config.instanceCacheDir)) {
+            newest = Math.max(
+                newest,
+                mtimeUsec(
+                    Gio.File.new_for_path(userScss).query_info(
+                        "time::modified,time::modified-usec",
+                        Gio.FileQueryInfoFlags.NONE,
+                        null,
+                    ),
+                ),
+            )
+        }
+        return newest <= cssMtime
     } catch {
         return false
     }
@@ -118,10 +139,10 @@ function cssIsFresh(): boolean {
 
 export function compileScss() {
     const themeChanged = syncActiveTheme()
-    ensureUserScss()
+    const userScss = ensureUserScss()
     // sass is the slowest part of startup; when no input is newer than
     // the emitted css, the cached file is reused as-is
-    if (!themeChanged && isFile(Config.cssPath) && cssIsFresh()) return
+    if (!themeChanged && isFile(Config.cssPath) && cssIsFresh(userScss)) return
     if (!isFile(Config.cssPath)) {
         // cold start: ags loads the css at activation, so it must exist
         // synchronously — the async path races the first frame and the

@@ -83,7 +83,9 @@ function loadCredentials(): Credentials | null {
         const contents = GLib.file_get_contents(path)[1]
         const text = new TextDecoder().decode(contents)
         for (const line of text.split("\n")) {
-            const m = line.match(/^\s*(HARVEST_TOKEN|HARVEST_ACCOUNT_ID)\s*=\s*(.+?)\s*$/)
+            const m = line.match(
+                /^\s*(?:export\s+)?(HARVEST_TOKEN|HARVEST_ACCOUNT_ID)\s*=\s*(.+?)\s*$/,
+            )
             if (!m) continue
             // tolerate inline comments and single/double quotes
             const value = m[2].replace(/\s+#.*$/, "").replace(/^["']|["']$/g, "")
@@ -509,11 +511,16 @@ export function deltaPoll() {
     const uid = userId ? `&user_id=${userId}` : ""
     request("GET", `/time_entries?updated_since=${encodeURIComponent(since)}${uid}`, null, r => {
         deltaInFlight = false
-        if (r.ok && r.json && seq > lastApplied.delta) {
-            lastApplied.delta = seq
-            applyDelta((r.json.time_entries ?? []).map(mapEntry))
+        // a throw while applying must not stall the loop: settle runs
+        // either way
+        try {
+            if (r.ok && r.json && seq > lastApplied.delta) {
+                lastApplied.delta = seq
+                applyDelta((r.json.time_entries ?? []).map(mapEntry))
+            }
+        } finally {
+            settleCycle(r.authFailed, !r.ok, r.retryAfter)
         }
-        settleCycle(r.authFailed, !r.ok, r.retryAfter)
     })
 }
 
@@ -524,14 +531,24 @@ function fetchWindow() {
     request("GET", `/time_entries?from=${localDay(-1)}&to=${localDay(1)}`, null, r => {
         if (r.ok && r.json && seq > lastApplied.window) {
             lastApplied.window = seq
-            todayMap.clear()
+            const today = localDay()
+            const fresh = new Map<number, Entry>()
             let maxUpdated = 0
             for (const raw of r.json.time_entries ?? []) {
                 const e = mapEntry(raw)
-                if (e.spentDate === localDay()) todayMap.set(e.id, e)
+                if (e.spentDate === today) fresh.set(e.id, e)
                 const t = Date.parse(e.updatedAt)
                 if (!Number.isNaN(t)) maxUpdated = Math.max(maxUpdated, t)
             }
+            // a delta applied since this snapshot was taken is newer:
+            // the window is authoritative for presence/deletion, but
+            // per-entry the newer updatedAt wins
+            for (const [id, e] of fresh) {
+                const existing = todayMap.get(id)
+                if (existing && existing.updatedAt > e.updatedAt) fresh.set(id, existing)
+            }
+            todayMap.clear()
+            for (const [id, e] of fresh) todayMap.set(id, e)
             // the high-water mark is seeded here once, then advanced by
             // deltas only (forward only, never from the baseline)
             if (!seeded) {
@@ -713,9 +730,18 @@ export function stopRunning() {
     if (!cur) return
     mutate(done => {
         request("PATCH", `/time_entries/${cur.id}/stop`, null, r => {
-            if (r.ok) adoptRunning(null)
-            else console.warn(`Harvest: stop failed (status ${r.status})`)
-            done()
+            try {
+                if (r.ok && r.json) {
+                    // the response is authoritative: day total and resume
+                    // targets update immediately, not at the next tick
+                    const e = mapEntry(r.json)
+                    todayMap.set(e.id, e)
+                    refreshStoppedFromMap()
+                    adoptRunning(null)
+                } else console.warn(`Harvest: stop failed (status ${r.status})`)
+            } finally {
+                done()
+            }
         })
     })
 }
@@ -727,11 +753,17 @@ export function pauseTimer() {
     if (!cur) return
     mutate(done => {
         request("PATCH", `/time_entries/${cur.id}/stop`, null, r => {
-            if (r.ok && r.json) {
-                setPaused(mapEntry(r.json))
-                adoptRunning(null)
-            } else console.warn(`Harvest: pause failed (status ${r.status})`)
-            done()
+            try {
+                if (r.ok && r.json) {
+                    const e = mapEntry(r.json)
+                    setPaused(e)
+                    todayMap.set(e.id, e)
+                    refreshStoppedFromMap()
+                    adoptRunning(null)
+                } else console.warn(`Harvest: pause failed (status ${r.status})`)
+            } finally {
+                done()
+            }
         })
     })
 }
@@ -756,8 +788,11 @@ function createEntry(
         body.started_time = GLib.DateTime.new_now_local().format(clockFmt())!.toLowerCase()
     }
     request("POST", "/time_entries", body, r => {
-        if (r.ok && r.json) adoptRunning(mapEntry(r.json))
-        done(r.ok)
+        try {
+            if (r.ok && r.json) adoptRunning(mapEntry(r.json))
+        } finally {
+            done(r.ok)
+        }
     })
 }
 
@@ -781,8 +816,11 @@ export function addEntry(projectId: number, taskId: number, hours: number, notes
             body.hours = hours
         }
         request("POST", "/time_entries", body, r => {
-            if (!r.ok) console.warn(`Harvest: add entry failed (status ${r.status})`)
-            done()
+            try {
+                if (!r.ok) console.warn(`Harvest: add entry failed (status ${r.status})`)
+            } finally {
+                done()
+            }
         })
     })
 }
@@ -802,9 +840,14 @@ export function resumeEntry(entry: Entry) {
     if (entry.isRunning) return
     mutate(done => {
         request("PATCH", `/time_entries/${entry.id}/restart`, null, r => {
-            if (r.ok && r.json) adoptRunning(mapEntry(r.json))
-            else console.warn(`Harvest: restart failed (status ${r.status})`)
-            done()
+            try {
+                if (r.ok && r.json) adoptRunning(mapEntry(r.json))
+                else console.warn(`Harvest: restart failed (status ${r.status})`)
+            } finally {
+                // a restart auto-stops any previously running entry
+                // server-side; resync to catch its final state
+                done(true)
+            }
         })
     })
 }
@@ -821,9 +864,12 @@ export function setNotes(text: string): boolean {
     if (!cur || mutInFlight || authDisabled.get()) return false
     mutate(done => {
         request("PATCH", `/time_entries/${cur.id}`, { notes: text }, r => {
-            if (r.ok && r.json) adoptRunning(mapEntry(r.json))
-            else console.warn(`Harvest: notes update failed (status ${r.status})`)
-            done()
+            try {
+                if (r.ok && r.json) adoptRunning(mapEntry(r.json))
+                else console.warn(`Harvest: notes update failed (status ${r.status})`)
+            } finally {
+                done()
+            }
         })
     })
     return true

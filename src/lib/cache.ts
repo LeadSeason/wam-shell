@@ -70,6 +70,8 @@ let writeCounter = 0
 // unhandled rejection
 const logSaveError = (e: unknown) => console.warn("cache: save failed:", e)
 
+let writeChain: Promise<unknown> = Promise.resolve()
+
 async function saveCacheData(data: cacheType) {
     data.lastSave = Date.now()
     // write to a temp file then swap: a crash mid-write must not leave
@@ -78,8 +80,15 @@ async function saveCacheData(data: cacheType) {
     // (slider bursts) must not rename the tmp file out from under a
     // write still in flight
     const tmp = `${cacheFile}.tmp-${pid}-${writeCounter++}`
-    await writeFileAsync(tmp, JSON.stringify(data))
-    GLib.rename(tmp, cacheFile)
+    const run = async () => {
+        await writeFileAsync(tmp, JSON.stringify(data))
+        GLib.rename(tmp, cacheFile)
+    }
+    // serialized: writes complete in start order (an older payload
+    // can't rename last and win), and a failed write doesn't break the
+    // chain for the next one
+    writeChain = writeChain.then(run, run)
+    return writeChain as Promise<void>
 }
 
 @register({ GTypeName: "Cache" })

@@ -149,8 +149,8 @@ hookPlayers(p => {
 
 // keyboard layout switches (hyprland, sway, i3). The source is shared
 // with the bar widget but does not depend on it being on any panel.
-if (Config.osd.enabled && Config.osd.layout) ensureLayoutSource()
 if (Config.osd.enabled && Config.osd.layout) {
+    ensureLayoutSource()
     layoutOsdText.subscribe(() => {
         const text = layoutOsdText.get()
         if (!text) return

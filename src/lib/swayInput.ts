@@ -71,7 +71,7 @@ function connect(path: string, handlers: Handlers, attempt: number) {
             // seed the initial state once subscribed
             send(TYPE_GET_INPUTS, "", () => {}),
         )
-        readLoop(conn.get_input_stream(), path, handlers)
+        readLoop(conn, path, handlers)
     })
 }
 
@@ -86,11 +86,13 @@ function retry(path: string, handlers: Handlers, attempt: number) {
     })
 }
 
-function readLoop(input: Gio.InputStream, path: string, handlers: Handlers) {
-    const stream = new Gio.DataInputStream({ base_stream: input })
+function readLoop(conn: Gio.SocketConnection, path: string, handlers: Handlers) {
+    const stream = new Gio.DataInputStream({ base_stream: conn.get_input_stream() })
     let leftover = new Uint8Array(0)
 
-    const feed = (chunk: Uint8Array) => {
+    // false when the stream desynced and a reconnect was started:
+    // the caller must not schedule another read on the old connection
+    const feed = (chunk: Uint8Array): boolean => {
         const buf = new Uint8Array(leftover.length + chunk.length)
         buf.set(leftover, 0)
         buf.set(chunk, leftover.length)
@@ -99,8 +101,9 @@ function readLoop(input: Gio.InputStream, path: string, handlers: Handlers) {
             // out-of-sync magic means the stream is garbage: drop it
             if (MAGIC.some((b, i) => leftover[i] !== b)) {
                 leftover = new Uint8Array(0)
+                conn.close(null)
                 retry(path, handlers, 0)
-                return
+                return false
             }
             const dv = new DataView(leftover.buffer, leftover.byteOffset, 14)
             const len = dv.getUint32(6, true)
@@ -114,9 +117,15 @@ function readLoop(input: Gio.InputStream, path: string, handlers: Handlers) {
             } catch {
                 continue
             }
-            if (type === TYPE_GET_INPUTS && Array.isArray(json)) handlers.onInputs(json)
-            else if (type === EVENT_INPUT) handlers.onInputEvent(json)
+            // a handler bug must not kill the read loop
+            try {
+                if (type === TYPE_GET_INPUTS && Array.isArray(json)) handlers.onInputs(json)
+                else if (type === EVENT_INPUT) handlers.onInputEvent(json)
+            } catch (e) {
+                console.warn("swayInput: handler failed:", e)
+            }
         }
+        return true
     }
 
     const read = () => {
@@ -129,9 +138,11 @@ function readLoop(input: Gio.InputStream, path: string, handlers: Handlers) {
             }
             // EOF or error (sway restart): try to reconnect before the
             // caller drops to the poll fallback
-            if (!bytes || bytes.get_size() === 0) return retry(path, handlers, 0)
-            feed(bytes.get_data()!)
-            read()
+            if (!bytes || bytes.get_size() === 0) {
+                conn.close(null)
+                return retry(path, handlers, 0)
+            }
+            if (feed(bytes.get_data()!)) read()
         })
     }
     read()
