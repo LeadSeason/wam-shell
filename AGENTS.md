@@ -48,8 +48,10 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 - Prettier is the formatter; config lives in `.prettierrc` (there is
   intentionally no `prettier` key in package.json — it would shadow the
   file). Run `node_modules/.bin/prettier --check "src/**/*.{ts,tsx}"`
-  before committing; a pre-commit hook running the same command (or
-  `--write`) is recommended.
+  (`--write` to fix) once at the end of a piece of work — before
+  creating the PR and/or merging, whichever comes last, same
+  checkpoint as the perf gate. Don't gate every intermediate commit
+  on it.
 - Imports of gnim API (`createState`, `For`, `With`, accessors) come
   from `"gnim"`, GObject from `"ags/gobject"` — not from `"ags"`.
 
