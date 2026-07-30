@@ -5,6 +5,7 @@ import { createPoll } from "ags/time"
 import { readFile } from "ags/file"
 import AstalHyprland from "gi://AstalHyprland"
 import Config from "../config"
+import { watchSwayInputs } from "./swayInput"
 
 // Shared keyboard layout source. The bar dropdown and the OSD both
 // consume it; it runs when either exists, independent of panel config.
@@ -139,7 +140,7 @@ function hyprlandSource(): LayoutSource {
 
 function swaySource(msgCmd: string): LayoutSource {
     // sway gives layout descriptions, not codes; reverse the xkb db.
-    // built on first use — the poll tick below is the first consumer
+    // built on first use — the input stream below is the first consumer
     let descToCode: Record<string, string> | null = null
     function codeFor(desc: string): string {
         if (descToCode === null) {
@@ -154,44 +155,62 @@ function swaySource(msgCmd: string): LayoutSource {
     const [names, setNames] = createState<string[]>([])
     const [activeIndex, setActiveIndex] = createState(0)
     let identifier = ""
-
-    // 10s: lock keys come from GDK (ensureLockSource); only the layout
-    // name still needs get_inputs because the i3ipc binding exposes no
-    // input event. Slow on purpose — a layout indicator doesn't need
-    // sub-second latency and this spawns swaymsg/i3msg for the shell's
-    // lifetime
-    const poll = createPoll("", 10000, async () => {
-        // swallow failures (binary missing, IPC down): keep old value
-        try {
-            return await execAsync(`${msgCmd} -t get_inputs`)
-        } catch {
-            return ""
-        }
-    })
     let prevIndex: number | null = null
-    poll.subscribe(() => {
-        try {
-            const raw = poll.get()
-            if (!raw) return
-            const inputs = JSON.parse(raw)
-            const kb = inputs.find(
-                (k: any) => k.type === "keyboard" && k.xkb_layout_names?.length > 0,
-            )
-            if (!kb) return
-            identifier = kb.identifier
-            const ns = kb.xkb_layout_names as string[]
-            setNames(ns)
-            setLayouts(ns.map(n => codeFor(n)))
-            const idx = kb.xkb_active_layout_index ?? 0
-            setActiveIndex(idx)
-            if (prevIndex !== null && idx !== prevIndex) {
-                const code = codeFor(ns[idx])
-                setLayoutOsdText(`${flag(code)} ${ns[idx]}`.trim())
-            }
-            prevIndex = idx
-        } catch (e) {
-            console.error("keyboard layout:", e)
+
+    function applyKeyboard(kb: any) {
+        identifier = kb.identifier
+        const ns = kb.xkb_layout_names as string[]
+        setNames(ns)
+        setLayouts(ns.map(n => codeFor(n)))
+        const idx = kb.xkb_active_layout_index ?? 0
+        setActiveIndex(idx)
+        if (prevIndex !== null && idx !== prevIndex) {
+            const code = codeFor(ns[idx])
+            setLayoutOsdText(`${flag(code)} ${ns[idx]}`.trim())
         }
+        prevIndex = idx
+    }
+
+    function applyInputs(inputs: any[]) {
+        const kb = inputs.find((k: any) => k.type === "keyboard" && k.xkb_layout_names?.length > 0)
+        if (kb) applyKeyboard(kb)
+    }
+
+    // the 10s swaymsg poll, only as a fallback: spawns swaymsg/i3msg for
+    // the shell's lifetime when the raw IPC stream is unavailable
+    function startPollFallback() {
+        const poll = createPoll("", 10000, async () => {
+            // swallow failures (binary missing, IPC down): keep old value
+            try {
+                return await execAsync(`${msgCmd} -t get_inputs`)
+            } catch {
+                return ""
+            }
+        })
+        poll.subscribe(() => {
+            try {
+                const raw = poll.get()
+                if (raw) applyInputs(JSON.parse(raw))
+            } catch (e) {
+                console.error("keyboard layout:", e)
+            }
+        })
+    }
+
+    // raw IPC input events (lib/swayInput): the i3ipc binding exposes no
+    // input event, so the layout name streams over its own connection
+    watchSwayInputs({
+        onInputs: applyInputs,
+        onInputEvent: (ev) => {
+            if (!ev?.input || ev.input.type !== "keyboard") return
+            if (!identifier && ev.input.xkb_layout_names?.length) applyKeyboard(ev.input)
+            else if (
+                ev.input.identifier === identifier &&
+                (ev.change === "xkb_layout" || ev.change === "xkb_keymap" || ev.change === "added")
+            )
+                applyKeyboard(ev.input)
+        },
+        onUnavailable: startPollFallback,
     })
 
     return {
