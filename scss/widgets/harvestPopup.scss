@@ -118,7 +118,23 @@ window.HarvestPopup {
 
         // day timeline: one row per entry, start time left, hours right
         .todayRow {
-            padding: 6px 10px;
+            margin: 2px 0;
+            padding: 4px 6px;
+            border-radius: s.$radius;
+            background-color: t.$surface050;
+            border: solid 2px t.$accent20;
+
+            // the row body is the notes-editor toggle, not a visible button
+            button.rowBody {
+                background-color: transparent;
+                border: none;
+                margin: 0;
+                padding: 2px 4px;
+
+                &:hover {
+                    background-color: t.$accent20;
+                }
+            }
 
             .rowTime {
                 font-size: s.$font-small;

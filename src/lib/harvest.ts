@@ -909,12 +909,26 @@ export function resumeLast() {
 // the notes field keeps its dirty state instead of silently dropping text
 export function setNotes(text: string): boolean {
     const cur = running.get()
-    if (!cur || mutInFlight || authDisabled.get()) return false
+    if (!cur) return false
+    return setEntryNotes(cur, text)
+}
+
+// edit the notes of any entry, running or stopped. Same return contract
+// as setNotes: false = not attempted, the field stays dirty
+export function setEntryNotes(entry: Entry, text: string): boolean {
+    if (mutInFlight || authDisabled.get()) return false
     mutate(done => {
-        request("PATCH", `/time_entries/${cur.id}`, { notes: text }, r => {
+        request("PATCH", `/time_entries/${entry.id}`, { notes: text }, r => {
             try {
-                if (r.ok && r.json) adoptRunning(mapEntry(r.json))
-                else console.warn(`Harvest: notes update failed (status ${r.status})`)
+                if (r.ok && r.json) {
+                    const e = mapEntry(r.json)
+                    if (e.isRunning) adoptRunning(e)
+                    else {
+                        if (e.spentDate === localDay()) todayMap.set(e.id, e)
+                        refreshStoppedFromMap()
+                        if (paused.get()?.id === e.id) setPaused(e)
+                    }
+                } else console.warn(`Harvest: notes update failed (status ${r.status})`)
             } finally {
                 done()
             }

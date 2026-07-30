@@ -486,12 +486,23 @@ function PausedEditor() {
 }
 
 // one timeline row: start time, client — project · task (task is the
-// visual primary), hours, notes on a dim second line when set. Stopped
-// entries resume on click; the running entry is highlighted, inert.
+// visual primary), hours, notes on a dim second line when set. Clicking
+// the row body expands an inline notes editor (editing never starts a
+// timer); resuming is explicit via the play button. The running entry
+// is highlighted and inert (its notes live in the card above).
 function TimelineRow({ entry }: { entry: Harvest.Entry }) {
     const esc = (s: string) => GLib.markup_escape_text(s, -1)
     const time = Harvest.startTimeLabel(entry)
     const isPaused = Harvest.paused.as(p => p?.id === entry.id)
+
+    const [expanded, setExpanded] = createState(false)
+    const [dirty, setDirty] = createState(false)
+    let noteEntry: Gtk.Entry | null = null
+
+    const save = () => {
+        if (!noteEntry) return
+        if (Harvest.setEntryNotes(entry, noteEntry.get_text())) setDirty(false)
+    }
 
     const cssClasses = isPaused.as(p => [
         "todayRow",
@@ -500,18 +511,8 @@ function TimelineRow({ entry }: { entry: Harvest.Entry }) {
     ])
 
     return (
-        <button
-            cssClasses={cssClasses}
-            sensitive={!entry.isRunning && Harvest.busy.as(b => !b)}
-            tooltipText={entry.notes ? `${entryLabel(entry)}\n${entry.notes}` : entryLabel(entry)}
-            onClicked={() => {
-                if (!entry.isRunning) Harvest.resumeEntry(entry)
-            }}
-        >
+        <box orientation={Gtk.Orientation.VERTICAL} cssClasses={cssClasses}>
             <box spacing={6}>
-                {/* collapsed, not blank: timestamp-mode accounts expose
-                start times only for the running timer, so most rows
-                have no time to show */}
                 <label
                     cssClasses={["rowTime"]}
                     widthChars={5}
@@ -519,26 +520,70 @@ function TimelineRow({ entry }: { entry: Harvest.Entry }) {
                     visible={time !== ""}
                     label={time}
                 />
-                <box orientation={Gtk.Orientation.VERTICAL} hexpand>
-                    <label
-                        xalign={0}
-                        useMarkup
-                        maxWidthChars={32}
-                        ellipsize={Pango.EllipsizeMode.END}
-                        label={`<span alpha="60%">${esc(`${entry.clientName} — ${entry.projectName} · `)}</span><b>${esc(entry.taskName)}</b>`}
-                    />
-                    <label
-                        cssClasses={["rowNotes"]}
-                        xalign={0}
-                        maxWidthChars={40}
-                        ellipsize={Pango.EllipsizeMode.END}
-                        visible={entry.notes !== ""}
-                        label={entry.notes}
-                    />
-                </box>
-                <label cssClasses={["dim"]} label={Harvest.formatElapsed(entry.hours * 3600)} />
+                <button
+                    cssClasses={["rowBody"]}
+                    hexpand
+                    sensitive={!entry.isRunning}
+                    tooltipText={
+                        entry.isRunning
+                            ? entryLabel(entry)
+                            : `${entryLabel(entry)}\nclick to edit notes`
+                    }
+                    onClicked={() => setExpanded(!expanded.get())}
+                >
+                    <box>
+                        <box orientation={Gtk.Orientation.VERTICAL} hexpand>
+                            <label
+                                xalign={0}
+                                useMarkup
+                                maxWidthChars={32}
+                                ellipsize={Pango.EllipsizeMode.END}
+                                label={`<span alpha="60%">${esc(`${entry.clientName} — ${entry.projectName} · `)}</span><b>${esc(entry.taskName)}</b>`}
+                            />
+                            <label
+                                cssClasses={["rowNotes"]}
+                                xalign={0}
+                                maxWidthChars={40}
+                                ellipsize={Pango.EllipsizeMode.END}
+                                visible={expanded.as(e => entry.notes !== "" && !e)}
+                                label={entry.notes}
+                            />
+                        </box>
+                        <label
+                            cssClasses={["dim"]}
+                            label={Harvest.formatElapsed(entry.hours * 3600)}
+                        />
+                    </box>
+                </button>
+                <button
+                    cssClasses={["resumeNow"]}
+                    valign={Gtk.Align.START}
+                    visible={!entry.isRunning}
+                    sensitive={Harvest.busy.as(b => !b)}
+                    tooltipText={"Resume"}
+                    onClicked={() => Harvest.resumeEntry(entry)}
+                >
+                    <image iconName="media-playback-start-symbolic" />
+                </button>
             </box>
-        </button>
+            <revealer revealChild={expanded}>
+                <box spacing={6}>
+                    <Gtk.Entry
+                        $={self => {
+                            noteEntry = self
+                            self.set_text(entry.notes)
+                        }}
+                        cssClasses={["input"]}
+                        hexpand
+                        onChanged={() => setDirty(noteEntry?.get_text() !== entry.notes)}
+                        onActivate={save}
+                    />
+                    <button cssClasses={["confirm"]} visible={dirty} onClicked={save}>
+                        <label label={"Save"} />
+                    </button>
+                </box>
+            </revealer>
+        </box>
     )
 }
 
