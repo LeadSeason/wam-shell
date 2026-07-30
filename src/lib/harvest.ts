@@ -121,8 +121,6 @@ const [busy, setBusy] = createState(false)
 export { busy }
 const [authDisabled, setAuthDisabled] = createState(false)
 export { authDisabled }
-const [ready, setReady] = createState(false)
-export { ready }
 
 // account mode, fetched at startup (403 = not an admin -> defaults)
 let wantsTimestampTimers = false
@@ -238,12 +236,8 @@ function request(method: string, path: string, body: any, cb: (r: Reply) => void
         const bytes = new GLib.Bytes(new TextEncoder().encode(JSON.stringify(body)))
         msg.set_request_body_from_bytes("application/json", bytes)
     }
-    let cancelled = false
     const cancellable = new Gio.Cancellable()
-    pendingRequests.add(cancellable)
     session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, cancellable, (_s, res) => {
-        pendingRequests.delete(cancellable)
-        if (cancelled) return
         let reply: Reply
         try {
             const bytes = session.send_and_read_finish(res)
@@ -267,12 +261,7 @@ function request(method: string, path: string, body: any, cb: (r: Reply) => void
         }
         cb(reply)
     })
-    return {
-        cancel: () => { cancelled = true; cancellable.cancel() },
-    }
 }
-
-const pendingRequests = new Set<Gio.Cancellable>()
 
 // follow links.next until exhausted (cursor- and page-based endpoints alike)
 function fetchAll(path: string, key: string, acc: any[], cb: (items: any[] | null, r: Reply) => void) {
@@ -293,6 +282,7 @@ let baselineTimer = 0
 let tickerSource = 0
 let authStrikes = 0
 let backoffLevel = 0
+let lastSlowFetch = 0
 
 // delta sync state
 let userId = 0
@@ -369,7 +359,21 @@ function refreshStoppedFromMap() {
 }
 
 function refreshDayTotal() {
-    setDayTotal(stoppedTodaySec + (running.get() ? elapsed.get() : 0))
+    const cur = running.get()
+    setDayTotal(stoppedTodaySec + (cur ? todaySeconds(cur) : 0))
+}
+
+// today's portion of the running entry: hours accrued before midnight
+// don't count toward today's total
+function todaySeconds(e: Entry): number {
+    const base = e.spentDate === localDay()
+        ? (e.hoursWithoutTimer ?? e.hours ?? 0) * 3600
+        : 0
+    const start = startMs(e)
+    if (start === null) return base
+    const midnight = new Date()
+    midnight.setHours(0, 0, 0, 0)
+    return base + Math.max(0, (Date.now() - Math.max(start, midnight.getTime())) / 1000)
 }
 
 // apply a delta response: upsert today's entries, advance the high-water
@@ -440,9 +444,12 @@ function fetchWindow() {
 }
 
 // correctness floor: the unbounded running probe (weekend timer, missed
-// stops) + the window (heals deletions and slipped deltas), every 5 min
+// stops) + the window (heals deletions and slipped deltas), every 5 min.
+// the window goes first so the probe carries the newer sequence tag —
+// otherwise a fast window response could discard the probe's adoption
 function baseline() {
     if (!active || authDisabled.get()) return
+    fetchWindow()
     const seq = ++requestSeq
     request("GET", "/time_entries?is_running=true", null, (r) => {
         if (r.ok && r.json && seq > lastAppliedSeq) {
@@ -451,13 +458,11 @@ function baseline() {
             adoptRunning(raw ? mapEntry(raw) : null)
         }
     })
-    fetchWindow()
 }
 
 function slowCycle() {
     if (!active || authDisabled.get()) return
-    let pending = 2
-    const done = () => { if (--pending > 0) return }
+    lastSlowFetch = Date.now()
     // near-static: projects + tasks for the picker (cursor-paginated)
     fetchAll("/users/me/project_assignments", "project_assignments", [], (items, _r) => {
         if (items) {
@@ -473,7 +478,6 @@ function slowCycle() {
                     })),
             })))
         }
-        done()
     })
     // wide window for the dropdown's recent project/task pairs
     fetchAll(`/time_entries?from=${localDay(-30)}&to=${localDay(1)}`, "time_entries", [], (items, _r) => {
@@ -491,7 +495,6 @@ function slowCycle() {
             }
             setRecents(pairs)
         }
-        done()
     })
 }
 
@@ -535,6 +538,8 @@ function mutate(work: (done: () => void) => void) {
     if (mutInFlight || authDisabled.get()) return
     mutInFlight = true
     setBusy(true)
+    // older poll responses must not resurrect pre-mutation state
+    ++requestSeq
     work(() => {
         mutInFlight = false
         setBusy(false)
@@ -644,9 +649,11 @@ export function resumeLast() {
     if (target) resumeEntry(target)
 }
 
-export function setNotes(text: string) {
+// false when the update could not even be attempted (busy/disabled), so
+// the notes field keeps its dirty state instead of silently dropping text
+export function setNotes(text: string): boolean {
     const cur = running.get()
-    if (!cur) return
+    if (!cur || mutInFlight || authDisabled.get()) return false
     mutate((done) => {
         request("PATCH", `/time_entries/${cur.id}`, { notes: text }, (r) => {
             if (r.ok && r.json) adoptRunning(mapEntry(r.json))
@@ -654,10 +661,13 @@ export function setNotes(text: string) {
             done()
         })
     })
+    return true
 }
 
-// stale-while-revalidate when the quick settings dropdown opens
+// stale-while-revalidate when the picker popup opens; age-gated so
+// fidgety toggling doesn't burn request quota
 export function refreshSlow() {
+    if (Date.now() - lastSlowFetch < 60_000) return
     slowCycle()
 }
 
@@ -732,7 +742,6 @@ if (active) {
             authStrikes++ // the whole startup pair is ONE strike
             if (authStrikes >= 2) { disableAuth(); return }
         }
-        setReady(true)
         baseline() // also seeds the high-water mark
         slowCycle()
         slowTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 30 * 60, () => {

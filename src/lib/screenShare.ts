@@ -63,7 +63,8 @@ function scheduleEvaluate() {
 if (Config.harvest.enabled && Config.harvest.maskWhenSharing) {
     const video = AstalWp.get_default()?.video
     if (video) {
-        video.connect("notify::recorders", scheduleEvaluate)
+        // only producer streams are the signal (recorders = any webcam
+        // consumer, which would over-trigger)
         video.connect("notify::streams", scheduleEvaluate)
         evaluate()
     } else {

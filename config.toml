@@ -265,7 +265,7 @@
 # dim = true
 
 # [harvest] - Harvest time tracking (getharvest.com): running timer on the
-#             panel + start/stop/resume from quick settings
+#             panel + a picker popup (start/stop/resume/notes/new entries)
 # Auth: create a Personal Access Token at id.getharvest.com (Developers
 # section), note the token and your account id, and put them in
 # ~/.config/wam-shell/harvest.env (chmod 600), NOT in this file:
@@ -285,8 +285,8 @@
 #                 updated_at), usually empty; a full re-sync runs every
 #                 5 min. while the session is locked the interval is 60s.
 #                 clamped to >= 5. default 10
-# recents - recent project/task pairs listed in the quick settings
-#           dropdown. default 5
+# recents - recent project/task pairs listed in the picker popup's
+#           Resume section. default 5
 # work_start / work_end - "HH:MM". when both are set the panel widget also
 #           shows while idle inside this window (dimmed, with the day
 #           total). windows may wrap midnight ("22:00"-"06:00"). default

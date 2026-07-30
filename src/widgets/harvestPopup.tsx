@@ -46,8 +46,9 @@ function NotesRow() {
     const serverNotes = () => Harvest.running.get()?.notes ?? ""
     const save = () => {
         if (!entry) return
-        Harvest.setNotes(entry.get_text())
-        dirty = false
+        // keep dirty when the update couldn't be attempted (busy), so the
+        // text isn't silently dropped
+        if (Harvest.setNotes(entry.get_text())) dirty = false
     }
 
     Harvest.running.subscribe(() => {

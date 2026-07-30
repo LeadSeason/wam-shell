@@ -15,7 +15,11 @@ const registry = CommandRegistry.get_default()
 // timer / resumes the last one. While screen sharing the entry details
 // are masked: icon + elapsed stay, project/task and the real tooltip are
 // hidden (.harvest.sharing for the indicator styling).
-export default function HarvestTimer({ monitor }: { monitor: Gdk.Monitor }) {
+export default function HarvestTimer({ monitor, authoritative = false }: {
+    monitor: Gdk.Monitor
+    // panel lists are authoritative: a listed widget always renders
+    authoritative?: boolean
+}) {
     if (!Harvest.active) return <></>
 
     function withinWorkHours(): boolean {
@@ -39,7 +43,8 @@ export default function HarvestTimer({ monitor }: { monitor: Gdk.Monitor }) {
     const masked = sharing.as(s => s && Config.harvest.maskWhenSharing)
 
     const visible = createComputed([Harvest.running, Harvest.paused, workHours],
-        (r, p, wh) => Config.harvest.onPanel && (r !== null || p !== null || wh))
+        (r, p, wh) => (Config.harvest.onPanel || authoritative)
+            && (r !== null || p !== null || wh))
 
     const label = createComputed(
         [Harvest.running, Harvest.paused, Harvest.elapsed, Harvest.dayTotal],

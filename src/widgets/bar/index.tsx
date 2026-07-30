@@ -53,7 +53,7 @@ function moduleFor(name: string, gdkMonitor: Gdk.Monitor) {
         case "notifications": return <SwayNC />
         case "media": return <Media monitor={gdkMonitor} />
         case "sleeptimer": return <SleepTimer />
-        case "harvest": return <HarvestTimer monitor={gdkMonitor} />
+        case "harvest": return <HarvestTimer monitor={gdkMonitor} authoritative />
         default: return null
     }
 }
