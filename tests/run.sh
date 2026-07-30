@@ -18,8 +18,15 @@ command -v gjs >/dev/null || { echo "error: gjs not found in PATH" >&2; exit 1; 
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-mkdir -p "$TMP/config" "$TMP/cache" "$TMP/home" "$TMP/rt"
+mkdir -p "$TMP/config" "$TMP/cache" "$TMP/home" "$TMP/rt" "$TMP/srcdir"
 chmod 700 "$TMP/rt"
+
+# sanitized instanceSrcDir: config.ts also probes <srcdir>/config.toml
+# and <srcdir>/config-override.toml, so the developer's real
+# config-override.toml in the repo root would leak into tests. The scss
+# symlink keeps theme probing (isFile checks on scss/theme/*.scss).
+ln -s "$ROOT/scss" "$TMP/srcdir/scss"
+touch "$TMP/srcdir/config.toml"
 
 # ags bundle emits a self-contained executable (bash wrapper + base64
 # payload + gjs launcher), not a plain .js — run it directly.
@@ -35,7 +42,7 @@ XDG_CONFIG_HOME="$TMP/config" \
 XDG_CACHE_HOME="$TMP/cache" \
 XDG_RUNTIME_DIR="$TMP/rt" \
 HOME="$TMP/home" \
-WAM_SHELL_DIR="$ROOT" \
+WAM_SHELL_DIR="$TMP/srcdir" \
 DESKTOP_SESSION=hyprland \
 WAM_TEST_TMP="$TMP" \
 WAM_TEST_CONFIG_DUMP="$TMP/config-dump" \
