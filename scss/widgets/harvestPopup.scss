@@ -12,7 +12,7 @@ window.HarvestPopup {
         border: solid 2px color.mix(t.$surface0, transparent, 60%);
         margin: 5px 12px 12px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        padding: 12px;
+        padding: 16px;
 
         .elapsed {
             font-size: 1.4em;
@@ -34,6 +34,18 @@ window.HarvestPopup {
         }
         .duration {
             color: t.$subtext0;
+        }
+        // clearly bounded input fields (new-entry form)
+        .input {
+            background-color: t.$base;
+            border: solid 2px t.$accent50;
+            border-radius: s.$radius;
+            padding: 2px 6px;
+
+            &:focus-within,
+            &:focus {
+                border-color: t.$accent;
+            }
         }
         // the paused-hours editor must read as an input, not a label
         .pausedEdit {
@@ -102,6 +114,70 @@ window.HarvestPopup {
             font-weight: bold;
             color: t.$subtext0;
             margin-top: 4px;
+        }
+
+        // day timeline: one row per entry, start time left, hours right
+        .todayRow {
+            margin: 2px 0;
+            padding: 4px 6px;
+            border-radius: s.$radius;
+            background-color: t.$surface050;
+            border: solid 2px t.$accent20;
+
+            // the row body is the notes-editor toggle, not a visible button
+            button.rowBody {
+                background-color: transparent;
+                border: none;
+                margin: 0;
+                padding: 2px 4px;
+
+                &:hover {
+                    background-color: t.$accent20;
+                }
+            }
+
+            .rowTime {
+                font-size: s.$font-small;
+                color: t.$subtext0;
+            }
+            &.running .rowTime {
+                color: t.$harvest;
+                font-weight: bold;
+            }
+            &.paused .rowTime {
+                color: t.$yellow;
+            }
+            .rowNotes {
+                font-size: s.$font-small;
+                font-style: italic;
+                color: t.$subtext0;
+            }
+        }
+
+        // footer: day total left, the new-entry reveal right
+        .footer {
+            margin-top: 2px;
+
+            .total {
+                font-size: 1.2em;
+                font-weight: bold;
+            }
+        }
+        button.newEntry {
+            background-color: transparent;
+            border-color: color.mix(t.$harvest, transparent, 55%);
+            label {
+                color: t.$harvest;
+            }
+            &:hover {
+                background-color: color.mix(t.$harvest, transparent, 85%);
+                border-color: t.$harvest;
+            }
+        }
+
+        // resume button on the paused card
+        button.resumeNow {
+            padding: 4px 6px;
         }
     }
 }

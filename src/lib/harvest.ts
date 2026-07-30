@@ -136,6 +136,10 @@ export { lastStopped }
 // today's stopped entries, most recently updated first (resume targets)
 const [recentStopped, setRecentStopped] = createState<Entry[]>([])
 export { recentStopped }
+// the full day as a timeline for the popup: every entry of today,
+// ascending by start time (see dayTimeline)
+const [todayEntries, setTodayEntries] = createState<Entry[]>([])
+export { todayEntries }
 // an entry the user "paused": stopped with intent to resume. Purely a UI
 // distinction — the API only knows start/stop, and restart keeps
 // accumulating on the same row (verified against the live API). Cleared
@@ -450,6 +454,28 @@ function adoptRunning(entry: Entry | null) {
     if (prev?.id !== entry?.id) refreshDayTotal()
 }
 
+// timeline order for the popup: ascending by start time; entries
+// without a start (manual) slot in by updatedAt
+export function dayTimeline(entries: Entry[]): Entry[] {
+    const key = (e: Entry): number => {
+        const start = startMs(e)
+        if (start !== null) return start
+        const updated = Date.parse(e.updatedAt)
+        return Number.isNaN(updated) ? 0 : updated
+    }
+    return [...entries].sort((a, b) => key(a) - key(b))
+}
+
+// "HH:MM" (24h) for a timeline row, "" for manual entries with no start
+export function startTimeLabel(e: Entry): string {
+    const ms = startMs(e)
+    if (ms === null) return ""
+    const d = new Date(ms)
+    const hh = String(d.getHours()).padStart(2, "0")
+    const mm = String(d.getMinutes()).padStart(2, "0")
+    return `${hh}:${mm}`
+}
+
 let stoppedTodaySec = 0
 
 function refreshStoppedFromMap() {
@@ -460,6 +486,16 @@ function refreshStoppedFromMap() {
     refreshDayTotal()
     setLastStopped(stopped[0] ?? null)
     setRecentStopped(stopped.slice(0, 3))
+    // a fresh array notifies gnim's For even when nothing changed, and
+    // it rebuilds every row (~every poll tick) — steal focus and churn
+    // hover/scroll for zero data change. Emit only on real change.
+    const timeline = dayTimeline([...todayMap.values()])
+    const prev = todayEntries.get()
+    if (
+        prev.length !== timeline.length ||
+        prev.some((e, i) => e.id !== timeline[i].id || e.updatedAt !== timeline[i].updatedAt)
+    )
+        setTodayEntries(timeline)
 }
 
 function refreshDayTotal() {
@@ -493,7 +529,13 @@ function applyDelta(entries: Entry[]) {
     for (const e of entries) {
         const t = Date.parse(e.updatedAt)
         if (!Number.isNaN(t)) maxUpdated = Math.max(maxUpdated, t)
-        if (e.spentDate === today) todayMap.set(e.id, e)
+        if (e.spentDate === today) {
+            // keep object identity when nothing actually changed:
+            // gnim's For keys rows by reference, and a rebuild would
+            // destroy an inline editor's state
+            const existing = todayMap.get(e.id)
+            todayMap.set(e.id, existing && existing.updatedAt === e.updatedAt ? existing : e)
+        }
         if (e.isRunning) {
             if (cur?.id !== e.id) transition = true
         } else if (cur && e.id === cur.id) {
@@ -557,10 +599,13 @@ function fetchWindow() {
             }
             // a delta applied since this snapshot was taken is newer:
             // the window is authoritative for presence/deletion, but
-            // per-entry the newer updatedAt wins
+            // per-entry the newer updatedAt wins. >=, not >: identical
+            // entries keep their object identity, so gnim's For doesn't
+            // rebuild the row (and destroy an editor's state) for no
+            // data change
             for (const [id, e] of fresh) {
                 const existing = todayMap.get(id)
-                if (existing && existing.updatedAt > e.updatedAt) fresh.set(id, existing)
+                if (existing && existing.updatedAt >= e.updatedAt) fresh.set(id, existing)
             }
             todayMap.clear()
             for (const [id, e] of fresh) todayMap.set(id, e)
@@ -882,12 +927,32 @@ export function resumeLast() {
 // the notes field keeps its dirty state instead of silently dropping text
 export function setNotes(text: string): boolean {
     const cur = running.get()
-    if (!cur || mutInFlight || authDisabled.get()) return false
+    if (!cur) return false
+    return setEntryNotes(cur, text)
+}
+
+// edit the notes of any entry, running or stopped. Same return contract
+// as setNotes: false = not attempted, the field stays dirty
+export function setEntryNotes(entry: Entry, text: string): boolean {
+    if (mutInFlight || authDisabled.get()) return false
     mutate(done => {
-        request("PATCH", `/time_entries/${cur.id}`, { notes: text }, r => {
+        request("PATCH", `/time_entries/${entry.id}`, { notes: text }, r => {
             try {
-                if (r.ok && r.json) adoptRunning(mapEntry(r.json))
-                else console.warn(`Harvest: notes update failed (status ${r.status})`)
+                if (r.ok && r.json) {
+                    const e = mapEntry(r.json)
+                    if (e.isRunning) {
+                        adoptRunning(e)
+                        // keep the timeline's running row in sync too
+                        if (e.spentDate === localDay()) {
+                            todayMap.set(e.id, e)
+                            refreshStoppedFromMap()
+                        }
+                    } else {
+                        if (e.spentDate === localDay()) todayMap.set(e.id, e)
+                        refreshStoppedFromMap()
+                        if (paused.get()?.id === e.id) setPaused(e)
+                    }
+                } else console.warn(`Harvest: notes update failed (status ${r.status})`)
             } finally {
                 done()
             }
