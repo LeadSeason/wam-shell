@@ -100,6 +100,13 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 - A bare checkout is not runnable (`.sys/`, `node_modules/` are
   gitignored): run `scripts/setup.sh` (or `pnpm i`) first.
 
+## Issues
+
+- When work surfaces a bug or problem unrelated to the current branch,
+  do not fix it in passing and do not let it evaporate: file a GitHub
+  issue (`gh issue create`) with evidence and a repro, reference it in
+  the summary, and leave the fix to a branch of its own.
+
 ## Commits
 
 - One logical change per commit; split unrelated changes into separate
