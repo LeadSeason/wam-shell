@@ -7,6 +7,7 @@ import app from "ags/gtk4/app"
 import { For, With, createBinding, createComputed, createRoot, createState, onCleanup } from "gnim"
 import { createPoll } from "ags/time"
 import CommandRegistry from "../lib/requestHandler"
+import { timeoutAdd, sourceRemove, connect } from "../lib/metrics"
 import { activePlayer, coverState, formatTime, overrideActivePlayer, players } from "../lib/mpris"
 import { createIconResolver } from "../lib/appIcon"
 import Config from "../config"
@@ -163,7 +164,8 @@ function PopupContent({ player }: { player: AstalMpris.Player }) {
                             }),
                         ]
                         onCleanup(() => unsubs.forEach(u => u()))
-                        self.connect(
+                        connect(
+                            self,
                             "change-value",
                             (_s: Gtk.Scale, _scroll: unknown, value: number) => {
                                 if (player.canSeek) player.position = value
@@ -240,7 +242,7 @@ let hideSource: number | null = null
 
 function show() {
     if (hideSource !== null) {
-        GLib.source_remove(hideSource)
+        sourceRemove(hideSource)
         hideSource = null
     }
     // mount PopupContent (and its seek poll) before presenting
@@ -254,8 +256,8 @@ function show() {
 
 function hide() {
     rev!.revealChild = false
-    if (hideSource !== null) GLib.source_remove(hideSource)
-    hideSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+    if (hideSource !== null) sourceRemove(hideSource)
+    hideSource = timeoutAdd("mediaPopup:hide", GLib.PRIORITY_DEFAULT, 200, () => {
         hideSource = null
         win!.hide()
         // unmount PopupContent now the slide-out has played: this tears

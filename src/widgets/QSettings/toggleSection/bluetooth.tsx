@@ -6,6 +6,7 @@ import GLib from "gi://GLib?version=2.0"
 import Pango from "gi://Pango?version=1.0"
 import { Gtk } from "ags/gtk4"
 import bluetooth from "../../../lib/bluetooth"
+import { timeoutAdd, connect, disconnect } from "../../../lib/metrics"
 import { pairingRequest, setBtPaneOpen, dismissPairingPrompt } from "../../../lib/bluetoothAgent"
 import { PromptContent } from "../../bluetoothPairing"
 import AstalWp from "gi://AstalWp?version=0.1"
@@ -156,7 +157,7 @@ function startDiscoveryAsync(retried = false): void {
                 // the adapter is briefly NotReady while powering on:
                 // retry once, or discovery silently never starts
                 if (!retried && (e as Error).message?.includes("NotReady")) {
-                    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+                    timeoutAdd("btPane:discoveryRetry", GLib.PRIORITY_DEFAULT, 500, () => {
                         startDiscoveryAsync(true)
                         return GLib.SOURCE_REMOVE
                     })
@@ -329,7 +330,7 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
     let listTimer = 0
     const refreshDeviceList = () => {
         if (listTimer) return
-        listTimer = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 400, () => {
+        listTimer = timeoutAdd("btPane:deviceListCoalesce", GLib.PRIORITY_DEFAULT, 400, () => {
             listTimer = 0
             setDeviceList([...bluetooth.devices])
             return GLib.SOURCE_REMOVE
@@ -341,17 +342,17 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
         if (existing?.d === d) return
         // bluez can recreate the device object for the same address:
         // drop the handlers on the stale object before re-hooking
-        if (existing) for (const id of existing.ids) existing.d.disconnect(id)
+        if (existing) for (const id of existing.ids) disconnect(existing.d, id)
         hookedDevices.set(d.address, {
             d,
             ids: [
-                d.connect("notify::paired", refreshDeviceList),
-                d.connect("notify::connected", refreshDeviceList),
+                connect(d, "notify::paired", refreshDeviceList),
+                connect(d, "notify::connected", refreshDeviceList),
                 // devices are often discovered unnamed; when the name resolves a
                 // moment later (property change, no list change) they must enter
                 // the available list then, not never
-                d.connect("notify::name", refreshDeviceList),
-                d.connect("notify::alias", refreshDeviceList),
+                connect(d, "notify::name", refreshDeviceList),
+                connect(d, "notify::alias", refreshDeviceList),
             ],
         })
     }
@@ -359,7 +360,7 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
         const live = new Set(bluetooth.devices.map(d => d.address))
         for (const [addr, h] of hookedDevices) {
             if (live.has(addr)) continue
-            for (const id of h.ids) h.d.disconnect(id)
+            for (const id of h.ids) disconnect(h.d, id)
             hookedDevices.delete(addr)
         }
     }
@@ -479,9 +480,9 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
                 // token guards the timeout against a newer attempt on the
                 // same device (a stale timeout must not fail the new one)
                 const attempt = ++pairAttempt
-                let handlerId = device.connect("notify::paired", () => {
+                let handlerId = connect(device, "notify::paired", () => {
                     if (!device.paired) return
-                    device.disconnect(handlerId)
+                    disconnect(device, handlerId)
                     handlerId = 0
                     setPending("connecting")
                     connectDevice()
@@ -489,7 +490,7 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
                 setTimeout(() => {
                     if (attempt !== pairAttempt) return
                     if (handlerId) {
-                        device.disconnect(handlerId)
+                        disconnect(device, handlerId)
                         handlerId = 0
                     }
                     if (pending.get() === "pairing") {

@@ -2,7 +2,7 @@ import { Gtk } from "ags/gtk4"
 import Pango from "gi://Pango?version=1.0"
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
-import { execAsync } from "ags/process"
+import { execAsync, timeoutAdd, sourceRemove } from "../../lib/metrics"
 import { createPoll } from "ags/time"
 import { readFile } from "ags/file"
 import AstalBattery from "gi://AstalBattery?version=0.1"
@@ -141,7 +141,7 @@ function useBatteryLine(): { line: Accessor<string> } {
         if (raw === batTime.get()) {
             // back to the displayed value, drop any pending change
             if (pendingSource !== null) {
-                GLib.source_remove(pendingSource)
+                sourceRemove(pendingSource)
                 pendingSource = null
                 pendingValue = null
             }
@@ -149,9 +149,9 @@ function useBatteryLine(): { line: Accessor<string> } {
         }
         if (raw === pendingValue) return
 
-        if (pendingSource !== null) GLib.source_remove(pendingSource)
+        if (pendingSource !== null) sourceRemove(pendingSource)
         pendingValue = raw
-        pendingSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 5000, () => {
+        pendingSource = timeoutAdd("qsHeader:batTimeDebounce", GLib.PRIORITY_DEFAULT, 5000, () => {
             pendingSource = null
             pendingValue = null
             setBatTime(raw)

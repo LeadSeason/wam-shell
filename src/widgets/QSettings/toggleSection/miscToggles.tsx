@@ -1,5 +1,5 @@
 import { createBinding, createState, onCleanup } from "gnim"
-import { execAsync } from "ags/process"
+import { execAsync, connect, disconnect } from "../../../lib/metrics"
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
 import AstalNetwork from "gi://AstalNetwork?version=0.1"
@@ -41,8 +41,8 @@ export function DarkStyleButton() {
     // gsettings CLI) reflect without re-reading on a timer
     const sync = () => setActive(settings.get_string("color-scheme").includes("prefer-dark"))
     sync()
-    const h = settings.connect("changed::color-scheme", sync)
-    onCleanup(() => settings.disconnect(h))
+    const h = connect(settings, "changed::color-scheme", sync)
+    onCleanup(() => disconnect(settings, h))
 
     return (
         <DropdownButton

@@ -5,6 +5,7 @@ import Graphene from "gi://Graphene?version=1.0"
 import app from "ags/gtk4/app"
 import { Accessor, For, With, createComputed, createRoot, createState, onCleanup } from "gnim"
 import CommandRegistry from "../lib/requestHandler"
+import { timeoutAdd, sourceRemove } from "../lib/metrics"
 import * as Harvest from "../lib/harvest"
 import Config from "../config"
 
@@ -573,7 +574,7 @@ let hideSource: number | null = null
 
 function show() {
     if (hideSource !== null) {
-        GLib.source_remove(hideSource)
+        sourceRemove(hideSource)
         hideSource = null
     }
     // stale-while-revalidate the near-static data on open
@@ -598,8 +599,8 @@ function popupMarginLeft(): number {
 
 function hide() {
     rev!.revealChild = false
-    if (hideSource !== null) GLib.source_remove(hideSource)
-    hideSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+    if (hideSource !== null) sourceRemove(hideSource)
+    hideSource = timeoutAdd("harvestPopup:hide", GLib.PRIORITY_DEFAULT, 200, () => {
         hideSource = null
         win!.hide()
         return GLib.SOURCE_REMOVE

@@ -1,5 +1,6 @@
 import GObject, { register, getter, setter } from "ags/gobject"
 import GLib from "gi://GLib?version=2.0"
+import { connect, timeoutAdd, sourceRemove } from "./metrics"
 import { readFile } from "ags/file"
 import AstalBrightness from "gi://AstalBrightness"
 import Config from "../config"
@@ -120,17 +121,22 @@ export default class Brightness extends GObject.Object {
         let last = this.#screen
         let burstStart = -1
         let settleSource = 0
-        this.connect("notify::screen", () => {
+        connect(this, "notify::screen", () => {
             if (Math.abs(this.#screen - last) < eps) return
             if (settleSource === 0) burstStart = last
-            if (settleSource !== 0) GLib.source_remove(settleSource)
-            settleSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
-                settleSource = 0
-                this.#previous = burstStart
-                last = this.#screen
-                this.notify("previous")
-                return GLib.SOURCE_REMOVE
-            })
+            if (settleSource !== 0) sourceRemove(settleSource)
+            settleSource = timeoutAdd(
+                "brightness:previousSettle",
+                GLib.PRIORITY_DEFAULT,
+                200,
+                () => {
+                    settleSource = 0
+                    this.#previous = burstStart
+                    last = this.#screen
+                    this.notify("previous")
+                    return GLib.SOURCE_REMOVE
+                },
+            )
         })
 
         if (this.#useGammaDim) {
@@ -142,7 +148,7 @@ export default class Brightness extends GObject.Object {
             })
         } else if (hasBacklight) {
             // astal monitors sysfs itself
-            abScreen.connect("notify::brightness", () => {
+            connect(abScreen, "notify::brightness", () => {
                 this.#screen = abScreen.brightness
                 this.notify("screen")
             })

@@ -3,8 +3,9 @@ import { createPoll } from "ags/time"
 import { readFileAsync } from "ags/file"
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
+import { timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
-import { streamLines } from "./utils"
+import { streamLines } from "./streamLines"
 
 // System performance stats, polled on quicksettings.stats_interval.
 // History targets a ~32s window, capped at 64 bars.
@@ -172,11 +173,16 @@ function scheduleGpuRestart() {
         return
     }
     gpuRestarts++
-    gpuRestartSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, GPU_RESTART_DELAY, () => {
-        gpuRestartSource = 0
-        startGpuStream()
-        return GLib.SOURCE_REMOVE
-    })
+    gpuRestartSource = timeoutAdd(
+        "sysstats:gpuRestart",
+        GLib.PRIORITY_DEFAULT,
+        GPU_RESTART_DELAY,
+        () => {
+            gpuRestartSource = 0
+            startGpuStream()
+            return GLib.SOURCE_REMOVE
+        },
+    )
 }
 
 function startGpuStream() {
@@ -189,7 +195,7 @@ function startGpuStream() {
 export function dispose() {
     gpuDisposed = true
     if (gpuRestartSource) {
-        GLib.source_remove(gpuRestartSource)
+        sourceRemove(gpuRestartSource)
         gpuRestartSource = 0
     }
     gpuProc?.force_exit()

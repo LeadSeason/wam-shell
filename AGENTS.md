@@ -11,6 +11,15 @@
   commands: `ags request -i wam-shell launcher` and
   `ags request -i wam-shell notifications` (bind these in the
   compositor config).
+- Performance counters: start the shell with `WAM_SHELL_METRICS=1`,
+  then query `ags request -i <instance> metrics` (single-line JSON,
+  prefixed with `<instance>: ` by the request handler) or
+  `ags request -i <instance> "metrics reset"` to zero the counters.
+  Instrumentation lives in `src/lib/metrics.ts`; new code must use its
+  `exec`/`execAsync`/`timeoutAdd`/`timeoutAddSeconds`/`sourceRemove`/
+  `connect`/`disconnect` wrappers instead of the ags/GLib originals.
+  When the env var is unset the wrappers ARE the original functions —
+  zero added work on hot paths.
 
 ## Widgets must be CSS-targetable
 
@@ -51,6 +60,45 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   GObject handlers) expose a `dispose()` that tears everything down,
   even when nothing calls it yet (see `lib/harvest.ts`,
   `lib/screenShare.ts`).
+
+## Perf gate
+
+- Before completing any change under `src/lib/` or `src/widgets/`, run
+  `pnpm perf` and include the verdict line in your summary. If it
+  reports a regression, either fix it or state explicitly why the cost
+  is justified.
+- `pnpm perf` compares the working tree against the merge-base with
+  origin/develop. Flags: `--base <ref>`, `--scenario <name>` (one
+  scenario in about a minute), `--json` (full data).
+- Verdicts: `VERDICT: OK` (exit 0), `VERDICT: REGRESSION` (exit 1),
+  `VERDICT: INCONCLUSIVE` (exit 2 — never infer a pass from it; read
+  the reason and re-run).
+- Optional pre-push gate: `pnpm perf:install-hook` (opt-in, never
+  automatic). See `tests/perf/README.md` for design and limitations.
+
+## Tests
+
+- `pnpm test` runs the unit suite: tests in `tests/*.test.ts` are bundled
+  with `ags bundle` and run under `gjs` against the real modules (see
+  `tests/run.sh`). New suites must be registered in `tests/main.ts` —
+  the bundler needs static imports.
+- `pnpm test:smoke` (opt-in) boots the real shell as an isolated
+  `wam-shell-test` instance and asserts a clean startup.
+- `pnpm test:perf` (opt-in) measures an isolated `wam-shell-perf`
+  instance (tests/perf/run.sh): idle, churn and startup scenarios, one
+  single-line JSON blob per scenario on stdout. Requires
+  WAM_SHELL_METRICS instrumentation and refuses to run when no
+  notification daemon owns org.freedesktop.Notifications. The A/B
+  comparison interface is `pnpm perf` (see "Perf gate").
+- The harness runs on a live desktop session and must never disturb it:
+  XDG_CONFIG_HOME / XDG_CACHE_HOME / HOME stay redirected to a tmp dir,
+  no test imports modules that call `AstalX.get_default()` at import
+  time (`notifd`, `osd`, `bluetooth`, `mpris`, `brightness`,
+  `hyprsunset`, `vpn`, `swayGaps`, …), nothing owns
+  `org.freedesktop.Notifications`, and `ags quit` is only ever called
+  with `-i wam-shell-test`.
+- A bare checkout is not runnable (`.sys/`, `node_modules/` are
+  gitignored): run `scripts/setup.sh` (or `pnpm i`) first.
 
 ## Commits
 
