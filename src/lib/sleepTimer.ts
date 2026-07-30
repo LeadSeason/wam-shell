@@ -69,7 +69,11 @@ function fire() {
     setPaused(false)
     for (const p of mpris.players) {
         if (p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING && p.canPause) {
-            try { p.pause() } catch (e) { console.warn("sleepTimer: pause failed:", e) }
+            try {
+                p.pause()
+            } catch (e) {
+                console.warn("sleepTimer: pause failed:", e)
+            }
         }
     }
     // dim to half the current brightness, never below 10%
@@ -77,7 +81,7 @@ function fire() {
         const brightness = Brightness.get_default()
         if (brightness.screenIsPresent) {
             preDimLevel = brightness.screen
-            dimmedToLevel = Math.max(0.10, preDimLevel / 2)
+            dimmedToLevel = Math.max(0.1, preDimLevel / 2)
             brightness.screen = dimmedToLevel
         }
     }
@@ -89,8 +93,7 @@ function fire() {
 function restoreDim() {
     if (preDimLevel === null || dimmedToLevel === null) return
     const brightness = Brightness.get_default()
-    if (brightness.screenIsPresent
-        && Math.abs(brightness.screen - dimmedToLevel) < 0.02) {
+    if (brightness.screenIsPresent && Math.abs(brightness.screen - dimmedToLevel) < 0.02) {
         brightness.screen = preDimLevel
     }
     preDimLevel = null

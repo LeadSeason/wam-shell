@@ -1,39 +1,40 @@
-import Graphene from "gi://Graphene?version=1.0";
-import GLib from "gi://GLib?version=2.0";
+import Graphene from "gi://Graphene?version=1.0"
+import GLib from "gi://GLib?version=2.0"
 
-import { Astal, Gdk, Gtk } from "ags/gtk4";
-import { timeout } from "ags/time";
+import { Astal, Gdk, Gtk } from "ags/gtk4"
+import { timeout } from "ags/time"
 
-import Tray from "./tray";
-import Config from "../../config";
-import CommandRegistry from "../../lib/requestHandler";
-import { isPinned } from "../../lib/trayPinned";
-import { refreshHyprsunset } from "../../lib/hyprsunset";
+import Tray from "./tray"
+import Config from "../../config"
+import CommandRegistry from "../../lib/requestHandler"
+import { isPinned } from "../../lib/trayPinned"
+import { refreshHyprsunset } from "../../lib/hyprsunset"
 
-import { createState } from "gnim";
-import { ToggleSection } from "./toggleSection";
-import { HeaderSection } from "./HeaderSection";
-import { SliderSection } from "./SliderSection";
-import { MediaSection } from "./MediaSection";
-import { StatsSection } from "./StatsSection";
-import { WifiWidget } from "./toggleSection/wifi";
-import { WiredWidget } from "./toggleSection/wired";
-import { BluetoothWidget } from "./toggleSection/bluetooth";
-import { PowerProfilesWidget } from "./toggleSection/powerProfile";
+import { createState } from "gnim"
+import { ToggleSection } from "./toggleSection"
+import { HeaderSection } from "./HeaderSection"
+import { SliderSection } from "./SliderSection"
+import { MediaSection } from "./MediaSection"
+import { StatsSection } from "./StatsSection"
+import { WifiWidget } from "./toggleSection/wifi"
+import { WiredWidget } from "./toggleSection/wired"
+import { BluetoothWidget } from "./toggleSection/bluetooth"
+import { PowerProfilesWidget } from "./toggleSection/powerProfile"
 
 const registry = CommandRegistry.get_default()
 
-function PaneHeader({ title, onBack }: { title: string, onBack: () => void }) {
-    return <box cssName="button" spacing={5}>
-        <Gtk.GestureClick button={1} onPressed={onBack} />
-        <image iconName="go-previous-symbolic" />
-        <label label={title} hexpand xalign={0} />
-    </box>
+function PaneHeader({ title, onBack }: { title: string; onBack: () => void }) {
+    return (
+        <box cssName="button" spacing={5}>
+            <Gtk.GestureClick button={1} onPressed={onBack} />
+            <image iconName="go-previous-symbolic" />
+            <label label={title} hexpand xalign={0} />
+        </box>
+    )
 }
 
-
 export default function QSettings() {
-    const { TOP, BOTTOM, LEFT, RIGHT } = Astal.WindowAnchor;
+    const { TOP, BOTTOM, LEFT, RIGHT } = Astal.WindowAnchor
     let win: Astal.Window
     let contentBox: Gtk.Box
     let revealer: Gtk.Revealer
@@ -66,7 +67,7 @@ export default function QSettings() {
         // not whenever the 30s watch happens to tick next
         refreshHyprsunset()
         win.present()
-        revealer.set_reveal_child(true);
+        revealer.set_reveal_child(true)
     }
 
     registry.register({
@@ -84,7 +85,7 @@ export default function QSettings() {
             }
             return `QSettings, No window is defined, Maybe running on hyprland?
         Scratchpad is sway-specific`
-        }
+        },
     })
 
     registry.register({
@@ -96,16 +97,11 @@ export default function QSettings() {
                 return "QSettings, window show"
             }
             return "QSettings, already visible"
-        }
+        },
     })
 
     // close on ESC
-    function onKey(
-        _e: Gtk.EventControllerKey,
-        keyValue: number,
-        _: number,
-        mod: number,
-    ) {
+    function onKey(_e: Gtk.EventControllerKey, keyValue: number, _: number, mod: number) {
         if (keyValue === Gdk.KEY_Escape) {
             hide()
             return
@@ -130,11 +126,15 @@ export default function QSettings() {
     let closeSource: number | null = null
     function scheduleClose() {
         if (closeSource !== null) return
-        closeSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Config.quicksettings.closeDelay, () => {
-            closeSource = null
-            if (win.is_visible()) hide()
-            return GLib.SOURCE_REMOVE
-        })
+        closeSource = GLib.timeout_add(
+            GLib.PRIORITY_DEFAULT,
+            Config.quicksettings.closeDelay,
+            () => {
+                closeSource = null
+                if (win.is_visible()) hide()
+                return GLib.SOURCE_REMOVE
+            },
+        )
     }
     function cancelClose() {
         if (closeSource !== null) {
@@ -161,8 +161,10 @@ export default function QSettings() {
         const { x: rx, y: ry } = rect.origin
         const { width, height } = rect.size
         const inside =
-            x >= rx - BUFFER && x <= rx + width + BUFFER &&
-            y >= ry - BUFFER && y <= ry + height + BUFFER
+            x >= rx - BUFFER &&
+            x <= rx + width + BUFFER &&
+            y >= ry - BUFFER &&
+            y <= ry + height + BUFFER
 
         if (inside) {
             hasEntered = true
@@ -171,81 +173,90 @@ export default function QSettings() {
             scheduleClose()
         }
     }
-    return <window
-        $={(ref) => {
-            win = ref
-        }}
-        name="QSettings"
-        class="QSettings"
-        namespace={`${Config.instanceName}QSettings`}
+    return (
+        <window
+            $={ref => {
+                win = ref
+            }}
+            name="QSettings"
+            class="QSettings"
+            namespace={`${Config.instanceName}QSettings`}
 
-        anchor={TOP | BOTTOM | LEFT | RIGHT}
-        // Keep the overlay below the bar so bar widgets (volume scroll,
-        // buttons) stay interactive while the popup is open
-        marginTop={30}
-        keymode={Astal.Keymode.EXCLUSIVE}
-    >
-
-        <Gtk.EventControllerKey onKeyPressed={onKey} />
-        <Gtk.GestureClick onPressed={onClick} />
-        <Gtk.EventControllerMotion onMotion={onMotion} />
-        <revealer
-            $={(ref) => (revealer = ref)}
-            transitionDuration={200}
-            transition_type={Gtk.RevealerTransitionType.SLIDE_DOWN}
+            anchor={TOP | BOTTOM | LEFT | RIGHT}
+            // Keep the overlay below the bar so bar widgets (volume scroll,
+            // buttons) stay interactive while the popup is open
+            marginTop={30}
+            keymode={Astal.Keymode.EXCLUSIVE}
         >
-            <box
-                $={(ref) => (contentBox = ref)}
-                valign={Gtk.Align.START}
-                halign={Gtk.Align.END}
-                orientation={Gtk.Orientation.VERTICAL}
-                cssClasses={["qSettings"]}
-                widthRequest={240}
+            <Gtk.EventControllerKey onKeyPressed={onKey} />
+            <Gtk.GestureClick onPressed={onClick} />
+            <Gtk.EventControllerMotion onMotion={onMotion} />
+            <revealer
+                $={ref => (revealer = ref)}
+                transitionDuration={200}
+                transition_type={Gtk.RevealerTransitionType.SLIDE_DOWN}
             >
-                <stack
-                    // set the visible child after construction: as a prop it
-                    // is applied before the named children exist, which makes
-                    // Gtk warn about a missing child
-                    $={(self) => {
-                        self.visibleChildName = "main"
-                        // subscribe callbacks receive no value, read it
-                        pane.subscribe(() => self.visibleChildName = pane.get())
-                    }}
-                    transitionType={Gtk.StackTransitionType.SLIDE_LEFT_RIGHT}
-                    transitionDuration={200}
+                <box
+                    $={ref => (contentBox = ref)}
+                    valign={Gtk.Align.START}
+                    halign={Gtk.Align.END}
+                    orientation={Gtk.Orientation.VERTICAL}
+                    cssClasses={["qSettings"]}
+                    widthRequest={240}
                 >
-                    <box $type="named" name="main" orientation={Gtk.Orientation.VERTICAL}>
-                        {/* header (battery, power, …) only on the main pane */}
-                        <HeaderSection />
-                        <SliderSection />
-                        <Gtk.Separator />
-                        {toggleSection.widget}
-                        {Config.quicksettings.showStats && <StatsSection />}
-                        <MediaSection />
-                        {!Config.tray.onPanel && <Gtk.Separator />}
-                        {!Config.tray.onPanel &&
-                            <Tray filter={(item) => !isPinned(item)}
-                                iconSize={Config.tray.popupIconSize} pill
-                                spacing={8} />}
-                    </box>
-                    <box $type="named" name="wifi" orientation={Gtk.Orientation.VERTICAL}>
-                        <PaneHeader title="Wi-Fi" onBack={() => setPane("main")} />
-                        <WifiWidget pane={pane} name="wifi" />
-                    </box>
-                    <box $type="named" name="bluetooth" orientation={Gtk.Orientation.VERTICAL}>
-                        <PaneHeader title="Bluetooth" onBack={() => setPane("main")} />
-                        <BluetoothWidget pane={pane} name="bluetooth" />
-                    </box>
-                    <box $type="named" name="wired" orientation={Gtk.Orientation.VERTICAL}>
-                        <PaneHeader title="Wired" onBack={() => setPane("main")} />
-                        <WiredWidget pane={pane} name="wired" />
-                    </box>
-                    <box $type="named" name="powerprofiles" orientation={Gtk.Orientation.VERTICAL}>
-                        <PaneHeader title="Power Mode" onBack={() => setPane("main")} />
-                        <PowerProfilesWidget />
-                    </box>
-                </stack>
-            </box>
-        </revealer>
-    </window>
+                    <stack
+                        // set the visible child after construction: as a prop it
+                        // is applied before the named children exist, which makes
+                        // Gtk warn about a missing child
+                        $={self => {
+                            self.visibleChildName = "main"
+                            // subscribe callbacks receive no value, read it
+                            pane.subscribe(() => (self.visibleChildName = pane.get()))
+                        }}
+                        transitionType={Gtk.StackTransitionType.SLIDE_LEFT_RIGHT}
+                        transitionDuration={200}
+                    >
+                        <box $type="named" name="main" orientation={Gtk.Orientation.VERTICAL}>
+                            {/* header (battery, power, …) only on the main pane */}
+                            <HeaderSection />
+                            <SliderSection />
+                            <Gtk.Separator />
+                            {toggleSection.widget}
+                            {Config.quicksettings.showStats && <StatsSection />}
+                            <MediaSection />
+                            {!Config.tray.onPanel && <Gtk.Separator />}
+                            {!Config.tray.onPanel && (
+                                <Tray
+                                    filter={item => !isPinned(item)}
+                                    iconSize={Config.tray.popupIconSize}
+                                    pill
+                                    spacing={8}
+                                />
+                            )}
+                        </box>
+                        <box $type="named" name="wifi" orientation={Gtk.Orientation.VERTICAL}>
+                            <PaneHeader title="Wi-Fi" onBack={() => setPane("main")} />
+                            <WifiWidget pane={pane} name="wifi" />
+                        </box>
+                        <box $type="named" name="bluetooth" orientation={Gtk.Orientation.VERTICAL}>
+                            <PaneHeader title="Bluetooth" onBack={() => setPane("main")} />
+                            <BluetoothWidget pane={pane} name="bluetooth" />
+                        </box>
+                        <box $type="named" name="wired" orientation={Gtk.Orientation.VERTICAL}>
+                            <PaneHeader title="Wired" onBack={() => setPane("main")} />
+                            <WiredWidget pane={pane} name="wired" />
+                        </box>
+                        <box
+                            $type="named"
+                            name="powerprofiles"
+                            orientation={Gtk.Orientation.VERTICAL}
+                        >
+                            <PaneHeader title="Power Mode" onBack={() => setPane("main")} />
+                            <PowerProfilesWidget />
+                        </box>
+                    </stack>
+                </box>
+            </revealer>
+        </window>
+    )
 }

@@ -80,11 +80,7 @@ function newestMtime(dir: string): number {
     try {
         const f = Gio.File.new_for_path(dir)
         let newest = mtimeUsec(
-            f.query_info(
-                "time::modified,time::modified-usec",
-                Gio.FileQueryInfoFlags.NONE,
-                null,
-            ),
+            f.query_info("time::modified,time::modified-usec", Gio.FileQueryInfoFlags.NONE, null),
         )
         const en = f.enumerate_children(
             "standard::name,standard::type,time::modified,time::modified-usec",
@@ -182,5 +178,5 @@ registry.register({
     help: "Reloads the style from the scss files",
     main: async () => {
         return await reloadStyle()
-    }
+    },
 })

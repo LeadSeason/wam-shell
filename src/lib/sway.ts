@@ -7,8 +7,7 @@ export default class Sway extends GObject.Object {
     static instance: Sway
 
     static get_default() {
-        if (!this.instance)
-            this.instance = new Sway()
+        if (!this.instance) this.instance = new Sway()
 
         return this.instance
     }
@@ -24,29 +23,35 @@ export default class Sway extends GObject.Object {
     ok = false
 
     @getter(Array)
-    get wss () { return this.#wss };
+    get wss() {
+        return this.#wss
+    }
 
     @getter(Array)
-    get tree () { return this.#tree.nodes };
+    get tree() {
+        return this.#tree.nodes
+    }
 
     @getter(Array)
-    get outputs () { return this.#outputs };
+    get outputs() {
+        return this.#outputs
+    }
 
     @getter(Number)
-    get focused () {
-        return this.#wss.find(ws => ws.focused)?.id ?? 0;
+    get focused() {
+        return this.#wss.find(ws => ws.focused)?.id ?? 0
     }
 
     @getter(Number)
     get urgent() {
-        return this.#wss.find(ws => ws.urgent)?.id ?? 0;
+        return this.#wss.find(ws => ws.urgent)?.id ?? 0
     }
 
     // i3ipc.Connection.message() is synchronous and blocks the main loop
     // for one IPC round-trip. Fine for one-shot commands; the event-driven
     // reads in the constructor are coalesced (50ms) to avoid burst stalls.
-    message (message: string): Commands {
-        return JSON.parse(this.#i3conn.message(i3ipc.MessageType.COMMAND, message));
+    message(message: string): Commands {
+        return JSON.parse(this.#i3conn.message(i3ipc.MessageType.COMMAND, message))
     }
 
     constructor() {
@@ -54,9 +59,9 @@ export default class Sway extends GObject.Object {
 
         try {
             this.#i3conn = i3ipc.Connection.new(null)
-            this.#wss = JSON.parse(this.#i3conn.message(i3ipc.MessageType.GET_WORKSPACES, ""));
-            this.#outputs = JSON.parse(this.#i3conn.message(i3ipc.MessageType.GET_OUTPUTS, ""));
-            this.#tree = JSON.parse(this.#i3conn.message(i3ipc.MessageType.GET_TREE, ""));
+            this.#wss = JSON.parse(this.#i3conn.message(i3ipc.MessageType.GET_WORKSPACES, ""))
+            this.#outputs = JSON.parse(this.#i3conn.message(i3ipc.MessageType.GET_OUTPUTS, ""))
+            this.#tree = JSON.parse(this.#i3conn.message(i3ipc.MessageType.GET_TREE, ""))
             this.ok = true
         } catch (e) {
             console.error("Sway: IPC connection failed:", e)
@@ -79,17 +84,17 @@ export default class Sway extends GObject.Object {
                 const conn = this.#i3conn
                 try {
                     if (kinds.has("ws")) {
-                        this.#wss = JSON.parse(conn.message(i3ipc.MessageType.GET_WORKSPACES, ""));
+                        this.#wss = JSON.parse(conn.message(i3ipc.MessageType.GET_WORKSPACES, ""))
                         this.notify("wss")
                         this.notify("focused")
                         this.notify("urgent")
                     }
                     if (kinds.has("ws") || kinds.has("win")) {
-                        this.#tree = JSON.parse(conn.message(i3ipc.MessageType.GET_TREE, ""));
+                        this.#tree = JSON.parse(conn.message(i3ipc.MessageType.GET_TREE, ""))
                         this.notify("tree")
                     }
                     if (kinds.has("ws") || kinds.has("out")) {
-                        this.#outputs = JSON.parse(conn.message(i3ipc.MessageType.GET_OUTPUTS, ""));
+                        this.#outputs = JSON.parse(conn.message(i3ipc.MessageType.GET_OUTPUTS, ""))
                         this.notify("outputs")
                     }
                 } catch (e) {
@@ -113,8 +118,8 @@ export type Displays = Node[]
 export type Commands = Command[]
 
 export interface Command {
-  success: boolean
-  parse_error?: boolean
+    success: boolean
+    parse_error?: boolean
 }
 
 export interface Node {

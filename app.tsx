@@ -24,22 +24,21 @@ import "./src/widgets/mediaPopup"
 import "./src/widgets/harvestPopup"
 import { init as initHarvest } from "./src/lib/harvest"
 
-
 function matchMonitor(wanted: string[], m: Gdk.Monitor): boolean {
     if (wanted.length === 0) return true
     const conn = m.get_connector() ?? ""
     const model = m.get_model() ?? ""
     const desc = m.get_description() ?? ""
-    return wanted.some(w =>
-        w === conn || w === model || (w !== "" && desc.includes(w)))
+    return wanted.some(w => w === conn || w === model || (w !== "" && desc.includes(w)))
 }
 
 function main() {
     // bundled fallback icons (assets/icons): core UI icon names must
     // resolve even when the system icon theme lacks them (old adwaita,
     // minimal/custom themes). System themes take precedence.
-    Gtk.IconTheme.get_for_display(Gdk.Display.get_default()!)
-        .add_search_path(`${Config.instanceSrcDir}/assets/icons`)
+    Gtk.IconTheme.get_for_display(Gdk.Display.get_default()!).add_search_path(
+        `${Config.instanceSrcDir}/assets/icons`,
+    )
 
     initHarvest()
 
@@ -60,42 +59,53 @@ function main() {
     app.add_window(BluetoothPairing() as Gtk.Window)
     startBluetoothAgent()
 
-    const bars = Config.panels.length === 0
-        // legacy mode: one bar per monitor, filtered by bar_monitors
-        ? (<For each={createBinding(app, "monitors").as(ms =>
-            ms.filter(m => matchMonitor(Config.barMonitors, m)))}
-            cleanup={(win) => (win as Gtk.Window).destroy()}>
-            {(monitor) => <Bar gdkMonitor={monitor} />}
-        </For>)
-        // panel mode: one bar per matching [[panel]] per monitor
-        : (<For each={createBinding(app, "monitors").as(ms =>
-            ms.flatMap(m => Config.panels
-                .map((panel, i) => ({ monitor: m, panel, i }))
-                .filter(p => matchMonitor(p.panel.monitors, p.monitor))))}
-            // key by config index: two panels with the same position and
-            // no class would otherwise collide and silently drop a bar
-            id={({ monitor, i }) => `${monitor.get_connector()}/${i}`}
-            cleanup={(win) => (win as Gtk.Window).destroy()}>
-            {({ monitor, panel }) => <Bar gdkMonitor={monitor} panel={panel} />}
-        </For>)
+    const bars =
+        Config.panels.length === 0 ? (
+            // legacy mode: one bar per monitor, filtered by bar_monitors
+            <For
+                each={createBinding(app, "monitors").as(ms =>
+                    ms.filter(m => matchMonitor(Config.barMonitors, m)),
+                )}
+                cleanup={win => (win as Gtk.Window).destroy()}
+            >
+                {monitor => <Bar gdkMonitor={monitor} />}
+            </For>
+        ) : (
+            // panel mode: one bar per matching [[panel]] per monitor
+            <For
+                each={createBinding(app, "monitors").as(ms =>
+                    ms.flatMap(m =>
+                        Config.panels
+                            .map((panel, i) => ({ monitor: m, panel, i }))
+                            .filter(p => matchMonitor(p.panel.monitors, p.monitor)),
+                    ),
+                )}
+                // key by config index: two panels with the same position and
+                // no class would otherwise collide and silently drop a bar
+                id={({ monitor, i }) => `${monitor.get_connector()}/${i}`}
+                cleanup={win => (win as Gtk.Window).destroy()}
+            >
+                {({ monitor, panel }) => <Bar gdkMonitor={monitor} panel={panel} />}
+            </For>
+        )
 
-    const osds = !Config.osd.enabled ? null
-        : (<For each={createBinding(app, "monitors")}
-            cleanup={(win) => (win as Gtk.Window).destroy()}>
-            {(monitor) => <OSD gdkMonitor={monitor} />}
-        </For>)
+    const osds = !Config.osd.enabled ? null : (
+        <For each={createBinding(app, "monitors")} cleanup={win => (win as Gtk.Window).destroy()}>
+            {monitor => <OSD gdkMonitor={monitor} />}
+        </For>
+    )
 
-    const notifPopups = !(Config.notifications.popups && useOurs) ? null
-        : (<For each={createBinding(app, "monitors")}
-            cleanup={(win) => (win as Gtk.Window).destroy()}>
-            {(monitor) => <NotificationPopups gdkMonitor={monitor} />}
-        </For>)
+    const notifPopups = !(Config.notifications.popups && useOurs) ? null : (
+        <For each={createBinding(app, "monitors")} cleanup={win => (win as Gtk.Window).destroy()}>
+            {monitor => <NotificationPopups gdkMonitor={monitor} />}
+        </For>
+    )
 
     return [bars, osds, notifPopups]
 }
 
 if (!GLib.file_test(Config.instanceCacheDir, GLib.FileTest.IS_DIR)) {
-    GLib.mkdir_with_parents(Config.instanceCacheDir, 0o755);
+    GLib.mkdir_with_parents(Config.instanceCacheDir, 0o755)
     console.log("Created dir:", Config.instanceCacheDir)
 }
 

@@ -24,8 +24,7 @@ const isDummy = abScreen
 const readMax = (): number => {
     if (!abScreen || isDummy) return 0
     try {
-        return Number(readFile(
-            `/sys/class/backlight/${abScreen.name}/max_brightness`)) || 0
+        return Number(readFile(`/sys/class/backlight/${abScreen.name}/max_brightness`)) || 0
     } catch {
         return 0
     }
@@ -35,8 +34,7 @@ const hasBacklight = abScreen !== null && !isDummy && maxBrightness > 0
 const hasHyprsunset = GLib.find_program_in_path("hyprsunset") !== null
 // computed at module level: private fields can't be referenced from
 // other fields' initializers
-const useGammaDim = !hasBacklight && hasHyprsunset
-    && Config.desktopSession === "hyprland"
+const useGammaDim = !hasBacklight && hasHyprsunset && Config.desktopSession === "hyprland"
 const screenIsPresent = hasBacklight || useGammaDim
 
 @register({ GTypeName: "Brightness" })
@@ -44,8 +42,7 @@ export default class Brightness extends GObject.Object {
     static instance: Brightness
 
     static get_default() {
-        if (!this.instance)
-            this.instance = new Brightness()
+        if (!this.instance) this.instance = new Brightness()
 
         return this.instance
     }
@@ -57,10 +54,14 @@ export default class Brightness extends GObject.Object {
     #previous = -1
 
     @getter(Number)
-    get screen() { return this.#screen }
+    get screen() {
+        return this.#screen
+    }
 
     @getter(Number)
-    get previous() { return this.#previous }
+    get previous() {
+        return this.#previous
+    }
 
     /** jump back to the previous level; the tracking hook then holds
      *  the level we just left, so this toggles between the two */
@@ -98,7 +99,9 @@ export default class Brightness extends GObject.Object {
     }
 
     @getter(Boolean)
-    get screenIsPresent() { return this.#screenIsPresent };
+    get screenIsPresent() {
+        return this.#screenIsPresent
+    }
 
     constructor() {
         super()
@@ -113,9 +116,7 @@ export default class Brightness extends GObject.Object {
         // advanced on noise). The snapshot is debounced: a slider drag
         // fires per motion event, so `previous` is only recorded once
         // the changes settle — it always holds the pre-drag level.
-        const eps = maxBrightness > 0
-            ? Math.min(0.03, 1.5 / maxBrightness)
-            : 0.02
+        const eps = maxBrightness > 0 ? Math.min(0.03, 1.5 / maxBrightness) : 0.02
         let last = this.#screen
         let burstStart = -1
         let settleSource = 0

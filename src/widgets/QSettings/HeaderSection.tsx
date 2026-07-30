@@ -1,29 +1,30 @@
-import { Gtk } from "ags/gtk4";
-import Pango from "gi://Pango?version=1.0";
-import GLib from "gi://GLib?version=2.0";
-import Gio from "gi://Gio?version=2.0";
-import { execAsync } from "ags/process";
-import { createPoll } from "ags/time";
-import { readFile } from "ags/file";
-import AstalBattery from "gi://AstalBattery?version=0.1";
-import { Accessor, createBinding, createComputed, createState, onCleanup } from "gnim";
-import Config from "../../config";
-import { isFile } from "../../lib/utils";
-import { confirmDialog } from "../dialog";
+import { Gtk } from "ags/gtk4"
+import Pango from "gi://Pango?version=1.0"
+import GLib from "gi://GLib?version=2.0"
+import Gio from "gi://Gio?version=2.0"
+import { execAsync } from "ags/process"
+import { createPoll } from "ags/time"
+import { readFile } from "ags/file"
+import AstalBattery from "gi://AstalBattery?version=0.1"
+import { Accessor, createBinding, createComputed, createState, onCleanup } from "gnim"
+import Config from "../../config"
+import { isFile } from "../../lib/utils"
+import { confirmDialog } from "../dialog"
 
 // avatar sources, in order: configured absolute path, the login avatar
 // from AccountsService, the OS icon (same as the panel's osIcon)
-function resolveAvatar(): { file: string | null, icon: string } {
+function resolveAvatar(): { file: string | null; icon: string } {
     const configured = Config.quicksettings.avatar
     if (configured && isFile(configured)) return { file: configured, icon: "" }
     try {
         const kf = new GLib.KeyFile()
         kf.load_from_file(
             `/var/lib/AccountsService/users/${GLib.get_user_name()}`,
-            GLib.KeyFileFlags.NONE)
+            GLib.KeyFileFlags.NONE,
+        )
         const icon = kf.get_string("User", "Icon")
         if (icon && isFile(icon)) return { file: icon, icon: "" }
-    } catch { }
+    } catch {}
     return { file: null, icon: Config.osIcon }
 }
 
@@ -51,9 +52,7 @@ function Avatar() {
         // judge by percentage alone: UPower's charging state flickers
         // at the cap ("not charging" with a bogus time)
         const atLimit = pct.get() * 100 >= Config.quicksettings.batteryFullAt - 2
-        const frac = atLimit
-            ? 1
-            : Math.min(1, Math.ceil((pct.get() / cap) * 100) / 100)
+        const frac = atLimit ? 1 : Math.min(1, Math.ceil((pct.get() / cap) * 100) / 100)
         if (frac > 0.005) {
             cr.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2)
             cr.setSourceRGBA(c.red, c.green, c.blue, 0.95)
@@ -61,42 +60,49 @@ function Avatar() {
         }
     }
 
-    return <overlay
-        widthRequest={48}
-        heightRequest={48}
-        $={(self) => {
-            // gnim overlays only reliably keep the first JSX child —
-            // add the frame imperatively (same pattern as PopupRow)
-            self.add_overlay(
-                <box
-                    cssClasses={["avatarFrame"]}
-                    halign={Gtk.Align.CENTER}
-                    valign={Gtk.Align.CENTER}
-                    widthRequest={36}
-                    heightRequest={36}
-                    overflow={Gtk.Overflow.HIDDEN}
-                >
-                    {avatar.file
-                        ? <Gtk.Picture
-                            file={Gio.File.new_for_path(avatar.file)}
-                            contentFit={Gtk.ContentFit.COVER}
-                            canShrink
-                        />
-                        : <image iconName={avatar.icon} pixelSize={24} />}
-                </box> as Gtk.Widget)
-        }}
-    >
-        <Gtk.DrawingArea
-            cssClasses={["batteryRing"]}
+    return (
+        <overlay
             widthRequest={48}
             heightRequest={48}
-            $={(self) => {
-                const unsub = pct.subscribe(() => self.queue_draw())
-                onCleanup(unsub)
-                self.set_draw_func(drawRing)
+            $={self => {
+                // gnim overlays only reliably keep the first JSX child —
+                // add the frame imperatively (same pattern as PopupRow)
+                self.add_overlay(
+                    (
+                        <box
+                            cssClasses={["avatarFrame"]}
+                            halign={Gtk.Align.CENTER}
+                            valign={Gtk.Align.CENTER}
+                            widthRequest={36}
+                            heightRequest={36}
+                            overflow={Gtk.Overflow.HIDDEN}
+                        >
+                            {avatar.file ? (
+                                <Gtk.Picture
+                                    file={Gio.File.new_for_path(avatar.file)}
+                                    contentFit={Gtk.ContentFit.COVER}
+                                    canShrink
+                                />
+                            ) : (
+                                <image iconName={avatar.icon} pixelSize={24} />
+                            )}
+                        </box>
+                    ) as Gtk.Widget,
+                )
             }}
-        />
-    </overlay>
+        >
+            <Gtk.DrawingArea
+                cssClasses={["batteryRing"]}
+                widthRequest={48}
+                heightRequest={48}
+                $={self => {
+                    const unsub = pct.subscribe(() => self.queue_draw())
+                    onCleanup(unsub)
+                    self.set_draw_func(drawRing)
+                }}
+            />
+        </overlay>
+    )
 }
 
 function useBatteryLine(): { line: Accessor<string> } {
@@ -106,17 +112,17 @@ function useBatteryLine(): { line: Accessor<string> } {
     const batTimeConvert = (timeRemaining: number, charging: boolean): string => {
         // No meaningful estimate (at charge limit, or UPower has no data):
         // show nothing, the percentage is already visible anyway
-        if (timeRemaining <= 0) return "";
+        if (timeRemaining <= 0) return ""
 
         // Round to 5 minute steps so small estimate drifts don't retext
         // the label
-        const totalMinutes = Math.round(timeRemaining / 60 / 5) * 5;
-        const hours = Math.floor(totalMinutes / 60);
-        const minutes = totalMinutes % 60;
+        const totalMinutes = Math.round(timeRemaining / 60 / 5) * 5
+        const hours = Math.floor(totalMinutes / 60)
+        const minutes = totalMinutes % 60
 
-        const time = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
-        return charging ? `${time} to full` : `${time} left`;
-    };
+        const time = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
+        return charging ? `${time} to full` : `${time} left`
+    }
 
     const currentBatTime = (): string =>
         batTimeConvert(bat.charging ? bat.timeToFull : bat.timeToEmpty, bat.charging)
@@ -164,8 +170,7 @@ function useBatteryLine(): { line: Accessor<string> } {
             // timeToFull although nothing is charging (a known quirk)
             // judge by percentage alone: UPower's charging state also
             // flickers at the cap ("not charging" with a bogus time)
-            if (p * 100 >= Config.quicksettings.batteryFullAt - 2)
-                return `${pct} · charge limit`
+            if (p * 100 >= Config.quicksettings.batteryFullAt - 2) return `${pct} · charge limit`
             return t ? `${pct} · ${t}` : pct
         }),
     }
@@ -174,25 +179,25 @@ function useBatteryLine(): { line: Accessor<string> } {
 // uptime without the fork: /proc/uptime is "<seconds> <idle>" and
 // /proc/loadavg is "<1m> <5m> <15m> …" — everything `uptime` printed
 const uptimeConvert = (seconds: number): string => {
-    const days = Math.floor(seconds / 86400);
-    const hours = Math.floor((seconds % 86400) / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
+    const days = Math.floor(seconds / 86400)
+    const hours = Math.floor((seconds % 86400) / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
 
-    const parts: string[] = [];
+    const parts: string[] = []
 
-    if (days > 0) parts.push(`${days}d`);
-    if (hours > 0) parts.push(`${hours}h`);
+    if (days > 0) parts.push(`${days}d`)
+    if (hours > 0) parts.push(`${hours}h`)
     // minutes only add noise past a day (same rule as the old parser)
-    if (minutes > 0 && days === 0) parts.push(`${minutes}m`);
+    if (minutes > 0 && days === 0) parts.push(`${minutes}m`)
 
-    return `Up ${parts.join(" ")}`;
-};
+    return `Up ${parts.join(" ")}`
+}
 
 const loadConvert = (loadavg: string): string => {
-    const [one, five, fifteen] = loadavg.split(" ");
-    if (!one || !five || !fifteen) return "";
-    return `Load ${one} ${five} ${fifteen}`;
-};
+    const [one, five, fifteen] = loadavg.split(" ")
+    if (!one || !five || !fifteen) return ""
+    return `Load ${one} ${five} ${fifteen}`
+}
 
 function useUptimeLine(): { line: Accessor<string> } {
     const [line, setLine] = createState("")
@@ -216,47 +221,73 @@ export function HeaderSection() {
     // loginctl needs the session id; the compositor's locker handles the
     // actual Lock signal. Empty when not under systemd-logind.
     const sessionId = GLib.getenv("XDG_SESSION_ID") ?? ""
-    const lock = () => sessionId &&
-        execAsync(["loginctl", "lock-session", sessionId]).catch(e => console.warn("lock failed:", e))
+    const lock = () =>
+        sessionId &&
+        execAsync(["loginctl", "lock-session", sessionId]).catch(e =>
+            console.warn("lock failed:", e),
+        )
 
-    return <box cssClasses={["QSHeader", "QSSection"]}>
-        {Config.quicksettings.showAvatar && <Avatar />}
-        <box orientation={Gtk.Orientation.VERTICAL} valign={Gtk.Align.CENTER} hexpand marginStart={8}>
-            <label
-                cssClasses={["whoName"]}
-                label={GLib.get_user_name() ?? ""}
-                xalign={0}
-                ellipsize={Pango.EllipsizeMode.END}
+    return (
+        <box cssClasses={["QSHeader", "QSSection"]}>
+            {Config.quicksettings.showAvatar && <Avatar />}
+            <box
+                orientation={Gtk.Orientation.VERTICAL}
+                valign={Gtk.Align.CENTER}
+                hexpand
+                marginStart={8}
+            >
+                <label
+                    cssClasses={["whoName"]}
+                    label={GLib.get_user_name() ?? ""}
+                    xalign={0}
+                    ellipsize={Pango.EllipsizeMode.END}
+                />
+                <label
+                    cssClasses={["whoSub"]}
+                    label={line}
+                    xalign={0}
+                    ellipsize={Pango.EllipsizeMode.END}
+                />
+            </box>
+            <button
+                halign={Gtk.Align.END}
+                iconName={"system-lock-screen-symbolic"}
+                tooltipText={"Lock session"}
+                onClicked={lock}
             />
-            <label
-                cssClasses={["whoSub"]}
-                label={line}
-                xalign={0}
-                ellipsize={Pango.EllipsizeMode.END}
+            <button
+                iconName={"system-log-out-symbolic"}
+                tooltipText={"Log out"}
+                onClicked={async () => {
+                    if (
+                        await confirmDialog({
+                            text: "Log out?",
+                            subtext: "Ends the current session",
+                            yesButton: "Log out",
+                        })
+                    )
+                        sessionId &&
+                            execAsync(["loginctl", "terminate-session", sessionId]).catch(e =>
+                                console.warn("logout failed:", e),
+                            )
+                }}
+            />
+            <button
+                iconName={"system-shutdown-symbolic"}
+                tooltipText={"Shut down"}
+                onClicked={async () => {
+                    if (
+                        await confirmDialog({
+                            text: "Shut down?",
+                            subtext: "Powers off the machine",
+                            yesButton: "Shut down",
+                        })
+                    )
+                        execAsync(["systemctl", "poweroff"]).catch(e =>
+                            console.warn("poweroff failed:", e),
+                        )
+                }}
             />
         </box>
-        <button
-            halign={Gtk.Align.END}
-            iconName={"system-lock-screen-symbolic"}
-            tooltipText={"Lock session"}
-            onClicked={lock}
-        />
-        <button
-            iconName={"system-log-out-symbolic"}
-            tooltipText={"Log out"}
-            onClicked={async () => {
-                if (await confirmDialog({ text: "Log out?", subtext: "Ends the current session", yesButton: "Log out" }))
-                    sessionId && execAsync(["loginctl", "terminate-session", sessionId])
-                        .catch(e => console.warn("logout failed:", e))
-            }}
-        />
-        <button
-            iconName={"system-shutdown-symbolic"}
-            tooltipText={"Shut down"}
-            onClicked={async () => {
-                if (await confirmDialog({ text: "Shut down?", subtext: "Powers off the machine", yesButton: "Shut down" }))
-                    execAsync(["systemctl", "poweroff"]).catch(e => console.warn("poweroff failed:", e))
-            }}
-        />
-    </box>;
+    )
 }

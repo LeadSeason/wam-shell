@@ -22,97 +22,99 @@ function loadTexture(path: string, w: number, h: number): Gdk.Texture | null {
 
 function urgencyClass(n: AstalNotifd.Notification): string[] {
     switch (n.urgency) {
-        case AstalNotifd.Urgency.CRITICAL: return ["critical"]
-        case AstalNotifd.Urgency.LOW: return ["low"]
-        default: return []
+        case AstalNotifd.Urgency.CRITICAL:
+            return ["critical"]
+        case AstalNotifd.Urgency.LOW:
+            return ["low"]
+        default:
+            return []
     }
 }
 
 export default function NotificationRow({ n }: { n: AstalNotifd.Notification }) {
     const image = n.get_image()
     const headerIcon = isPath(image)
-        ? (n.get_app_icon() || "application-x-executable-symbolic")
-        : (image || n.get_app_icon() || "application-x-executable-symbolic")
+        ? n.get_app_icon() || "application-x-executable-symbolic"
+        : image || n.get_app_icon() || "application-x-executable-symbolic"
     const imageTexture = isPath(image)
         ? loadTexture(image.replace(/^file:\/\//, ""), 640, 240)
         : null
 
-    const actions = n.get_actions().filter((a) => a.get_id() !== "default")
-    const hasDefault = n.get_actions().some((a) => a.get_id() === "default")
+    const actions = n.get_actions().filter(a => a.get_id() !== "default")
+    const hasDefault = n.get_actions().some(a => a.get_id() === "default")
 
-    return <box
-        cssClasses={["notification", ...urgencyClass(n)]}
-        orientation={Gtk.Orientation.VERTICAL}
-        spacing={6}
-    >
-        <box spacing={8}>
-            <image iconName={headerIcon} pixelSize={24} valign={Gtk.Align.CENTER} />
-            <label
-                cssClasses={["appName"]}
-                label={n.get_app_name() || "unknown"}
-                xalign={0}
-                ellipsize={Pango.EllipsizeMode.END}
-            />
-            <label
-                cssClasses={["time"]}
-                hexpand
-                xalign={1}
-                label={timeTick.as((now) => relTime(n.get_time(), now))}
-            />
-            <button cssClasses={["dismiss"]} onClicked={() => n.dismiss()}>
-                <image iconName="window-close-symbolic" />
-            </button>
-        </box>
-        <box orientation={Gtk.Orientation.VERTICAL} spacing={4}>
-            {hasDefault &&
-                <Gtk.GestureClick
-                    button={1}
-                    onReleased={() => n.invoke("default")}
-                />
-            }
-            <label
-                cssClasses={["summary"]}
-                label={n.get_summary() || n.get_app_name()}
-                xalign={0}
-                maxWidthChars={34}
-                ellipsize={Pango.EllipsizeMode.END}
-            />
-            {n.get_body() !== "" &&
+    return (
+        <box
+            cssClasses={["notification", ...urgencyClass(n)]}
+            orientation={Gtk.Orientation.VERTICAL}
+            spacing={6}
+        >
+            <box spacing={8}>
+                <image iconName={headerIcon} pixelSize={24} valign={Gtk.Align.CENTER} />
                 <label
-                    cssClasses={["body"]}
-                    label={safeMarkup(n.get_body())}
-                    useMarkup
+                    cssClasses={["appName"]}
+                    label={n.get_app_name() || "unknown"}
                     xalign={0}
-                    wrap
-                    maxWidthChars={40}
+                    ellipsize={Pango.EllipsizeMode.END}
                 />
-            }
-            {imageTexture &&
-                // hard bound the image: the texture is pre-scaled at 2x
-                // for hidpi, and Picture sizes itself to the texture —
-                // on scale-1 displays that renders double size
-                <box
-                    cssClasses={["image"]}
-                    widthRequest={320}
-                    heightRequest={120}
-                    overflow={Gtk.Overflow.HIDDEN}
-                >
-                    <Gtk.Picture
-                        paintable={imageTexture}
-                        contentFit={Gtk.ContentFit.COVER}
-                        canShrink={true}
+                <label
+                    cssClasses={["time"]}
+                    hexpand
+                    xalign={1}
+                    label={timeTick.as(now => relTime(n.get_time(), now))}
+                />
+                <button cssClasses={["dismiss"]} onClicked={() => n.dismiss()}>
+                    <image iconName="window-close-symbolic" />
+                </button>
+            </box>
+            <box orientation={Gtk.Orientation.VERTICAL} spacing={4}>
+                {hasDefault && (
+                    <Gtk.GestureClick button={1} onReleased={() => n.invoke("default")} />
+                )}
+                <label
+                    cssClasses={["summary"]}
+                    label={n.get_summary() || n.get_app_name()}
+                    xalign={0}
+                    maxWidthChars={34}
+                    ellipsize={Pango.EllipsizeMode.END}
+                />
+                {n.get_body() !== "" && (
+                    <label
+                        cssClasses={["body"]}
+                        label={safeMarkup(n.get_body())}
+                        useMarkup
+                        xalign={0}
+                        wrap
+                        maxWidthChars={40}
                     />
-                </box>
-            }
-        </box>
-        {actions.length > 0 &&
-            <box cssClasses={["actions"]} spacing={6}>
-                {actions.map((a) =>
-                    <button onClicked={() => n.invoke(a.get_id())}>
-                        <label label={a.get_label()} />
-                    </button>
+                )}
+                {imageTexture && (
+                    // hard bound the image: the texture is pre-scaled at 2x
+                    // for hidpi, and Picture sizes itself to the texture —
+                    // on scale-1 displays that renders double size
+                    <box
+                        cssClasses={["image"]}
+                        widthRequest={320}
+                        heightRequest={120}
+                        overflow={Gtk.Overflow.HIDDEN}
+                    >
+                        <Gtk.Picture
+                            paintable={imageTexture}
+                            contentFit={Gtk.ContentFit.COVER}
+                            canShrink={true}
+                        />
+                    </box>
                 )}
             </box>
-        }
-    </box>
+            {actions.length > 0 && (
+                <box cssClasses={["actions"]} spacing={6}>
+                    {actions.map(a => (
+                        <button onClicked={() => n.invoke(a.get_id())}>
+                            <label label={a.get_label()} />
+                        </button>
+                    ))}
+                </box>
+            )}
+        </box>
+    )
 }

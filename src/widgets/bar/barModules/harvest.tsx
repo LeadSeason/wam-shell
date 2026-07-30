@@ -19,9 +19,7 @@ function withinWorkHours(): boolean {
     const start = sh * 60 + sm
     const end = eh * 60 + em
     // windows may wrap midnight ("22:00"-"06:00")
-    return start <= end
-        ? mins >= start && mins < end
-        : mins >= start || mins < end
+    return start <= end ? mins >= start && mins < end : mins >= start || mins < end
 }
 
 // one shared evaluation for every bar instance: re-armed to the next
@@ -37,7 +35,7 @@ function msUntilNextBoundary(): number {
         return h * 60 + m
     }
     const next = [workStart, workEnd]
-        .map((s) => (toMin(s) - mins + 1440) % 1440 || 1440)
+        .map(s => (toMin(s) - mins + 1440) % 1440 || 1440)
         .sort((a, b) => a - b)[0]
     return next * 60_000 + 1000
 }
@@ -71,7 +69,7 @@ export default function HarvestTimer({
     // detection runs only once something actually masks on it
     if (Config.harvest.maskWhenSharing) enableShareWatch()
 
-    const masked = sharing.as((s) => s && Config.harvest.maskWhenSharing)
+    const masked = sharing.as(s => s && Config.harvest.maskWhenSharing)
 
     const visible = createComputed(
         [Harvest.running, Harvest.paused, workHours],
@@ -96,12 +94,8 @@ export default function HarvestTimer({
     const tooltip = createComputed(
         [Harvest.running, Harvest.paused, resumeTarget, masked],
         (r, p, t, m) => {
-            if (m)
-                return r || p
-                    ? "Harvest timer (details hidden while sharing)"
-                    : "Harvest"
-            if (r)
-                return `${r.clientName} — ${r.projectName} · ${r.taskName} · right-click to stop`
+            if (m) return r || p ? "Harvest timer (details hidden while sharing)" : "Harvest"
+            if (r) return `${r.clientName} — ${r.projectName} · ${r.taskName} · right-click to stop`
             if (p)
                 return `Paused: ${p.clientName} — ${p.projectName} · ${p.taskName} · right-click to resume`
             if (t)
@@ -110,22 +104,19 @@ export default function HarvestTimer({
         },
     )
 
-    const cssClasses = createComputed(
-        [Harvest.running, Harvest.paused, masked],
-        (r, p, m) => [
-            "harvest",
-            ...(m ? ["sharing"] : []),
-            ...(p && !r ? ["paused"] : []),
-            ...(r || p ? [] : ["idle"]),
-        ],
-    )
+    const cssClasses = createComputed([Harvest.running, Harvest.paused, masked], (r, p, m) => [
+        "harvest",
+        ...(m ? ["sharing"] : []),
+        ...(p && !r ? ["paused"] : []),
+        ...(r || p ? [] : ["idle"]),
+    ])
 
     let clickArea: Gtk.Box
 
     return (
         <box cssClasses={cssClasses} tooltipText={tooltip} visible={visible}>
             <box
-                $={(self) => {
+                $={self => {
                     clickArea = self
                 }}
             >
@@ -133,11 +124,7 @@ export default function HarvestTimer({
                 <Gtk.GestureClick
                     button={1}
                     onPressed={() => {
-                        const [, x] = clickArea.translate_coordinates(
-                            clickArea.get_root(),
-                            0,
-                            0,
-                        )
+                        const [, x] = clickArea.translate_coordinates(clickArea.get_root(), 0, 0)
                         setPopupAnchor({
                             x: x + clickArea.get_width() / 2,
                             monitor,
@@ -148,16 +135,11 @@ export default function HarvestTimer({
                 <Gtk.GestureClick
                     button={3}
                     onPressed={() =>
-                        Harvest.running.get()
-                            ? Harvest.stopRunning()
-                            : Harvest.resumeLast()
+                        Harvest.running.get() ? Harvest.stopRunning() : Harvest.resumeLast()
                     }
                 />
                 <box spacing={4}>
-                    <image
-                        cssClasses={["harvestIcon"]}
-                        iconName="harvest-symbolic"
-                    />
+                    <image cssClasses={["harvestIcon"]} iconName="harvest-symbolic" />
                     {/* fixed request: h:mm must not resize the module and shift
                     neighbours as the digits change (sized for 10:23) */}
                     <label widthChars={5} label={label} />
@@ -171,21 +153,15 @@ export default function HarvestTimer({
                     [Harvest.running, Harvest.paused],
                     (r, p) => r !== null || p !== null,
                 )}
-                tooltipText={Harvest.running.as((r) =>
-                    r ? "Pause" : "Resume",
-                )}
-                sensitive={Harvest.busy.as((b) => !b)}
+                tooltipText={Harvest.running.as(r => (r ? "Pause" : "Resume"))}
+                sensitive={Harvest.busy.as(b => !b)}
                 onClicked={() =>
-                    Harvest.running.get()
-                        ? Harvest.pauseTimer()
-                        : Harvest.resumeLast()
+                    Harvest.running.get() ? Harvest.pauseTimer() : Harvest.resumeLast()
                 }
             >
                 <image
-                    iconName={Harvest.running.as((r) =>
-                        r
-                            ? "media-playback-pause-symbolic"
-                            : "media-playback-start-symbolic",
+                    iconName={Harvest.running.as(r =>
+                        r ? "media-playback-pause-symbolic" : "media-playback-start-symbolic",
                     )}
                 />
             </button>

@@ -27,10 +27,16 @@ function notify(summary: string, body: string, icon: string, urgency: number) {
         "org.freedesktop.Notifications",
         "Notify",
         new GLib.Variant("(susssasa{sv}i)", [
-            "wam-shell", 0, icon, summary, body, [],
+            "wam-shell",
+            0,
+            icon,
+            summary,
+            body,
+            [],
             // a{sv} inside a tuple must be a plain object of variants
             // for gjs to pack it
-            { urgency: new GLib.Variant("y", urgency) }, -1,
+            { urgency: new GLib.Variant("y", urgency) },
+            -1,
         ]),
         null,
         Gio.DBusCallFlags.NONE,
@@ -54,43 +60,49 @@ function watchDevice(device: AstalBluetooth.Device) {
     const handlerIds: number[] = []
     // seed current state: only changes after startup notify
     watched.set(address, {
-        connected: device.connected, batteryWarned: false,
-        device, handlerIds,
+        connected: device.connected,
+        batteryWarned: false,
+        device,
+        handlerIds,
     })
 
-    handlerIds.push(device.connect("notify::connected", () => {
-        if (!Config.bluetooth.notifications) return
-        const state = watched.get(address)
-        if (!state || state.connected === device.connected) return
-        state.connected = device.connected
-        state.batteryWarned = false
-        const name = device.alias || device.name || address
-        notify(
-            name,
-            device.connected ? "Connected" : "Disconnected",
-            device.icon || "bluetooth-symbolic",
-            0, // low urgency
-        )
-    }))
-
-    handlerIds.push(device.connect("notify::battery-percentage", () => {
-        if (!Config.bluetooth.notifications) return
-        const state = watched.get(address)
-        const battery = device.batteryPercentage
-        if (!state || !device.connected || battery < 0) return
-        if (battery <= LOW_BATTERY && !state.batteryWarned) {
-            state.batteryWarned = true
+    handlerIds.push(
+        device.connect("notify::connected", () => {
+            if (!Config.bluetooth.notifications) return
+            const state = watched.get(address)
+            if (!state || state.connected === device.connected) return
+            state.connected = device.connected
+            state.batteryWarned = false
             const name = device.alias || device.name || address
             notify(
                 name,
-                `Battery low (${battery}%)`,
+                device.connected ? "Connected" : "Disconnected",
                 device.icon || "bluetooth-symbolic",
-                1, // normal urgency
+                0, // low urgency
             )
-        } else if (battery > LOW_BATTERY) {
-            state.batteryWarned = false
-        }
-    }))
+        }),
+    )
+
+    handlerIds.push(
+        device.connect("notify::battery-percentage", () => {
+            if (!Config.bluetooth.notifications) return
+            const state = watched.get(address)
+            const battery = device.batteryPercentage
+            if (!state || !device.connected || battery < 0) return
+            if (battery <= LOW_BATTERY && !state.batteryWarned) {
+                state.batteryWarned = true
+                const name = device.alias || device.name || address
+                notify(
+                    name,
+                    `Battery low (${battery}%)`,
+                    device.icon || "bluetooth-symbolic",
+                    1, // normal urgency
+                )
+            } else if (battery > LOW_BATTERY) {
+                state.batteryWarned = false
+            }
+        }),
+    )
 }
 
 function unwatchDevice(address: string) {

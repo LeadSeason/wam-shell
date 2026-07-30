@@ -19,7 +19,7 @@ export const [vram, setVram] = createState<[number, number]>([0, 0]) // used,tot
 export const [ramSize, setRamSize] = createState<[number, number]>([0, 0]) // used,total GB
 export const [loadAvg, setLoadAvg] = createState(0)
 export const [netDown, setNetDown] = createState(0) // bytes/s
-export const [netUp, setNetUp] = createState(0)     // bytes/s
+export const [netUp, setNetUp] = createState(0) // bytes/s
 
 export const [cpuHist, setCpuHist] = createState<{ v: number }[]>([])
 export const [ramHist, setRamHist] = createState<{ v: number }[]>([])
@@ -31,10 +31,13 @@ const push = (hist: { v: number }[], set: (v: { v: number }[]) => void, v: numbe
     set([...hist, { v }].slice(-HISTORY))
 
 // /proc/stat: user nice system idle iowait irq softirq steal
-let prevCpu: { idle: number, total: number } | null = null
+let prevCpu: { idle: number; total: number } | null = null
 async function readCpu(): Promise<number> {
-    const fields = (await readFileAsync("/proc/stat")).split("\n")[0]
-        .split(/\s+/).slice(1).map(Number)
+    const fields = (await readFileAsync("/proc/stat"))
+        .split("\n")[0]
+        .split(/\s+/)
+        .slice(1)
+        .map(Number)
     const idle = fields[3] + fields[4]
     const total = fields.reduce((a, b) => a + b, 0)
     let pct = 0
@@ -49,7 +52,7 @@ async function readRam(): Promise<number> {
     const total = Number(meminfo.match(/MemTotal:\s+(\d+)/)?.[1] ?? 0)
     const avail = Number(meminfo.match(/MemAvailable:\s+(\d+)/)?.[1] ?? 0)
     if (!total) return 0
-    const toGB = (kb: number) => Math.round(kb / 1024 / 1024 * 10) / 10
+    const toGB = (kb: number) => Math.round((kb / 1024 / 1024) * 10) / 10
     setRamSize([toGB(total - avail), toGB(total)])
     return Math.round(100 * (1 - avail / total))
 }
@@ -61,21 +64,28 @@ async function readLoadAvg(): Promise<number> {
 // /proc/net/dev: skip loopback and container/bridge interfaces
 // the rate divisor is the actual elapsed time: ticks slip while a
 // previous sample is in flight, and a fixed INTERVAL would inflate it
-let prevNet: { rx: number, tx: number, t: number } | null = null
+let prevNet: { rx: number; tx: number; t: number } | null = null
 async function readNet(): Promise<[number, number]> {
-    let rx = 0, tx = 0
+    let rx = 0,
+        tx = 0
     for (const line of (await readFileAsync("/proc/net/dev")).split("\n").slice(2)) {
         const m = line.match(/^\s*([^:]+):\s*(.*)$/)
         if (!m) continue
         const iface = m[1].trim()
-        if (iface === "lo" || iface.startsWith("docker")
-            || iface.startsWith("br-") || iface.startsWith("veth")) continue
+        if (
+            iface === "lo" ||
+            iface.startsWith("docker") ||
+            iface.startsWith("br-") ||
+            iface.startsWith("veth")
+        )
+            continue
         const fields = m[2].split(/\s+/)
         rx += Number(fields[0])
         tx += Number(fields[8])
     }
     const now = GLib.get_monotonic_time() / 1000 // us -> ms
-    let down = 0, up = 0
+    let down = 0,
+        up = 0
     if (prevNet && now > prevNet.t) {
         const dt = (now - prevNet.t) / 1000
         down = Math.max(0, (rx - prevNet.rx) / dt)
@@ -94,9 +104,10 @@ const poll = createPoll("", INTERVAL, () => {
             const p = fn()
             // async steps throw after step() returned; log them like
             // the sync failures instead of losing them to unhandledrejection
-            if (p instanceof Promise)
-                p.catch((e) => console.warn(`sysstats ${label}:`, e))
-        } catch (e) { console.warn(`sysstats ${label}:`, e) }
+            if (p instanceof Promise) p.catch(e => console.warn(`sysstats ${label}:`, e))
+        } catch (e) {
+            console.warn(`sysstats ${label}:`, e)
+        }
     }
     step("cpu", async () => {
         const c = await readCpu()
@@ -169,17 +180,17 @@ function startGpuStream() {
 // createPoll is lazy until subscribed; keep it alive while stats are on
 // (panel lists are authoritative: a "stats" entry in any [[panel]]
 // renders the widget regardless of the legacy toggles)
-if (Config.quicksettings.showStats || Config.quicksettings.statsOnPanel
-    || Config.panels.some(p =>
-        [...p.left, ...p.center, ...p.right].includes("stats"))) {
-    poll.subscribe(() => { })
+if (
+    Config.quicksettings.showStats ||
+    Config.quicksettings.statsOnPanel ||
+    Config.panels.some(p => [...p.left, ...p.center, ...p.right].includes("stats"))
+) {
+    poll.subscribe(() => {})
     if (hasNvidia) startGpuStream()
 }
 
 export function formatRate(bytesPerSec: number): string {
-    if (bytesPerSec >= 1024 * 1024)
-        return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`
-    if (bytesPerSec >= 1024)
-        return `${Math.round(bytesPerSec / 1024)} KB/s`
+    if (bytesPerSec >= 1024 * 1024) return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`
+    if (bytesPerSec >= 1024) return `${Math.round(bytesPerSec / 1024)} KB/s`
     return `${bytesPerSec} B/s`
 }

@@ -43,22 +43,37 @@ function moduleFor(name: string, gdkMonitor: Gdk.Monitor) {
     // panel lists are authoritative: global toggles (stats_on_panel,
     // workspaces.enabled) do not apply here.
     switch (name) {
-        case "osicon": return <OSIcon />
-        case "workspaces": return workspaceWidgetFor(gdkMonitor, true)
-        case "clock": return <Clock />
-        case "stats": return <SysStats />
-        case "tray": return trayWidgetFor(gdkMonitor)
-        case "quicksettings": return <QSettingsLabel />
-        case "language": return <KeyboardLayout />
-        case "notifications": return <SwayNC />
-        case "media": return <Media monitor={gdkMonitor} />
-        case "sleeptimer": return <SleepTimer />
-        case "harvest": return <HarvestTimer monitor={gdkMonitor} authoritative />
-        default: return null
+        case "osicon":
+            return <OSIcon />
+        case "workspaces":
+            return workspaceWidgetFor(gdkMonitor, true)
+        case "clock":
+            return <Clock />
+        case "stats":
+            return <SysStats />
+        case "tray":
+            return trayWidgetFor(gdkMonitor)
+        case "quicksettings":
+            return <QSettingsLabel />
+        case "language":
+            return <KeyboardLayout />
+        case "notifications":
+            return <SwayNC />
+        case "media":
+            return <Media monitor={gdkMonitor} />
+        case "sleeptimer":
+            return <SleepTimer />
+        case "harvest":
+            return <HarvestTimer monitor={gdkMonitor} authoritative />
+        default:
+            return null
     }
 }
 
-export default function Bar({ gdkMonitor, panel }: {
+export default function Bar({
+    gdkMonitor,
+    panel,
+}: {
     gdkMonitor: Gdk.Monitor
     panel?: PanelConfig
 }) {
@@ -69,8 +84,8 @@ export default function Bar({ gdkMonitor, panel }: {
             visible
             name="bar"
             class={hyprsunset.outdoor.as(v =>
-                ["Bar", extraClass, v ? "outdoor" : ""]
-                    .filter(Boolean).join(" "))}
+                ["Bar", extraClass, v ? "outdoor" : ""].filter(Boolean).join(" "),
+            )}
             namespace="bar"
             gdkmonitor={gdkMonitor}
             exclusivity={Astal.Exclusivity.EXCLUSIVE}
@@ -87,17 +102,11 @@ export default function Bar({ gdkMonitor, panel }: {
         return win(
             (panel.position === "bottom" ? BOTTOM : TOP) | LEFT | RIGHT,
             <centerbox cssName="centerbox">
-                <box $type="start">
-                    {panel.left.map(n => moduleFor(n, gdkMonitor))}
-                </box>
-                <box $type="center">
-                    {panel.center.map(n => moduleFor(n, gdkMonitor))}
-                </box>
-                <box $type="end">
-                    {panel.right.map(n => moduleFor(n, gdkMonitor))}
-                </box>
+                <box $type="start">{panel.left.map(n => moduleFor(n, gdkMonitor))}</box>
+                <box $type="center">{panel.center.map(n => moduleFor(n, gdkMonitor))}</box>
+                <box $type="end">{panel.right.map(n => moduleFor(n, gdkMonitor))}</box>
             </centerbox>,
-            panel.class
+            panel.class,
         )
     }
 
@@ -108,7 +117,8 @@ export default function Bar({ gdkMonitor, panel }: {
     // (tray.always_on_panel) show on the bar, the rest stay nested.
     let trayWidget = trayWidgetFor(gdkMonitor)
 
-    return win(TOP | LEFT | RIGHT,
+    return win(
+        TOP | LEFT | RIGHT,
         <centerbox cssName="centerbox">
             <box $type="start">
                 <OSIcon />
@@ -129,6 +139,6 @@ export default function Bar({ gdkMonitor, panel }: {
                 <SwayNC />
                 {Config.workspaces.position == "right" && workspaceWidget}
             </box>
-        </centerbox>
+        </centerbox>,
     )
 }

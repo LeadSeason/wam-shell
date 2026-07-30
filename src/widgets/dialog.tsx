@@ -20,13 +20,11 @@ const { TOP, BOTTOM, LEFT, RIGHT } = Astal.WindowAnchor
  *    - For example connection to wifi could ask you if password required.
  */
 
-
 class Dialog {
     static instance: Dialog
 
     static get_default() {
-        if (!this.instance)
-            this.instance = new Dialog()
+        if (!this.instance) this.instance = new Dialog()
 
         return this.instance
     }
@@ -67,16 +65,14 @@ class Dialog {
     }
 
     private onKey = (_e: Gtk.EventControllerKey, keyValue: number, _: number, mod: number) => {
-        if (keyValue === Gdk.KEY_Escape)
-            this.hide()
+        if (keyValue === Gdk.KEY_Escape) this.hide()
     }
 
     private onClick = (_e: Gtk.GestureClick, _: number, x: number, y: number) => {
         const [, rect] = this.contentBox.compute_bounds(this.win)
         const position = new Graphene.Point({ x, y })
 
-        if (!rect.contains_point(position))
-            this.hide()
+        if (!rect.contains_point(position)) this.hide()
     }
 
     win: Astal.Window
@@ -86,7 +82,7 @@ class Dialog {
     setContent: Setter<GObject.Object>
 
     constructor() {
-        [this.content, this.setContent] = createState(
+        ;[this.content, this.setContent] = createState(
             <box
                 orientation={Gtk.Orientation.VERTICAL}
                 valign={Gtk.Align.CENTER}
@@ -95,52 +91,49 @@ class Dialog {
             >
                 <label label={"No content set"} />
                 <label label={"Merp"} />
-                <box
-                    hexpand={false}
-                    vexpand={false}
-                    cssName={"button"}
-                >
+                <box hexpand={false} vexpand={false} cssName={"button"}>
                     <Gtk.GestureClick
                         button={1}
-                        onPressed={() => { this.hide() }}
+                        onPressed={() => {
+                            this.hide()
+                        }}
                     />
                     <label hexpand label={"Close"}></label>
                 </box>
-            </box>)
+            </box>,
+        )
 
-        this.contentBox = (<box
-            name="main-content"
-            valign={Gtk.Align.CENTER}
-            halign={Gtk.Align.CENTER}
-        >
-            <With value={this.content}>
-                {(value) => { return value }}
-            </With>
-        </box>) as Gtk.Box
+        this.contentBox = (
+            <box name="main-content" valign={Gtk.Align.CENTER} halign={Gtk.Align.CENTER}>
+                <With value={this.content}>
+                    {value => {
+                        return value
+                    }}
+                </With>
+            </box>
+        ) as Gtk.Box
 
-        this.revealer = (<revealer>
-            {this.contentBox}
-        </revealer>) as Gtk.Revealer
+        this.revealer = (<revealer>{this.contentBox}</revealer>) as Gtk.Revealer
 
-        this.win = (<window
-            name="Dialog"
-            class="Dialog"
-            namespace={`${Config.instanceName}Dialog`}
-            anchor={TOP | BOTTOM | LEFT | RIGHT}
-            exclusivity={Astal.Exclusivity.IGNORE}
-            keymode={Astal.Keymode.EXCLUSIVE}
-            onNotifyVisible={(visible) => {
-                if (visible)
-                    this.revealer.reveal_child = true
-            }}
-        >
-            <Gtk.EventControllerKey onKeyPressed={this.onKey} />
-            <Gtk.GestureClick onPressed={this.onClick} />
-            {this.revealer}
-        </window>) as Astal.Window
+        this.win = (
+            <window
+                name="Dialog"
+                class="Dialog"
+                namespace={`${Config.instanceName}Dialog`}
+                anchor={TOP | BOTTOM | LEFT | RIGHT}
+                exclusivity={Astal.Exclusivity.IGNORE}
+                keymode={Astal.Keymode.EXCLUSIVE}
+                onNotifyVisible={visible => {
+                    if (visible) this.revealer.reveal_child = true
+                }}
+            >
+                <Gtk.EventControllerKey onKeyPressed={this.onKey} />
+                <Gtk.GestureClick onPressed={this.onClick} />
+                {this.revealer}
+            </window>
+        ) as Astal.Window
     }
 }
-
 
 export default Dialog
 
@@ -157,10 +150,10 @@ export async function confirmDialog({
     yesButton = "Confirm",
     noButton = "Cancel",
 }: confirmDialogProps): Promise<boolean> {
-    const dialog = Dialog.get_default();
+    const dialog = Dialog.get_default()
     // @TODO Clean up style for this function
 
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
         // unsubscribed when the dialog resolves by any path
         let unsub: (() => void) | null = null
         const done = (v: boolean) => {
@@ -169,41 +162,45 @@ export async function confirmDialog({
             resolve(v)
         }
 
-        dialog.setContent(<box
-            cssClasses={["confirm"]}
-            orientation={Gtk.Orientation.VERTICAL}
-            valign={Gtk.Align.CENTER}
-            halign={Gtk.Align.CENTER}
-            hexpand
-        >
-            <label cssClasses={["title"]} label={text} />
-            <label cssClasses={["subtext"]} label={subtext} />
-            <box homogeneous>
-                <box cssName={"button"}>
-                    <Gtk.GestureClick
-                        button={1}
-                        onPressed={() => {
-                            dialog.hide();
-                            done(true);
-                        }} />
-                    <label hexpand label={yesButton}></label>
+        dialog.setContent(
+            <box
+                cssClasses={["confirm"]}
+                orientation={Gtk.Orientation.VERTICAL}
+                valign={Gtk.Align.CENTER}
+                halign={Gtk.Align.CENTER}
+                hexpand
+            >
+                <label cssClasses={["title"]} label={text} />
+                <label cssClasses={["subtext"]} label={subtext} />
+                <box homogeneous>
+                    <box cssName={"button"}>
+                        <Gtk.GestureClick
+                            button={1}
+                            onPressed={() => {
+                                dialog.hide()
+                                done(true)
+                            }}
+                        />
+                        <label hexpand label={yesButton}></label>
+                    </box>
+                    <box cssName={"button"}>
+                        <Gtk.GestureClick
+                            button={1}
+                            onPressed={() => {
+                                dialog.hide()
+                                done(false)
+                            }}
+                        />
+                        <label hexpand label={noButton}></label>
+                    </box>
                 </box>
-                <box cssName={"button"}>
-                    <Gtk.GestureClick
-                        button={1}
-                        onPressed={() => {
-                            dialog.hide();
-                            done(false);
-                        }} />
-                    <label hexpand label={noButton}></label>
-                </box>
-            </box>
-        </box>);
-        dialog.present();
+            </box>,
+        )
+        dialog.present()
         unsub = createBinding(dialog.win, "visible").subscribe(() => {
             if (!dialog.win.get_visible()) {
-                done(false);
+                done(false)
             }
-        });
-    });
+        })
+    })
 }

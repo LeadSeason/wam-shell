@@ -34,6 +34,16 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   the `theme` config key) — never hardcode hex in widget styles.
 - Shared spacing/radius values live in `scss/conf.scss`.
 
+## Formatting
+
+- Prettier is the formatter; config lives in `.prettierrc` (there is
+  intentionally no `prettier` key in package.json — it would shadow the
+  file). Run `node_modules/.bin/prettier --check "src/**/*.{ts,tsx}"`
+  before committing; a pre-commit hook running the same command (or
+  `--write`) is recommended.
+- Imports of gnim API (`createState`, `For`, `With`, accessors) come
+  from `"gnim"`, GObject from `"ags/gobject"` — not from `"ags"`.
+
 ## Commits
 
 - One logical change per commit; split unrelated changes into separate

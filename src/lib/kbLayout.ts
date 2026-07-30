@@ -13,14 +13,13 @@ import Config from "../config"
 const FLAG_OVERRIDES: Record<string, string> = {
     ara: "🇮🇶", // Arabic
     latam: "🌎", // Latin American, no single country
-    epo: "🟩",   // Esperanto, green like its flag
+    epo: "🟩", // Esperanto, green like its flag
 }
 
 export function flag(code: string): string {
     if (code in FLAG_OVERRIDES) return FLAG_OVERRIDES[code]
     if (/^[a-z]{2}$/.test(code))
-        return String.fromCodePoint(
-            ...[...code].map(c => 0x1F1E6 + c.charCodeAt(0) - 97))
+        return String.fromCodePoint(...[...code].map(c => 0x1f1e6 + c.charCodeAt(0) - 97))
     return ""
 }
 
@@ -51,7 +50,7 @@ function getXkbNames(): Record<string, string> {
 
 export interface LayoutSource {
     layouts: Accessor<string[]> // xkb codes ("" when unknown)
-    names: Accessor<string[]>   // display name per index
+    names: Accessor<string[]> // display name per index
     activeIndex: Accessor<number>
     switchTo(i: number): void
 }
@@ -63,8 +62,9 @@ export const [layoutOsdText, setLayoutOsdText] = createState("")
 // directly (notify::caps/num-lock-state) on any compositor, so unlike
 // the layout name it needs no hyprctl/swaymsg read. null before the
 // first read.
-export const [lockKeyState, setLockKeyState] =
-    createState<{ caps: boolean, num: boolean } | null>(null)
+export const [lockKeyState, setLockKeyState] = createState<{ caps: boolean; num: boolean } | null>(
+    null,
+)
 
 let lockSourceStarted = false
 
@@ -77,8 +77,7 @@ export function ensureLockSource(): void {
         console.error("lock keys: no GDK keyboard device")
         return
     }
-    const read = () =>
-        setLockKeyState({ caps: kb.capsLockState, num: kb.numLockState })
+    const read = () => setLockKeyState({ caps: kb.capsLockState, num: kb.numLockState })
     read() // the signals only fire on change, so seed the initial state
     kb.connect("notify::caps-lock-state", read)
     kb.connect("notify::num-lock-state", read)
@@ -92,25 +91,25 @@ function hyprlandSource(): LayoutSource {
     let mainKb = ""
 
     function refresh() {
-        execAsync("hyprctl devices -j").then((out) => {
-            const devices = JSON.parse(out)
-            const kb = devices.keyboards.find((k: any) => k.main)
-                ?? devices.keyboards[0]
-            if (!kb) return
-            mainKb = kb.name
-            const codes = kb.layout.split(",").map((s: string) => s.trim())
-            setLayouts(codes)
-            setVariants((kb.variant ?? "").split(",")
-                .map((s: string) => s.trim()))
-            setActiveIndex(kb.active_layout_index)
-            if (kb.active_layout_index === lastIndex) return
-            const wasFirst = lastIndex === null
-            lastIndex = kb.active_layout_index
-            if (wasFirst) return
-            const code = codes[kb.active_layout_index] ?? ""
-            const base = getXkbNames()[code] ?? code.toUpperCase()
-            setLayoutOsdText(`${flag(code)} ${base}`.trim())
-        }).catch((e) => console.error("keyboard layout:", e))
+        execAsync("hyprctl devices -j")
+            .then(out => {
+                const devices = JSON.parse(out)
+                const kb = devices.keyboards.find((k: any) => k.main) ?? devices.keyboards[0]
+                if (!kb) return
+                mainKb = kb.name
+                const codes = kb.layout.split(",").map((s: string) => s.trim())
+                setLayouts(codes)
+                setVariants((kb.variant ?? "").split(",").map((s: string) => s.trim()))
+                setActiveIndex(kb.active_layout_index)
+                if (kb.active_layout_index === lastIndex) return
+                const wasFirst = lastIndex === null
+                lastIndex = kb.active_layout_index
+                if (wasFirst) return
+                const code = codes[kb.active_layout_index] ?? ""
+                const base = getXkbNames()[code] ?? code.toUpperCase()
+                setLayoutOsdText(`${flag(code)} ${base}`.trim())
+            })
+            .catch(e => console.error("keyboard layout:", e))
     }
 
     let lastIndex: number | null = null
@@ -121,16 +120,19 @@ function hyprlandSource(): LayoutSource {
 
     return {
         layouts,
-        names: layouts.as(ls => ls.map((code, i) => {
-            const base = getXkbNames()[code] ?? code.toUpperCase()
-            const v = variants.get()[i]
-            return v ? `${base} (${v})` : base
-        })),
+        names: layouts.as(ls =>
+            ls.map((code, i) => {
+                const base = getXkbNames()[code] ?? code.toUpperCase()
+                const v = variants.get()[i]
+                return v ? `${base} (${v})` : base
+            }),
+        ),
         activeIndex,
         switchTo(i) {
             if (mainKb)
-                execAsync(["hyprctl", "switchxkblayout", mainKb, String(i)])
-                    .catch(e => console.error("keyboard layout:", e))
+                execAsync(["hyprctl", "switchxkblayout", mainKb, String(i)]).catch(e =>
+                    console.error("keyboard layout:", e),
+                )
         },
     }
 }
@@ -142,8 +144,7 @@ function swaySource(msgCmd: string): LayoutSource {
     function codeFor(desc: string): string {
         if (descToCode === null) {
             const map: Record<string, string> = {}
-            for (const [code, d] of Object.entries(getXkbNames()))
-                if (!(d in map)) map[d] = code
+            for (const [code, d] of Object.entries(getXkbNames())) if (!(d in map)) map[d] = code
             descToCode = map
         }
         return descToCode[desc] ?? ""
@@ -173,8 +174,9 @@ function swaySource(msgCmd: string): LayoutSource {
             const raw = poll.get()
             if (!raw) return
             const inputs = JSON.parse(raw)
-            const kb = inputs.find((k: any) =>
-                k.type === "keyboard" && k.xkb_layout_names?.length > 0)
+            const kb = inputs.find(
+                (k: any) => k.type === "keyboard" && k.xkb_layout_names?.length > 0,
+            )
             if (!kb) return
             identifier = kb.identifier
             const ns = kb.xkb_layout_names as string[]
@@ -198,9 +200,9 @@ function swaySource(msgCmd: string): LayoutSource {
         activeIndex,
         switchTo(i) {
             if (identifier)
-                execAsync([msgCmd, "input", identifier,
-                    "xkb_switch_layout", String(i)])
-                    .catch(e => console.error("keyboard layout:", e))
+                execAsync([msgCmd, "input", identifier, "xkb_switch_layout", String(i)]).catch(e =>
+                    console.error("keyboard layout:", e),
+                )
         },
     }
 }
@@ -212,7 +214,6 @@ export function ensureLayoutSource(): LayoutSource | null {
     if (source) return source
     const ds = Config.desktopSession
     if (ds === "hyprland") source = hyprlandSource()
-    else if (ds === "sway" || ds === "i3")
-        source = swaySource(ds === "i3" ? "i3-msg" : "swaymsg")
+    else if (ds === "sway" || ds === "i3") source = swaySource(ds === "i3" ? "i3-msg" : "swaymsg")
     return source
 }

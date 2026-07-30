@@ -11,10 +11,8 @@ export const players = createBinding(mpris, "players")
 
 // the player shown everywhere: the playing one if any, else the first.
 // A manual pick via the popup switcher overrides until that player goes
-const [activePlayer, setActivePlayer] =
-    createState<AstalMpris.Player | null>(null)
-const [overridePlayer, setOverride] =
-    createState<AstalMpris.Player | null>(null)
+const [activePlayer, setActivePlayer] = createState<AstalMpris.Player | null>(null)
+const [overridePlayer, setOverride] = createState<AstalMpris.Player | null>(null)
 
 export { activePlayer }
 
@@ -71,13 +69,15 @@ function pick() {
     // playback ends — a trackless player is not "active"
     const eligible = list.filter(p => p.title !== "")
     setActivePlayer(
-        override && eligible.includes(override) ? override
-            : eligible.find(p =>
-                p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING)
-            ?? eligible[0] ?? null)
+        override && eligible.includes(override)
+            ? override
+            : (eligible.find(p => p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING) ??
+                  eligible[0] ??
+                  null),
+    )
 }
 players.subscribe(pick)
-hookPlayers((p) => {
+hookPlayers(p => {
     const status = createBinding(p, "playbackStatus").subscribe(pick)
     const title = createBinding(p, "title").subscribe(pick)
     return () => {
@@ -105,12 +105,12 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
         if (!url.startsWith("http")) return setLocal(url)
         setLocal("")
         downloadCover(url)
-            .then((path) => {
+            .then(path => {
                 // a track change during the download must not let the
                 // older cover overwrite the newer one
                 if (cover.get() === url) setLocal(`file://${path}`)
             })
-            .catch((e) => console.warn("cover download failed:", e))
+            .catch(e => console.warn("cover download failed:", e))
     }
     const unsub = cover.subscribe(update)
     onCleanup(unsub)

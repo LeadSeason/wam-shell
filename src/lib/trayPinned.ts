@@ -8,9 +8,11 @@ import Config from "../config"
 // "Connected. Stockholm, Sweden").
 export function isPinned(item: AstalTray.TrayItem): boolean {
     const pinned = Config.tray.alwaysOnPanel
-    if (pinned.includes(item.get_id())
-        || pinned.includes(item.get_title())
-        || pinned.includes(item.iconName)) {
+    if (
+        pinned.includes(item.get_id()) ||
+        pinned.includes(item.get_title()) ||
+        pinned.includes(item.iconName)
+    ) {
         return true
     }
     const tooltip = item.tooltip_markup

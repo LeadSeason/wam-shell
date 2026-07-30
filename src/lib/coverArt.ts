@@ -19,8 +19,7 @@ const MAX_COVER_BYTES = 10 * 1024 * 1024
 const session = new Soup.Session({ timeout: 10 })
 
 function cachePath(url: string): string {
-    const hash = GLib.compute_checksum_for_string(
-        GLib.ChecksumType.MD5, url, -1)
+    const hash = GLib.compute_checksum_for_string(GLib.ChecksumType.MD5, url, -1)
     return `${Config.instanceCacheDir}/cover-${hash}`
 }
 
@@ -31,14 +30,12 @@ function fetchCover(url: string): Promise<Uint8Array> {
         session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (_s, res) => {
             try {
                 const status = msg.get_status()
-                if (status < 200 || status >= 300)
-                    throw new Error(`http ${status}: ${url}`)
+                if (status < 200 || status >= 300) throw new Error(`http ${status}: ${url}`)
                 const type = msg.get_response_headers().get_one("Content-Type") ?? ""
                 if (!type.startsWith("image/"))
                     throw new Error(`not an image (${type || "no content-type"}): ${url}`)
                 const data = session.send_and_read_finish(res)?.get_data()
-                if (!data || data.length === 0)
-                    throw new Error(`empty response: ${url}`)
+                if (!data || data.length === 0) throw new Error(`empty response: ${url}`)
                 if (data.length > MAX_COVER_BYTES)
                     throw new Error(`cover too large (${data.length} bytes): ${url}`)
                 resolve(data)
@@ -59,12 +56,12 @@ export function downloadCover(url: string): Promise<string> {
     if (pending) return pending
     const part = `${path}.part`
     const promise = fetchCover(url)
-        .then((data) => {
+        .then(data => {
             GLib.file_set_contents(part, data)
             GLib.rename(part, path)
             return path
         })
-        .catch((e) => {
+        .catch(e => {
             GLib.unlink(part)
             throw e
         })
@@ -81,7 +78,7 @@ export function coverFile(url: string): string {
 
     const path = cachePath(url)
     if (isFile(path)) return `file://${path}`
-    downloadCover(url).catch(() => { })
+    downloadCover(url).catch(() => {})
     return ""
 }
 
@@ -107,7 +104,9 @@ function pruneCache() {
                     if (info.get_attribute_uint64("time::modified") > cutoff) continue
                     GLib.unlink(`${Config.instanceCacheDir}/${name}`)
                 }
-            } catch { /* no cache dir yet: nothing to prune */ }
+            } catch {
+                /* no cache dir yet: nothing to prune */
+            }
         },
     )
 }

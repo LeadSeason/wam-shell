@@ -46,52 +46,65 @@ function ensureWindow() {
     const apps = new AstalApps.Apps()
     const list = text.as(t => apps.fuzzy_query(t).slice(0, 8))
     createRoot(() => {
-        app.add_window(<window
-            $={(self) => { win = self }}
-            name="Launcher"
-            class="Launcher"
-            namespace="launcher"
-            keymode={Astal.Keymode.EXCLUSIVE}
-            layer={Astal.Layer.OVERLAY}
-            visible={false}
-        >
-            <Gtk.EventControllerKey onKeyPressed={onKey} />
-            <Gtk.GestureClick onPressed={onClick} />
-            <box
-                cssClasses={["launcher"]}
-                orientation={Gtk.Orientation.VERTICAL}
-                widthRequest={420}
-                valign={Gtk.Align.CENTER}
-                halign={Gtk.Align.CENTER}
-            >
-                <entry
-                    $={(self) => { entry = self }}
-                    cssClasses={["search"]}
-                    placeholderText="Search applications…"
-                    onChanged={(self) => setText(self.get_text())}
-                    onActivate={() => {
-                        const first = list.get()[0]
-                        if (first) launch(first)
+        app.add_window(
+            (
+                <window
+                    $={self => {
+                        win = self
                     }}
-                />
-                <For each={list}>
-                    {(app) => (
-                        <box cssName="button" cssClasses={["appRow"]} spacing={10}>
-                            <Gtk.GestureClick
-                                button={1}
-                                onPressed={() => launch(app)}
-                            />
-                            <image iconName={app.get_icon_name() || "application-x-executable-symbolic"} pixelSize={24} />
-                            <label
-                                label={app.get_name()}
-                                xalign={0} hexpand
-                                maxWidthChars={30} ellipsize={Pango.EllipsizeMode.END}
-                            />
-                        </box>
-                    )}
-                </For>
-            </box>
-        </window> as Gtk.Window)
+                    name="Launcher"
+                    class="Launcher"
+                    namespace="launcher"
+                    keymode={Astal.Keymode.EXCLUSIVE}
+                    layer={Astal.Layer.OVERLAY}
+                    visible={false}
+                >
+                    <Gtk.EventControllerKey onKeyPressed={onKey} />
+                    <Gtk.GestureClick onPressed={onClick} />
+                    <box
+                        cssClasses={["launcher"]}
+                        orientation={Gtk.Orientation.VERTICAL}
+                        widthRequest={420}
+                        valign={Gtk.Align.CENTER}
+                        halign={Gtk.Align.CENTER}
+                    >
+                        <entry
+                            $={self => {
+                                entry = self
+                            }}
+                            cssClasses={["search"]}
+                            placeholderText="Search applications…"
+                            onChanged={self => setText(self.get_text())}
+                            onActivate={() => {
+                                const first = list.get()[0]
+                                if (first) launch(first)
+                            }}
+                        />
+                        <For each={list}>
+                            {app => (
+                                <box cssName="button" cssClasses={["appRow"]} spacing={10}>
+                                    <Gtk.GestureClick button={1} onPressed={() => launch(app)} />
+                                    <image
+                                        iconName={
+                                            app.get_icon_name() ||
+                                            "application-x-executable-symbolic"
+                                        }
+                                        pixelSize={24}
+                                    />
+                                    <label
+                                        label={app.get_name()}
+                                        xalign={0}
+                                        hexpand
+                                        maxWidthChars={30}
+                                        ellipsize={Pango.EllipsizeMode.END}
+                                    />
+                                </box>
+                            )}
+                        </For>
+                    </box>
+                </window>
+            ) as Gtk.Window,
+        )
     })
 }
 
@@ -106,5 +119,5 @@ registry.register({
         }
         show()
         return "shown"
-    }
+    },
 })
