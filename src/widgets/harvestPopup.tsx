@@ -567,26 +567,47 @@ function Timeline() {
     )
 }
 
-// paused entry gets its own card: hours editor plus a resume button
+// paused entry gets its own card: which entry it is, the hours editor
+// and a resume button
 function PausedCard() {
+    const label = Harvest.paused.as(p => (p ? entryLabel(p) : ""))
+    const tooltip = Harvest.paused.as(p =>
+        p?.notes ? `${entryLabel(p)}\n${p.notes}` : p ? entryLabel(p) : "",
+    )
+
     return (
-        <box spacing={8} visible={Harvest.paused.as(p => p !== null)}>
-            <image cssClasses={["harvestIcon"]} iconName="harvest-symbolic" pixelSize={20} />
-            {/* keyed on the entry id: in-place updates (a successful
-            hours edit) must not rebuild the editor under the user */}
-            <With value={Harvest.paused.as(p => p?.id ?? null)}>
-                {/* null, not <></>: With appends the child into its own
-                Fragment, and nested Fragments are unsupported */}
-                {id => (id !== null ? <PausedEditor /> : null)}
-            </With>
-            <button
-                cssClasses={["resumeNow"]}
-                sensitive={Harvest.busy.as(b => !b)}
-                tooltipText={"Resume"}
-                onClicked={() => Harvest.resumeLast()}
-            >
-                <image iconName="media-playback-start-symbolic" />
-            </button>
+        <box
+            orientation={Gtk.Orientation.VERTICAL}
+            spacing={4}
+            visible={Harvest.paused.as(p => p !== null)}
+        >
+            <box spacing={8}>
+                <image cssClasses={["harvestIcon"]} iconName="harvest-symbolic" pixelSize={20} />
+                {/* keyed on the entry id: in-place updates (a successful
+                hours edit) must not rebuild the editor under the user */}
+                <With value={Harvest.paused.as(p => p?.id ?? null)}>
+                    {/* null, not <></>: With appends the child into its own
+                    Fragment, and nested Fragments are unsupported */}
+                    {id => (id !== null ? <PausedEditor /> : null)}
+                </With>
+                <button
+                    cssClasses={["resumeNow"]}
+                    sensitive={Harvest.busy.as(b => !b)}
+                    tooltipText={"Resume"}
+                    onClicked={() => Harvest.resumeLast()}
+                >
+                    <image iconName="media-playback-start-symbolic" />
+                </button>
+            </box>
+            {/* which entry is paused — meaningless hours without it */}
+            <label
+                cssClasses={["elapsed", "dim"]}
+                xalign={0}
+                maxWidthChars={44}
+                ellipsize={Pango.EllipsizeMode.END}
+                tooltipText={tooltip}
+                label={label}
+            />
         </box>
     )
 }
