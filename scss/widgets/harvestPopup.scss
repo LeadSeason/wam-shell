@@ -141,6 +141,11 @@ window.HarvestPopup {
         // footer: day total left, the new-entry reveal right
         .footer {
             margin-top: 2px;
+
+            .total {
+                font-size: 1.2em;
+                font-weight: bold;
+            }
         }
         button.newEntry {
             background-color: transparent;

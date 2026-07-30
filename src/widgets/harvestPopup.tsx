@@ -391,6 +391,9 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
                             duration = self
                         }}
                         cssClasses={["input", "duration"]}
+                        // hug the right edge at natural width so the
+                        // input's edges line up with the buttons below
+                        halign={Gtk.Align.END}
                         placeholderText={Harvest.formatElapsed(0)}
                         widthChars={5}
                         onChanged={self =>
@@ -590,7 +593,7 @@ function Footer({ onNewEntry }: { onNewEntry: () => void }) {
     return (
         <box cssClasses={["footer"]}>
             <label
-                cssClasses={["elapsed", "dim"]}
+                cssClasses={["elapsed", "dim", "total"]}
                 hexpand
                 xalign={0}
                 label={Harvest.dayTotal.as(t => `Today: ${Harvest.formatElapsed(t)}`)}
