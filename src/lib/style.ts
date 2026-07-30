@@ -1,4 +1,4 @@
-import { exec, execAsync } from "ags/process"
+import { exec, execAsync } from "./metrics"
 import Config, { reloadTheme } from "../config"
 import app from "ags/gtk4/app"
 import CommandRegistry from "./requestHandler"

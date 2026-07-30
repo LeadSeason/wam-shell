@@ -11,6 +11,15 @@
   commands: `ags request -i wam-shell launcher` and
   `ags request -i wam-shell notifications` (bind these in the
   compositor config).
+- Performance counters: start the shell with `WAM_SHELL_METRICS=1`,
+  then query `ags request -i <instance> metrics` (single-line JSON,
+  prefixed with `<instance>: ` by the request handler) or
+  `ags request -i <instance> "metrics reset"` to zero the counters.
+  Instrumentation lives in `src/lib/metrics.ts`; new code must use its
+  `exec`/`execAsync`/`timeoutAdd`/`timeoutAddSeconds`/`sourceRemove`/
+  `connect`/`disconnect` wrappers instead of the ags/GLib originals.
+  When the env var is unset the wrappers ARE the original functions —
+  zero added work on hot paths.
 
 ## Widgets must be CSS-targetable
 

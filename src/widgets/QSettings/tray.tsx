@@ -3,6 +3,7 @@ import { Gdk, Gtk } from "ags/gtk4"
 import app from "ags/gtk4/app"
 import AstalTray from "gi://AstalTray"
 import Config from "../../config"
+import { connect } from "../../lib/metrics"
 
 export default function Tray({ filter, iconSize = 16, pill = false, spacing = Config.tray.spacing }: {
     filter?: (item: AstalTray.TrayItem) => boolean
@@ -22,7 +23,7 @@ export default function Tray({ filter, iconSize = 16, pill = false, spacing = Co
     const iconTheme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default()!)
     const pathOwners = new Map<string, Set<string>>() // path -> item ids
 
-    registry.connect("item-added", (_, item_id) => {
+    connect(registry, "item-added", (_: AstalTray.Tray, item_id: string) => {
         const t = registry.get_item(item_id)
 
         const path = t.iconThemePath
@@ -44,7 +45,7 @@ export default function Tray({ filter, iconSize = 16, pill = false, spacing = Co
         })
     })
 
-    registry.connect("item-removed", (_, item_id) => {
+    connect(registry, "item-removed", (_: AstalTray.Tray, item_id: string) => {
         // drop this item's claim on any path it owned; entries whose
         // last owner left are pruned so the map tracks live items only
         for (const [path, owners] of pathOwners) {
@@ -95,8 +96,7 @@ export default function Tray({ filter, iconSize = 16, pill = false, spacing = Co
                                 button: 0, // Listen to all buttons.
                             })
 
-                            gestureClick.connect("pressed", (event) => {
-                                // Prevent default behavior.
+                            connect(gestureClick, "pressed", (event: Gtk.GestureClick) => {                                // Prevent default behavior.
                                 event.set_state(Gtk.EventSequenceState.CLAIMED)
 
                                 switch (event.get_current_button()) {

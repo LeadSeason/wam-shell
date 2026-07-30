@@ -3,7 +3,7 @@ import AstalWp from "gi://AstalWp?version=0.1"
 import AstalMpris from "gi://AstalMpris?version=0.1"
 import { createState } from "gnim"
 import { createBinding } from "gnim"
-import { exec } from "ags/process"
+import { exec, timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
 import Brightness from "./brightness"
 import hyprsunset, { OUTDOOR_GAMMA } from "./hyprsunset"
@@ -38,8 +38,8 @@ function show(c: Omit<OsdContent, "kind">, kind: OsdKind) {
     if (Date.now() < graceUntil) return
     setContent({ ...c, kind })
     setVisible(true)
-    if (hideSource !== null) GLib.source_remove(hideSource)
-    hideSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Config.osd.timeout, () => {
+    if (hideSource !== null) sourceRemove(hideSource)
+    hideSource = timeoutAdd("osd:hide", GLib.PRIORITY_DEFAULT, Config.osd.timeout, () => {
         hideSource = null
         setVisible(false)
         return GLib.SOURCE_REMOVE

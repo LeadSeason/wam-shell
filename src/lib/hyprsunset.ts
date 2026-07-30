@@ -1,4 +1,4 @@
-import { exec, execAsync } from "ags/process"
+import { exec, execAsync, timeoutAdd } from "./metrics"
 import { createState } from "ags"
 import GLib from "gi://GLib?version=2.0"
 import Config from "../config"
@@ -100,7 +100,7 @@ let lastApply = 0
 function applyGamma() {
     pendingGamma = outdoor.get() ? OUTDOOR_GAMMA : Math.round(dim.get() * 100)
     if (gammaSource !== null) return
-    gammaSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, () => {
+    gammaSource = timeoutAdd("hyprsunset:gammaApply", GLib.PRIORITY_DEFAULT, 50, () => {
         gammaSource = null
         if (pendingGamma === null) return GLib.SOURCE_REMOVE
         const gamma = pendingGamma
@@ -120,7 +120,7 @@ function applyGamma() {
 // the shell's lifetime on a laptop.
 let watchRunning = false
 if (Config.desktopSession === "hyprland")
-GLib.timeout_add(GLib.PRIORITY_DEFAULT, 3000, () => {
+timeoutAdd("hyprsunset:watch", GLib.PRIORITY_DEFAULT, 3000, () => {
     if (watchRunning) return GLib.SOURCE_CONTINUE
     watchRunning = true
     Promise.all([

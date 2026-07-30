@@ -6,6 +6,7 @@ import { For, With, createRoot, createState } from "gnim"
 import notifd, { dnd, grouped, toggleDnd } from "../../lib/notifd"
 import { createBinding } from "gnim"
 import CommandRegistry from "../../lib/requestHandler"
+import { timeoutAdd, sourceRemove } from "../../lib/metrics"
 import NotificationRow from "./NotificationRow"
 
 const registry = CommandRegistry.get_default()
@@ -65,7 +66,7 @@ let hideSource: number | null = null
 
 function show() {
     if (hideSource !== null) {
-        GLib.source_remove(hideSource)
+        sourceRemove(hideSource)
         hideSource = null
     }
     win!.present()
@@ -74,8 +75,8 @@ function show() {
 
 function hide() {
     rev!.revealChild = false
-    if (hideSource !== null) GLib.source_remove(hideSource)
-    hideSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+    if (hideSource !== null) sourceRemove(hideSource)
+    hideSource = timeoutAdd("notifCenter:hide", GLib.PRIORITY_DEFAULT, 200, () => {
         hideSource = null
         win!.hide()
         return GLib.SOURCE_REMOVE

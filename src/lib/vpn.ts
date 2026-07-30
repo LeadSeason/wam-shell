@@ -1,5 +1,5 @@
 import GLib from "gi://GLib?version=2.0"
-import { exec, execAsync } from "ags/process"
+import { exec, execAsync, timeoutAddSeconds } from "./metrics"
 import { createState } from "ags"
 
 // Shared Mullvad VPN state, polled (the mullvad CLI is not reactive).
@@ -41,7 +41,7 @@ export const hasMullvad = (() => {
 // flips promptly on user action.
 if (hasMullvad) {
     refreshVpn()
-    GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 15, () => {
+    timeoutAddSeconds("vpn:poll", GLib.PRIORITY_DEFAULT, 15, () => {
         refreshVpn()
         return GLib.SOURCE_CONTINUE
     })

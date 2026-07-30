@@ -1,6 +1,7 @@
 import AstalTray from "gi://AstalTray"
 import { createState } from "ags"
 import { isPinned } from "./trayPinned"
+import { connect } from "./metrics"
 
 // Tracks whether any tray item reports Status.NeedsAttention.
 // Used to show an indicator on the bar when the tray is nested inside
@@ -23,15 +24,15 @@ function update() {
     setNeedsAttention(false)
 }
 
-registry.connect("item-added", (_, itemId: string) => {
+connect(registry, "item-added", (_: AstalTray.Tray, itemId: string) => {
     const item = registry.get_item(itemId)
     console.log("Tray item added:", `${item.tooltip_markup || item.get_title() || "?"} (id: ${item.get_id()})`)
     items.set(itemId, item)
-    item.connect("notify::status", update)
+    connect(item, "notify::status", update)
     update()
 })
 
-registry.connect("item-removed", (_, itemId: string) => {
+connect(registry, "item-removed", (_: AstalTray.Tray, itemId: string) => {
     items.delete(itemId)
     update()
 })

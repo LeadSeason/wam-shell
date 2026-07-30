@@ -16,6 +16,8 @@ import BluetoothPairing from "./src/widgets/bluetoothPairing"
 import { startBluetoothAgent } from "./src/lib/bluetoothAgent"
 import NotificationPopups from "./src/widgets/notifications/popups"
 import { useOurs } from "./src/lib/notifd"
+// registers the "metrics" request command (inert unless WAM_SHELL_METRICS=1)
+import "./src/lib/metrics"
 // request-driven windows register their toggle command at import and
 // build their window lazily on first use instead of at startup
 import "./src/widgets/notifications"

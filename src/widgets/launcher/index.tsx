@@ -1,11 +1,11 @@
 import { Astal, Gtk, Gdk } from "ags/gtk4"
-import GLib from "gi://GLib?version=2.0"
 import Pango from "gi://Pango?version=1.0"
 import Graphene from "gi://Graphene?version=1.0"
 import AstalApps from "gi://AstalApps"
 import app from "ags/gtk4/app"
 import { createRoot, createState, For } from "gnim"
 import CommandRegistry from "../../lib/requestHandler"
+import { sourceRemove } from "../../lib/metrics"
 
 const registry = CommandRegistry.get_default()
 const apps = new AstalApps.Apps()
@@ -27,7 +27,7 @@ function launch(app: any) {
 
 function show() {
     if (hideSource !== null) {
-        GLib.source_remove(hideSource)
+        sourceRemove(hideSource)
         hideSource = null
     }
     setText("")

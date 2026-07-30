@@ -3,6 +3,7 @@ import AstalMpris from "gi://AstalMpris?version=0.1"
 import { createState } from "gnim"
 import Config from "../config"
 import Brightness from "./brightness"
+import { timeoutAddSeconds, sourceRemove } from "./metrics"
 
 // Sleep timer: pauses every playing MPRIS player when it fires. The
 // user picks the duration when starting (QS sleep timer dropdown).
@@ -21,7 +22,7 @@ export { paused }
 let timerSource = 0
 
 function arm() {
-    timerSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
+    timerSource = timeoutAddSeconds("sleepTimer:countdown", GLib.PRIORITY_DEFAULT, 1, () => {
         if (remaining.get() <= 1) {
             fire()
             return GLib.SOURCE_REMOVE
@@ -33,7 +34,7 @@ function arm() {
 
 function disarm() {
     if (timerSource) {
-        GLib.source_remove(timerSource)
+        sourceRemove(timerSource)
         timerSource = 0
     }
 }

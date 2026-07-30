@@ -1,5 +1,5 @@
 import { createBinding } from "gnim";
-import { exec, execAsync } from "ags/process";
+import { exec, execAsync } from "../../../lib/metrics";
 import { DropdownButton } from "./ToggleButton";
 import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1";
 import { Gtk } from "ags/gtk4";

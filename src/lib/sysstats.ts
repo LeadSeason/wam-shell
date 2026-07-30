@@ -1,7 +1,7 @@
 import { createState } from "gnim"
 import { createPoll } from "ags/time"
 import { readFile } from "ags/file"
-import { exec, execAsync } from "ags/process"
+import { exec, execAsync } from "./metrics"
 import Config from "../config"
 
 // System performance stats, polled on quicksettings.stats_interval.

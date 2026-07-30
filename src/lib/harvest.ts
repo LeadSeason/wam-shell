@@ -6,6 +6,7 @@ import { createState } from "gnim"
 import { readFile } from "ags/file"
 import Config from "../config"
 import { isFile } from "./utils"
+import { timeoutAddSeconds, sourceRemove, connect, trackHttp } from "./metrics"
 
 // Harvest time tracking (api v2). The widget mirrors timers that live on
 // Harvest's servers: nothing here owns a timer, a shell restart simply
@@ -226,7 +227,8 @@ interface Reply {
 
 // never log anything beyond method + path + status: headers carry the token
 function request(method: string, path: string, body: any, cb: (r: Reply) => void) {
-    const msg = Soup.Message.new(method, `${BASE}${path}`)
+    const url = `${BASE}${path}`
+    const msg = Soup.Message.new(method, url)
     if (!msg) { cb({ ok: false, authFailed: false, status: 0, json: null, retryAfter: 0 }); return }
     const h = msg.get_request_headers()
     h.append("Authorization", `Bearer ${creds!.token}`)
@@ -241,6 +243,7 @@ function request(method: string, path: string, body: any, cb: (r: Reply) => void
         let reply: Reply
         try {
             const bytes = session.send_and_read_finish(res)
+            if (bytes) trackHttp(url, bytes.get_size())
             const text = bytes ? new TextDecoder().decode(bytes.get_data() ?? new Uint8Array()) : ""
             let json: any = null
             try { json = text ? JSON.parse(text) : null } catch { }
@@ -305,9 +308,9 @@ function effectiveInterval(): number {
 
 function scheduleNext(retryAfter = 0) {
     if (authDisabled.get()) return
-    if (fastTimer) GLib.source_remove(fastTimer)
+    if (fastTimer) sourceRemove(fastTimer)
     const delay = Math.max(retryAfter, effectiveInterval())
-    fastTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, delay, () => {
+    fastTimer = timeoutAddSeconds("harvest:deltaPoll", GLib.PRIORITY_DEFAULT, delay, () => {
         fastTimer = 0
         deltaPoll()
         return GLib.SOURCE_REMOVE
@@ -501,7 +504,7 @@ function slowCycle() {
 // 1s local ticker: the panel clock costs no API calls
 function armTicker() {
     if (tickerSource) return
-    tickerSource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
+    tickerSource = timeoutAddSeconds("harvest:ticker", GLib.PRIORITY_DEFAULT, 1, () => {
         const cur = running.get()
         if (!cur) { tickerSource = 0; return GLib.SOURCE_REMOVE }
         setElapsed(liveSeconds(cur))
@@ -512,7 +515,7 @@ function armTicker() {
 
 function disarmTicker() {
     if (tickerSource) {
-        GLib.source_remove(tickerSource)
+        sourceRemove(tickerSource)
         tickerSource = 0
     }
 }
@@ -520,9 +523,9 @@ function disarmTicker() {
 function disableAuth() {
     if (authDisabled.get()) return
     setAuthDisabled(true)
-    if (fastTimer) { GLib.source_remove(fastTimer); fastTimer = 0 }
-    if (slowTimer) { GLib.source_remove(slowTimer); slowTimer = 0 }
-    if (baselineTimer) { GLib.source_remove(baselineTimer); baselineTimer = 0 }
+    if (fastTimer) { sourceRemove(fastTimer); fastTimer = 0 }
+    if (slowTimer) { sourceRemove(slowTimer); slowTimer = 0 }
+    if (baselineTimer) { sourceRemove(baselineTimer); baselineTimer = 0 }
     console.warn("Harvest: disabling after repeated authentication failures")
     notify("Harvest authentication failed",
         "Check ~/.config/wam-shell/harvest.env — the widget is disabled until the shell restarts.")
@@ -724,7 +727,7 @@ function watchConnectivity() {
             }
         })
     const net = AstalNetwork.get_default()
-    net.connect("notify::connectivity", () => {
+    connect(net, "notify::connectivity", () => {
         if (net.connectivity !== AstalNetwork.Connectivity.FULL) return
         forgiveFailuresUntil = Date.now() + 30_000
         deltaPoll()
@@ -744,11 +747,11 @@ if (active) {
         }
         baseline() // also seeds the high-water mark
         slowCycle()
-        slowTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 30 * 60, () => {
+        slowTimer = timeoutAddSeconds("harvest:slowCycle", GLib.PRIORITY_DEFAULT, 30 * 60, () => {
             slowCycle()
             return GLib.SOURCE_CONTINUE
         })
-        baselineTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 5 * 60, () => {
+        baselineTimer = timeoutAddSeconds("harvest:baseline", GLib.PRIORITY_DEFAULT, 5 * 60, () => {
             baseline()
             return GLib.SOURCE_CONTINUE
         })

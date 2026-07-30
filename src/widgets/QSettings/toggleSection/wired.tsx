@@ -1,5 +1,5 @@
 import { Accessor, createBinding, createState } from "gnim";
-import { execAsync } from "ags/process";
+import { execAsync } from "../../../lib/metrics";
 import { DropdownButton } from "./ToggleButton";
 import AstalNetwork from "gi://AstalNetwork?version=0.1";
 import { Gtk } from "ags/gtk4";

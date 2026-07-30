@@ -1,6 +1,6 @@
 import { Accessor, createState } from "gnim"
 import GLib from "gi://GLib?version=2.0"
-import { execAsync } from "ags/process"
+import { execAsync, connect, timeoutAdd } from "./metrics"
 import { createPoll } from "ags/time"
 import { readFile } from "ags/file"
 import AstalHyprland from "gi://AstalHyprland"
@@ -94,8 +94,8 @@ function hyprlandSource(): LayoutSource {
     refresh()
     // signal for instant updates, poll as fallback. 1s also drives caps/num
     // lock detection (no separate lock-keys poll elsewhere).
-    hyprland.connect("keyboard-layout", refresh)
-    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
+    connect(hyprland, "keyboard-layout", refresh)
+    timeoutAdd("kbLayout:poll", GLib.PRIORITY_DEFAULT, 1000, () => {
         refresh()
         return GLib.SOURCE_CONTINUE
     })

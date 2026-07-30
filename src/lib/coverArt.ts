@@ -1,5 +1,5 @@
 import GLib from "gi://GLib?version=2.0"
-import { execAsync } from "ags/process"
+import { execAsync } from "./metrics"
 import Config from "../config"
 import { isFile } from "./utils"
 

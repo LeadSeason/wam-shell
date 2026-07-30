@@ -1,5 +1,5 @@
 import { createBinding, createState, onCleanup } from "gnim";
-import { exec, execAsync } from "ags/process";
+import { exec, execAsync, connect, disconnect } from "../../../lib/metrics";
 import Gio from "gi://Gio?version=2.0";
 import AstalNetwork from "gi://AstalNetwork?version=0.1";
 import { DropdownButton } from "./ToggleButton";
@@ -40,8 +40,8 @@ export function DarkStyleButton() {
     const sync = () => setActive(
         settings!.get_string("color-scheme").includes("prefer-dark"))
     sync()
-    const h = settings!.connect("changed::color-scheme", sync)
-    onCleanup(() => settings!.disconnect(h))
+    const h = connect(settings!, "changed::color-scheme", sync)
+    onCleanup(() => disconnect(settings!, h))
 
     return <DropdownButton
         icon={"weather-clear-night-symbolic"}

@@ -7,6 +7,7 @@ import { timeout } from "ags/time";
 import Tray from "./tray";
 import Config from "../../config";
 import CommandRegistry from "../../lib/requestHandler";
+import { timeoutAdd, sourceRemove } from "../../lib/metrics";
 import { isPinned } from "../../lib/trayPinned";
 
 import { createState } from "gnim";
@@ -126,7 +127,7 @@ export default function QSettings() {
     let closeSource: number | null = null
     function scheduleClose() {
         if (closeSource !== null) return
-        closeSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, Config.quicksettings.closeDelay, () => {
+        closeSource = timeoutAdd("qSettings:autoClose", GLib.PRIORITY_DEFAULT, Config.quicksettings.closeDelay, () => {
             closeSource = null
             if (win.is_visible()) hide()
             return GLib.SOURCE_REMOVE
@@ -134,7 +135,7 @@ export default function QSettings() {
     }
     function cancelClose() {
         if (closeSource !== null) {
-            GLib.source_remove(closeSource)
+            sourceRemove(closeSource)
             closeSource = null
         }
     }

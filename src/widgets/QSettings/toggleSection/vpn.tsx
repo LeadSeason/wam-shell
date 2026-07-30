@@ -1,4 +1,4 @@
-import { execAsync } from "ags/process";
+import { execAsync } from "../../../lib/metrics";
 import { DropdownButton } from "./ToggleButton";
 import vpnStatus, { hasMullvad, refreshVpn } from "../../../lib/vpn";
 

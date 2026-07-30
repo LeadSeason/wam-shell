@@ -2,6 +2,7 @@ import GLib from "gi://GLib?version=2.0"
 import AstalWp from "gi://AstalWp?version=0.1"
 import { createState } from "gnim"
 import Config from "../config"
+import { timeoutAdd, connect } from "./metrics"
 
 // Screen-share detection, signal-driven through WirePlumber. Generic
 // (usable by any widget that wants privacy masking); currently consumed by
@@ -53,7 +54,7 @@ function evaluate() {
 // the mask doesn't flicker
 function scheduleEvaluate() {
     if (debounce) return
-    debounce = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 300, () => {
+    debounce = timeoutAdd("screenShare:debounce", GLib.PRIORITY_DEFAULT, 300, () => {
         debounce = 0
         evaluate()
         return GLib.SOURCE_REMOVE
@@ -65,7 +66,7 @@ if (Config.harvest.enabled && Config.harvest.maskWhenSharing) {
     if (video) {
         // only producer streams are the signal (recorders = any webcam
         // consumer, which would over-trigger)
-        video.connect("notify::streams", scheduleEvaluate)
+        connect(video, "notify::streams", scheduleEvaluate)
         evaluate()
     } else {
         setSharing(true) // fail closed
