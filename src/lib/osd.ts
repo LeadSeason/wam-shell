@@ -1,6 +1,5 @@
 import GLib from "gi://GLib?version=2.0"
 import AstalWp from "gi://AstalWp?version=0.1"
-import AstalMpris from "gi://AstalMpris?version=0.1"
 import { createState } from "gnim"
 import { createBinding } from "gnim"
 import { exec } from "ags/process"
@@ -14,6 +13,7 @@ import {
     lockKeyState,
 } from "./kbLayout"
 import { coverFile } from "./coverArt"
+import { hookPlayers } from "./mpris"
 
 // OSD state and triggers. Widgets read `content`/`visible`; triggers
 // call show() which (re)starts the hide timer.
@@ -52,10 +52,7 @@ function show(c: Omit<OsdContent, "kind">, kind: OsdKind) {
 }
 
 // volume + microphone
-function hookEndpoint(
-    getEndpoint: () => AstalWp.Endpoint | null,
-    kind: "volume" | "microphone",
-) {
+function hookEndpoint(kind: "volume" | "microphone") {
     const mutedIcon = kind === "microphone"
         ? "microphone-sensitivity-muted-symbolic"
         : "audio-volume-muted-symbolic"
@@ -92,15 +89,13 @@ function hookEndpoint(
 const wp = AstalWp.get_default()
 if (wp) {
     const { audio } = wp
-    const hookSpeaker = hookEndpoint(
-        () => audio.defaultSpeaker, "volume")
+    const hookSpeaker = hookEndpoint("volume")
     createBinding(audio, "defaultSpeaker").subscribe(() => {
         hookSpeaker(audio.defaultSpeaker)
     })
     hookSpeaker(audio.defaultSpeaker)
 
-    const hookMic = hookEndpoint(
-        () => audio.defaultMicrophone, "microphone")
+    const hookMic = hookEndpoint("microphone")
     createBinding(audio, "defaultMicrophone").subscribe(() => {
         hookMic(audio.defaultMicrophone)
     })
@@ -122,35 +117,21 @@ createBinding(brightness, "screen").subscribe(() => {
 
 // media (mpris): show the track when it changes. The bar is the
 // position at show time, the icon the cover art when already cached.
-const mpris = AstalMpris.get_default()
-const hookedPlayers = new Map<AstalMpris.Player, () => void>()
-const hookMedia = (list: AstalMpris.Player[]) => {
-    // release players that quit, their subscriptions keep them alive
-    for (const [p, unsub] of hookedPlayers) {
-        if (!list.includes(p)) {
-            unsub()
-            hookedPlayers.delete(p)
-        }
-    }
-    for (const p of list) {
-        if (hookedPlayers.has(p)) continue
-        let lastTitle = p.title
-        hookedPlayers.set(p, createBinding(p, "title").subscribe(() => {
-            if (!p.title || p.title === lastTitle) return
-            lastTitle = p.title
-            show({
-                icon: coverFile(p.coverArt) || "audio-x-generic-symbolic",
-                value: p.length > 0
-                    ? Math.min(1, Math.max(0, p.position / p.length))
-                    : null,
-                label: `${p.title}${p.artist ? ` — ${p.artist}` : ""}`,
-                over: false,
-            }, "media")
-        }))
-    }
-}
-createBinding(mpris, "players").subscribe(() => hookMedia(mpris.players))
-hookMedia(mpris.players)
+hookPlayers((p) => {
+    let lastTitle = p.title
+    return createBinding(p, "title").subscribe(() => {
+        if (!p.title || p.title === lastTitle) return
+        lastTitle = p.title
+        show({
+            icon: coverFile(p.coverArt) || "audio-x-generic-symbolic",
+            value: p.length > 0
+                ? Math.min(1, Math.max(0, p.position / p.length))
+                : null,
+            label: `${p.title}${p.artist ? ` — ${p.artist}` : ""}`,
+            over: false,
+        }, "media")
+    })
+})
 
 // keyboard layout switches (hyprland, sway, i3). The source is shared
 // with the bar widget but does not depend on it being on any panel.
