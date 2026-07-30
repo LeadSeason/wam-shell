@@ -7,7 +7,12 @@ import { exec } from "ags/process"
 import Config from "../config"
 import Brightness from "./brightness"
 import hyprsunset, { OUTDOOR_GAMMA } from "./hyprsunset"
-import { ensureLayoutSource, layoutOsdText, lockKeyState } from "./kbLayout"
+import {
+    ensureLayoutSource,
+    ensureLockSource,
+    layoutOsdText,
+    lockKeyState,
+} from "./kbLayout"
 import { coverFile } from "./coverArt"
 
 // OSD state and triggers. Widgets read `content`/`visible`; triggers
@@ -149,11 +154,7 @@ hookMedia(mpris.players)
 
 // keyboard layout switches (hyprland, sway, i3). The source is shared
 // with the bar widget but does not depend on it being on any panel.
-// The same source also drives caps/num lock (hyprland), so start it when
-// either OSD is on.
-if (Config.osd.enabled && (Config.osd.layout
-    || (Config.osd.lockKeys && Config.desktopSession === "hyprland")))
-    ensureLayoutSource()
+if (Config.osd.enabled && Config.osd.layout) ensureLayoutSource()
 if (Config.osd.enabled && Config.osd.layout) {
     layoutOsdText.subscribe(() => {
         const text = layoutOsdText.get()
@@ -178,12 +179,15 @@ if (Config.desktopSession === "hyprland" && Config.osd.enabled) {
     }
 }
 
-// caps/num lock (hyprland). No event exists for it, but the shared
-// keyboard-layout source already reads hyprctl devices every second and
-// publishes lockKeyState — subscribe to that instead of spawning a
-// second recurring hyprctl poll here.
-if (Config.desktopSession === "hyprland" && Config.osd.enabled && Config.osd.lockKeys) {
-    let prev: { caps: boolean, num: boolean } | null = null
+// caps/num lock. GDK4 reports the state on the keyboard device
+// (notify::caps/num-lock-state), compositor-agnostic, so this works on
+// every session; kbLayout's ensureLockSource publishes it as
+// lockKeyState.
+if (Config.osd.enabled && Config.osd.lockKeys) {
+    ensureLockSource()
+    // seed from the initial device read, or the first real toggle would
+    // only fill prev and its banner would be swallowed
+    let prev = lockKeyState.get()
     lockKeyState.subscribe(() => {
         const cur = lockKeyState.get()
         if (!cur) return

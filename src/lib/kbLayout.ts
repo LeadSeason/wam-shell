@@ -1,5 +1,5 @@
 import { Accessor, createState } from "gnim"
-import GLib from "gi://GLib?version=2.0"
+import Gdk from "gi://Gdk?version=4.0"
 import { execAsync } from "ags/process"
 import { createPoll } from "ags/time"
 import { readFile } from "ags/file"
@@ -51,11 +51,30 @@ export interface LayoutSource {
 // fed by the backends on layout change; the OSD shows it
 export const [layoutOsdText, setLayoutOsdText] = createState("")
 
-// caps/num lock state, parsed from the same hyprctl device read the
-// layout source already does. Shared so the lock-keys OSD does not need
-// its own recurring hyprctl poll. null before the first read.
+// caps/num lock state from the GDK keyboard device: GDK4 exposes it
+// directly (notify::caps/num-lock-state) on any compositor, so unlike
+// the layout name it needs no hyprctl/swaymsg read. null before the
+// first read.
 export const [lockKeyState, setLockKeyState] =
     createState<{ caps: boolean, num: boolean } | null>(null)
+
+let lockSourceStarted = false
+
+// connect once; the seat's keyboard device lives for the whole session
+export function ensureLockSource(): void {
+    if (lockSourceStarted) return
+    lockSourceStarted = true
+    const kb = Gdk.Display.get_default()?.get_default_seat()?.get_keyboard()
+    if (!kb) {
+        console.error("lock keys: no GDK keyboard device")
+        return
+    }
+    const read = () =>
+        setLockKeyState({ caps: kb.capsLockState, num: kb.numLockState })
+    read() // the signals only fire on change, so seed the initial state
+    kb.connect("notify::caps-lock-state", read)
+    kb.connect("notify::num-lock-state", read)
+}
 
 function hyprlandSource(): LayoutSource {
     const hyprland = AstalHyprland.get_default()
@@ -77,9 +96,6 @@ function hyprlandSource(): LayoutSource {
             setVariants((kb.variant ?? "").split(",")
                 .map((s: string) => s.trim()))
             setActiveIndex(kb.active_layout_index)
-            // caps/num lock for the lock-keys OSD: published from this
-            // same device read so the OSD needs no poll of its own
-            setLockKeyState({ caps: !!kb.capsLock, num: !!kb.numLock })
             if (kb.active_layout_index === lastIndex) return
             const wasFirst = lastIndex === null
             lastIndex = kb.active_layout_index
@@ -92,13 +108,9 @@ function hyprlandSource(): LayoutSource {
 
     let lastIndex: number | null = null
     refresh()
-    // signal for instant updates, poll as fallback. 1s also drives caps/num
-    // lock detection (no separate lock-keys poll elsewhere).
+    // the keyboard-layout signal covers layout switches; lock keys come
+    // from GDK (ensureLockSource), so no recurring hyprctl poll is needed
     hyprland.connect("keyboard-layout", refresh)
-    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
-        refresh()
-        return GLib.SOURCE_CONTINUE
-    })
 
     return {
         layouts,
@@ -128,9 +140,12 @@ function swaySource(msgCmd: string): LayoutSource {
     const [activeIndex, setActiveIndex] = createState(0)
     let identifier = ""
 
-    // 3s: a layout indicator doesn't need sub-second latency, and this
-    // spawns swaymsg/i3msg for the shell's lifetime otherwise
-    const poll = createPoll("", 3000, async () => {
+    // 10s: lock keys come from GDK (ensureLockSource); only the layout
+    // name still needs get_inputs because the i3ipc binding exposes no
+    // input event. Slow on purpose — a layout indicator doesn't need
+    // sub-second latency and this spawns swaymsg/i3msg for the shell's
+    // lifetime
+    const poll = createPoll("", 10000, async () => {
         // swallow failures (binary missing, IPC down): keep old value
         try {
             return await execAsync(`${msgCmd} -t get_inputs`)
