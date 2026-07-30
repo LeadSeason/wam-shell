@@ -364,9 +364,18 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
                 </revealer>
             </box>
 
-            {/* duration on the left, notes taking the rest of the row;
+            {/* notes taking the row, duration adjacent on the right;
             both styled as clearly bounded input boxes (.input) */}
             <box spacing={6}>
+                <Gtk.Entry
+                    $={self => {
+                        notes = self
+                    }}
+                    cssClasses={["input"]}
+                    placeholderText={"Add Notes"}
+                    hexpand
+                    onActivate={start}
+                />
                 <Gtk.Entry
                     $={self => {
                         duration = self
@@ -377,15 +386,6 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
                     onChanged={self =>
                         setActionLabel((parseDuration(self.get_text()) ?? 0) > 0 ? "Save" : "Start")
                     }
-                    onActivate={start}
-                />
-                <Gtk.Entry
-                    $={self => {
-                        notes = self
-                    }}
-                    cssClasses={["input"]}
-                    placeholderText={"Add Notes"}
-                    hexpand
                     onActivate={start}
                 />
             </box>
