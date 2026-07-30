@@ -383,27 +383,32 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
                         wrapMode={Gtk.WrapMode.WORD_CHAR}
                     />
                 </Gtk.ScrolledWindow>
-                <Gtk.Entry
-                    $={self => {
-                        duration = self
-                    }}
-                    cssClasses={["input", "duration"]}
-                    valign={Gtk.Align.START}
-                    placeholderText={Harvest.formatElapsed(0)}
-                    widthChars={8}
-                    onChanged={self =>
-                        setActionLabel((parseDuration(self.get_text()) ?? 0) > 0 ? "Save" : "Start")
-                    }
-                    onActivate={start}
-                />
-            </box>
-            <box halign={Gtk.Align.END} spacing={6}>
-                <button onClicked={onCancel}>
-                    <label label={"Cancel"} />
-                </button>
-                <button cssClasses={["start"]} sensitive={canStart} onClicked={start}>
-                    <label label={actionLabel} />
-                </button>
+                {/* right column: duration on top, action buttons below it,
+                in the space the tall notes box frees up */}
+                <box orientation={Gtk.Orientation.VERTICAL} spacing={6} valign={Gtk.Align.START}>
+                    <Gtk.Entry
+                        $={self => {
+                            duration = self
+                        }}
+                        cssClasses={["input", "duration"]}
+                        placeholderText={Harvest.formatElapsed(0)}
+                        widthChars={8}
+                        onChanged={self =>
+                            setActionLabel(
+                                (parseDuration(self.get_text()) ?? 0) > 0 ? "Save" : "Start",
+                            )
+                        }
+                        onActivate={start}
+                    />
+                    <box halign={Gtk.Align.END} spacing={6}>
+                        <button onClicked={onCancel}>
+                            <label label={"Cancel"} />
+                        </button>
+                        <button cssClasses={["start"]} sensitive={canStart} onClicked={start}>
+                            <label label={actionLabel} />
+                        </button>
+                    </box>
+                </box>
             </box>
         </box>
     )
