@@ -1,6 +1,5 @@
 import GObject, { register, getter, setter } from "ags/gobject"
 import GLib from "gi://GLib?version=2.0"
-import { exec } from "ags/process"
 import { readFile } from "ags/file"
 import AstalBrightness from "gi://AstalBrightness"
 import Config from "../config"
@@ -33,9 +32,7 @@ const readMax = (): number => {
 }
 const maxBrightness = readMax()
 const hasBacklight = abScreen !== null && !isDummy && maxBrightness > 0
-const hasHyprsunset = (() => {
-    try { exec("which hyprsunset"); return true } catch { return false }
-})()
+const hasHyprsunset = GLib.find_program_in_path("hyprsunset") !== null
 // computed at module level: private fields can't be referenced from
 // other fields' initializers
 const useGammaDim = !hasBacklight && hasHyprsunset
@@ -73,26 +70,29 @@ export default class Brightness extends GObject.Object {
     }
 
     @setter(Number)
-    set screen(percent) {
+    set screen(fraction) {
+        // no backlight and no gamma backend: nothing consumes the
+        // value — writing #screen without notify would only drift
+        // bound widgets away from the real level
+        if (!this.#screenIsPresent) return
+
         // outdoor mode is a toggle, the slider stays 0-100%
-        if (percent > 1)
-            percent = 1
+        if (fraction > 1) fraction = 1
 
         // never go fully blank: floor at the device's raw 1
         const floor = maxBrightness > 0 ? 1 / maxBrightness : 0.01
-        if (percent < floor)
-            percent = floor
+        if (fraction < floor) fraction = floor
 
-        this.#screen = percent
+        this.#screen = fraction
 
         if (this.#useGammaDim) {
-            setDimLevel(percent)
+            setDimLevel(fraction)
             this.notify("screen")
             return
         }
 
         if (hasBacklight) {
-            abScreen.brightness = percent
+            abScreen.brightness = fraction
             this.notify("screen")
         }
     }

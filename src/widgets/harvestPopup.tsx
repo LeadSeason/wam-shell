@@ -615,8 +615,11 @@ function ensureWindow() {
                         Astal.WindowAnchor.LEFT |
                         Astal.WindowAnchor.RIGHT
                     }
-                    // ON_DEMAND, not EXCLUSIVE: dropdown lists and text entries
-                    // cannot grab the seat under EXCLUSIVE
+                    // ON_DEMAND, not EXCLUSIVE: popovers (entry context
+                    // menu, emoji picker) cannot grab the seat under
+                    // EXCLUSIVE. Plain text entries would work — the
+                    // seat is already grabbed; QSettings runs entries
+                    // under EXCLUSIVE
                     keymode={Astal.Keymode.ON_DEMAND}
                     visible={false}
                 >

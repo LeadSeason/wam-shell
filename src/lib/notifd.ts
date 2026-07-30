@@ -8,13 +8,14 @@ import Config from "../config"
 // Shared notification daemon state. The first instantiation becomes
 // the daemon (so swaync must not run alongside).
 
-const notifd = AstalNotifd.get_default()
-
 // Whose daemon handles notifications (notifications.daemon):
 // "wam-shell" always ours, "system" never, "auto" ours only when no
 // other daemon owns org.freedesktop.Notifications at startup. When the
 // name is already taken astal backs off (it does not steal it), so the
 // owner being someone else means a system daemon was there first.
+// Must run before AstalNotifd.get_default(): once instantiated astal
+// acquires the name itself, and the probe could read our own
+// acquisition instead of a pre-existing owner's
 function detectSystemDaemon(): boolean {
     try {
         const reply = Gio.DBus.session.call_sync(
@@ -34,6 +35,8 @@ export const useOurs = mode === "wam-shell" ? true
     : mode === "system" ? false
     : !detectSystemDaemon()
 if (!useOurs) console.log("Notifications: using the system daemon")
+
+const notifd = AstalNotifd.get_default()
 
 const notifications = createBinding(notifd, "notifications")
 export const count = notifications.as(n => n.length)
