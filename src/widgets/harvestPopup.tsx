@@ -111,8 +111,11 @@ function NotesRow() {
                             focused = true
                         }}
                         onLeave={() => {
+                            // no auto-save: the layer-shell popup drops
+                            // keyboard focus spontaneously ~1s after the
+                            // last keystroke, which committed edits
+                            // without the user asking. Save is explicit.
                             focused = false
-                            if (dirty.get()) save()
                         }}
                     />
                 </Gtk.TextView>
