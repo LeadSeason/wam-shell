@@ -37,12 +37,27 @@ function fallbackAlign(): Gtk.Align {
 
 const entryLabel = (e: Harvest.Entry) => `${e.clientName} — ${e.projectName} · ${e.taskName}`
 
+// "1.5" decimal hours or "1:30" h:mm; empty parses to 0 (each caller
+// decides what 0 means: live timer on the new-entry form, invalid on
+// the paused-hours editor)
+function parseDuration(text: string): number | null {
+    const t = text.trim()
+    if (t === "") return 0
+    const colon = t.match(/^(\d+):([0-5]?\d)$/)
+    if (colon) return Number(colon[1]) + Number(colon[2]) / 60
+    const h = Number(t)
+    return Number.isFinite(h) && h >= 0 ? h : null
+}
+
 // notes for the running entry; last-write-wins against web UI edits.
-// poll results never clobber the field while it is focused or dirty
+// poll results never clobber the field while it is focused or dirty,
+// but a different timer taking over always resets it (the header is
+// visibility-toggled now, not rebuilt per entry)
 function NotesRow() {
     let entry: Gtk.Entry | null = null
     let dirty = false
     let focused = false
+    let lastId: number | null = Harvest.running.get()?.id ?? null
 
     const serverNotes = () => Harvest.running.get()?.notes ?? ""
     const save = () => {
@@ -53,7 +68,16 @@ function NotesRow() {
     }
 
     const unsub = Harvest.running.subscribe(() => {
-        if (dirty || focused || !entry) return
+        if (!entry) return
+        const id = Harvest.running.get()?.id ?? null
+        if (id !== lastId) {
+            // a different timer now: drop edits belonging to the old one
+            lastId = id
+            dirty = false
+            entry.set_text(serverNotes())
+            return
+        }
+        if (dirty || focused) return
         entry.set_text(serverNotes())
     })
     onCleanup(unsub)
@@ -133,8 +157,9 @@ function RunningHeader() {
 
 // the Harvest-style new-entry form. Inline expanding selectors rather
 // than Gtk.DropDown: dropdown popovers are unstyled here and their
-// natural width follows the selected text, resizing the whole popup
-function NewEntryForm() {
+// natural width follows the selected text, resizing the whole popup.
+// Lives inside IdleContent's expander; Cancel collapses back to it
+function NewEntryForm({ onCancel }: { onCancel: () => void }) {
     let notes: Gtk.Entry
     let duration: Gtk.Entry
     let search: Gtk.Entry
@@ -171,16 +196,6 @@ function NewEntryForm() {
     reconcileSelection() // assignments usually land before the popup is built
     const unsubProjects = Harvest.projects.subscribe(reconcileSelection)
     onCleanup(unsubProjects)
-
-    // "1.5" decimal hours or "1:30" h:mm; empty = 0 = start a live timer
-    function parseDuration(text: string): number | null {
-        const t = text.trim()
-        if (t === "") return 0
-        const colon = t.match(/^(\d+):([0-5]?\d)$/)
-        if (colon) return Number(colon[1]) + Number(colon[2]) / 60
-        const h = Number(t)
-        return Number.isFinite(h) && h >= 0 ? h : null
-    }
 
     function start() {
         const p = Harvest.projects.get().find(p => p.projectId === projectSel.get())
@@ -244,8 +259,6 @@ function NewEntryForm() {
 
     return (
         <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-            <label cssClasses={["title"]} label={"New Time Entry"} halign={Gtk.Align.CENTER} />
-
             <box orientation={Gtk.Orientation.VERTICAL}>
                 <SelectorButton
                     label={createComputed([Harvest.projects, projectSel], (ps, id) => {
@@ -352,13 +365,79 @@ function NewEntryForm() {
                 />
             </box>
             <box halign={Gtk.Align.END} spacing={6}>
-                <button onClicked={() => hide()}>
+                <button onClicked={onCancel}>
                     <label label={"Cancel"} />
                 </button>
                 <button cssClasses={["start"]} sensitive={canStart} onClicked={start}>
                     <label label={"Start"} />
                 </button>
             </box>
+        </box>
+    )
+}
+
+// editable accrued time of the paused entry. Same dirty/focus contract
+// as NotesRow: a poll or in-place update never clobbers an edit in
+// progress; Enter, focus-out or Save commits
+function PausedEditor() {
+    let entry: Gtk.Entry | null = null
+    let dirty = false
+    let focused = false
+
+    const serverText = () => {
+        const p = Harvest.paused.get()
+        return p ? Harvest.formatElapsed(p.hours * 3600) : ""
+    }
+    const save = () => {
+        const p = Harvest.paused.get()
+        if (!entry || !p) return
+        const hours = parseDuration(entry.get_text())
+        // 0/empty/garbage is not a valid duration here (on the new-entry
+        // form 0 means "live timer"): snap back to the server value
+        if (hours === null || hours <= 0) {
+            entry.set_text(serverText())
+            dirty = false
+            return
+        }
+        // keep dirty when the update couldn't be attempted (busy)
+        if (Harvest.setHours(p, hours)) dirty = false
+    }
+
+    const unsub = Harvest.paused.subscribe(() => {
+        if (dirty || focused || !entry) return
+        entry.set_text(serverText())
+    })
+    onCleanup(unsub)
+
+    return (
+        <box spacing={6} hexpand sensitive={Harvest.busy.as(b => !b)}>
+            <label cssClasses={["elapsed", "dim"]} label={"Paused:"} />
+            <Gtk.Entry
+                $={self => {
+                    entry = self
+                    self.set_text(serverText())
+                }}
+                cssClasses={["pausedEdit"]}
+                hexpand
+                tooltipText={"Edit hours (e.g. 1.5 or 1:30)"}
+                onChanged={() => {
+                    dirty = entry?.get_text() !== serverText()
+                }}
+                onActivate={save}
+            >
+                <Gtk.EventControllerFocus
+                    onEnter={() => {
+                        focused = true
+                    }}
+                    onLeave={() => {
+                        focused = false
+                        if (dirty) save()
+                    }}
+                />
+            </Gtk.Entry>
+            <button cssClasses={["confirm"]} onClicked={save}>
+                <label label={"Save"} />
+            </button>
         </box>
     )
 }
@@ -380,6 +459,10 @@ function IdleContent() {
             return out
         },
     )
+    // the new-entry form and resume list sit behind an expander: the
+    // compact default view is just the timer state and totals
+    const [expanded, setExpanded] = createState(false)
+
     return (
         <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
             <box
@@ -390,52 +473,71 @@ function IdleContent() {
                 )}
             >
                 <image cssClasses={["harvestIcon"]} iconName="harvest-symbolic" pixelSize={20} />
-                <label
-                    cssClasses={["elapsed", "dim"]}
-                    hexpand
-                    xalign={0}
-                    label={createComputed([Harvest.paused, Harvest.dayTotal], (p, t) =>
-                        p
-                            ? `Paused: ${Harvest.formatElapsed(p.hours * 3600)}`
-                            : `Today: ${Harvest.formatElapsed(t)}`,
-                    )}
-                />
-            </box>
-            <NewEntryForm />
-            <box
-                orientation={Gtk.Orientation.VERTICAL}
-                spacing={2}
-                visible={resumables.as(r => r.length > 0)}
-            >
-                <label cssClasses={["section"]} label={"Resume"} xalign={0} />
-                <For each={resumables}>
-                    {(e: Harvest.Entry) => (
-                        <button
-                            cssClasses={["resume"]}
-                            sensitive={Harvest.busy.as(b => !b)}
-                            tooltipText={entryLabel(e)}
-                            onClicked={() => Harvest.resumeEntry(e)}
-                        >
+                {/* keyed on the entry id: in-place updates (a successful
+                hours edit) must not rebuild the editor under the user */}
+                <With value={Harvest.paused.as(p => p?.id ?? null)}>
+                    {id =>
+                        id !== null ? (
+                            <PausedEditor />
+                        ) : (
                             <label
-                                xalign={0}
+                                cssClasses={["elapsed", "dim"]}
                                 hexpand
-                                maxWidthChars={38}
-                                ellipsize={Pango.EllipsizeMode.END}
-                                label={entryLabel(e)}
+                                xalign={0}
+                                label={Harvest.dayTotal.as(
+                                    t => `Today: ${Harvest.formatElapsed(t)}`,
+                                )}
                             />
-                        </button>
-                    )}
-                </For>
+                        )
+                    }
+                </With>
             </box>
+            <button cssClasses={["ddButton"]} onClicked={() => setExpanded(!expanded.get())}>
+                <box>
+                    <label xalign={0} hexpand label={"Add or resume entry"} />
+                    <image
+                        iconName={expanded.as(e => (e ? "pan-up-symbolic" : "pan-down-symbolic"))}
+                    />
+                </box>
+            </button>
+            <revealer revealChild={expanded}>
+                <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
+                    <NewEntryForm onCancel={() => setExpanded(false)} />
+                    <box
+                        orientation={Gtk.Orientation.VERTICAL}
+                        spacing={2}
+                        visible={resumables.as(r => r.length > 0)}
+                    >
+                        <label cssClasses={["section"]} label={"Resume"} xalign={0} />
+                        <For each={resumables}>
+                            {(e: Harvest.Entry) => (
+                                <button
+                                    cssClasses={["resume"]}
+                                    sensitive={Harvest.busy.as(b => !b)}
+                                    tooltipText={entryLabel(e)}
+                                    onClicked={() => Harvest.resumeEntry(e)}
+                                >
+                                    <label
+                                        xalign={0}
+                                        hexpand
+                                        maxWidthChars={38}
+                                        ellipsize={Pango.EllipsizeMode.END}
+                                        label={entryLabel(e)}
+                                    />
+                                </button>
+                            )}
+                        </For>
+                    </box>
+                </box>
+            </revealer>
         </box>
     )
 }
 
 function PopupContent() {
-    // running = the timer on top of the same new-entry form, so a
-    // completed entry can be logged without stopping the live one. Keyed
-    // on the entry id: in-place updates (notes, elapsed) must not rebuild
-    // the header and its text field
+    // running section always built and visibility-toggled, never lazily
+    // inserted: a <With> child created when the timer starts would be
+    // re-appended *below* the idle content instead of taking the top
     return (
         <box
             cssClasses={["harvestPopup"]}
@@ -443,16 +545,14 @@ function PopupContent() {
             spacing={10}
             widthRequest={340}
         >
-            <With value={Harvest.running.as(r => r?.id ?? null)}>
-                {id =>
-                    id !== null && (
-                        <box orientation={Gtk.Orientation.VERTICAL} spacing={10}>
-                            <RunningHeader />
-                            <Gtk.Separator />
-                        </box>
-                    )
-                }
-            </With>
+            <box
+                orientation={Gtk.Orientation.VERTICAL}
+                spacing={10}
+                visible={Harvest.running.as(r => r !== null)}
+            >
+                <RunningHeader />
+                <Gtk.Separator />
+            </box>
             <IdleContent />
         </box>
     )
