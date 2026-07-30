@@ -1,5 +1,5 @@
-import app from "ags/gtk4/app";
-import CommandRegistry from "./commandRegistry";
+import app from "ags/gtk4/app"
+import CommandRegistry from "./commandRegistry"
 
 const registry = CommandRegistry.get_default()
 
@@ -10,13 +10,16 @@ registry.register({
     description: "quit Application",
     help: `Exits the app`,
     main: () => {
-        app.quit(0);
+        app.quit(0)
         return "exiting ..."
-    }
+    },
 })
 
 // requestHandler, Pass this to app.start()
-export async function requestHandler(argv: string[], res: (response: string) => void) {
+export async function requestHandler(
+    argv: string[],
+    res: (response: string) => void,
+) {
     res(await registry.execute(argv))
 }
 

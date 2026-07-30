@@ -37,7 +37,10 @@ cleanup() {
     fi
     [[ -n "$TMP" ]] && rm -rf "$TMP"
 }
-trap cleanup EXIT INT TERM
+# trapping EXIT only is deliberate: on INT/TERM bash dies and the EXIT
+# trap still runs cleanup; trapping the signals and not exiting would
+# resume the script with destroyed state
+trap cleanup EXIT
 
 # --- preflight ---------------------------------------------------------
 

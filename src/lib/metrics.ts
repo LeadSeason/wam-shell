@@ -26,7 +26,10 @@ const ENABLED = GLib.getenv("WAM_SHELL_METRICS") === "1"
 
 // --- subprocesses ---------------------------------------------------------
 
-interface ProcBucket { count: number, blockingMs: number }
+interface ProcBucket {
+    count: number
+    blockingMs: number
+}
 const procs = new Map<string, ProcBucket>()
 
 // the spawned binary: first token (string form) or argv[0], basename'd
@@ -37,38 +40,41 @@ function binName(cmd: string | string[]): string {
 
 function recordProc(bin: string, ms: number) {
     let b = procs.get(bin)
-    if (!b) procs.set(bin, b = { count: 0, blockingMs: 0 })
+    if (!b) procs.set(bin, (b = { count: 0, blockingMs: 0 }))
     b.count++
     b.blockingMs += ms
 }
 
 export const exec: typeof agsExec = ENABLED
     ? (cmd) => {
-        const t0 = GLib.get_monotonic_time()
-        try {
-            return agsExec(cmd)
-        } finally {
-            recordProc(binName(cmd), (GLib.get_monotonic_time() - t0) / 1000)
-        }
-    }
+          const t0 = GLib.get_monotonic_time()
+          try {
+              return agsExec(cmd)
+          } finally {
+              recordProc(binName(cmd), (GLib.get_monotonic_time() - t0) / 1000)
+          }
+      }
     : agsExec
 
 export const execAsync: typeof agsExecAsync = ENABLED
     ? (cmd) => {
-        recordProc(binName(cmd), 0)
-        return agsExecAsync(cmd)
-    }
+          recordProc(binName(cmd), 0)
+          return agsExecAsync(cmd)
+      }
     : agsExecAsync
 
 // --- timer sources --------------------------------------------------------
 
-interface TimerBucket { created: number, alive: number }
+interface TimerBucket {
+    created: number
+    alive: number
+}
 const timers = new Map<string, TimerBucket>()
 const timerLabels = new Map<number, string>() // source id -> label
 
 function timerCreated(label: string, id: number): number {
     let b = timers.get(label)
-    if (!b) timers.set(label, b = { created: 0, alive: 0 })
+    if (!b) timers.set(label, (b = { created: 0, alive: 0 }))
     b.created++
     b.alive++
     timerLabels.set(id, label)
@@ -83,91 +89,122 @@ function timerGone(id: number) {
 }
 
 export const timeoutAdd = ENABLED
-    ? (label: string, priority: number, interval: number, fn: () => boolean): number => {
-        // assigned before the callback can ever fire (main loop is not
-        // re-entered from here)
-        let id = 0
-        id = GLib.timeout_add(priority, interval, () => {
-            const again = fn()
-            if (!again) timerGone(id)
-            return again
-        })
-        return timerCreated(label, id)
-    }
-    : (_label: string, priority: number, interval: number, fn: () => boolean): number =>
-        GLib.timeout_add(priority, interval, fn)
+    ? (
+          label: string,
+          priority: number,
+          interval: number,
+          fn: () => boolean,
+      ): number => {
+          // assigned before the callback can ever fire (main loop is not
+          // re-entered from here)
+          let id = 0
+          id = GLib.timeout_add(priority, interval, () => {
+              const again = fn()
+              if (!again) timerGone(id)
+              return again
+          })
+          return timerCreated(label, id)
+      }
+    : (
+          _label: string,
+          priority: number,
+          interval: number,
+          fn: () => boolean,
+      ): number => GLib.timeout_add(priority, interval, fn)
 
 export const timeoutAddSeconds = ENABLED
-    ? (label: string, priority: number, interval: number, fn: () => boolean): number => {
-        let id = 0
-        id = GLib.timeout_add_seconds(priority, interval, () => {
-            const again = fn()
-            if (!again) timerGone(id)
-            return again
-        })
-        return timerCreated(label, id)
-    }
-    : (_label: string, priority: number, interval: number, fn: () => boolean): number =>
-        GLib.timeout_add_seconds(priority, interval, fn)
+    ? (
+          label: string,
+          priority: number,
+          interval: number,
+          fn: () => boolean,
+      ): number => {
+          let id = 0
+          id = GLib.timeout_add_seconds(priority, interval, () => {
+              const again = fn()
+              if (!again) timerGone(id)
+              return again
+          })
+          return timerCreated(label, id)
+      }
+    : (
+          _label: string,
+          priority: number,
+          interval: number,
+          fn: () => boolean,
+      ): number => GLib.timeout_add_seconds(priority, interval, fn)
 
 export const sourceRemove: typeof GLib.source_remove = ENABLED
     ? (id) => {
-        timerGone(id)
-        return GLib.source_remove(id)
-    }
+          timerGone(id)
+          return GLib.source_remove(id)
+      }
     : GLib.source_remove
 
 // --- signal handlers (the leak detector) ----------------------------------
 
 const signalLive = new Map<string, number>() // "Ctor:signal" -> live count
-// handler ids are only unique per object, so track (object -> id -> bucket)
+// handler ids are only unique per object, so track (object -> id -> bucket).
+// Note: objects that are destroyed WITHOUT disconnect (exactly the leaks
+// this detector exists to catch) stay strongly referenced here until the
+// next metrics reset — the instrumentation keeps its suspects alive.
 const signalBuckets = new Map<object, Map<number, string>>()
 
 export const connect = ENABLED
-    ? (obj: { connect(s: string, cb: (...a: any[]) => any): number },
-        signal: string, callback: (...a: any[]) => any): number => {
-        const ctor = (obj as any).constructor?.name ?? "?"
-        const bucket = `${ctor}:${signal}`
-        const id = obj.connect(signal, callback)
-        signalLive.set(bucket, (signalLive.get(bucket) ?? 0) + 1)
-        let ids = signalBuckets.get(obj)
-        if (!ids) signalBuckets.set(obj, ids = new Map())
-        ids.set(id, bucket)
-        return id
-    }
-    : (obj: { connect(s: string, cb: (...a: any[]) => any): number },
-        signal: string, callback: (...a: any[]) => any): number =>
-        obj.connect(signal, callback)
+    ? (
+          obj: { connect(s: string, cb: (...a: any[]) => any): number },
+          signal: string,
+          callback: (...a: any[]) => any,
+      ): number => {
+          const ctor = (obj as any).constructor?.name ?? "?"
+          const bucket = `${ctor}:${signal}`
+          const id = obj.connect(signal, callback)
+          signalLive.set(bucket, (signalLive.get(bucket) ?? 0) + 1)
+          let ids = signalBuckets.get(obj)
+          if (!ids) signalBuckets.set(obj, (ids = new Map()))
+          ids.set(id, bucket)
+          return id
+      }
+    : (
+          obj: { connect(s: string, cb: (...a: any[]) => any): number },
+          signal: string,
+          callback: (...a: any[]) => any,
+      ): number => obj.connect(signal, callback)
 
 export const disconnect = ENABLED
     ? (obj: { disconnect(id: number): void }, id: number): void => {
-        const bucket = signalBuckets.get(obj)?.get(id)
-        if (bucket !== undefined) {
-            signalBuckets.get(obj)!.delete(id)
-            signalLive.set(bucket, signalLive.get(bucket)! - 1)
-        }
-        obj.disconnect(id)
-    }
+          const ids = signalBuckets.get(obj)
+          const bucket = ids?.get(id)
+          if (bucket !== undefined) {
+              ids!.delete(id)
+              if (ids!.size === 0) signalBuckets.delete(obj)
+              signalLive.set(bucket, signalLive.get(bucket)! - 1)
+          }
+          obj.disconnect(id)
+      }
     : (obj: { disconnect(id: number): void }, id: number): void =>
-        obj.disconnect(id)
+          obj.disconnect(id)
 
 // --- HTTP -----------------------------------------------------------------
 
-interface HttpBucket { count: number, bytes: number }
+interface HttpBucket {
+    count: number
+    bytes: number
+}
 const http = new Map<string, HttpBucket>()
 
-const noop = (_url: string, _bytes: number) => { }
+const noop = (_url: string, _bytes: number) => {}
 
 // record one finished request: url for the host bucket, bytes = response
 // body size received
 export const trackHttp = ENABLED
     ? (url: string, bytes: number) => {
-        const host = url.match(/^https?:\/\/([^/:]+)/)?.[1] ?? url
-        let b = http.get(host)
-        if (!b) http.set(host, b = { count: 0, bytes: 0 })
-        b.count++
-        b.bytes += bytes
-    }
+          const host = url.match(/^https?:\/\/([^/:]+)/)?.[1] ?? url
+          let b = http.get(host)
+          if (!b) http.set(host, (b = { count: 0, bytes: 0 }))
+          b.count++
+          b.bytes += bytes
+      }
     : noop
 
 // --- snapshot -------------------------------------------------------------
@@ -178,10 +215,14 @@ function processFacts() {
 
     let fds = 0
     try {
-        const e = Gio.File.new_for_path("/proc/self/fd")
-            .enumerate_children("standard::name", Gio.FileQueryInfoFlags.NONE, null)
+        const e = Gio.File.new_for_path("/proc/self/fd").enumerate_children(
+            "standard::name",
+            Gio.FileQueryInfoFlags.NONE,
+            null,
+        )
         while (e.next_file(null)) fds++
         e.close(null)
+        fds-- // the enumerator's own directory fd was counted too
     } catch (err) {
         console.warn("metrics: fd count failed:", err)
     }

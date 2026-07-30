@@ -96,7 +96,8 @@ export default function Tray({ filter, iconSize = 16, pill = false, spacing = Co
                                 button: 0, // Listen to all buttons.
                             })
 
-                            connect(gestureClick, "pressed", (event: Gtk.GestureClick) => {                                // Prevent default behavior.
+                            // Prevent default behavior.
+                            connect(gestureClick, "pressed", (event: Gtk.GestureClick) => {
                                 event.set_state(Gtk.EventSequenceState.CLAIMED)
 
                                 switch (event.get_current_button()) {

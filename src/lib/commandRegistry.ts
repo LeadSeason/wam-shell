@@ -1,4 +1,4 @@
-import Config from "../config";
+import Config from "../config"
 
 // The command registry, in its own module so instrumentation (metrics)
 // and tests can register/execute commands without pulling in
@@ -28,8 +28,7 @@ class CommandRegistry {
     static instance: CommandRegistry
 
     static get_default() {
-        if (!this.instance)
-            this.instance = new CommandRegistry()
+        if (!this.instance) this.instance = new CommandRegistry()
 
         return this.instance
     }
@@ -37,10 +36,12 @@ class CommandRegistry {
 
     /** Register a command */
     register(command: CommandEntry): void {
-        command.name.forEach(element => {
+        command.name.forEach((element) => {
             if (element.includes(" "))
-                throw new Error(`Invalid altName "${element}" — spaces are not allowed`);
-        });
+                throw new Error(
+                    `Invalid altName "${element}" — spaces are not allowed`,
+                )
+        })
 
         if (command.name.length === 0)
             throw new Error(`Command must have at least 1 name ${command}`)
@@ -55,14 +56,19 @@ class CommandRegistry {
      */
     async execute(argv: string[], silent: boolean = false): Promise<string> {
         // `ags request -i x "cmd arg"` delivers the whole string as one
-        // element; split so quoted and unquoted forms behave the same
-        argv = argv.flatMap(a => a.split(/\s+/).filter(Boolean))
+        // element; split so the quoted form works too. Note quotes are
+        // NOT honored: an argument that genuinely contains spaces would
+        // be split — no current command takes one.
+        argv = argv.flatMap((a) => a.split(/\s+/).filter(Boolean))
         let requested_command = argv.shift()
 
-        if (requested_command === undefined) return "<helper> help for list of commands"
+        if (requested_command === undefined)
+            return "<helper> help for list of commands"
 
         if (!silent) {
-            console.log(`Request: command(${requested_command}) args(${argv.join(", ")})`)
+            console.log(
+                `Request: command(${requested_command}) args(${argv.join(", ")})`,
+            )
         }
 
         // Typescript happy, Also sane default
@@ -70,8 +76,11 @@ class CommandRegistry {
             requested_command = "help"
         }
 
-        const entry = this.commands.find(cmd =>
-            cmd.name.some(name => name.toLowerCase() === requested_command.toLowerCase())
+        const entry = this.commands.find((cmd) =>
+            cmd.name.some(
+                (name) =>
+                    name.toLowerCase() === requested_command.toLowerCase(),
+            ),
         )
 
         if (!entry) {
@@ -90,8 +99,10 @@ class CommandRegistry {
     help(argv: string[]): string {
         const command = argv.shift()
         if (command) {
-            const entry = this.commands.find(cmd =>
-                cmd.name.some(name => name.toLowerCase() === command.toLowerCase())
+            const entry = this.commands.find((cmd) =>
+                cmd.name.some(
+                    (name) => name.toLowerCase() === command.toLowerCase(),
+                ),
             )
             if (entry?.help) {
                 let out = `${entry.name[0]}:\n`
@@ -125,7 +136,7 @@ class CommandRegistry {
           - help <command>
             gives help to command if command has a help section
         `,
-            main: (argv: string[]) => this.help(argv)
+            main: (argv: string[]) => this.help(argv),
         })
     }
 }
