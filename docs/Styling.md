@@ -1,10 +1,12 @@
 # Theming and styling
 
 wam-shell is styled with SCSS. At startup (and on `reloadStyle`) the
-configured theme file is copied to `scss/theme/active-theme.scss`, the
-whole `scss/` tree is compiled with `sass` to
-`~/.cache/wam-shell/style.css`, and that CSS is applied. Everything
-visual — colors, spacing, radii — flows from that one compile.
+configured theme file is copied to `~/.cache/wam-shell/active-theme.scss`
+(outside the source tree, so read-only installs work; `sass` finds it
+through `--load-path`), the whole `scss/` tree is compiled with `sass`
+to `~/.cache/wam-shell/style.css`, and that CSS is applied. The compile
+is skipped entirely when no `scss/` file is newer than the emitted CSS.
+Everything visual — colors, spacing, radii — flows from that one compile.
 
 ## Picking a theme
 

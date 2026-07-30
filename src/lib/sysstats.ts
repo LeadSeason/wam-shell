@@ -1,8 +1,10 @@
 import { createState } from "gnim"
 import { createPoll } from "ags/time"
-import { readFile } from "ags/file"
-import { exec, execAsync } from "ags/process"
+import { readFileAsync } from "ags/file"
+import GLib from "gi://GLib?version=2.0"
+import Gio from "gi://Gio?version=2.0"
 import Config from "../config"
+import { streamLines } from "./utils"
 
 // System performance stats, polled on quicksettings.stats_interval.
 // History targets a ~32s window, capped at 64 bars.
@@ -18,7 +20,7 @@ export const [vram, setVram] = createState<[number, number]>([0, 0]) // used,tot
 export const [ramSize, setRamSize] = createState<[number, number]>([0, 0]) // used,total GB
 export const [loadAvg, setLoadAvg] = createState(0)
 export const [netDown, setNetDown] = createState(0) // bytes/s
-export const [netUp, setNetUp] = createState(0)     // bytes/s
+export const [netUp, setNetUp] = createState(0) // bytes/s
 
 export const [cpuHist, setCpuHist] = createState<{ v: number }[]>([])
 export const [ramHist, setRamHist] = createState<{ v: number }[]>([])
@@ -30,10 +32,13 @@ const push = (hist: { v: number }[], set: (v: { v: number }[]) => void, v: numbe
     set([...hist, { v }].slice(-HISTORY))
 
 // /proc/stat: user nice system idle iowait irq softirq steal
-let prevCpu: { idle: number, total: number } | null = null
-function readCpu(): number {
-    const fields = readFile("/proc/stat").split("\n")[0]
-        .split(/\s+/).slice(1).map(Number)
+let prevCpu: { idle: number; total: number } | null = null
+async function readCpu(): Promise<number> {
+    const fields = (await readFileAsync("/proc/stat"))
+        .split("\n")[0]
+        .split(/\s+/)
+        .slice(1)
+        .map(Number)
     const idle = fields[3] + fields[4]
     const total = fields.reduce((a, b) => a + b, 0)
     let pct = 0
@@ -43,108 +48,168 @@ function readCpu(): number {
     return Math.round(pct)
 }
 
-function readRam(): number {
-    const meminfo = readFile("/proc/meminfo")
+async function readRam(): Promise<number> {
+    const meminfo = await readFileAsync("/proc/meminfo")
     const total = Number(meminfo.match(/MemTotal:\s+(\d+)/)?.[1] ?? 0)
     const avail = Number(meminfo.match(/MemAvailable:\s+(\d+)/)?.[1] ?? 0)
     if (!total) return 0
-    const toGB = (kb: number) => Math.round(kb / 1024 / 1024 * 10) / 10
+    const toGB = (kb: number) => Math.round((kb / 1024 / 1024) * 10) / 10
     setRamSize([toGB(total - avail), toGB(total)])
     return Math.round(100 * (1 - avail / total))
 }
 
-function readLoadAvg(): number {
-    return Number(readFile("/proc/loadavg").split(" ")[0]) || 0
+async function readLoadAvg(): Promise<number> {
+    return Number((await readFileAsync("/proc/loadavg")).split(" ")[0]) || 0
 }
 
 // /proc/net/dev: skip loopback and container/bridge interfaces
-let prevNet: { rx: number, tx: number } | null = null
-function readNet(intervalSec: number): [number, number] {
-    let rx = 0, tx = 0
-    for (const line of readFile("/proc/net/dev").split("\n").slice(2)) {
+// the rate divisor is the actual elapsed time: ticks slip while a
+// previous sample is in flight, and a fixed INTERVAL would inflate it
+let prevNet: { rx: number; tx: number; t: number } | null = null
+async function readNet(): Promise<[number, number]> {
+    let rx = 0,
+        tx = 0
+    for (const line of (await readFileAsync("/proc/net/dev")).split("\n").slice(2)) {
         const m = line.match(/^\s*([^:]+):\s*(.*)$/)
         if (!m) continue
         const iface = m[1].trim()
-        if (iface === "lo" || iface.startsWith("docker")
-            || iface.startsWith("br-") || iface.startsWith("veth")) continue
+        if (
+            iface === "lo" ||
+            iface.startsWith("docker") ||
+            iface.startsWith("br-") ||
+            iface.startsWith("veth")
+        )
+            continue
         const fields = m[2].split(/\s+/)
         rx += Number(fields[0])
         tx += Number(fields[8])
     }
-    let down = 0, up = 0
-    if (prevNet) {
-        down = Math.max(0, (rx - prevNet.rx) / intervalSec)
-        up = Math.max(0, (tx - prevNet.tx) / intervalSec)
+    const now = GLib.get_monotonic_time() / 1000 // us -> ms
+    let down = 0,
+        up = 0
+    if (prevNet && now > prevNet.t) {
+        const dt = (now - prevNet.t) / 1000
+        down = Math.max(0, (rx - prevNet.rx) / dt)
+        up = Math.max(0, (tx - prevNet.tx) / dt)
     }
-    prevNet = { rx, tx }
+    prevNet = { rx, tx, t: now }
     return [Math.round(down), Math.round(up)]
 }
 
-// probe once: no point spawning nvidia-smi every tick without one
-const hasNvidia = (() => {
-    try { exec("which nvidia-smi"); return true } catch { return false }
-})()
-let inFlight = false
+// probe once: no point spawning nvidia-smi at all without one
+const hasNvidia = GLib.find_program_in_path("nvidia-smi") !== null
 
-const poll = createPoll("", INTERVAL, async () => {
-    // don't overlap ticks when nvidia-smi is slow
-    if (inFlight) return ""
-    inFlight = true
-
-    try {
-    const step = (label: string, fn: () => void) => {
-        try { fn() } catch (e) { console.warn(`sysstats ${label}:`, e) }
+const poll = createPoll("", INTERVAL, () => {
+    const step = (label: string, fn: () => void | Promise<void>) => {
+        try {
+            const p = fn()
+            // async steps throw after step() returned; log them like
+            // the sync failures instead of losing them to unhandledrejection
+            if (p instanceof Promise) p.catch(e => console.warn(`sysstats ${label}:`, e))
+        } catch (e) {
+            console.warn(`sysstats ${label}:`, e)
+        }
     }
-    step("cpu", () => {
-        const c = readCpu()
+    step("cpu", async () => {
+        const c = await readCpu()
         setCpu(c)
         push(cpuHist.get(), setCpuHist, c)
     })
-    step("ram", () => {
-        const r = readRam()
+    step("ram", async () => {
+        const r = await readRam()
         setRam(r)
         push(ramHist.get(), setRamHist, r)
     })
-    step("load", () => setLoadAvg(readLoadAvg()))
-    step("net", () => {
-        const [down, up] = readNet(INTERVAL / 1000)
+    step("load", async () => setLoadAvg(await readLoadAvg()))
+    step("net", async () => {
+        const [down, up] = await readNet()
         setNetDown(down)
         setNetUp(up)
     })
-
-    if (hasNvidia) try {
-        const out = await execAsync([
-            "nvidia-smi",
-            "--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total",
-            "--format=csv,noheader,nounits",
-        ])
-        const [util, temp, vramUsed, vramTotal] = out.trim().split(",").map(Number)
-        setGpu(util)
-        setGpuTemp(temp)
-        setVram([vramUsed, vramTotal])
-        push(gpuHist.get(), setGpuHist, util)
-    } catch {
-        setGpu(null) // driver hiccup: hide the row until it recovers
-    }
-
-    } finally {
-        inFlight = false
-    }
     return ""
 })
+
+// GPU stats come from ONE long-lived nvidia-smi in loop mode; the old
+// per-tick spawn was the shell's most frequent fork. Same CSV fields as
+// the one-shot query, one line per interval.
+const GPU_CMD = [
+    "nvidia-smi",
+    "--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total",
+    "--format=csv,noheader,nounits",
+    `--loop-ms=${Math.max(1, Math.round(INTERVAL))}`,
+]
+
+// restart on death (driver reloads kill the stream), but cap attempts
+// so a persistently failing nvidia-smi can't fork-loop. Any received
+// line proves the driver is healthy, so it resets the budget.
+const GPU_RESTART_DELAY = 5000
+const GPU_MAX_RESTARTS = 5
+let gpuRestarts = 0
+
+function handleGpuLine(line: string) {
+    gpuRestarts = 0
+    const [util, temp, vramUsed, vramTotal] = line.split(",").map(Number)
+    if ([util, temp, vramUsed, vramTotal].some(isNaN)) {
+        // "[N/A]" during driver transitions: hide the row until it recovers
+        setGpu(null)
+        return
+    }
+    setGpu(util)
+    setGpuTemp(temp)
+    setVram([vramUsed, vramTotal])
+    push(gpuHist.get(), setGpuHist, util)
+}
+
+let gpuRestartSource = 0
+let gpuProc: Gio.Subprocess | null = null
+let gpuDisposed = false
+
+function scheduleGpuRestart() {
+    setGpu(null)
+    if (gpuDisposed) return
+    if (gpuRestarts >= GPU_MAX_RESTARTS) {
+        console.warn("sysstats gpu: nvidia-smi keeps dying, giving up")
+        return
+    }
+    gpuRestarts++
+    gpuRestartSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, GPU_RESTART_DELAY, () => {
+        gpuRestartSource = 0
+        startGpuStream()
+        return GLib.SOURCE_REMOVE
+    })
+}
+
+function startGpuStream() {
+    if (gpuDisposed) return
+    gpuProc = streamLines(GPU_CMD, handleGpuLine, scheduleGpuRestart)
+    if (!gpuProc) scheduleGpuRestart()
+}
+
+// convention for lib modules with long-lived sources (see AGENTS.md)
+export function dispose() {
+    gpuDisposed = true
+    if (gpuRestartSource) {
+        GLib.source_remove(gpuRestartSource)
+        gpuRestartSource = 0
+    }
+    gpuProc?.force_exit()
+    gpuProc = null
+}
 
 // createPoll is lazy until subscribed; keep it alive while stats are on
 // (panel lists are authoritative: a "stats" entry in any [[panel]]
 // renders the widget regardless of the legacy toggles)
-if (Config.quicksettings.showStats || Config.quicksettings.statsOnPanel
-    || Config.panels.some(p =>
-        [...p.left, ...p.center, ...p.right].includes("stats")))
-    poll.subscribe(() => { })
+if (
+    Config.quicksettings.showStats ||
+    Config.quicksettings.statsOnPanel ||
+    Config.panels.some(p => [...p.left, ...p.center, ...p.right].includes("stats"))
+) {
+    poll.subscribe(() => {})
+    if (hasNvidia) startGpuStream()
+}
 
 export function formatRate(bytesPerSec: number): string {
-    if (bytesPerSec >= 1024 * 1024)
-        return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`
-    if (bytesPerSec >= 1024)
-        return `${Math.round(bytesPerSec / 1024)} KB/s`
+    if (bytesPerSec >= 1024 * 1024) return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`
+    if (bytesPerSec >= 1024) return `${Math.round(bytesPerSec / 1024)} KB/s`
     return `${bytesPerSec} B/s`
 }

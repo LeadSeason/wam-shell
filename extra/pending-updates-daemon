@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 UPDATE_FILE=/tmp/system_updates
 if [[ -n "$XDG_RUNTIME_DIR" ]]; then
@@ -13,9 +13,9 @@ do
 	checkupdates 2> /dev/null > $UPDATE_FILE.swap
     yay -Qau 2> /dev/null >> $UPDATE_FILE.swap
 
-    cp $UPDATE_FILE.swap $UPDATE_FILE
-    rm $UPDATE_FILE.swap
+    # atomic rename: readers never see a partially written list
+    mv $UPDATE_FILE.swap $UPDATE_FILE
 
 	echo "Available packages to update $(cat $UPDATE_FILE 2> /dev/null | wc -l)"
-	sleep 300
+	sleep 3600
 done

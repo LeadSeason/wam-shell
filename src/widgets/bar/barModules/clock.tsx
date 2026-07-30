@@ -21,10 +21,7 @@ export default function Clock() {
         <menubutton cssName={"clock"}>
             {/* centerbox hack to center the clock in the middle of the bar */}
             <centerbox>
-                <box $type="start"
-                    hexpand={true}
-                    halign={Gtk.Align.END}
-                >
+                <box $type="start" hexpand={true} halign={Gtk.Align.END}>
                     <label cssName="clock-time" label={time} />
                 </box>
                 <box $type="center">
@@ -34,13 +31,9 @@ export default function Clock() {
                     <label cssName="clock-date" label={date} />
                 </box>
             </centerbox>
-            <popover
-                hasArrow={false}
-            >
+            <popover hasArrow={false}>
                 {/* https://docs.gtk.org/gtk4/class.Calendar.html */}
-                <Gtk.Calendar
-                    showWeekNumbers={true}
-                />
+                <Gtk.Calendar showWeekNumbers={true} />
             </popover>
         </menubutton>
     )

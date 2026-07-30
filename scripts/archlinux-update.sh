@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 
 set -eu
 
@@ -25,7 +25,7 @@ fi
 orphans="$(pacman -Qdtq || true)"
 if [ -n "$orphans" ]; then
     log "Removing orphaned packages..."
-    sudo pacman -Rcns $orphans --noconfirm
+    sudo pacman -Rns $orphans --noconfirm
 else
     log "No orphan packages to remove"
 fi

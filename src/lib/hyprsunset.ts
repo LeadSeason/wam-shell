@@ -1,5 +1,5 @@
 import { exec, execAsync } from "ags/process"
-import { createState } from "ags"
+import { createState } from "gnim"
 import GLib from "gi://GLib?version=2.0"
 import Config from "../config"
 
@@ -28,12 +28,12 @@ type TempBackend = "hyprctl" | "gsettings" | "gammastep" | "none"
 const GSCHEMA = "org.gnome.settings-daemon.plugins.color"
 export const tempBackend: TempBackend = (() => {
     if (Config.desktopSession === "hyprland") return "hyprctl"
-    try { exec("which gammastep"); return "gammastep" } catch { }
+    if (GLib.find_program_in_path("gammastep")) return "gammastep"
     try {
         exec(`gsettings get ${GSCHEMA} night-light-enabled`)
         exec("pgrep -x gnome-settings-daemon")
         return "gsettings"
-    } catch { }
+    } catch {}
     return "none"
 })()
 
@@ -54,7 +54,7 @@ if (tempBackend === "hyprctl") {
     try {
         const enabled = exec(`gsettings get ${GSCHEMA} night-light-enabled`).trim()
         setNightLight(enabled === "true")
-    } catch { }
+    } catch {}
 }
 
 function currentTemp(): number {
@@ -70,23 +70,31 @@ function applyTemp() {
     const nl = nightLight.get()
     switch (tempBackend) {
         case "hyprctl":
-            execAsync(["hyprctl", "hyprsunset", "temperature", String(currentTemp())])
-                .catch(() => { })
+            execAsync(["hyprctl", "hyprsunset", "temperature", String(currentTemp())]).catch(
+                () => {},
+            )
             break
         case "gsettings":
             if (nl)
-                execAsync(["gsettings", "set", GSCHEMA,
-                    "night-light-temperature", String(Config.hyprsunset.nightTemp)])
-                    .catch(() => { })
-            execAsync(["gsettings", "set", GSCHEMA,
-                "night-light-enabled", nl ? "true" : "false"])
-                .catch(() => { })
+                execAsync([
+                    "gsettings",
+                    "set",
+                    GSCHEMA,
+                    "night-light-temperature",
+                    String(Config.hyprsunset.nightTemp),
+                ]).catch(() => {})
+            execAsync([
+                "gsettings",
+                "set",
+                GSCHEMA,
+                "night-light-enabled",
+                nl ? "true" : "false",
+            ]).catch(() => {})
             break
         case "gammastep":
-            execAsync(nl
-                ? ["gammastep", "-O", String(Config.hyprsunset.nightTemp)]
-                : ["gammastep", "-x"])
-                .catch(() => { })
+            execAsync(
+                nl ? ["gammastep", "-O", String(Config.hyprsunset.nightTemp)] : ["gammastep", "-x"],
+            ).catch(() => {})
             break
     }
 }
@@ -106,8 +114,7 @@ function applyGamma() {
         const gamma = pendingGamma
         pendingGamma = null
         lastApply = Date.now()
-        execAsync(["hyprctl", "hyprsunset", "gamma", String(gamma)])
-            .catch(() => { })
+        execAsync(["hyprctl", "hyprsunset", "gamma", String(gamma)]).catch(() => {})
         return GLib.SOURCE_REMOVE
     })
 }
@@ -115,13 +122,13 @@ function applyGamma() {
 // Watch the daemon for external gamma/temperature changes (keybinds,
 // other tools). Skipped briefly after our own applies so a mid-drag
 // read can't fight the debounced apply above. hyprland only — hyprctl
-// does not exist elsewhere. 3s: external gamma changes are not
-// sub-second-critical, and this spawns two hyprctl forks per tick for
-// the shell's lifetime on a laptop.
+// does not exist elsewhere. 30s is enough: external changes are rare,
+// and the Quick Settings popup calls this on open, so the slider never
+// shows stale values where the user actually looks at them.
 let watchRunning = false
-if (Config.desktopSession === "hyprland")
-GLib.timeout_add(GLib.PRIORITY_DEFAULT, 3000, () => {
-    if (watchRunning) return GLib.SOURCE_CONTINUE
+export function refreshHyprsunset() {
+    if (Config.desktopSession !== "hyprland") return
+    if (watchRunning) return
     watchRunning = true
     Promise.all([
         execAsync("hyprctl hyprsunset gamma"),
@@ -148,10 +155,17 @@ GLib.timeout_add(GLib.PRIORITY_DEFAULT, 3000, () => {
                 if (nl !== nightLight.get()) setNightLight(nl)
             }
         })
-        .catch(() => { })
-        .finally(() => { watchRunning = false })
-    return GLib.SOURCE_CONTINUE
-})
+        .catch(() => {})
+        .finally(() => {
+            watchRunning = false
+        })
+}
+
+if (Config.desktopSession === "hyprland")
+    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 30000, () => {
+        refreshHyprsunset()
+        return GLib.SOURCE_CONTINUE
+    })
 
 export function setNightLightEnabled(v: boolean) {
     setNightLight(v)

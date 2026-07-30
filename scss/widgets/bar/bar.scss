@@ -1,4 +1,4 @@
-@use "../../theme/active-theme.scss" as t;
+@use "active-theme" as t;
 @use "sass:color";
 @use "../../conf.scss" as s;
 
@@ -110,9 +110,9 @@ window.Bar {
             border: solid 2px t.$accent40;
         }
 
-        // Harvest brand orange (conf.scss), recolors the symbolic icon
+        // Harvest brand color (theme variable, default #fa5d00)
         .harvestIcon {
-            color: s.$harvest-orange;
+            color: t.$harvest;
         }
 
         // compact pause/resume button, same treatment as media controls
@@ -127,13 +127,9 @@ window.Bar {
             }
         }
 
-        // idle inside work hours: quiet, the day total is ambient info
-        &.idle {
-            opacity: 0.6;
-        }
-
-        // paused: dimmed like idle, the frozen elapsed says why
-        &.paused {
+        // idle inside work hours / paused: quiet, the day total or the
+        // frozen elapsed is ambient info
+        &.idle, &.paused {
             opacity: 0.6;
         }
 

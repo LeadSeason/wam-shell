@@ -15,15 +15,21 @@ function isPath(image: string | null): image is string {
 
 function urgencyClass(n: AstalNotifd.Notification): string[] {
     switch (n.urgency) {
-        case AstalNotifd.Urgency.CRITICAL: return ["critical"]
-        case AstalNotifd.Urgency.LOW: return ["low"]
-        default: return []
+        case AstalNotifd.Urgency.CRITICAL:
+            return ["critical"]
+        case AstalNotifd.Urgency.LOW:
+            return ["low"]
+        default:
+            return []
     }
 }
 
 // the inline pill is plain text, so strip markup the body may carry
 function stripMarkup(s: string): string {
-    return s.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim()
+    return s
+        .replace(/<[^>]+>/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
 }
 
 // Gtk.Picture can never be shrunk below its texture's natural size by
@@ -45,14 +51,14 @@ const RING_SIZE = 40
 export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
     const image = n.get_image()
     const icon = isPath(image)
-        ? (n.get_app_icon() || "application-x-executable-symbolic")
-        : (image || n.get_app_icon() || "application-x-executable-symbolic")
+        ? n.get_app_icon() || "application-x-executable-symbolic"
+        : image || n.get_app_icon() || "application-x-executable-symbolic"
     const imageTexture = isPath(image)
         ? loadTexture(image.replace(/^file:\/\//, ""), 600, 220)
         : null
 
-    const actions = n.get_actions().filter((a) => a.get_id() !== "default")
-    const hasDefault = n.get_actions().some((a) => a.get_id() === "default")
+    const actions = n.get_actions().filter(a => a.get_id() !== "default")
+    const hasDefault = n.get_actions().some(a => a.get_id() === "default")
     const critical = n.urgency === AstalNotifd.Urgency.CRITICAL
 
     const summary = n.get_summary() || n.get_app_name()
@@ -88,7 +94,9 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
         if (leaveSource !== null) GLib.source_remove(leaveSource)
         if (hovered.get()) setPopupHovered(false)
     })
-    onCleanup(() => { rev = null })
+    onCleanup(() => {
+        rev = null
+    })
 
     // --- countdown: critical banners stick until dismissed -------------
     const total = Config.notifications.popupTimeout
@@ -99,15 +107,22 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
     let expired = false
     let area: Gtk.DrawingArea | null = null
 
+    let expireSource: number | null = null
     function expire() {
         if (expired) return
         expired = true
         if (rev) rev.revealChild = false
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, 220, () => {
+        expireSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 220, () => {
+            expireSource = null
             removePopup(n.id)
             return GLib.SOURCE_REMOVE
         })
     }
+    // the delayed removePopup above must not fire after the row is
+    // gone (every other source here is already onCleanup-tracked)
+    onCleanup(() => {
+        if (expireSource !== null) GLib.source_remove(expireSource)
+    })
 
     // low urgency drains faster; critical never drains
     if (!critical) {
@@ -125,7 +140,9 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
             last = now
             return GLib.SOURCE_CONTINUE
         })
-        onCleanup(() => { if (tick !== null) GLib.source_remove(tick) })
+        onCleanup(() => {
+            if (tick !== null) GLib.source_remove(tick)
+        })
     }
 
     function drawRing(self: Gtk.DrawingArea, cr: any, w: number, h: number) {
@@ -153,189 +170,197 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
     const interactiveButtons: Gtk.Widget[] = []
     let pressOnButton = false
 
-    return <revealer
-        $={(self) => {
-            rev = self
-            // slide in after the widget is realized; the row may be
-            // destroyed before the idle runs (instant resolve, burst
-            // past MAX_POPUPS) — guard like the pill/hover boxes do
-            GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
-                if (rev) rev.revealChild = true
-                return GLib.SOURCE_REMOVE
-            })
-        }}
-        transitionDuration={200}
-        transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
-    >
-        <box
-            $={(self) => { outerBox = self }}
-            cssClasses={hovered.as((h) => [
-                "popup", ...urgencyClass(n), ...(h ? ["open"] : []),
-            ])}
-            // fixed width: content-driven sizing made the whole stack
-            // resize on every arrival/expiry
-            widthRequest={Config.notifications.popupWidth}
-            // clip children to the (rounded) outline: during the
-            // pill->card morph the square image would otherwise stick
-            // out of the still-rounded border
-            overflow={Gtk.Overflow.HIDDEN}
-            spacing={8}
+    return (
+        <revealer
+            $={self => {
+                rev = self
+                // slide in after the widget is realized; the row may be
+                // destroyed before the idle runs (instant resolve, burst
+                // past MAX_POPUPS) — guard like the pill/hover boxes do
+                GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                    if (rev) rev.revealChild = true
+                    return GLib.SOURCE_REMOVE
+                })
+            }}
+            transitionDuration={200}
+            transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
         >
-            {/* the whole banner is clickable: invoke the default action,
+            <box
+                $={self => {
+                    outerBox = self
+                }}
+                cssClasses={hovered.as(h => ["popup", ...urgencyClass(n), ...(h ? ["open"] : [])])}
+                // fixed width: content-driven sizing made the whole stack
+                // resize on every arrival/expiry
+                widthRequest={Config.notifications.popupWidth}
+                // clip children to the (rounded) outline: during the
+                // pill->card morph the square image would otherwise stick
+                // out of the still-rounded border
+                overflow={Gtk.Overflow.HIDDEN}
+                spacing={8}
+            >
+                {/* the whole banner is clickable: invoke the default action,
                 or dismiss the banner when there is none — except presses
                 that land on the action/dismiss buttons */}
-            <Gtk.GestureClick
-                button={1}
-                onPressed={(_g, _n, x, y) => {
-                    pressOnButton = interactiveButtons.some((w) => {
-                        if (!outerBox) return false
-                        const [, rect] = w.compute_bounds(outerBox)
-                        return rect.contains_point(new Graphene.Point({ x, y }))
-                    })
-                }}
-                onReleased={() => {
-                    if (pressOnButton) return
-                    if (hasDefault) n.invoke("default")
-                    else removePopup(n.id)
-                }}
-            />
-            <Gtk.EventControllerMotion
-                onEnter={() => hover(true)}
-                onLeave={() => hover(false)}
-            />
-            {/* middle click anywhere dismisses */}
-            <Gtk.GestureClick
-                button={2}
-                onReleased={() => {
-                    removePopup(n.id)
-                    n.dismiss()
-                }}
-            />
-            <overlay
-                valign={Gtk.Align.START}
-                $={(self) => {
-                    // gnim only keeps the first JSX child of an overlay;
-                    // extra overlays are added imperatively (same pattern
-                    // as SliderSection / swayNC)
-                    self.add_overlay(new Gtk.Image({
-                        iconName: icon,
-                        pixelSize: 18,
-                        halign: Gtk.Align.CENTER,
-                        valign: Gtk.Align.CENTER,
-                    }))
-                }}
-            >
-                <Gtk.DrawingArea
-                    $={(self) => {
-                        area = self
-                        self.set_draw_func(drawRing)
+                <Gtk.GestureClick
+                    button={1}
+                    onPressed={(_g, _n, x, y) => {
+                        pressOnButton = interactiveButtons.some(w => {
+                            if (!outerBox) return false
+                            const [, rect] = w.compute_bounds(outerBox)
+                            return rect.contains_point(new Graphene.Point({ x, y }))
+                        })
                     }}
-                    cssClasses={["ring"]}
-                    widthRequest={RING_SIZE}
-                    heightRequest={RING_SIZE}
+                    onReleased={() => {
+                        if (pressOnButton) return
+                        if (hasDefault) n.invoke("default")
+                        else removePopup(n.id)
+                    }}
                 />
-            </overlay>
-            {/* pill state: bold summary on line one, body (plain,
+                <Gtk.EventControllerMotion
+                    onEnter={() => hover(true)}
+                    onLeave={() => hover(false)}
+                />
+                {/* middle click anywhere dismisses */}
+                <Gtk.GestureClick
+                    button={2}
+                    onReleased={() => {
+                        removePopup(n.id)
+                        n.dismiss()
+                    }}
+                />
+                <overlay
+                    valign={Gtk.Align.START}
+                    $={self => {
+                        // gnim only keeps the first JSX child of an overlay;
+                        // extra overlays are added imperatively (same pattern
+                        // as SliderSection / swayNC)
+                        self.add_overlay(
+                            new Gtk.Image({
+                                iconName: icon,
+                                pixelSize: 18,
+                                halign: Gtk.Align.CENTER,
+                                valign: Gtk.Align.CENTER,
+                            }),
+                        )
+                    }}
+                >
+                    <Gtk.DrawingArea
+                        $={self => {
+                            area = self
+                            self.set_draw_func(drawRing)
+                        }}
+                        cssClasses={["ring"]}
+                        widthRequest={RING_SIZE}
+                        heightRequest={RING_SIZE}
+                    />
+                </overlay>
+                {/* pill state: bold summary on line one, body (plain,
                 markup stripped) on line two when present. Same top
                 lines as the expanded card, so unfolding only ever
                 ADDS rows below — no content jump */}
-            <box
-                orientation={Gtk.Orientation.VERTICAL}
-                valign={Gtk.Align.START}
-                visible={hovered.as((h) => !h)}
-            >
-                <box spacing={6}>
-                    <label
-                        cssClasses={["summary"]}
-                        label={summary}
-                        xalign={0}
-                        hexpand
-                        maxWidthChars={42}
-                        ellipsize={Pango.EllipsizeMode.END}
-                    />
-                </box>
-                {body !== "" &&
-                    <label
-                        cssClasses={["inline"]}
-                        label={stripMarkup(body)}
-                        xalign={0}
-                        maxWidthChars={42}
-                        ellipsize={Pango.EllipsizeMode.END}
-                    />
-                }
-            </box>
-            {/* hover state: unfolds, timer frozen */}
-            <box
-                hexpand
-                orientation={Gtk.Orientation.VERTICAL}
-                spacing={2}
-                valign={Gtk.Align.START}
-                visible={hovered}
-            >
-                <box spacing={6}>
-                    <label
-                        cssClasses={["summary"]}
-                        label={summary}
-                        xalign={0}
-                        hexpand
-                        maxWidthChars={42}
-                        ellipsize={Pango.EllipsizeMode.END}
-                    />
-                    <button
-                        $={(self) => { interactiveButtons.push(self) }}
-                        cssClasses={["dismiss"]}
-                        onClicked={() => {
-                            removePopup(n.id)
-                            n.dismiss()
-                        }}
-                    >
-                        <image iconName="window-close-symbolic" />
-                    </button>
-                </box>
-                {body !== "" &&
-                    <label
-                        cssClasses={["body"]}
-                        label={safeMarkup(body)}
-                        useMarkup
-                        xalign={0}
-                        wrap
-                        maxWidthChars={42}
-                        lines={4}
-                        ellipsize={Pango.EllipsizeMode.END}
-                    />
-                }
-                {imageTexture &&
-                    // hard bound the image: the texture is pre-scaled at
-                    // 2x for hidpi, and Picture sizes itself to the
-                    // texture — on scale-1 displays that renders double
-                    // size. The box clamps the height; hexpand lets it
-                    // span the full card width (COVER crops).
-                    <box
-                        cssClasses={["image"]}
-                        heightRequest={110}
-                        hexpand
-                        overflow={Gtk.Overflow.HIDDEN}
-                    >
-                        <Gtk.Picture
-                            paintable={imageTexture}
-                            contentFit={Gtk.ContentFit.COVER}
-                            canShrink={true}
+                <box
+                    orientation={Gtk.Orientation.VERTICAL}
+                    valign={Gtk.Align.START}
+                    visible={hovered.as(h => !h)}
+                >
+                    <box spacing={6}>
+                        <label
+                            cssClasses={["summary"]}
+                            label={summary}
+                            xalign={0}
+                            hexpand
+                            maxWidthChars={42}
+                            ellipsize={Pango.EllipsizeMode.END}
                         />
                     </box>
-                }
-                {actions.length > 0 &&
-                    <box cssClasses={["actions"]} spacing={6}>
-                        {actions.map((a) =>
-                            <button
-                                $={(self) => { interactiveButtons.push(self) }}
-                                onClicked={() => n.invoke(a.get_id())}
-                            >
-                                <label label={a.get_label()} />
-                            </button>
-                        )}
+                    {body !== "" && (
+                        <label
+                            cssClasses={["inline"]}
+                            label={stripMarkup(body)}
+                            xalign={0}
+                            maxWidthChars={42}
+                            ellipsize={Pango.EllipsizeMode.END}
+                        />
+                    )}
+                </box>
+                {/* hover state: unfolds, timer frozen */}
+                <box
+                    hexpand
+                    orientation={Gtk.Orientation.VERTICAL}
+                    spacing={2}
+                    valign={Gtk.Align.START}
+                    visible={hovered}
+                >
+                    <box spacing={6}>
+                        <label
+                            cssClasses={["summary"]}
+                            label={summary}
+                            xalign={0}
+                            hexpand
+                            maxWidthChars={42}
+                            ellipsize={Pango.EllipsizeMode.END}
+                        />
+                        <button
+                            $={self => {
+                                interactiveButtons.push(self)
+                            }}
+                            cssClasses={["dismiss"]}
+                            onClicked={() => {
+                                removePopup(n.id)
+                                n.dismiss()
+                            }}
+                        >
+                            <image iconName="window-close-symbolic" />
+                        </button>
                     </box>
-                }
+                    {body !== "" && (
+                        <label
+                            cssClasses={["body"]}
+                            label={safeMarkup(body)}
+                            useMarkup
+                            xalign={0}
+                            wrap
+                            maxWidthChars={42}
+                            lines={4}
+                            ellipsize={Pango.EllipsizeMode.END}
+                        />
+                    )}
+                    {imageTexture && (
+                        // hard bound the image: the texture is pre-scaled at
+                        // 2x for hidpi, and Picture sizes itself to the
+                        // texture — on scale-1 displays that renders double
+                        // size. The box clamps the height; hexpand lets it
+                        // span the full card width (COVER crops).
+                        <box
+                            cssClasses={["image"]}
+                            heightRequest={110}
+                            hexpand
+                            overflow={Gtk.Overflow.HIDDEN}
+                        >
+                            <Gtk.Picture
+                                paintable={imageTexture}
+                                contentFit={Gtk.ContentFit.COVER}
+                                canShrink={true}
+                            />
+                        </box>
+                    )}
+                    {actions.length > 0 && (
+                        <box cssClasses={["actions"]} spacing={6}>
+                            {actions.map(a => (
+                                <button
+                                    $={self => {
+                                        interactiveButtons.push(self)
+                                    }}
+                                    onClicked={() => n.invoke(a.get_id())}
+                                >
+                                    <label label={a.get_label()} />
+                                </button>
+                            ))}
+                        </box>
+                    )}
+                </box>
             </box>
-        </box>
-    </revealer>
+        </revealer>
+    )
 }

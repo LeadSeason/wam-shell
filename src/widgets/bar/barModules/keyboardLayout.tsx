@@ -1,8 +1,6 @@
 import { Gtk } from "ags/gtk4"
 import { createComputed, For } from "gnim"
-import {
-    ensureLayoutSource, flag, LayoutSource,
-} from "../../../lib/kbLayout"
+import { ensureLayoutSource, flag, LayoutSource } from "../../../lib/kbLayout"
 
 // Keyboard layout indicator. Bar shows the active layout's flag, clicking
 // opens a dropdown of all configured layouts with flag and name; picking
@@ -20,39 +18,51 @@ function LayoutDropdown({ source }: { source: LayoutSource }) {
         return flag(code) || code.toUpperCase() || "⌨"
     })
 
-    return <menubutton
-        cssClasses={["keyboardLayout"]}
-        tooltipText={createComputed([activeIndex, names],
-            (i, ns) => ns[i] ?? "Keyboard layout")}>
-        <label label={labelText} />
-        <popover
-            hasArrow={false}
-            $={(self) => { pop = self as Gtk.Popover }}
+    return (
+        <menubutton
+            cssClasses={["keyboardLayout"]}
+            tooltipText={createComputed(
+                [activeIndex, names],
+                (i, ns) => ns[i] ?? "Keyboard layout",
+            )}
         >
-            <box orientation={Gtk.Orientation.VERTICAL}>
-                {/* names arrive async after startup; a static snapshot
+            <label label={labelText} />
+            <popover
+                hasArrow={false}
+                $={self => {
+                    pop = self as Gtk.Popover
+                }}
+            >
+                <box orientation={Gtk.Orientation.VERTICAL}>
+                    {/* names arrive async after startup; a static snapshot
                     stays empty for the shell's lifetime */}
-                <For each={names}>
-                    {(n, i) =>
-                        <button
-                            cssClasses={createComputed([activeIndex, i],
-                                (a, idx) => a === idx ? ["active"] : [])}
-                            onClicked={() => {
-                                source.switchTo(i.get())
-                                pop?.popdown()
-                            }}
-                        >
-                            <box spacing={8}>
-                                <label label={createComputed([layouts, i],
-                                    (ls, idx) => flag(ls[idx] ?? "") || "  ")} />
-                                <label label={n} xalign={0} />
-                            </box>
-                        </button>
-                    }
-                </For>
-            </box>
-        </popover>
-    </menubutton>
+                    <For each={names}>
+                        {(n, i) => (
+                            <button
+                                cssClasses={createComputed([activeIndex, i], (a, idx) =>
+                                    a === idx ? ["active"] : [],
+                                )}
+                                onClicked={() => {
+                                    source.switchTo(i.get())
+                                    pop?.popdown()
+                                }}
+                            >
+                                <box spacing={8}>
+                                    <label
+                                        label={createComputed(
+                                            [layouts, i],
+                                            (ls, idx) => flag(ls[idx] ?? "") || "  ",
+                                        )}
+                                    />
+                                    <label label={n} xalign={0} />
+                                </box>
+                            </button>
+                        )}
+                    </For>
+                </box>
+            </popover>
+        </menubutton>
+    )
 }
 
 export default function KeyboardLayout() {

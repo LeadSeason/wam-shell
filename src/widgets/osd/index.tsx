@@ -15,23 +15,28 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
     let isFocused
     if (Config.desktopSession === "hyprland") {
         const hyprland = AstalHyprland.get_default()
-        isFocused = createBinding(hyprland, "focusedMonitor").as(m =>
-            m?.name === gdkMonitor.get_connector())
+        isFocused = createBinding(hyprland, "focusedMonitor").as(
+            m => m?.name === gdkMonitor.get_connector(),
+        )
     } else if (Config.desktopSession === "sway" || Config.desktopSession === "i3") {
         const sway = Sway.get_default()
         isFocused = sway.ok
-            ? createBinding(sway, "outputs").as(outputs =>
-                (outputs.find((o: any) => o.focused)?.name ?? null)
-                === gdkMonitor.get_connector())
+            ? createBinding(sway, "outputs").as(
+                  outputs =>
+                      (outputs.find((o: any) => o.focused)?.name ?? null) ===
+                      gdkMonitor.get_connector(),
+              )
             : app.monitors[0] === gdkMonitor
     } else {
         isFocused = app.monitors[0] === gdkMonitor
     }
 
-    const anchor = Config.osd.position === "bottom" ? BOTTOM
-        : Config.osd.position === "top" ? TOP : 0
-    const margin = Config.osd.position === "center" ? {} :
-        { [Config.osd.position === "bottom" ? "marginBottom" : "marginTop"]: 60 }
+    const anchor =
+        Config.osd.position === "bottom" ? BOTTOM : Config.osd.position === "top" ? TOP : 0
+    const margin =
+        Config.osd.position === "center"
+            ? {}
+            : { [Config.osd.position === "bottom" ? "marginBottom" : "marginTop"]: 60 }
 
     let win: Astal.Window
     let rev: Gtk.Revealer
@@ -63,50 +68,68 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
     visible.subscribe(update)
     if (typeof isFocused !== "boolean") isFocused.subscribe(update)
 
-    return <window
-        $={(self) => { win = self }}
-        name="OSD"
-        class="OSDWindow"
-        namespace="osd"
-        gdkmonitor={gdkMonitor}
-        layer={Astal.Layer.OVERLAY}
-        exclusivity={Astal.Exclusivity.IGNORE}
-        keymode={Astal.Keymode.NONE}
-        anchor={anchor}
-        visible={false}
-        application={app}
-        {...margin}
-    >
-        <revealer
-            $={(self) => { rev = self }}
-            revealChild={false}
-            transitionType={Gtk.RevealerTransitionType.CROSSFADE}
-            transitionDuration={200}
+    return (
+        <window
+            $={self => {
+                win = self
+            }}
+            name="OSD"
+            class="OSDWindow"
+            namespace="osd"
+            gdkmonitor={gdkMonitor}
+            layer={Astal.Layer.OVERLAY}
+            exclusivity={Astal.Exclusivity.IGNORE}
+            keymode={Astal.Keymode.NONE}
+            anchor={anchor}
+            visible={false}
+            application={app}
+            {...margin}
         >
-            <box cssClasses={content.as(c => ["OSD", `osd-${c.kind}`])} spacing={10} canTarget={false}>
-                <image
-                    iconName={content.as(c => c.icon)}
-                    visible={content.as(c => c.icon !== "")}
-                    cssClasses={content.as(c => c.over ? ["osdOn"] : ["osdOff"])}
-                />
-                <With value={content}>
-                    {(c) => c.value !== null &&
-                        <box
-                            cssClasses={["osdBar", c.over ? "over" : ""]}
-                            // fill is a background-size percentage so the
-                            // bar's size is fully controlled from scss;
-                            // clamp: negative size is invalid css
-                            css={`background-size: ${
-                                Math.max(0, Math.round((c.value ?? 0) * 100))}% 100%;`}
-                        />}
-                </With>
-                <label
-                    label={content.as(c => c.label)}
-                    widthChars={4}
-                    maxWidthChars={36}
-                    ellipsize={Pango.EllipsizeMode.END}
-                />
-            </box>
-        </revealer>
-    </window>
+            <revealer
+                $={self => {
+                    rev = self
+                }}
+                revealChild={false}
+                transitionType={Gtk.RevealerTransitionType.CROSSFADE}
+                transitionDuration={200}
+            >
+                <box
+                    cssClasses={content.as(c => ["OSD", `osd-${c.kind}`])}
+                    spacing={10}
+                    canTarget={false}
+                >
+                    <image
+                        iconName={content.as(c => c.icon)}
+                        visible={content.as(c => c.icon !== "")}
+                        cssClasses={content.as(c => (c.over ? ["osdOn"] : ["osdOff"]))}
+                    />
+                    <With value={content}>
+                        {c =>
+                            c.value !== null && (
+                                <box
+                                    cssClasses={["osdBar", c.over ? "over" : ""]}
+                                    // fill is a background-size percentage so the
+                                    // bar's size is fully controlled from scss;
+                                    // clamp: negative size is invalid css
+                                    css={`
+                                        background-size: ${Math.max(
+                                                0,
+                                                Math.round((c.value ?? 0) * 100),
+                                            )}%
+                                            100%;
+                                    `}
+                                />
+                            )
+                        }
+                    </With>
+                    <label
+                        label={content.as(c => c.label)}
+                        widthChars={4}
+                        maxWidthChars={36}
+                        ellipsize={Pango.EllipsizeMode.END}
+                    />
+                </box>
+            </revealer>
+        </window>
+    )
 }

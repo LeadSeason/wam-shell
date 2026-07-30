@@ -7,11 +7,10 @@ import { isFile } from "./lib/utils"
 
 // scss/theme/script paths resolve against the repo root. Launching from
 // another cwd breaks that; WAM_SHELL_DIR overrides when needed.
-const instanceSrcDir = GLib.getenv("WAM_SHELL_DIR") || exec("pwd").trim()
-const userHomeDir = GLib.getenv("HOME");
-const xdgConfigHomeDir = GLib.getenv("XDG_CONFIG_HOME");
-const xdgRuntimeDir = GLib.getenv("XDG_RUNTIME_DIR");
-
+const instanceSrcDir = GLib.getenv("WAM_SHELL_DIR") || GLib.get_current_dir()
+const userHomeDir = GLib.getenv("HOME")
+const xdgConfigHomeDir = GLib.getenv("XDG_CONFIG_HOME")
+const xdgRuntimeDir = GLib.getenv("XDG_RUNTIME_DIR")
 
 // Locate and load config
 const configFile = findConfigFile()
@@ -26,7 +25,7 @@ function findConfigFile(): string | undefined {
         `${xdgConfigHomeDir}/wam-shell/config.toml`,
         `${userHomeDir}/.config/wam-shell/config.toml`,
         `${instanceSrcDir}/config-override.toml`,
-        `${instanceSrcDir}/config.toml`
+        `${instanceSrcDir}/config.toml`,
     ]
 
     for (const candidate of candidates) {
@@ -57,8 +56,10 @@ function parseToml(raw: string): Record<string, any> {
 
 function getOsIcon(): string {
     if (configData.os_icon !== undefined) {
-        if (typeof (configData.os_icon) !== "string") {
-            console.error(`Config "os_icon" cannot be typeof ${typeof (configData.os_icon)}, must be string`);
+        if (typeof configData.os_icon !== "string") {
+            console.error(
+                `Config "os_icon" cannot be typeof ${typeof configData.os_icon}, must be string`,
+            )
         } else {
             return configData.os_icon
         }
@@ -80,12 +81,13 @@ function getDesktopSession(): string {
     let override = configData.desktop_session_override
     let desktop = GLib.getenv("DESKTOP_SESSION")
 
-
     // Preflight checks for override config variable
     if (override !== undefined) {
-        if (typeof (override) !== "string") {
-            console.error(`Config "desktop_session_override" cannot be typeof ${typeof (override)}, must be string`);
-            override = GLib.getenv("DESKTOP_SESSION")  // Fallback
+        if (typeof override !== "string") {
+            console.error(
+                `Config "desktop_session_override" cannot be typeof ${typeof override}, must be string`,
+            )
+            override = GLib.getenv("DESKTOP_SESSION") // Fallback
         }
 
         desktop = override
@@ -93,8 +95,8 @@ function getDesktopSession(): string {
 
     // Preflight checks for i3/sway (both speak the i3 IPC protocol)
     if (desktop === "sway" || desktop === "i3") {
-        if (typeof (GLib.getenv("I3SOCK")) !== "string") {
-            console.error(`i3/sway ipc I3SOCK Socket ENV missing`);
+        if (typeof GLib.getenv("I3SOCK") !== "string") {
+            console.error(`i3/sway ipc I3SOCK Socket ENV missing`)
             return "" // Fallback
         }
 
@@ -184,13 +186,17 @@ function getQSettingsConfig() {
 
     let closeDelay = get("close_delay", 350)
     if (typeof closeDelay !== "number" || closeDelay < 0) {
-        console.error(`Config "quicksettings.close_delay" must be a positive number, got "${closeDelay}"`)
+        console.error(
+            `Config "quicksettings.close_delay" must be a positive number, got "${closeDelay}"`,
+        )
         closeDelay = 350
     }
 
     let statsInterval = get("stats_interval", 1000)
     if (typeof statsInterval !== "number" || statsInterval <= 0) {
-        console.error(`Config "quicksettings.stats_interval" must be a positive number, got "${statsInterval}"`)
+        console.error(
+            `Config "quicksettings.stats_interval" must be a positive number, got "${statsInterval}"`,
+        )
         statsInterval = 1000
     }
 
@@ -210,10 +216,8 @@ function getQSettingsConfig() {
         // (charge_control_end_threshold, e.g. Lenovo/ASUS limits);
         // default 100 when neither is available
         batteryFullAt: (() => {
-            const explicit = configData.quicksettings?.battery_full_at
-                ?? configData.battery_full_at
-            if (typeof explicit === "number" && explicit > 0 && explicit <= 100)
-                return explicit
+            const explicit = configData.quicksettings?.battery_full_at ?? configData.battery_full_at
+            if (typeof explicit === "number" && explicit > 0 && explicit <= 100) return explicit
             for (const bat of ["BAT0", "BAT1", "BAT2"]) {
                 const p = `/sys/class/power_supply/${bat}/charge_control_end_threshold`
                 try {
@@ -221,7 +225,7 @@ function getQSettingsConfig() {
                         const v = Number(readFile(p).trim())
                         if (v > 0 && v <= 100) return v
                     }
-                } catch { }
+                } catch {}
             }
             return 100
         })(),
@@ -261,7 +265,8 @@ function getAppearanceConfig() {
     const themeOr = (key: string, fallback: string) => {
         const t = get(key, fallback)
         return typeof t === "string" && isFile(`${instanceSrcDir}/scss/theme/${t}.scss`)
-            ? t : fallback
+            ? t
+            : fallback
     }
 
     return {
@@ -279,18 +284,22 @@ function resolveTheme(data: Record<string, any>): string {
     const theme = getTheme(data)
     const appearance = getAppearanceConfig()
     if (!appearance.followSystem) return theme
-    try {
-        const s = new Gio.Settings({ schema_id: "org.gnome.desktop.interface" })
-        return s.get_string("color-scheme").includes("prefer-dark")
-            ? appearance.darkTheme
-            : appearance.lightTheme
-    } catch {
-        // schema not installed — keep the configured theme
-        return theme
-    }
+    // new Gio.Settings({schema_id}) on a missing schema aborts the
+    // process (a g_error, not a catchable exception) — look it up first
+    const schema = Gio.SettingsSchemaSource.get_default()?.lookup(
+        "org.gnome.desktop.interface",
+        true,
+    )
+    // schema not installed — keep the configured theme
+    if (!schema) return theme
+    const s = new Gio.Settings({ settings_schema: schema })
+    return s.get_string("color-scheme").includes("prefer-dark")
+        ? appearance.darkTheme
+        : appearance.lightTheme
 }
 
-function getHyprsunsetConfig() {    const h = configData.hyprsunset ?? {}
+function getHyprsunsetConfig() {
+    const h = configData.hyprsunset ?? {}
     const get = (key: string, fallback: any) => h[key] ?? configData[key] ?? fallback
 
     return {
@@ -321,10 +330,14 @@ function getSleepTimerConfig() {
     const get = (key: string, fallback: any) => s[key] ?? configData[key] ?? fallback
 
     let presets = get("presets", [10, 15, 20, 30, 45, 60])
-    if (!Array.isArray(presets)
-        || presets.length === 0
-        || presets.some((p: any) => typeof p !== "number" || p <= 0)) {
-        console.error(`Config "sleep_timer.presets" must be a non-empty list of positive numbers, got "${JSON.stringify(presets)}"`)
+    if (
+        !Array.isArray(presets) ||
+        presets.length === 0 ||
+        presets.some((p: any) => typeof p !== "number" || p <= 0)
+    ) {
+        console.error(
+            `Config "sleep_timer.presets" must be a non-empty list of positive numbers, got "${JSON.stringify(presets)}"`,
+        )
         presets = [10, 15, 20, 30, 45, 60]
     }
 
@@ -347,7 +360,9 @@ function getHarvestConfig() {
 
     let pollInterval = get("poll_interval", 10)
     if (typeof pollInterval !== "number" || pollInterval <= 0) {
-        console.error(`Config "harvest.poll_interval" must be a positive number, got "${pollInterval}"`)
+        console.error(
+            `Config "harvest.poll_interval" must be a positive number, got "${pollInterval}"`,
+        )
         pollInterval = 10
     }
     // floor: a config typo must not throttle the Harvest account
@@ -365,7 +380,9 @@ function getHarvestConfig() {
     let workEnd = get("work_end", "")
     if (!hhmm(workStart) || !hhmm(workEnd)) {
         if (workStart !== "" || workEnd !== "") {
-            console.error(`Config "harvest.work_start"/"harvest.work_end" must both be "HH:MM", got "${workStart}"/"${workEnd}"; disabling the window`)
+            console.error(
+                `Config "harvest.work_start"/"harvest.work_end" must both be "HH:MM", got "${workStart}"/"${workEnd}"; disabling the window`,
+            )
         }
         workStart = ""
         workEnd = ""
@@ -391,19 +408,25 @@ function getNotificationsConfig() {
 
     let popupTimeout = get("popup_timeout", 5000)
     if (typeof popupTimeout !== "number" || popupTimeout <= 0) {
-        console.error(`Config "notifications.popup_timeout" must be a positive number, got "${popupTimeout}"`)
+        console.error(
+            `Config "notifications.popup_timeout" must be a positive number, got "${popupTimeout}"`,
+        )
         popupTimeout = 5000
     }
 
     let position = get("position", "topRight")
     if (!["topRight", "topCenter"].includes(position)) {
-        console.error(`Config "notifications.position" must be "topRight" or "topCenter", got "${position}"`)
+        console.error(
+            `Config "notifications.position" must be "topRight" or "topCenter", got "${position}"`,
+        )
         position = "topRight"
     }
 
     let daemon = get("daemon", "auto")
     if (!["auto", "wam-shell", "system"].includes(daemon)) {
-        console.error(`Config "notifications.daemon" must be "auto", "wam-shell" or "system", got "${daemon}"`)
+        console.error(
+            `Config "notifications.daemon" must be "auto", "wam-shell" or "system", got "${daemon}"`,
+        )
         daemon = "auto"
     }
 
@@ -419,7 +442,9 @@ function getNotificationsConfig() {
         popupWidth: (() => {
             const w = get("popup_width", 460)
             if (typeof w !== "number" || w <= 0) {
-                console.error(`Config "notifications.popup_width" must be a positive number, got "${w}"`)
+                console.error(
+                    `Config "notifications.popup_width" must be a positive number, got "${w}"`,
+                )
                 return 460
             }
             return w
@@ -436,7 +461,9 @@ function getOsdConfig() {
 
     let position = get("position", "bottom")
     if (!["bottom", "center", "top"].includes(position)) {
-        console.error(`Config "osd.position" must be "bottom", "center" or "top", got "${position}"`)
+        console.error(
+            `Config "osd.position" must be "bottom", "center" or "top", got "${position}"`,
+        )
         position = "bottom"
     }
 
@@ -481,9 +508,17 @@ export interface PanelConfig {
 }
 
 const PANEL_WIDGETS = [
-    "osicon", "workspaces", "clock", "stats",
-    "tray", "quicksettings", "language", "notifications", "media",
-    "sleeptimer", "harvest",
+    "osicon",
+    "workspaces",
+    "clock",
+    "stats",
+    "tray",
+    "quicksettings",
+    "language",
+    "notifications",
+    "media",
+    "sleeptimer",
+    "harvest",
 ]
 
 function getPanelsConfig(): PanelConfig[] {
@@ -500,7 +535,9 @@ function getPanelsConfig(): PanelConfig[] {
     return p.map((entry: any, i: number) => {
         let position = entry.position ?? "top"
         if (position !== "top" && position !== "bottom") {
-            console.error(`Config "panel[${i}].position" must be "top" or "bottom", got "${position}"`)
+            console.error(
+                `Config "panel[${i}].position" must be "top" or "bottom", got "${position}"`,
+            )
             position = "top"
         }
 
@@ -517,42 +554,49 @@ function getPanelsConfig(): PanelConfig[] {
             class: typeof entry.class === "string" ? entry.class : "",
             left: checkWidgets(strList(entry.left, ["osicon", "workspaces"])),
             center: checkWidgets(strList(entry.center, ["clock"])),
-            right: checkWidgets(strList(entry.right,
-                ["stats", "tray", "quicksettings", "language", "notifications"])),
+            right: checkWidgets(
+                strList(entry.right, [
+                    "stats",
+                    "tray",
+                    "quicksettings",
+                    "language",
+                    "notifications",
+                ]),
+            ),
         }
     })
 }
 
 /**
- * Check if the pending updates daemon is active. pending update daemon is a 
- * LeadSeason 
- * 
- * @returns 
+ * Check if the pending updates daemon is active. pending update daemon is a
+ * LeadSeason
+ *
+ * @returns
  * - false → daemon not active OR update file missing
  * - string → absolute path to the update file (when active and file exists)
  */
 function getPendingUpdateDaemonStatus(): false | string {
-    let status;
+    let status
     try {
-        status = exec("systemctl --user is-active pending-updates-daemon.service");
+        status = exec("systemctl --user is-active pending-updates-daemon.service")
     } catch (e) {
-        return false;
+        return false
     }
     if (status !== "active") {
-        return false;
+        return false
     }
 
-    let updateFile = "/tmp/system_updates";
+    let updateFile = "/tmp/system_updates"
 
     if (xdgRuntimeDir) {
-        updateFile = `${xdgRuntimeDir}/system_updates`;
+        updateFile = `${xdgRuntimeDir}/system_updates`
     }
 
     if (!isFile(updateFile)) {
-        return false;
+        return false
     }
 
-    return updateFile;
+    return updateFile
 }
 
 export default class Config {
@@ -566,13 +610,15 @@ export default class Config {
         const v = configData.arch_updates_threshold
         if (v === undefined) return 50
         if (typeof v !== "number" || v < 0) {
-            console.error(`Config "arch_updates_threshold" must be a non-negative number, got "${v}"`)
+            console.error(
+                `Config "arch_updates_threshold" must be a non-negative number, got "${v}"`,
+            )
             return 50
         }
         return v
     })()
 
-    static swayGaps = (configData.sway_gaps === undefined) ? true : configData.sway_gaps
+    static swayGaps = configData.sway_gaps === undefined ? true : configData.sway_gaps
     static swayGapsSizeDefault = 10
 
     static workspaces = getWorkspacesConfig()

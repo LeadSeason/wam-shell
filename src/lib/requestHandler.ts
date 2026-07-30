@@ -1,5 +1,5 @@
-import app from "ags/gtk4/app";
-import Config from "../config";
+import app from "ags/gtk4/app"
+import Config from "../config"
 
 // Example usage at the bottom of the page
 
@@ -26,8 +26,7 @@ class CommandRegistry {
     static instance: CommandRegistry
 
     static get_default() {
-        if (!this.instance)
-            this.instance = new CommandRegistry()
+        if (!this.instance) this.instance = new CommandRegistry()
 
         return this.instance
     }
@@ -37,11 +36,20 @@ class CommandRegistry {
     register(command: CommandEntry): void {
         command.name.forEach(element => {
             if (element.includes(" "))
-                throw new Error(`Invalid altName "${element}" — spaces are not allowed`);
-        });
+                throw new Error(`Invalid altName "${element}" — spaces are not allowed`)
+        })
 
         if (command.name.length === 0)
             throw new Error(`Command must have at least 1 name ${command}`)
+
+        // execute() picks the first matching entry, so a re-registered
+        // alias would silently shadow the new command — call it out
+        const taken = new Set(this.commands.flatMap(c => c.name.map(n => n.toLowerCase())))
+        const dupes = command.name.filter(n => taken.has(n.toLowerCase()))
+        if (dupes.length > 0)
+            console.warn(
+                `Request: "${command.name[0]}" alias(es) already registered and will be shadowed: ${dupes.join(", ")}`,
+            )
 
         this.commands.push(command)
     }
@@ -52,12 +60,15 @@ class CommandRegistry {
      * @returns Returns the executed commands output string
      */
     async execute(argv: string[], silent: boolean = false): Promise<string> {
-        let requested_command = argv.shift()
+        // copy: call sites pass fixed lists (["notifications"], ...) and
+        // shift() would eat their first element
+        const args = [...argv]
+        let requested_command = args.shift()
 
         if (requested_command === undefined) return "<helper> help for list of commands"
 
         if (!silent) {
-            console.log(`Request: command(${requested_command}) args(${argv.join(", ")})`)
+            console.log(`Request: command(${requested_command}) args(${args.join(", ")})`)
         }
 
         // Typescript happy, Also sane default
@@ -66,7 +77,7 @@ class CommandRegistry {
         }
 
         const entry = this.commands.find(cmd =>
-            cmd.name.some(name => name.toLowerCase() === requested_command.toLowerCase())
+            cmd.name.some(name => name.toLowerCase() === requested_command.toLowerCase()),
         )
 
         if (!entry) {
@@ -74,7 +85,7 @@ class CommandRegistry {
         }
 
         try {
-            const result = await entry.main(argv)
+            const result = await entry.main(args)
             return `${Config.instanceName}: ${result}`
         } catch (err) {
             console.warn(`Request error: ${(err as Error).message}`)
@@ -86,7 +97,7 @@ class CommandRegistry {
         const command = argv.shift()
         if (command) {
             const entry = this.commands.find(cmd =>
-                cmd.name.some(name => name.toLowerCase() === command.toLowerCase())
+                cmd.name.some(name => name.toLowerCase() === command.toLowerCase()),
             )
             if (entry?.help) {
                 let out = `${entry.name[0]}:\n`
@@ -104,8 +115,7 @@ class CommandRegistry {
             out += `\n- ${cmd.name[0]}\n`
             out += `  ${cmd.description}\n\n`
             out += `  Aliases: ${cmd.name.join(", ")}\n`
-            if (cmd.subCommands)
-                out += `  subcommands: ${cmd.subCommands.join(", ")}\n`
+            if (cmd.subCommands) out += `  subcommands: ${cmd.subCommands.join(", ")}\n`
         }
         return out.trim()
     }
@@ -120,7 +130,7 @@ class CommandRegistry {
           - help <command>
             gives help to command if command has a help section
         `,
-            main: (argv: string[]) => this.help(argv)
+            main: (argv: string[]) => this.help(argv),
         })
 
         this.register({
@@ -128,9 +138,9 @@ class CommandRegistry {
             description: "quit Application",
             help: `Exits the app`,
             main: () => {
-                app.quit(0);
+                app.quit(0)
                 return "exiting ..."
-            }
+            },
         })
     }
 }

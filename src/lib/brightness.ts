@@ -1,6 +1,5 @@
 import GObject, { register, getter, setter } from "ags/gobject"
 import GLib from "gi://GLib?version=2.0"
-import { exec } from "ags/process"
 import { readFile } from "ags/file"
 import AstalBrightness from "gi://AstalBrightness"
 import Config from "../config"
@@ -25,21 +24,17 @@ const isDummy = abScreen
 const readMax = (): number => {
     if (!abScreen || isDummy) return 0
     try {
-        return Number(readFile(
-            `/sys/class/backlight/${abScreen.name}/max_brightness`)) || 0
+        return Number(readFile(`/sys/class/backlight/${abScreen.name}/max_brightness`)) || 0
     } catch {
         return 0
     }
 }
 const maxBrightness = readMax()
 const hasBacklight = abScreen !== null && !isDummy && maxBrightness > 0
-const hasHyprsunset = (() => {
-    try { exec("which hyprsunset"); return true } catch { return false }
-})()
+const hasHyprsunset = GLib.find_program_in_path("hyprsunset") !== null
 // computed at module level: private fields can't be referenced from
 // other fields' initializers
-const useGammaDim = !hasBacklight && hasHyprsunset
-    && Config.desktopSession === "hyprland"
+const useGammaDim = !hasBacklight && hasHyprsunset && Config.desktopSession === "hyprland"
 const screenIsPresent = hasBacklight || useGammaDim
 
 @register({ GTypeName: "Brightness" })
@@ -47,8 +42,7 @@ export default class Brightness extends GObject.Object {
     static instance: Brightness
 
     static get_default() {
-        if (!this.instance)
-            this.instance = new Brightness()
+        if (!this.instance) this.instance = new Brightness()
 
         return this.instance
     }
@@ -60,10 +54,14 @@ export default class Brightness extends GObject.Object {
     #previous = -1
 
     @getter(Number)
-    get screen() { return this.#screen }
+    get screen() {
+        return this.#screen
+    }
 
     @getter(Number)
-    get previous() { return this.#previous }
+    get previous() {
+        return this.#previous
+    }
 
     /** jump back to the previous level; the tracking hook then holds
      *  the level we just left, so this toggles between the two */
@@ -73,32 +71,37 @@ export default class Brightness extends GObject.Object {
     }
 
     @setter(Number)
-    set screen(percent) {
+    set screen(fraction) {
+        // no backlight and no gamma backend: nothing consumes the
+        // value — writing #screen without notify would only drift
+        // bound widgets away from the real level
+        if (!this.#screenIsPresent) return
+
         // outdoor mode is a toggle, the slider stays 0-100%
-        if (percent > 1)
-            percent = 1
+        if (fraction > 1) fraction = 1
 
         // never go fully blank: floor at the device's raw 1
         const floor = maxBrightness > 0 ? 1 / maxBrightness : 0.01
-        if (percent < floor)
-            percent = floor
+        if (fraction < floor) fraction = floor
 
-        this.#screen = percent
+        this.#screen = fraction
 
         if (this.#useGammaDim) {
-            setDimLevel(percent)
+            setDimLevel(fraction)
             this.notify("screen")
             return
         }
 
         if (hasBacklight) {
-            abScreen.brightness = percent
+            abScreen.brightness = fraction
             this.notify("screen")
         }
     }
 
     @getter(Boolean)
-    get screenIsPresent() { return this.#screenIsPresent };
+    get screenIsPresent() {
+        return this.#screenIsPresent
+    }
 
     constructor() {
         super()
@@ -113,9 +116,7 @@ export default class Brightness extends GObject.Object {
         // advanced on noise). The snapshot is debounced: a slider drag
         // fires per motion event, so `previous` is only recorded once
         // the changes settle — it always holds the pre-drag level.
-        const eps = maxBrightness > 0
-            ? Math.min(0.03, 1.5 / maxBrightness)
-            : 0.02
+        const eps = maxBrightness > 0 ? Math.min(0.03, 1.5 / maxBrightness) : 0.02
         let last = this.#screen
         let burstStart = -1
         let settleSource = 0

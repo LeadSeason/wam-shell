@@ -1,15 +1,14 @@
-import Sway, { Node } from "../lib/sway";
+import Sway, { Node } from "../lib/sway"
 
-import { For, createBinding, createState } from "ags"
+import { For, createBinding, createState } from "gnim"
 import { Astal, Gtk, Gdk } from "ags/gtk4"
 import Graphene from "gi://Graphene"
-import Fuse from "fuse.js";
-import { timeout } from "ags/time";
-import Config from "../config";
-import CommandRegistry from "../lib/requestHandler";
+import Fuse from "fuse.js"
+import { timeout } from "ags/time"
+import Config from "../config"
+import CommandRegistry from "../lib/requestHandler"
 
 const { TOP, BOTTOM, LEFT, RIGHT } = Astal.WindowAnchor
-
 
 export default function Scratchpad() {
     let win: Astal.Window
@@ -25,11 +24,20 @@ export default function Scratchpad() {
     // This is a big assumption but haven't had any issues with it. (Just yet)
     // apps is the nodes in sway scratchpad, constantly being updated on every change.
     // list is has the apps show in the scratchpad window list, updated when opened or something is searched.
-    const [apps, setApps] = createState((sway.tree.find(i => i.name === "__i3")?.nodes.find(i => i.name === "__i3_scratch")?.floating_nodes) as Node[])
-    const [list, setList] = createState((sway.tree.find(i => i.name === "__i3")?.nodes.find(i => i.name === "__i3_scratch")?.floating_nodes) as Node[])
+    const [apps, setApps] = createState(
+        sway.tree.find(i => i.name === "__i3")?.nodes.find(i => i.name === "__i3_scratch")
+            ?.floating_nodes as Node[],
+    )
+    const [list, setList] = createState(
+        sway.tree.find(i => i.name === "__i3")?.nodes.find(i => i.name === "__i3_scratch")
+            ?.floating_nodes as Node[],
+    )
 
     createBinding(sway, "tree").subscribe(() => {
-        setApps(sway.tree.find(i => i.name === "__i3")?.nodes.find(i => i.name === "__i3_scratch")?.floating_nodes as Node[])
+        setApps(
+            sway.tree.find(i => i.name === "__i3")?.nodes.find(i => i.name === "__i3_scratch")
+                ?.floating_nodes as Node[],
+        )
     })
 
     function search(text: string) {
@@ -45,7 +53,7 @@ export default function Scratchpad() {
                 "window_properties.instance",
                 "window_properties.title",
                 "window_properties.window_role",
-                "window_properties.window_type"
+                "window_properties.window_type",
             ],
             threshold: 0.3,
             ignoreLocation: true,
@@ -75,51 +83,63 @@ export default function Scratchpad() {
                 app.window_properties?.instance,
                 app.window_properties?.title,
                 app.window_properties?.window_role,
-                app.window_properties?.window_type
+                app.window_properties?.window_type,
             ]
 
             // Steam app icon lookup
             if (app.window_properties?.instance?.startsWith("steam_app_")) {
                 // Replaces "steam_app_" -> "steam_icon_" while keeping the numbers
-                iconProps.push(app.window_properties.instance.replace(/^steam_app_(\d+)$/, "steam_icon_$1"))
+                iconProps.push(
+                    app.window_properties.instance.replace(/^steam_app_(\d+)$/, "steam_icon_$1"),
+                )
             }
 
-            title = (app.window_properties?.class != null) ? app.window_properties.class : ""
-            description = (app.window_properties?.title != null) ? app.window_properties.title : ""
-        }
-        else {
+            title = app.window_properties?.class != null ? app.window_properties.class : ""
+            description = app.window_properties?.title != null ? app.window_properties.title : ""
+        } else {
             // Wayland app
             iconProps = [
                 app?.app_id,
-                (app.name != null) ? app.name.split(" ")[0] : undefined,
-                (app.name != null) ? app.name : undefined
+                app.name != null ? app.name.split(" ")[0] : undefined,
+                app.name != null ? app.name : undefined,
             ]
-            title = (app?.app_id != null) ? app.app_id : ""
-            description = (app?.name != null) ? app.name : ""
+            title = app?.app_id != null ? app.app_id : ""
+            description = app?.name != null ? app.name : ""
         }
 
         title = title.replace(title.charAt(0), title.charAt(0).toUpperCase())
-        description = description.replace(description.charAt(0), description.charAt(0).toUpperCase())
+        description = description.replace(
+            description.charAt(0),
+            description.charAt(0).toUpperCase(),
+        )
 
         for (const element of iconProps) {
-            if (!element) continue;
+            if (!element) continue
             if (gtkIconTheme.has_icon(element)) {
                 iconLet = <image iconName={element} />
                 // first match wins — iconProps is ordered most specific
                 // first, continuing would let the least specific win
                 break
             }
-        };
+        }
 
-        return <button onClicked={() => openApp(app)}>
-            <box spacing={6}>
-                {iconLet}
-                <box orientation={Gtk.Orientation.VERTICAL}  >
-                    <label label={title} class="title" maxWidthChars={60} wrap xalign={0} />
-                    <label label={description} class="description" maxWidthChars={60} wrap xalign={0} />
+        return (
+            <button onClicked={() => openApp(app)}>
+                <box spacing={6}>
+                    {iconLet}
+                    <box orientation={Gtk.Orientation.VERTICAL}>
+                        <label label={title} class="title" maxWidthChars={60} wrap xalign={0} />
+                        <label
+                            label={description}
+                            class="description"
+                            maxWidthChars={60}
+                            wrap
+                            xalign={0}
+                        />
+                    </box>
                 </box>
-            </box>
-        </button>
+            </button>
+        )
     }
 
     function showScratchpad(): [boolean, string] {
@@ -136,8 +156,11 @@ export default function Scratchpad() {
                 return [false, "Scratchpad, window hidden"]
             }
         }
-        return [false, `Scratchpad, No window is defined, Maybe running on hyprland?
-Scratchpad is sway-specific`]
+        return [
+            false,
+            `Scratchpad, No window is defined, Maybe running on hyprland?
+Scratchpad is sway-specific`,
+        ]
     }
 
     const registry = CommandRegistry.get_default()
@@ -151,7 +174,7 @@ Shows / hides the scratchpad tool on request.
     `,
         main: (argv: string[]) => {
             return showScratchpad()[1]
-        }
+        },
     })
     let hideTimer: ReturnType<typeof timeout> | null = null
     function hide() {
@@ -165,12 +188,7 @@ Shows / hides the scratchpad tool on request.
     }
 
     // close on ESC
-    function onKey(
-        _e: Gtk.EventControllerKey,
-        keyValue: number,
-        _: number,
-        mod: number,
-    ) {
+    function onKey(_e: Gtk.EventControllerKey, keyValue: number, _: number, mod: number) {
         if (keyValue === Gdk.KEY_Escape) {
             hide()
             return
@@ -188,71 +206,70 @@ Shows / hides the scratchpad tool on request.
         }
     }
 
-    return <window
-        $={(ref) => {
-            win = ref
-            gtkIconTheme = Gtk.IconTheme.get_for_display(win.display)
-        }}
-        name="Scratchpad"
-        class="Scratchpad"
-        namespace={`${Config.instanceName}Scratchpad`}
-        anchor={TOP | BOTTOM | LEFT | RIGHT}
-        exclusivity={Astal.Exclusivity.IGNORE}
-        keymode={Astal.Keymode.EXCLUSIVE}
-        onNotifyVisible={({ visible }) => {
-            if (visible) {
-                setList(apps.get())
-                searchEntry.grab_focus()
-                setReveler(true)
-            }
-            else {
-                searchEntry.set_text("")
-            }
-        }}
-    >
-        <Gtk.EventControllerKey onKeyPressed={onKey} />
-        <Gtk.GestureClick onPressed={onClick} />
-        <revealer
-            transitionType={revealer.as((b) => b ? Gtk.RevealerTransitionType.SWING_DOWN : Gtk.RevealerTransitionType.SWING_UP)}
-            transitionDuration={200}
-            revealChild={revealer}
+    return (
+        <window
+            $={ref => {
+                win = ref
+                gtkIconTheme = Gtk.IconTheme.get_for_display(win.display)
+            }}
+            name="Scratchpad"
+            class="Scratchpad"
+            namespace={`${Config.instanceName}Scratchpad`}
+            anchor={TOP | BOTTOM | LEFT | RIGHT}
+            exclusivity={Astal.Exclusivity.IGNORE}
+            keymode={Astal.Keymode.EXCLUSIVE}
+            onNotifyVisible={({ visible }) => {
+                if (visible) {
+                    setList(apps.get())
+                    searchEntry.grab_focus()
+                    setReveler(true)
+                } else {
+                    searchEntry.set_text("")
+                }
+            }}
         >
-            <box
-                $={(ref) => (contentBox = ref)}
-                name="launcher-content"
-                valign={Gtk.Align.CENTER}
-                halign={Gtk.Align.CENTER}
-                orientation={Gtk.Orientation.VERTICAL}
+            <Gtk.EventControllerKey onKeyPressed={onKey} />
+            <Gtk.GestureClick onPressed={onClick} />
+            <revealer
+                transitionType={revealer.as(b =>
+                    b ? Gtk.RevealerTransitionType.SWING_DOWN : Gtk.RevealerTransitionType.SWING_UP,
+                )}
+                transitionDuration={200}
+                revealChild={revealer}
             >
-                <label class="title" label="Scratchpad" />
-                <entry
-                    $={(ref) => (searchEntry = ref)}
-                    onNotifyText={({ text }) => search(text)}
-                    onActivate={() => {
-                        openApp(list.get()[0])
-                    }}
-                    placeholderText="Start typing to search"
-                    primaryIconName={"system-search-symbolic"}
-                />
-                <Gtk.Separator />
-                <box orientation={Gtk.Orientation.VERTICAL} spacing={6}>
-                    <For each={list}>
-                        {(app, index) => (
-                            <AppEntry app={app} />
-                        )}
-                    </For>
-                </box>
                 <box
-                    class="not-found"
+                    $={ref => (contentBox = ref)}
+                    name="launcher-content"
                     valign={Gtk.Align.CENTER}
                     halign={Gtk.Align.CENTER}
                     orientation={Gtk.Orientation.VERTICAL}
-                    visible={list((l) => l.length === 0)}
                 >
-                    <image iconName="system-search-symbolic" />
-                    <label label="No match found" />
+                    <label class="title" label="Scratchpad" />
+                    <entry
+                        $={ref => (searchEntry = ref)}
+                        onNotifyText={({ text }) => search(text)}
+                        onActivate={() => {
+                            openApp(list.get()[0])
+                        }}
+                        placeholderText="Start typing to search"
+                        primaryIconName={"system-search-symbolic"}
+                    />
+                    <Gtk.Separator />
+                    <box orientation={Gtk.Orientation.VERTICAL} spacing={6}>
+                        <For each={list}>{(app, index) => <AppEntry app={app} />}</For>
+                    </box>
+                    <box
+                        class="not-found"
+                        valign={Gtk.Align.CENTER}
+                        halign={Gtk.Align.CENTER}
+                        orientation={Gtk.Orientation.VERTICAL}
+                        visible={list(l => l.length === 0)}
+                    >
+                        <image iconName="system-search-symbolic" />
+                        <label label="No match found" />
+                    </box>
                 </box>
-            </box>
-        </revealer>
-    </window>
+            </revealer>
+        </window>
+    )
 }

@@ -11,10 +11,8 @@ export const players = createBinding(mpris, "players")
 
 // the player shown everywhere: the playing one if any, else the first.
 // A manual pick via the popup switcher overrides until that player goes
-const [activePlayer, setActivePlayer] =
-    createState<AstalMpris.Player | null>(null)
-const [overridePlayer, setOverride] =
-    createState<AstalMpris.Player | null>(null)
+const [activePlayer, setActivePlayer] = createState<AstalMpris.Player | null>(null)
+const [overridePlayer, setOverride] = createState<AstalMpris.Player | null>(null)
 
 export { activePlayer }
 
@@ -24,7 +22,46 @@ export function overrideActivePlayer(player: AstalMpris.Player | null) {
     pick()
 }
 
-const hooked = new Map<AstalMpris.Player, (() => void)[]>()
+// Shared player-hook registry: every consumer registers one hook
+// instead of running its own add/release loop over the player list
+// (active-player tracking below and the osd media trigger both need
+// it). The release fn a hook returns runs when the player quits —
+// subscriptions keep dead players alive (browsers spawn one per tab).
+type PlayerHook = (p: AstalMpris.Player) => (() => void) | void
+const playerHooks = new Set<PlayerHook>()
+const hookedPlayers = new Map<AstalMpris.Player, (() => void)[]>()
+
+function syncPlayers() {
+    const list = players.get()
+    for (const [p, unsubs] of hookedPlayers) {
+        if (!list.includes(p)) {
+            for (const u of unsubs) u()
+            hookedPlayers.delete(p)
+        }
+    }
+    for (const p of list) {
+        if (hookedPlayers.has(p)) continue
+        const unsubs: (() => void)[] = []
+        for (const hook of playerHooks) {
+            const release = hook(p)
+            if (release) unsubs.push(release)
+        }
+        hookedPlayers.set(p, unsubs)
+    }
+}
+players.subscribe(syncPlayers)
+
+/** run `hook` for every current and future player; the fn it returns
+ *  runs when that player quits */
+export function hookPlayers(hook: PlayerHook) {
+    playerHooks.add(hook)
+    // backfill players already hooked by earlier registrations
+    for (const [p, unsubs] of hookedPlayers) {
+        const release = hook(p)
+        if (release) unsubs.push(release)
+    }
+}
+
 function pick() {
     const list = players.get()
     const override = overridePlayer.get()
@@ -32,27 +69,22 @@ function pick() {
     // playback ends — a trackless player is not "active"
     const eligible = list.filter(p => p.title !== "")
     setActivePlayer(
-        override && eligible.includes(override) ? override
-            : eligible.find(p =>
-                p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING)
-            ?? eligible[0] ?? null)
-    // release players that quit (browsers spawn one per tab/stream)
-    for (const [p, unsubs] of hooked) {
-        if (!list.includes(p)) {
-            for (const u of unsubs) u()
-            hooked.delete(p)
-        }
-    }
-    for (const p of list) {
-        if (!hooked.has(p)) {
-            hooked.set(p, [
-                createBinding(p, "playbackStatus").subscribe(pick),
-                createBinding(p, "title").subscribe(pick),
-            ])
-        }
-    }
+        override && eligible.includes(override)
+            ? override
+            : (eligible.find(p => p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING) ??
+                  eligible[0] ??
+                  null),
+    )
 }
 players.subscribe(pick)
+hookPlayers(p => {
+    const status = createBinding(p, "playbackStatus").subscribe(pick)
+    const title = createBinding(p, "title").subscribe(pick)
+    return () => {
+        status()
+        title()
+    }
+})
 pick()
 
 // GTK css can only load local files; remote (http) cover art is
@@ -73,12 +105,12 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
         if (!url.startsWith("http")) return setLocal(url)
         setLocal("")
         downloadCover(url)
-            .then((path) => {
+            .then(path => {
                 // a track change during the download must not let the
                 // older cover overwrite the newer one
                 if (cover.get() === url) setLocal(`file://${path}`)
             })
-            .catch((e) => console.warn("cover download failed:", e))
+            .catch(e => console.warn("cover download failed:", e))
     }
     const unsub = cover.subscribe(update)
     onCleanup(unsub)
