@@ -530,7 +530,9 @@ function PausedCard() {
             {/* keyed on the entry id: in-place updates (a successful
             hours edit) must not rebuild the editor under the user */}
             <With value={Harvest.paused.as(p => p?.id ?? null)}>
-                {id => (id !== null ? <PausedEditor /> : <></>)}
+                {/* null, not <></>: With appends the child into its own
+                Fragment, and nested Fragments are unsupported */}
+                {id => (id !== null ? <PausedEditor /> : null)}
             </With>
             <button
                 cssClasses={["resumeNow"]}
