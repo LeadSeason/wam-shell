@@ -16,10 +16,7 @@ registry.register({
 })
 
 // requestHandler, Pass this to app.start()
-export async function requestHandler(
-    argv: string[],
-    res: (response: string) => void,
-) {
+export async function requestHandler(argv: string[], res: (response: string) => void) {
     res(await registry.execute(argv))
 }
 

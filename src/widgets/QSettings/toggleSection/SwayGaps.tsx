@@ -1,8 +1,8 @@
-import { Accessor, createBinding, createState, Setter } from "gnim";
-import { DropdownButton } from "./ToggleButton";
-import SwayGaps from "../../../lib/swayGaps";
-import { Gtk } from "ags/gtk4";
-import Config from "../../../config";
+import { Accessor, createBinding, createState, Setter } from "gnim"
+import { DropdownButton } from "./ToggleButton"
+import SwayGaps from "../../../lib/swayGaps"
+import { Gtk } from "ags/gtk4"
+import Config from "../../../config"
 
 interface swayGapsProps {
     activeDropdown: Accessor<number>
@@ -15,14 +15,12 @@ interface SwayGapsWidgetProps {
     dropdownIndex: number
 }
 
-
 export function SwayGapsButton({
     activeDropdown: activeDropdown,
     setActiveDropdown: setActiveDropdown,
-    dropdownIndex: dropdownIndex
+    dropdownIndex: dropdownIndex,
 }: swayGapsProps) {
-    if (Config.desktopSession !== "sway" && Config.desktopSession !== "i3")
-        return <></>
+    if (Config.desktopSession !== "sway" && Config.desktopSession !== "i3") return <></>
     const swayGaps = SwayGaps.get_default()
 
     let [active, setActive] = createState(false)
@@ -30,40 +28,47 @@ export function SwayGapsButton({
         setActive(!active.get())
     }
 
-    return <DropdownButton
-        activeDropdown={activeDropdown}
-        setActiveDropdown={setActiveDropdown}
-        dropdownIndex={dropdownIndex}
-        icon={"view-grid-symbolic"}
-        label={`SwayGaps`}
-        subtitle={createBinding(swayGaps, "gap_state").as(v => v ? "On" : "Off")}
-        isActive={createBinding(swayGaps, "gap_state")}
-        activate={() => swayGaps.toggleGaps()}
-    />
+    return (
+        <DropdownButton
+            activeDropdown={activeDropdown}
+            setActiveDropdown={setActiveDropdown}
+            dropdownIndex={dropdownIndex}
+            icon={"view-grid-symbolic"}
+            label={`SwayGaps`}
+            subtitle={createBinding(swayGaps, "gap_state").as(v => (v ? "On" : "Off"))}
+            isActive={createBinding(swayGaps, "gap_state")}
+            activate={() => swayGaps.toggleGaps()}
+        />
+    )
 }
 
-export function SwayGapsWidget({ activeDropdown: revealChild, dropdownIndex: index }: SwayGapsWidgetProps) {
-    if (Config.desktopSession !== "sway" && Config.desktopSession !== "i3")
-        return <></>
+export function SwayGapsWidget({
+    activeDropdown: revealChild,
+    dropdownIndex: index,
+}: SwayGapsWidgetProps) {
+    if (Config.desktopSession !== "sway" && Config.desktopSession !== "i3") return <></>
     const swayGaps = SwayGaps.get_default()
-    return <revealer
-        revealChild={revealChild.as(s => (s === index))}
-    >
-        <box
-            marginTop={4}
-            spacing={4}
-        >
-            <box>
-                <label widthChars={3} label={createBinding(swayGaps, "gap_size").as(v => v.toString())} />
-                <slider
-                    min={0}
-                    max={50}
-                    step={1}
-                    hexpand
-                    onChangeValue={({ value }) => { swayGaps.gap_size = value }}
-                    value={createBinding(swayGaps, "gap_size")} />
+    return (
+        <revealer revealChild={revealChild.as(s => s === index)}>
+            <box marginTop={4} spacing={4}>
+                <box>
+                    <label
+                        widthChars={3}
+                        label={createBinding(swayGaps, "gap_size").as(v => v.toString())}
+                    />
+                    <slider
+                        min={0}
+                        max={50}
+                        step={1}
+                        hexpand
+                        onChangeValue={({ value }) => {
+                            swayGaps.gap_size = value
+                        }}
+                        value={createBinding(swayGaps, "gap_size")}
+                    />
+                </box>
+                <Gtk.Separator />
             </box>
-            <Gtk.Separator />
-        </box>
-    </revealer>
+        </revealer>
+    )
 }

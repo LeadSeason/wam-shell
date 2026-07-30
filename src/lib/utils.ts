@@ -2,9 +2,8 @@
  * File: utils.ts
  * Description: Mainly for helper functions
  */
-import GLib from "gi://GLib?version=2.0";
-import Pango from "gi://Pango?version=1.0";
-
+import GLib from "gi://GLib?version=2.0"
+import Pango from "gi://Pango?version=1.0"
 
 /**
  * Tests if a path points to a valid path

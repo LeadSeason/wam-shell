@@ -1,50 +1,31 @@
 import GLib from "gi://GLib?version=2.0"
 import AstalWp from "gi://AstalWp?version=0.1"
 import { createState } from "gnim"
-import Config from "../config"
-import { timeoutAdd, connect } from "./metrics"
+import { timeoutAdd, connect, disconnect, sourceRemove } from "./metrics"
 
-// Screen-share detection, signal-driven through WirePlumber. Generic
-// (usable by any widget that wants privacy masking); currently consumed by
-// the Harvest panel module.
-//
-// What counts, verified by a local spike (gjs + gst pipelines):
-// - a video PRODUCER (videotestsrc ! pipewiresink) lands in get_streams()
-// - a video CONSUMER (pipewiresrc ! fakesink, same shape as a webcam
-//   grabber) lands in get_recorders() — so recorders>0 would over-trigger
-//   on any video call with the camera on and is NOT the signal
-// - a portal screencast always creates a producer stream, so
-//   get_streams() is the signal
-// Cameras are devices (sources), never streams, so a present-but-idle
-// webcam does not count.
+// Screen-share detection, signal-driven through WirePlumber. A video
+// PRODUCER stream means a capture is active (portal screencast always
+// creates one, verified by a local gst spike); consumers (webcam
+// grabbers) land in the recorders list and do NOT count, and cameras
+// are devices, never streams — so joining a call with the camera on is
+// not a share.
 //
 // Fails closed: AstalWp missing or an update throwing => sharing.
 
 const [sharing, setSharing] = createState(false)
 export { sharing }
 
-// Producer names that should NOT count as sharing. gst test pipelines and
-// similar benign producers land here; the calibration pass (a real portal
-// share) decides whether portal nodes need name-based discrimination.
-// Until then every producer stream counts: over-masking is the safe side
-// for a privacy feature.
-const BENIGN_PRODUCERS: RegExp[] = []
-
-function countShares(): boolean {
-    const video = AstalWp.get_default()?.video
-    if (!video) return true // fail closed
-    const streams = video.get_streams() ?? []
-    return streams.some((s) => {
-        const name = `${s.name ?? ""} ${s.description ?? ""}`
-        return !BENIGN_PRODUCERS.some((re) => re.test(name))
-    })
-}
+// TODO: name-based discrimination of benign producers (OBS virtual
+// camera) needs a calibration pass against a real share; until then
+// every producer counts — over-masking is the safe side for privacy.
 
 let debounce = 0
 
 function evaluate() {
     try {
-        setSharing(countShares())
+        const video = AstalWp.get_default()?.video
+        if (!video) return setSharing(true) // fail closed
+        setSharing((video.get_streams() ?? []).length > 0)
     } catch {
         setSharing(true) // fail closed
     }
@@ -61,14 +42,32 @@ function scheduleEvaluate() {
     })
 }
 
-if (Config.harvest.enabled && Config.harvest.maskWhenSharing) {
+let started = false
+let streamsHandler = 0
+
+// started by the consumer (the Harvest panel pill): detection only runs
+// when something actually masks on it
+export function enable() {
+    if (started) return
+    started = true
     const video = AstalWp.get_default()?.video
     if (video) {
-        // only producer streams are the signal (recorders = any webcam
-        // consumer, which would over-trigger)
-        connect(video, "notify::streams", scheduleEvaluate)
+        streamsHandler = connect(video, "notify::streams", scheduleEvaluate)
         evaluate()
     } else {
         setSharing(true) // fail closed
     }
+}
+
+// convention for lib modules with long-lived sources, even though the
+// shell never calls it today: one place that tears everything down
+export function dispose() {
+    if (debounce) {
+        sourceRemove(debounce)
+        debounce = 0
+    }
+    const video = AstalWp.get_default()?.video
+    if (video && streamsHandler) disconnect(video, streamsHandler)
+    streamsHandler = 0
+    started = false
 }

@@ -1,11 +1,16 @@
-import { createBinding, createState, For, With } from "ags"
+import { createBinding, createState, For, With } from "gnim"
 import { Gdk, Gtk } from "ags/gtk4"
 import app from "ags/gtk4/app"
 import AstalTray from "gi://AstalTray"
 import Config from "../../config"
 import { connect } from "../../lib/metrics"
 
-export default function Tray({ filter, iconSize = 16, pill = false, spacing = Config.tray.spacing }: {
+export default function Tray({
+    filter,
+    iconSize = 16,
+    pill = false,
+    spacing = Config.tray.spacing,
+}: {
     filter?: (item: AstalTray.TrayItem) => boolean
     iconSize?: number
     pill?: boolean
@@ -37,8 +42,8 @@ export default function Tray({ filter, iconSize = 16, pill = false, spacing = Co
             owners.add(item_id)
         }
 
-        setTrayItems((items) => {
-            if (items.find((item) => item.get_item_id() === item_id)) {
+        setTrayItems(items => {
+            if (items.find(item => item.get_item_id() === item_id)) {
                 return items
             }
             return [...items, t]
@@ -49,20 +54,15 @@ export default function Tray({ filter, iconSize = 16, pill = false, spacing = Co
         // drop this item's claim on any path it owned; entries whose
         // last owner left are pruned so the map tracks live items only
         for (const [path, owners] of pathOwners) {
-            if (owners.delete(item_id) && owners.size === 0)
-                pathOwners.delete(path)
+            if (owners.delete(item_id) && owners.size === 0) pathOwners.delete(path)
         }
         // Filter on item.get_item_id() NOT item.get_id().
-        setTrayItems((items) =>
-            items.filter((item) => item.get_item_id() !== item_id)
-        )
+        setTrayItems(items => items.filter(item => item.get_item_id() !== item_id))
     })
 
     // TODO: Icons served as raw pixmaps may still not show up.
 
-    const visibleItems = trayItems.as(items =>
-        filter ? items.filter(filter) : items
-    )
+    const visibleItems = trayItems.as(items => (filter ? items.filter(filter) : items))
 
     // spacing semantics: 0 = no inline margins, so stylesheet rules
     // (incl. user.scss) control the icon gap; >0 = multiplier of the
@@ -81,7 +81,7 @@ export default function Tray({ filter, iconSize = 16, pill = false, spacing = Co
             cssClasses={["QSSection"]}
         >
             <For each={visibleItems}>
-                {(item) => {
+                {item => {
                     const gicon = createBinding(item, "gicon")
                     const tooltip = createBinding(item, "tooltip_markup")
 
@@ -89,41 +89,48 @@ export default function Tray({ filter, iconSize = 16, pill = false, spacing = Co
                     const menuModel = Gtk.PopoverMenu.new_from_model(item.get_menu_model())
                     menuModel.set_has_arrow(false)
 
-                    return (<menubutton
-                        $={(self) => {
-                            self.insert_action_group("dbusmenu", item.get_action_group())
-                            const gestureClick = new Gtk.GestureClick({
-                                button: 0, // Listen to all buttons.
-                            })
+                    return (
+                        <menubutton
+                            $={self => {
+                                self.insert_action_group("dbusmenu", item.get_action_group())
+                                const gestureClick = new Gtk.GestureClick({
+                                    button: 0, // Listen to all buttons.
+                                })
 
-                            // Prevent default behavior.
-                            connect(gestureClick, "pressed", (event: Gtk.GestureClick) => {
-                                event.set_state(Gtk.EventSequenceState.CLAIMED)
+                                connect(gestureClick, "pressed", (event: Gtk.GestureClick) => {
+                                    // Prevent default behavior.
+                                    event.set_state(Gtk.EventSequenceState.CLAIMED)
 
-                                switch (event.get_current_button()) {
-                                    case Gdk.BUTTON_PRIMARY:
-                                        item.activate(0, 0)
-                                        break
-                                    case Gdk.BUTTON_SECONDARY:
-                                        self.get_popover()?.popup()
-                                        break
-                                    default:
-                                }
-                            })
+                                    switch (event.get_current_button()) {
+                                        case Gdk.BUTTON_PRIMARY:
+                                            item.activate(0, 0)
+                                            break
+                                        case Gdk.BUTTON_SECONDARY:
+                                            self.get_popover()?.popup()
+                                            break
+                                        default:
+                                    }
+                                })
 
-                            self.add_controller(gestureClick)
-                        }}
-                        tooltipMarkup={tooltip}
-                        direction={Gtk.ArrowType.DOWN}
-                        cssClasses={["trayItem"]}
-                        css={[
-                            gap !== null ? `margin-right: ${gap}px;` : "",
-                            pill ? `min-width: ${iconSize + 22}px; min-height: ${iconSize + 22}px;` : "",
-                        ].filter(Boolean).join(" ") || ""}
-                    >
-                        <image gicon={gicon} pixelSize={iconSize} />
-                        {menuModel}
-                    </menubutton>
+                                self.add_controller(gestureClick)
+                            }}
+                            tooltipMarkup={tooltip}
+                            direction={Gtk.ArrowType.DOWN}
+                            cssClasses={["trayItem"]}
+                            css={
+                                [
+                                    gap !== null ? `margin-right: ${gap}px;` : "",
+                                    pill
+                                        ? `min-width: ${iconSize + 22}px; min-height: ${iconSize + 22}px;`
+                                        : "",
+                                ]
+                                    .filter(Boolean)
+                                    .join(" ") || ""
+                            }
+                        >
+                            <image gicon={gicon} pixelSize={iconSize} />
+                            {menuModel}
+                        </menubutton>
                     )
                 }}
             </For>

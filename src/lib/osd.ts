@@ -1,28 +1,32 @@
 import GLib from "gi://GLib?version=2.0"
 import AstalWp from "gi://AstalWp?version=0.1"
-import AstalMpris from "gi://AstalMpris?version=0.1"
 import { createState } from "gnim"
 import { createBinding } from "gnim"
 import { exec, timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
 import Brightness from "./brightness"
 import hyprsunset, { OUTDOOR_GAMMA } from "./hyprsunset"
-import { ensureLayoutSource, layoutOsdText, lockKeyState } from "./kbLayout"
+import { ensureLayoutSource, ensureLockSource, layoutOsdText, lockKeyState } from "./kbLayout"
 import { coverFile } from "./coverArt"
+import { hookPlayers } from "./mpris"
 
 // OSD state and triggers. Widgets read `content`/`visible`; triggers
 // call show() which (re)starts the hide timer.
 
 export interface OsdContent {
     icon: string
-    value: number | null  // 0..1 for the bar, null = no bar
+    value: number | null // 0..1 for the bar, null = no bar
     label: string
-    over: boolean  // overdrive styling (>100%, outdoor, caps on)
-    kind: string   // volume|microphone|brightness|layout|lockKeys
+    over: boolean // overdrive styling (>100%, outdoor, caps on)
+    kind: string // volume|microphone|brightness|layout|lockKeys
 }
 
 export const [content, setContent] = createState<OsdContent>({
-    icon: "", value: 0, label: "", over: false, kind: "",
+    icon: "",
+    value: 0,
+    label: "",
+    over: false,
+    kind: "",
 })
 export const [visible, setVisible] = createState(false)
 
@@ -47,13 +51,11 @@ function show(c: Omit<OsdContent, "kind">, kind: OsdKind) {
 }
 
 // volume + microphone
-function hookEndpoint(
-    getEndpoint: () => AstalWp.Endpoint | null,
-    kind: "volume" | "microphone",
-) {
-    const mutedIcon = kind === "microphone"
-        ? "microphone-sensitivity-muted-symbolic"
-        : "audio-volume-muted-symbolic"
+function hookEndpoint(kind: "volume" | "microphone") {
+    const mutedIcon =
+        kind === "microphone"
+            ? "microphone-sensitivity-muted-symbolic"
+            : "audio-volume-muted-symbolic"
     let hooked: AstalWp.Endpoint | null = null
     let disposers: (() => void)[] = []
     const hook = (ep: AstalWp.Endpoint | null) => {
@@ -64,22 +66,32 @@ function hookEndpoint(
         disposers = []
         hooked = ep
         if (!ep) return
-        disposers.push(createBinding(ep, "volume").subscribe(() => {
-            show({
-                icon: ep.mute ? mutedIcon : ep.volumeIcon,
-                value: Math.min(ep.volume, 1),
-                label: `${Math.round(ep.volume * 100)}%`,
-                over: ep.volume > 1.01,
-            }, kind)
-        }))
-        disposers.push(createBinding(ep, "mute").subscribe(() => {
-            show({
-                icon: ep.mute ? mutedIcon : ep.volumeIcon,
-                value: ep.mute ? 0 : Math.min(ep.volume, 1),
-                label: ep.mute ? "Muted" : `${Math.round(ep.volume * 100)}%`,
-                over: false,
-            }, kind)
-        }))
+        disposers.push(
+            createBinding(ep, "volume").subscribe(() => {
+                show(
+                    {
+                        icon: ep.mute ? mutedIcon : ep.volumeIcon,
+                        value: Math.min(ep.volume, 1),
+                        label: `${Math.round(ep.volume * 100)}%`,
+                        over: ep.volume > 1.01,
+                    },
+                    kind,
+                )
+            }),
+        )
+        disposers.push(
+            createBinding(ep, "mute").subscribe(() => {
+                show(
+                    {
+                        icon: ep.mute ? mutedIcon : ep.volumeIcon,
+                        value: ep.mute ? 0 : Math.min(ep.volume, 1),
+                        label: ep.mute ? "Muted" : `${Math.round(ep.volume * 100)}%`,
+                        over: false,
+                    },
+                    kind,
+                )
+            }),
+        )
     }
     return hook
 }
@@ -87,15 +99,13 @@ function hookEndpoint(
 const wp = AstalWp.get_default()
 if (wp) {
     const { audio } = wp
-    const hookSpeaker = hookEndpoint(
-        () => audio.defaultSpeaker, "volume")
+    const hookSpeaker = hookEndpoint("volume")
     createBinding(audio, "defaultSpeaker").subscribe(() => {
         hookSpeaker(audio.defaultSpeaker)
     })
     hookSpeaker(audio.defaultSpeaker)
 
-    const hookMic = hookEndpoint(
-        () => audio.defaultMicrophone, "microphone")
+    const hookMic = hookEndpoint("microphone")
     createBinding(audio, "defaultMicrophone").subscribe(() => {
         hookMic(audio.defaultMicrophone)
     })
@@ -107,63 +117,52 @@ if (wp) {
 const brightness = Brightness.get_default()
 createBinding(brightness, "screen").subscribe(() => {
     const outdoor = hyprsunset.outdoor.get()
-    show({
-        icon: "display-brightness-symbolic",
-        value: outdoor ? 1 : brightness.screen,
-        label: outdoor ? `${OUTDOOR_GAMMA}%` : `${Math.round(brightness.screen * 100)}%`,
-        over: outdoor,
-    }, "brightness")
+    show(
+        {
+            icon: "display-brightness-symbolic",
+            value: outdoor ? 1 : brightness.screen,
+            label: outdoor ? `${OUTDOOR_GAMMA}%` : `${Math.round(brightness.screen * 100)}%`,
+            over: outdoor,
+        },
+        "brightness",
+    )
 })
 
 // media (mpris): show the track when it changes. The bar is the
 // position at show time, the icon the cover art when already cached.
-const mpris = AstalMpris.get_default()
-const hookedPlayers = new Map<AstalMpris.Player, () => void>()
-const hookMedia = (list: AstalMpris.Player[]) => {
-    // release players that quit, their subscriptions keep them alive
-    for (const [p, unsub] of hookedPlayers) {
-        if (!list.includes(p)) {
-            unsub()
-            hookedPlayers.delete(p)
-        }
-    }
-    for (const p of list) {
-        if (hookedPlayers.has(p)) continue
-        let lastTitle = p.title
-        hookedPlayers.set(p, createBinding(p, "title").subscribe(() => {
-            if (!p.title || p.title === lastTitle) return
-            lastTitle = p.title
-            show({
+hookPlayers(p => {
+    let lastTitle = p.title
+    return createBinding(p, "title").subscribe(() => {
+        if (!p.title || p.title === lastTitle) return
+        lastTitle = p.title
+        show(
+            {
                 icon: coverFile(p.coverArt) || "audio-x-generic-symbolic",
-                value: p.length > 0
-                    ? Math.min(1, Math.max(0, p.position / p.length))
-                    : null,
+                value: p.length > 0 ? Math.min(1, Math.max(0, p.position / p.length)) : null,
                 label: `${p.title}${p.artist ? ` — ${p.artist}` : ""}`,
                 over: false,
-            }, "media")
-        }))
-    }
-}
-createBinding(mpris, "players").subscribe(() => hookMedia(mpris.players))
-hookMedia(mpris.players)
+            },
+            "media",
+        )
+    })
+})
 
 // keyboard layout switches (hyprland, sway, i3). The source is shared
 // with the bar widget but does not depend on it being on any panel.
-// The same source also drives caps/num lock (hyprland), so start it when
-// either OSD is on.
-if (Config.osd.enabled && (Config.osd.layout
-    || (Config.osd.lockKeys && Config.desktopSession === "hyprland")))
-    ensureLayoutSource()
 if (Config.osd.enabled && Config.osd.layout) {
+    ensureLayoutSource()
     layoutOsdText.subscribe(() => {
         const text = layoutOsdText.get()
         if (!text) return
-        show({
-            icon: "", // flag only, no icon
-            value: null, // no bar, just the flag + name
-            label: text,
-            over: false,
-        }, "layout")
+        show(
+            {
+                icon: "", // flag only, no icon
+                value: null, // no bar, just the flag + name
+                label: text,
+                over: false,
+            },
+            "layout",
+        )
     })
 }
 
@@ -174,16 +173,21 @@ if (Config.desktopSession === "hyprland" && Config.osd.enabled) {
     try {
         exec(`hyprctl eval 'hl.layer_rule({ match = { namespace = "osd" }, no_anim = true })'`)
     } catch {
-        try { exec(`hyprctl keyword layerrule "noanim, osd"`) } catch { }
+        try {
+            exec(`hyprctl keyword layerrule "noanim, osd"`)
+        } catch {}
     }
 }
 
-// caps/num lock (hyprland). No event exists for it, but the shared
-// keyboard-layout source already reads hyprctl devices every second and
-// publishes lockKeyState — subscribe to that instead of spawning a
-// second recurring hyprctl poll here.
-if (Config.desktopSession === "hyprland" && Config.osd.enabled && Config.osd.lockKeys) {
-    let prev: { caps: boolean, num: boolean } | null = null
+// caps/num lock. GDK4 reports the state on the keyboard device
+// (notify::caps/num-lock-state), compositor-agnostic, so this works on
+// every session; kbLayout's ensureLockSource publishes it as
+// lockKeyState.
+if (Config.osd.enabled && Config.osd.lockKeys) {
+    ensureLockSource()
+    // seed from the initial device read, or the first real toggle would
+    // only fill prev and its banner would be swallowed
+    let prev = lockKeyState.get()
     lockKeyState.subscribe(() => {
         const cur = lockKeyState.get()
         if (!cur) return
@@ -191,22 +195,26 @@ if (Config.desktopSession === "hyprland" && Config.osd.enabled && Config.osd.loc
             // two independent checks: a tick where both flip must
             // not drop the num-lock banner behind the caps one
             if (cur.caps !== prev.caps) {
-                show({
-                    icon: cur.caps
-                        ? "changes-prevent-symbolic"
-                        : "changes-allow-symbolic",
-                    value: null,
-                    label: "Caps Lock",
-                    over: cur.caps, // tints the icon
-                }, "lockKeys")
+                show(
+                    {
+                        icon: cur.caps ? "changes-prevent-symbolic" : "changes-allow-symbolic",
+                        value: null,
+                        label: "Caps Lock",
+                        over: cur.caps, // tints the icon
+                    },
+                    "lockKeys",
+                )
             }
             if (cur.num !== prev.num) {
-                show({
-                    icon: "input-keyboard-symbolic",
-                    value: null,
-                    label: `Num Lock ${cur.num ? "on" : "off"}`,
-                    over: false,
-                }, "lockKeys")
+                show(
+                    {
+                        icon: "input-keyboard-symbolic",
+                        value: null,
+                        label: `Num Lock ${cur.num ? "on" : "off"}`,
+                        over: false,
+                    },
+                    "lockKeys",
+                )
             }
         }
         prev = cur

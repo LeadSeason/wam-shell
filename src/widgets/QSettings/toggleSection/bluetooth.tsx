@@ -1,15 +1,15 @@
-import { Accessor, createBinding, createComputed, createState, For, With } from "gnim";
-import { DropdownButton } from "./ToggleButton";
-import AstalBluetooth from "gi://AstalBluetooth?version=0.1";
-import Gio from "gi://Gio?version=2.0";
-import GLib from "gi://GLib?version=2.0";
-import Pango from "gi://Pango?version=1.0";
-import { Gtk } from "ags/gtk4";
-import bluetooth from "../../../lib/bluetooth";
-import { timeoutAdd, connect, disconnect } from "../../../lib/metrics";
-import { pairingRequest, setBtPaneOpen, dismissPairingPrompt } from "../../../lib/bluetoothAgent";
-import { PromptContent } from "../../bluetoothPairing";
-import AstalWp from "gi://AstalWp?version=0.1";
+import { Accessor, createBinding, createComputed, createState, For, With } from "gnim"
+import { DropdownButton } from "./ToggleButton"
+import AstalBluetooth from "gi://AstalBluetooth?version=0.1"
+import Gio from "gi://Gio?version=2.0"
+import GLib from "gi://GLib?version=2.0"
+import Pango from "gi://Pango?version=1.0"
+import { Gtk } from "ags/gtk4"
+import bluetooth from "../../../lib/bluetooth"
+import { timeoutAdd, connect, disconnect } from "../../../lib/metrics"
+import { pairingRequest, setBtPaneOpen, dismissPairingPrompt } from "../../../lib/bluetoothAgent"
+import { PromptContent } from "../../bluetoothPairing"
+import AstalWp from "gi://AstalWp?version=0.1"
 
 // null when PipeWire/WirePlumber is absent (see SliderSection's guard);
 // the profile selector below dereferences wp.audio, so guard every use
@@ -29,45 +29,49 @@ function ProfileSelector({ wpDev }: { wpDev: AstalWp.Device }) {
 
     const profiles = createComputed(
         [createBinding(wpDev, "profiles"), createBinding(wpDev, "activeProfileId"), pendingProfile],
-        (list, activeId, pending) => (list ?? [])
-            // pipewire reports UNKNOWN availability for every profile —
-            // only exclude explicit NO
-            .filter(p => p.available !== AstalWp.Available.NO)
-            .map(p => ({
-                index: p.index,
-                label: p.description ?? p.name,
-                active: p.index === activeId,
-                pending: p.index === pending,
-            })))
+        (list, activeId, pending) =>
+            (list ?? [])
+                // pipewire reports UNKNOWN availability for every profile —
+                // only exclude explicit NO
+                .filter(p => p.available !== AstalWp.Available.NO)
+                .map(p => ({
+                    index: p.index,
+                    label: p.description ?? p.name,
+                    active: p.index === activeId,
+                    pending: p.index === pending,
+                })),
+    )
 
-    return <box orientation={Gtk.Orientation.VERTICAL}>
-        <label cssClasses={["key"]} label={"Audio profile"} xalign={0} />
-        <For each={profiles}>
-            {(p) =>
-                <box
-                    cssName={"button"}
-                    cssClasses={p.active ? ["profileOption", "active"] : ["profileOption"]}
-                    spacing={5}
-                >
-                    <Gtk.GestureClick
-                        button={1}
-                        onPressed={() => {
-                            if (p.active || pendingProfile.get() !== null) return
-                            setPendingProfile(p.index)
-                            const token = ++pendingToken
-                            setTimeout(() => {
-                                if (token === pendingToken) setPendingProfile(null)
-                            }, 5000)
-                            wpDev.activeProfileId = p.index
-                        }}
-                    />
-                    <label label={p.label} xalign={0} hexpand />
-                    {p.active && <image iconName="object-select-symbolic" />}
-                    {p.pending && <Gtk.Spinner $={(self) => self.start()} />}
-                </box>
-            }
-        </For>
-    </box>
+    return (
+        <box orientation={Gtk.Orientation.VERTICAL}>
+            <label cssClasses={["key"]} label={"Audio profile"} xalign={0} />
+            <For each={profiles}>
+                {p => (
+                    <box
+                        cssName={"button"}
+                        cssClasses={p.active ? ["profileOption", "active"] : ["profileOption"]}
+                        spacing={5}
+                    >
+                        <Gtk.GestureClick
+                            button={1}
+                            onPressed={() => {
+                                if (p.active || pendingProfile.get() !== null) return
+                                setPendingProfile(p.index)
+                                const token = ++pendingToken
+                                setTimeout(() => {
+                                    if (token === pendingToken) setPendingProfile(null)
+                                }, 5000)
+                                wpDev.activeProfileId = p.index
+                            }}
+                        />
+                        <label label={p.label} xalign={0} hexpand />
+                        {p.active && <image iconName="object-select-symbolic" />}
+                        {p.pending && <Gtk.Spinner $={self => self.start()} />}
+                    </box>
+                )}
+            </For>
+        </box>
+    )
 }
 
 // AstalBluetooth's pair() and Adapter.remove_device() are SYNC D-Bus
@@ -84,10 +88,22 @@ function systemCallFinish(res: Gio.AsyncResult): void {
 function pairDeviceAsync(device: AstalBluetooth.Device): Promise<void> {
     return new Promise((resolve, reject) => {
         Gio.DBus.system.call(
-            "org.bluez", devicePath(device), "org.bluez.Device1", "Pair",
-            null, null, Gio.DBusCallFlags.NONE, -1, null,
+            "org.bluez",
+            devicePath(device),
+            "org.bluez.Device1",
+            "Pair",
+            null,
+            null,
+            Gio.DBusCallFlags.NONE,
+            -1,
+            null,
             (_conn, res) => {
-                try { systemCallFinish(res); resolve() } catch (e) { reject(e) }
+                try {
+                    systemCallFinish(res)
+                    resolve()
+                } catch (e) {
+                    reject(e)
+                }
             },
         )
     })
@@ -95,9 +111,15 @@ function pairDeviceAsync(device: AstalBluetooth.Device): Promise<void> {
 
 function removeDeviceAsync(device: AstalBluetooth.Device): void {
     Gio.DBus.system.call(
-        "org.bluez", `${device.adapter}`, "org.bluez.Adapter1", "RemoveDevice",
+        "org.bluez",
+        `${device.adapter}`,
+        "org.bluez.Adapter1",
+        "RemoveDevice",
         new GLib.Variant("(o)", [devicePath(device)]),
-        null, Gio.DBusCallFlags.NONE, -1, null,
+        null,
+        Gio.DBusCallFlags.NONE,
+        -1,
+        null,
         (_conn, res) => {
             try {
                 systemCallFinish(res)
@@ -117,8 +139,15 @@ function adapterPath(): string {
 // main loop (observed 25s) when bluez is busy e.g. pairing
 function startDiscoveryAsync(retried = false): void {
     Gio.DBus.system.call(
-        "org.bluez", adapterPath(), "org.bluez.Adapter1", "StartDiscovery",
-        null, null, Gio.DBusCallFlags.NONE, -1, null,
+        "org.bluez",
+        adapterPath(),
+        "org.bluez.Adapter1",
+        "StartDiscovery",
+        null,
+        null,
+        Gio.DBusCallFlags.NONE,
+        -1,
+        null,
         (_conn, res) => {
             try {
                 systemCallFinish(res)
@@ -142,8 +171,15 @@ function startDiscoveryAsync(retried = false): void {
 
 function stopDiscoveryAsync(): void {
     Gio.DBus.system.call(
-        "org.bluez", adapterPath(), "org.bluez.Adapter1", "StopDiscovery",
-        null, null, Gio.DBusCallFlags.NONE, -1, null,
+        "org.bluez",
+        adapterPath(),
+        "org.bluez.Adapter1",
+        "StopDiscovery",
+        null,
+        null,
+        Gio.DBusCallFlags.NONE,
+        -1,
+        null,
         (_conn, res) => {
             try {
                 systemCallFinish(res)
@@ -182,33 +218,48 @@ export function BluetoothButton({ navigate }: { navigate: () => void }) {
             const name = connected.alias || connected.name
             const battery = connected.batteryPercentage
             return battery >= 0 ? `${name} · ${battery}%` : name
-        }
+        },
     )
 
-    const icon = createBinding(bluetooth, "is_connected")
-        .as(connected => connected ? "bluetooth-active-symbolic" : "bluetooth-symbolic")
+    const icon = createBinding(bluetooth, "is_connected").as(connected =>
+        connected ? "bluetooth-active-symbolic" : "bluetooth-symbolic",
+    )
 
-    return <DropdownButton
-        navigate={navigate}
-        icon={icon}
-        label={"Bluetooth"}
-        subtitle={subtitle}
-        isActive={createBinding(bluetooth, "is_powered")}
-        activate={() => {
-            const adapter = bluetooth.adapter
-            if (adapter) adapter.powered = !adapter.powered
-        }}
-    />
+    return (
+        <DropdownButton
+            navigate={navigate}
+            icon={icon}
+            label={"Bluetooth"}
+            subtitle={subtitle}
+            isActive={createBinding(bluetooth, "is_powered")}
+            activate={() => {
+                const adapter = bluetooth.adapter
+                if (adapter) adapter.powered = !adapter.powered
+            }}
+        />
+    )
 }
 
 // "0000110a-0000-1000-8000-00805f9b34fb" -> "A2DP Sink"
 const UUID_NAMES: Record<string, string> = {
-    "1108": "HSP", "110a": "A2DP Sink", "110b": "A2DP Source",
-    "110c": "AVRCP Target", "110d": "Advanced Audio", "110e": "AVRCP",
-    "1112": "Headset AG", "111e": "HFP", "111f": "HFP AG",
-    "1124": "HID", "1131": "HSP HS", "1132": "Message Access",
-    "1105": "OBEX", "1106": "OBEX File Transfer",
-    "1800": "GAP", "1801": "GATT", "180a": "Device Info", "180f": "Battery",
+    "1108": "HSP",
+    "110a": "A2DP Sink",
+    "110b": "A2DP Source",
+    "110c": "AVRCP Target",
+    "110d": "Advanced Audio",
+    "110e": "AVRCP",
+    "1112": "Headset AG",
+    "111e": "HFP",
+    "111f": "HFP AG",
+    "1124": "HID",
+    "1131": "HSP HS",
+    "1132": "Message Access",
+    "1105": "OBEX",
+    "1106": "OBEX File Transfer",
+    "1800": "GAP",
+    "1801": "GATT",
+    "180a": "Device Info",
+    "180f": "Battery",
 }
 function uuidName(uuid: string): string {
     const m = uuid.match(/^0000([0-9a-f]{4})-/i)
@@ -238,7 +289,9 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
         setScanning(true)
         setRescanning(true)
         const token = ++rescanToken
-        setTimeout(() => { if (token === rescanToken) setRescanning(false) }, 3000)
+        setTimeout(() => {
+            if (token === rescanToken) setRescanning(false)
+        }, 3000)
     }
 
     // adapter.discovering is a proxy property that provably goes stale
@@ -273,8 +326,7 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
     // fires on add/remove. Updates are coalesced: bluez removes quiet
     // temporary devices and re-adds them on the next advertisement, and
     // mirroring every flap resizes the pane ("keeps expanding/shrinking")
-    const [deviceList, setDeviceList] =
-        createState<AstalBluetooth.Device[]>(bluetooth.devices)
+    const [deviceList, setDeviceList] = createState<AstalBluetooth.Device[]>(bluetooth.devices)
     let listTimer = 0
     const refreshDeviceList = () => {
         if (listTimer) return
@@ -284,22 +336,25 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
             return GLib.SOURCE_REMOVE
         })
     }
-    const hookedDevices = new Map<string, { d: AstalBluetooth.Device, ids: number[] }>()
+    const hookedDevices = new Map<string, { d: AstalBluetooth.Device; ids: number[] }>()
     function hookDevice(d: AstalBluetooth.Device) {
         const existing = hookedDevices.get(d.address)
         if (existing?.d === d) return
         // bluez can recreate the device object for the same address:
         // drop the handlers on the stale object before re-hooking
         if (existing) for (const id of existing.ids) disconnect(existing.d, id)
-        hookedDevices.set(d.address, { d, ids: [
-            connect(d, "notify::paired", refreshDeviceList),
-            connect(d, "notify::connected", refreshDeviceList),
-            // devices are often discovered unnamed; when the name resolves a
-            // moment later (property change, no list change) they must enter
-            // the available list then, not never
-            connect(d, "notify::name", refreshDeviceList),
-            connect(d, "notify::alias", refreshDeviceList),
-        ]})
+        hookedDevices.set(d.address, {
+            d,
+            ids: [
+                connect(d, "notify::paired", refreshDeviceList),
+                connect(d, "notify::connected", refreshDeviceList),
+                // devices are often discovered unnamed; when the name resolves a
+                // moment later (property change, no list change) they must enter
+                // the available list then, not never
+                connect(d, "notify::name", refreshDeviceList),
+                connect(d, "notify::alias", refreshDeviceList),
+            ],
+        })
     }
     function pruneDevices() {
         const live = new Set(bluetooth.devices.map(d => d.address))
@@ -316,27 +371,34 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
     })
     bluetooth.devices.forEach(hookDevice)
 
-    const paired = deviceList.as(ds => [...ds]
-        // paired only: bluez marks a device paired as soon as it is
-        // connected, and a failed connect attempt on an unpaired device
-        // must not bounce the row between sections
-        .filter(d => d.paired)
-        .sort((a, b) => Number(b.connected) - Number(a.connected)
-            || (a.alias || a.name).localeCompare(b.alias || b.name)))
-    const available = deviceList.as(ds => [...ds]
-        // not paired: bluez sets connected during pairing, before paired
-        // flips — filtering on !connected too would make the device
-        // briefly vanish from both sections mid-pairing
-        .filter(d => !d.paired && d.name)
-        .sort((a, b) => b.rssi - a.rssi)
-        .slice(0, 8))
+    const paired = deviceList.as(ds =>
+        [...ds]
+            // paired only: bluez marks a device paired as soon as it is
+            // connected, and a failed connect attempt on an unpaired device
+            // must not bounce the row between sections
+            .filter(d => d.paired)
+            .sort(
+                (a, b) =>
+                    Number(b.connected) - Number(a.connected) ||
+                    (a.alias || a.name).localeCompare(b.alias || b.name),
+            ),
+    )
+    const available = deviceList.as(ds =>
+        [...ds]
+            // not paired: bluez sets connected during pairing, before paired
+            // flips — filtering on !connected too would make the device
+            // briefly vanish from both sections mid-pairing
+            .filter(d => !d.paired && d.name)
+            .sort((a, b) => b.rssi - a.rssi)
+            .slice(0, 8),
+    )
 
     const powered = createBinding(adapter, "powered")
 
-
     function DeviceRow({ device }: { device: AstalBluetooth.Device }) {
-        const [pending, setPending] =
-            createState<"" | "pairing" | "connecting" | "disconnecting">("")
+        const [pending, setPending] = createState<"" | "pairing" | "connecting" | "disconnecting">(
+            "",
+        )
         const [error, setError] = createState("")
         const [detailsOpen, setDetailsOpen] = createState(false)
         let errorToken = 0
@@ -347,13 +409,20 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
             setPending("")
             setError(msg)
             const token = ++errorToken
-            setTimeout(() => { if (token === errorToken) setError("") }, 4000)
+            setTimeout(() => {
+                if (token === errorToken) setError("")
+            }, 4000)
         }
 
         const status = createComputed(
-            [pending, error, createBinding(device, "connecting"),
-                createBinding(device, "connected"), createBinding(device, "paired"),
-                createBinding(device, "batteryPercentage")],
+            [
+                pending,
+                error,
+                createBinding(device, "connecting"),
+                createBinding(device, "connected"),
+                createBinding(device, "paired"),
+                createBinding(device, "batteryPercentage"),
+            ],
             (pending, error, connecting, connected, paired, battery) => {
                 if (error) return error
                 if (pending === "pairing") return "Pairing…"
@@ -361,8 +430,9 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
                 if (pending === "disconnecting") return "Disconnecting…"
                 if (connected) return battery >= 0 ? `Connected · ${battery}%` : "Connected"
                 return paired ? "Paired" : "Available"
-            })
-        const statusClass = error.as(e => e ? ["status", "error"] : ["status"])
+            },
+        )
+        const statusClass = error.as(e => (e ? ["status", "error"] : ["status"]))
         const isPaired = createBinding(device, "paired")
 
         // bluez pairing/connecting is slow and flaky while a scan is
@@ -446,215 +516,232 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
         // uuids only resolve once connected (services discovery) — bind
         // instead of baking them in at row construction
         const profilesText = createBinding(device, "uuids").as(uuids =>
-            uuids.length
-                ? [...new Set(uuids.map(uuidName))].join(", ")
-                : "—")
+            uuids.length ? [...new Set(uuids.map(uuidName))].join(", ") : "—",
+        )
 
-        return <box orientation={Gtk.Orientation.VERTICAL}>
-            <box
-                cssName={"button"}
-                cssClasses={createBinding(device, "connected")
-                    .as(c => c ? ["btDevice", "active"] : ["btDevice"])}
-                spacing={5}
-                tooltipText={createComputed(
-                    [createBinding(device, "connected"),
-                        createBinding(device, "batteryPercentage")],
-                    (c, b) => c && b >= 0
-                        ? `${device.address} · ${b}%`
-                        : device.address)}
-            >
-                {/* gesture only on the info area: nested buttons must not
+        return (
+            <box orientation={Gtk.Orientation.VERTICAL}>
+                <box
+                    cssName={"button"}
+                    cssClasses={createBinding(device, "connected").as(c =>
+                        c ? ["btDevice", "active"] : ["btDevice"],
+                    )}
+                    spacing={5}
+                    tooltipText={createComputed(
+                        [
+                            createBinding(device, "connected"),
+                            createBinding(device, "batteryPercentage"),
+                        ],
+                        (c, b) => (c && b >= 0 ? `${device.address} · ${b}%` : device.address),
+                    )}
+                >
+                    {/* gesture only on the info area: nested buttons must not
                     re-trigger the row click (see notification center) */}
-                <box spacing={5} hexpand>
-                    <Gtk.GestureClick button={1} onPressed={onClick} />
-                    <image
-                        iconName={createBinding(device, "icon")
-                            .as(i => i || "bluetooth-symbolic")}
-                        valign={Gtk.Align.START}
-                    />
-                    <box orientation={Gtk.Orientation.VERTICAL} hexpand>
-                        <label
-                            label={createBinding(device, "alias").as(a => a || device.name)}
-                            xalign={0}
+                    <box spacing={5} hexpand>
+                        <Gtk.GestureClick button={1} onPressed={onClick} />
+                        <image
+                            iconName={createBinding(device, "icon").as(
+                                i => i || "bluetooth-symbolic",
+                            )}
+                            valign={Gtk.Align.START}
                         />
-                        <label cssClasses={statusClass} label={status} xalign={0} />
+                        <box orientation={Gtk.Orientation.VERTICAL} hexpand>
+                            <label
+                                label={createBinding(device, "alias").as(a => a || device.name)}
+                                xalign={0}
+                            />
+                            <label cssClasses={statusClass} label={status} xalign={0} />
+                        </box>
                     </box>
+                    <button
+                        cssClasses={["details"]}
+                        tooltipText={"Device details"}
+                        onClicked={() => setDetailsOpen(!detailsOpen.get())}
+                    >
+                        <image
+                            iconName={detailsOpen.as(o =>
+                                o ? "pan-up-symbolic" : "dialog-information-symbolic",
+                            )}
+                        />
+                    </button>
+                    <button
+                        cssClasses={createBinding(device, "trusted").as(t =>
+                            t ? ["trust", "active"] : ["trust"],
+                        )}
+                        visible={isPaired}
+                        tooltipText={"Trusted"}
+                        onClicked={() => {
+                            device.trusted = !device.trusted
+                        }}
+                    >
+                        <image iconName="security-high-symbolic" />
+                    </button>
+                    <button
+                        cssClasses={["forget"]}
+                        visible={isPaired}
+                        tooltipText={"Forget device"}
+                        onClicked={() => removeDeviceAsync(device)}
+                    >
+                        <image iconName="user-trash-symbolic" />
+                    </button>
                 </box>
-                <button
-                    cssClasses={["details"]}
-                    tooltipText={"Device details"}
-                    onClicked={() => setDetailsOpen(!detailsOpen.get())}
+                <revealer
+                    revealChild={detailsOpen}
+                    transitionDuration={150}
+                    transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
                 >
-                    <image iconName={detailsOpen.as(o => o
-                        ? "pan-up-symbolic"
-                        : "dialog-information-symbolic")} />
-                </button>
-                <button
-                    cssClasses={createBinding(device, "trusted")
-                        .as(t => t ? ["trust", "active"] : ["trust"])}
-                    visible={isPaired}
-                    tooltipText={"Trusted"}
-                    onClicked={() => { device.trusted = !device.trusted }}
-                >
-                    <image iconName="security-high-symbolic" />
-                </button>
-                <button
-                    cssClasses={["forget"]}
-                    visible={isPaired}
-                    tooltipText={"Forget device"}
-                    onClicked={() => removeDeviceAsync(device)}
-                >
-                    <image iconName="user-trash-symbolic" />
-                </button>
-            </box>
-            <revealer
-                revealChild={detailsOpen}
-                transitionDuration={150}
-                transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
-            >
-                <box cssClasses={["btDetails"]} orientation={Gtk.Orientation.VERTICAL}>
-                    {details.map(([key, value]) =>
+                    <box cssClasses={["btDetails"]} orientation={Gtk.Orientation.VERTICAL}>
+                        {details.map(([key, value]) => (
+                            <box>
+                                <label cssClasses={["key"]} label={key} xalign={0} hexpand />
+                                <label
+                                    cssClasses={["value"]}
+                                    label={value}
+                                    xalign={1}
+                                    maxWidthChars={24}
+                                    ellipsize={Pango.EllipsizeMode.END}
+                                />
+                            </box>
+                        ))}
                         <box>
-                            <label cssClasses={["key"]} label={key} xalign={0} hexpand />
+                            <label cssClasses={["key"]} label={"Profiles"} xalign={0} hexpand />
                             <label
                                 cssClasses={["value"]}
-                                label={value}
+                                label={profilesText}
                                 xalign={1}
                                 maxWidthChars={24}
                                 ellipsize={Pango.EllipsizeMode.END}
                             />
                         </box>
-                    )}
-                    <box>
-                        <label cssClasses={["key"]} label={"Profiles"} xalign={0} hexpand />
-                        <label
-                            cssClasses={["value"]}
-                            label={profilesText}
-                            xalign={1}
-                            maxWidthChars={24}
-                            ellipsize={Pango.EllipsizeMode.END}
-                        />
-                    </box>
-                    <box visible={createBinding(device, "rssi").as(r => r !== 0)}>
-                        <label cssClasses={["key"]} label={"Signal"} xalign={0} hexpand />
-                        <label
-                            cssClasses={["value"]}
-                            label={createBinding(device, "rssi").as(r => `${r} dBm`)}
-                            xalign={1}
-                        />
-                    </box>
-                    {/* pipewire card profiles (A2DP/HFP…), only exists
+                        <box visible={createBinding(device, "rssi").as(r => r !== 0)}>
+                            <label cssClasses={["key"]} label={"Signal"} xalign={0} hexpand />
+                            <label
+                                cssClasses={["value"]}
+                                label={createBinding(device, "rssi").as(r => `${r} dBm`)}
+                                xalign={1}
+                            />
+                        </box>
+                        {/* pipewire card profiles (A2DP/HFP…), only exists
                         while the device is connected. The wp device has
                         no name/MAC — match by bluetooth icon + the
                         device description pipewire copies from bluez.
                         audio is null without PipeWire/WirePlumber,
                         and wp itself is null without WirePlumber */}
-                    {wp?.audio && <With value={createBinding(wp.audio, "devices").as(ds => {
-                        const wanted = (device.alias || device.name).toLowerCase()
-                        return (ds ?? []).find(d =>
-                            d.icon?.includes("bluetooth") &&
-                            d.description?.toLowerCase() === wanted) ?? null
-                    })}>
-                        {(wpDev) => wpDev && <ProfileSelector wpDev={wpDev} />}
-                    </With>}
-                </box>
-            </revealer>
-        </box>
+                        {wp?.audio && (
+                            <With
+                                value={createBinding(wp.audio, "devices").as(ds => {
+                                    const wanted = (device.alias || device.name).toLowerCase()
+                                    return (
+                                        (ds ?? []).find(
+                                            d =>
+                                                d.icon?.includes("bluetooth") &&
+                                                d.description?.toLowerCase() === wanted,
+                                        ) ?? null
+                                    )
+                                })}
+                            >
+                                {wpDev => wpDev && <ProfileSelector wpDev={wpDev} />}
+                            </With>
+                        )}
+                    </box>
+                </revealer>
+            </box>
+        )
     }
 
-    return <box orientation={Gtk.Orientation.VERTICAL}>
-        {/* pairing prompt replaces the pane content while pending:
+    return (
+        <box orientation={Gtk.Orientation.VERTICAL}>
+            {/* pairing prompt replaces the pane content while pending:
             pairing is modal, nothing else should be clickable */}
-        <With value={pairingRequest}>
-            {(req) => req && <PromptContent req={req} />}
-        </With>
-        <box
-            orientation={Gtk.Orientation.VERTICAL}
-            visible={pairingRequest.as(r => r === null)}
-        >
-        <box
-            cssName={"button"}
-            spacing={5}
-            visible={powered.as(p => !p)}
-        >
-            <Gtk.GestureClick button={1} onPressed={() => { adapter.powered = true }} />
-            <image iconName="bluetooth-disabled-symbolic" />
-            <label label={"Bluetooth is off — Turn on"} hexpand xalign={0} />
-        </box>
-        <box orientation={Gtk.Orientation.VERTICAL} visible={powered}>
-            {/* each section in its own container: For re-appends its
+            <With value={pairingRequest}>{req => req && <PromptContent req={req} />}</With>
+            <box
+                orientation={Gtk.Orientation.VERTICAL}
+                visible={pairingRequest.as(r => r === null)}
+            >
+                <box cssName={"button"} spacing={5} visible={powered.as(p => !p)}>
+                    <Gtk.GestureClick
+                        button={1}
+                        onPressed={() => {
+                            adapter.powered = true
+                        }}
+                    />
+                    <image iconName="bluetooth-disabled-symbolic" />
+                    <label label={"Bluetooth is off — Turn on"} hexpand xalign={0} />
+                </box>
+                <box orientation={Gtk.Orientation.VERTICAL} visible={powered}>
+                    {/* each section in its own container: For re-appends its
                 children at the end of the parent on every update, which
                 would scramble static siblings */}
-            <box orientation={Gtk.Orientation.VERTICAL} visible={paired.as(l => l.length > 0)}>
-                <label label={"Paired"} cssClasses={["btSection"]} xalign={0} />
-                <For each={paired}>
-                    {(device) => <DeviceRow device={device} />}
-                </For>
-            </box>
-            <box orientation={Gtk.Orientation.VERTICAL}>
-                <box>
-                    <label label={"Available"} cssClasses={["btSection"]} xalign={0} hexpand />
-                    <Gtk.Spinner
-                        $={(self) => self.start()}
-                        visible={scanning}
-                    />
-                    <button
-                        cssClasses={["rescan"]}
-                        tooltipText={"Scan again"}
-                        onClicked={rescan}
+                    <box
+                        orientation={Gtk.Orientation.VERTICAL}
+                        visible={paired.as(l => l.length > 0)}
                     >
-                        <image
-                            iconName={rescanning.as(r => r
-                                ? "content-loading-symbolic"
-                                : "view-refresh-symbolic")}
-                        />
-                    </button>
-                </box>
-                <For each={available}>
-                    {(device) => <DeviceRow device={device} />}
-                </For>
-                <box
-                    cssName={"button"}
-                    spacing={8}
-                    visible={available.as(l => l.length === 0)}
-                >
-                    <Gtk.GestureClick button={1} onPressed={rescan} />
-                    {/* real spinner while scanning: the loading icon
+                        <label label={"Paired"} cssClasses={["btSection"]} xalign={0} />
+                        <For each={paired}>{device => <DeviceRow device={device} />}</For>
+                    </box>
+                    <box orientation={Gtk.Orientation.VERTICAL}>
+                        <box>
+                            <label
+                                label={"Available"}
+                                cssClasses={["btSection"]}
+                                xalign={0}
+                                hexpand
+                            />
+                            <Gtk.Spinner $={self => self.start()} visible={scanning} />
+                            <button
+                                cssClasses={["rescan"]}
+                                tooltipText={"Scan again"}
+                                onClicked={rescan}
+                            >
+                                <image
+                                    iconName={rescanning.as(r =>
+                                        r ? "content-loading-symbolic" : "view-refresh-symbolic",
+                                    )}
+                                />
+                            </button>
+                        </box>
+                        <For each={available}>{device => <DeviceRow device={device} />}</For>
+                        <box
+                            cssName={"button"}
+                            spacing={8}
+                            visible={available.as(l => l.length === 0)}
+                        >
+                            <Gtk.GestureClick button={1} onPressed={rescan} />
+                            {/* real spinner while scanning: the loading icon
                         renders as an ugly "•••" glyph */}
-                    <Gtk.Spinner
-                        $={(self) => self.start()}
-                        visible={scanning}
-                    />
-                    <image
-                        iconName="bluetooth-symbolic"
-                        visible={scanning.as(s => !s)}
-                    />
-                    <label
-                        label={scanning.as(d => d
-                            ? "Scanning…"
-                            : "No devices found — scan again")}
-                        hexpand
-                        xalign={0}
-                    />
+                            <Gtk.Spinner $={self => self.start()} visible={scanning} />
+                            <image iconName="bluetooth-symbolic" visible={scanning.as(s => !s)} />
+                            <label
+                                label={scanning.as(d =>
+                                    d ? "Scanning…" : "No devices found — scan again",
+                                )}
+                                hexpand
+                                xalign={0}
+                            />
+                        </box>
+                    </box>
+                    <box
+                        cssName={"button"}
+                        spacing={5}
+                        cssClasses={createBinding(adapter, "discoverable").as(d =>
+                            d ? ["active"] : [""],
+                        )}
+                    >
+                        <Gtk.GestureClick
+                            button={1}
+                            onPressed={() => {
+                                adapter.discoverable = !adapter.discoverable
+                            }}
+                        />
+                        <label label={"Visible to other devices"} hexpand xalign={0} />
+                        <image
+                            iconName={createBinding(adapter, "discoverable").as(d =>
+                                d ? "object-select-symbolic" : "window-close-symbolic",
+                            )}
+                        />
+                    </box>
                 </box>
             </box>
-            <box
-                cssName={"button"}
-                spacing={5}
-                cssClasses={createBinding(adapter, "discoverable")
-                    .as(d => d ? ["active"] : [""])}
-            >
-                <Gtk.GestureClick
-                    button={1}
-                    onPressed={() => { adapter.discoverable = !adapter.discoverable }}
-                />
-                <label label={"Visible to other devices"} hexpand xalign={0} />
-                <image
-                    iconName={createBinding(adapter, "discoverable")
-                        .as(d => d ? "object-select-symbolic" : "window-close-symbolic")}
-                />
-            </box>
         </box>
-        </box>
-    </box>
+    )
 }

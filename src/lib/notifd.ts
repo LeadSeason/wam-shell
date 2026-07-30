@@ -9,20 +9,27 @@ import Config from "../config"
 // Shared notification daemon state. The first instantiation becomes
 // the daemon (so swaync must not run alongside).
 
-const notifd = AstalNotifd.get_default()
-
 // Whose daemon handles notifications (notifications.daemon):
 // "wam-shell" always ours, "system" never, "auto" ours only when no
 // other daemon owns org.freedesktop.Notifications at startup. When the
 // name is already taken astal backs off (it does not steal it), so the
 // owner being someone else means a system daemon was there first.
+// Must run before AstalNotifd.get_default(): once instantiated astal
+// acquires the name itself, and the probe could read our own
+// acquisition instead of a pre-existing owner's
 function detectSystemDaemon(): boolean {
     try {
         const reply = Gio.DBus.session.call_sync(
-            "org.freedesktop.DBus", "/org/freedesktop/DBus",
-            "org.freedesktop.DBus", "GetNameOwner",
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "GetNameOwner",
             new GLib.Variant("(s)", ["org.freedesktop.Notifications"]),
-            new GLib.VariantType("(s)"), Gio.DBusCallFlags.NONE, 500, null)
+            new GLib.VariantType("(s)"),
+            Gio.DBusCallFlags.NONE,
+            500,
+            null,
+        )
         const owner = reply.get_child_value(0).get_string()[0]
         return owner !== Gio.DBus.session.get_unique_name()
     } catch {
@@ -31,10 +38,11 @@ function detectSystemDaemon(): boolean {
 }
 
 const mode = Config.notifications.daemon
-export const useOurs = mode === "wam-shell" ? true
-    : mode === "system" ? false
-    : !detectSystemDaemon()
+export const useOurs =
+    mode === "wam-shell" ? true : mode === "system" ? false : !detectSystemDaemon()
 if (!useOurs) console.log("Notifications: using the system daemon")
+
+const notifd = AstalNotifd.get_default()
 
 const notifications = createBinding(notifd, "notifications")
 export const count = notifications.as(n => n.length)
@@ -50,25 +58,23 @@ export interface NotificationGroup {
 }
 
 // notifications bucketed by app, newest first within and across groups
-export const grouped: Accessor<NotificationGroup[]> =
-    notifications.as((list) => {
-        const buckets = new Map<string, AstalNotifd.Notification[]>()
-        for (const n of list) {
-            const app = n.appName || "unknown"
-            const bucket = buckets.get(app)
-            if (bucket) bucket.push(n)
-            else buckets.set(app, [n])
-        }
-        return [...buckets.entries()]
-            .map(([app, items]): NotificationGroup => ({
-                app,
-                // id breaks timestamp ties: notifications sent within the
-                // same second still order by arrival
-                items: items.sort((a, b) => b.time - a.time || b.id - a.id),
-            }))
-            .sort((a, b) =>
-                b.items[0].time - a.items[0].time || b.items[0].id - a.items[0].id)
-    })
+export const grouped: Accessor<NotificationGroup[]> = notifications.as(list => {
+    const buckets = new Map<string, AstalNotifd.Notification[]>()
+    for (const n of list) {
+        const app = n.appName || "unknown"
+        const bucket = buckets.get(app)
+        if (bucket) bucket.push(n)
+        else buckets.set(app, [n])
+    }
+    return [...buckets.entries()]
+        .map(([app, items]): NotificationGroup => ({
+            app,
+            // id breaks timestamp ties: notifications sent within the
+            // same second still order by arrival
+            items: items.sort((a, b) => b.time - a.time || b.id - a.id),
+        }))
+        .sort((a, b) => b.items[0].time - a.items[0].time || b.items[0].id - a.items[0].id)
+})
 
 // ticks once a minute while subscribed, so relative timestamps stay fresh
 export const timeTick = createPoll(0, 60_000, () => Date.now())
@@ -84,7 +90,7 @@ const [popupsState, setPopups] = createState<AstalNotifd.Notification[]>([])
 export const popups: Accessor<AstalNotifd.Notification[]> = popupsState
 
 export function removePopup(id: number) {
-    setPopups(popupsState.get().filter((n) => n.id !== id))
+    setPopups(popupsState.get().filter(n => n.id !== id))
 }
 
 connect(notifd, "notified", (_s: AstalNotifd.Notifd, id: number) => {
@@ -95,7 +101,7 @@ connect(notifd, "notified", (_s: AstalNotifd.Notifd, id: number) => {
     if (notifd.dontDisturb && n.urgency !== AstalNotifd.Urgency.CRITICAL) return
 
     const current = popupsState.get()
-    if (current.some((p) => p.id === id)) return
+    if (current.some(p => p.id === id)) return
     setPopups([...current, n].slice(-MAX_POPUPS))
 })
 

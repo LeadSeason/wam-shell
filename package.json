@@ -16,10 +16,6 @@
     "gnim": "link:.sys/gnim",
     "toml": "^3.0.0"
   },
-  "prettier": {
-    "semi": false,
-    "tabWidth": 4
-  },
   "devDependencies": {
     "prettier": "^3.8.1"
   }

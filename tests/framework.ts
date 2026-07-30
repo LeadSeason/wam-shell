@@ -19,8 +19,7 @@ export function test(name: string, fn: () => void) {
 
 export function eq(actual: unknown, expected: unknown, what = "") {
     if (!deepEqual(actual, expected))
-        throw new Error(
-            `${what ? `${what}: ` : ""}expected ${fmt(expected)}, got ${fmt(actual)}`)
+        throw new Error(`${what ? `${what}: ` : ""}expected ${fmt(expected)}, got ${fmt(actual)}`)
 }
 
 function deepEqual(a: unknown, b: unknown): boolean {
@@ -31,8 +30,7 @@ function deepEqual(a: unknown, b: unknown): boolean {
     if (typeof a === "object") {
         const ka = Object.keys(a)
         const kb = Object.keys(b as object)
-        return ka.length === kb.length
-            && ka.every(k => deepEqual((a as any)[k], (b as any)[k]))
+        return ka.length === kb.length && ka.every(k => deepEqual((a as any)[k], (b as any)[k]))
     }
     return false
 }

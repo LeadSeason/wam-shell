@@ -1,5 +1,5 @@
 import AstalTray from "gi://AstalTray"
-import { createState } from "ags"
+import { createState } from "gnim"
 import { isPinned } from "./trayPinned"
 import { connect } from "./metrics"
 
@@ -26,7 +26,10 @@ function update() {
 
 connect(registry, "item-added", (_: AstalTray.Tray, itemId: string) => {
     const item = registry.get_item(itemId)
-    console.log("Tray item added:", `${item.tooltip_markup || item.get_title() || "?"} (id: ${item.get_id()})`)
+    console.log(
+        "Tray item added:",
+        `${item.tooltip_markup || item.get_title() || "?"} (id: ${item.get_id()})`,
+    )
     items.set(itemId, item)
     connect(item, "notify::status", update)
     update()

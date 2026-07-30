@@ -18,7 +18,7 @@ for arg in "$@"; do
     esac
 done
 
-ASTAL_DIR="${ASTAL_DIR:-$HOME/Dev/astal}"
+ASTAL_DIR="${ASTAL_DIR:-$HOME/.cache/wam-shell/build/astal}"
 ASTAL_REPO="https://github.com/Aylur/astal.git"
 I3IPC_DIR="${I3IPC_DIR:-$HOME/Dev/i3ipc-glib}"
 I3IPC_REPO="https://github.com/acrisci/i3ipc-glib.git"

@@ -46,7 +46,7 @@ function recordProc(bin: string, ms: number) {
 }
 
 export const exec: typeof agsExec = ENABLED
-    ? (cmd) => {
+    ? cmd => {
           const t0 = GLib.get_monotonic_time()
           try {
               return agsExec(cmd)
@@ -57,7 +57,7 @@ export const exec: typeof agsExec = ENABLED
     : agsExec
 
 export const execAsync: typeof agsExecAsync = ENABLED
-    ? (cmd) => {
+    ? cmd => {
           recordProc(binName(cmd), 0)
           return agsExecAsync(cmd)
       }
@@ -89,12 +89,7 @@ function timerGone(id: number) {
 }
 
 export const timeoutAdd = ENABLED
-    ? (
-          label: string,
-          priority: number,
-          interval: number,
-          fn: () => boolean,
-      ): number => {
+    ? (label: string, priority: number, interval: number, fn: () => boolean): number => {
           // assigned before the callback can ever fire (main loop is not
           // re-entered from here)
           let id = 0
@@ -105,20 +100,11 @@ export const timeoutAdd = ENABLED
           })
           return timerCreated(label, id)
       }
-    : (
-          _label: string,
-          priority: number,
-          interval: number,
-          fn: () => boolean,
-      ): number => GLib.timeout_add(priority, interval, fn)
+    : (_label: string, priority: number, interval: number, fn: () => boolean): number =>
+          GLib.timeout_add(priority, interval, fn)
 
 export const timeoutAddSeconds = ENABLED
-    ? (
-          label: string,
-          priority: number,
-          interval: number,
-          fn: () => boolean,
-      ): number => {
+    ? (label: string, priority: number, interval: number, fn: () => boolean): number => {
           let id = 0
           id = GLib.timeout_add_seconds(priority, interval, () => {
               const again = fn()
@@ -127,15 +113,11 @@ export const timeoutAddSeconds = ENABLED
           })
           return timerCreated(label, id)
       }
-    : (
-          _label: string,
-          priority: number,
-          interval: number,
-          fn: () => boolean,
-      ): number => GLib.timeout_add_seconds(priority, interval, fn)
+    : (_label: string, priority: number, interval: number, fn: () => boolean): number =>
+          GLib.timeout_add_seconds(priority, interval, fn)
 
 export const sourceRemove: typeof GLib.source_remove = ENABLED
-    ? (id) => {
+    ? id => {
           timerGone(id)
           return GLib.source_remove(id)
       }
@@ -182,8 +164,7 @@ export const disconnect = ENABLED
           }
           obj.disconnect(id)
       }
-    : (obj: { disconnect(id: number): void }, id: number): void =>
-          obj.disconnect(id)
+    : (obj: { disconnect(id: number): void }, id: number): void => obj.disconnect(id)
 
 // --- HTTP -----------------------------------------------------------------
 
@@ -293,7 +274,7 @@ metrics reset
 metrics gc
   Forces a garbage collection, so leak counters reflect live objects
   only (the perf harness calls this after churn, before reading).`,
-    main: (argv) => {
+    main: argv => {
         if (argv[0] === "reset") {
             reset()
             return JSON.stringify({ ok: true })

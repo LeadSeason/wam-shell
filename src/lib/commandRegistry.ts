@@ -36,15 +36,22 @@ class CommandRegistry {
 
     /** Register a command */
     register(command: CommandEntry): void {
-        command.name.forEach((element) => {
+        command.name.forEach(element => {
             if (element.includes(" "))
-                throw new Error(
-                    `Invalid altName "${element}" — spaces are not allowed`,
-                )
+                throw new Error(`Invalid altName "${element}" — spaces are not allowed`)
         })
 
         if (command.name.length === 0)
             throw new Error(`Command must have at least 1 name ${command}`)
+
+        // execute() picks the first matching entry, so a re-registered
+        // alias would silently shadow the new command — call it out
+        const taken = new Set(this.commands.flatMap(c => c.name.map(n => n.toLowerCase())))
+        const dupes = command.name.filter(n => taken.has(n.toLowerCase()))
+        if (dupes.length > 0)
+            console.warn(
+                `Request: "${command.name[0]}" alias(es) already registered and will be shadowed: ${dupes.join(", ")}`,
+            )
 
         this.commands.push(command)
     }
@@ -55,20 +62,18 @@ class CommandRegistry {
      * @returns Returns the executed commands output string
      */
     async execute(argv: string[], silent: boolean = false): Promise<string> {
-        // `ags request -i x "cmd arg"` delivers the whole string as one
-        // element; split so the quoted form works too. Note quotes are
-        // NOT honored: an argument that genuinely contains spaces would
-        // be split — no current command takes one.
-        argv = argv.flatMap((a) => a.split(/\s+/).filter(Boolean))
-        let requested_command = argv.shift()
+        // copy + split: call sites pass fixed lists (["notifications"],
+        // ...) whose first element shift() would eat, and `ags request
+        // -i x "cmd arg"` delivers the whole string as one element.
+        // Note quotes are NOT honored: an argument that genuinely
+        // contains spaces would be split — no current command takes one.
+        const args = argv.flatMap(a => a.split(/\s+/).filter(Boolean))
+        let requested_command = args.shift()
 
-        if (requested_command === undefined)
-            return "<helper> help for list of commands"
+        if (requested_command === undefined) return "<helper> help for list of commands"
 
         if (!silent) {
-            console.log(
-                `Request: command(${requested_command}) args(${argv.join(", ")})`,
-            )
+            console.log(`Request: command(${requested_command}) args(${args.join(", ")})`)
         }
 
         // Typescript happy, Also sane default
@@ -76,11 +81,8 @@ class CommandRegistry {
             requested_command = "help"
         }
 
-        const entry = this.commands.find((cmd) =>
-            cmd.name.some(
-                (name) =>
-                    name.toLowerCase() === requested_command.toLowerCase(),
-            ),
+        const entry = this.commands.find(cmd =>
+            cmd.name.some(name => name.toLowerCase() === requested_command.toLowerCase()),
         )
 
         if (!entry) {
@@ -88,7 +90,7 @@ class CommandRegistry {
         }
 
         try {
-            const result = await entry.main(argv)
+            const result = await entry.main(args)
             return `${Config.instanceName}: ${result}`
         } catch (err) {
             console.warn(`Request error: ${(err as Error).message}`)
@@ -99,10 +101,8 @@ class CommandRegistry {
     help(argv: string[]): string {
         const command = argv.shift()
         if (command) {
-            const entry = this.commands.find((cmd) =>
-                cmd.name.some(
-                    (name) => name.toLowerCase() === command.toLowerCase(),
-                ),
+            const entry = this.commands.find(cmd =>
+                cmd.name.some(name => name.toLowerCase() === command.toLowerCase()),
             )
             if (entry?.help) {
                 let out = `${entry.name[0]}:\n`
@@ -120,8 +120,7 @@ class CommandRegistry {
             out += `\n- ${cmd.name[0]}\n`
             out += `  ${cmd.description}\n\n`
             out += `  Aliases: ${cmd.name.join(", ")}\n`
-            if (cmd.subCommands)
-                out += `  subcommands: ${cmd.subCommands.join(", ")}\n`
+            if (cmd.subCommands) out += `  subcommands: ${cmd.subCommands.join(", ")}\n`
         }
         return out.trim()
     }

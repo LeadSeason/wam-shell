@@ -1,5 +1,5 @@
-import { Gtk } from "ags/gtk4";
-import { Accessor, Setter } from "gnim";
+import { Gtk } from "ags/gtk4"
+import { Accessor, Setter } from "gnim"
 
 interface TbButtonProps {
     label: string | Accessor<string>
@@ -34,59 +34,60 @@ export function DropdownButton({
 }: TbButtonProps) {
     const toggleDropdown = () => {
         if (!activeDropdown || !setDropdown) return
-        if (activeDropdown.get() === dropdownIndex)
-            setDropdown(0)
-        else
-            setDropdown(dropdownIndex)
+        if (activeDropdown.get() === dropdownIndex) setDropdown(0)
+        else setDropdown(dropdownIndex)
     }
 
-    const hasChevron = navigate !== undefined || (activeDropdown !== undefined && setDropdown !== undefined)
+    const hasChevron =
+        navigate !== undefined || (activeDropdown !== undefined && setDropdown !== undefined)
 
     let cssClasses
 
-    if (typeof (isActive) === "boolean") {
+    if (typeof isActive === "boolean") {
         // Default to inactive always.
         cssClasses = ["toggleButton"]
     } else {
-        cssClasses = isActive.as(v => v ? ["toggleButton", "ToggleSectionActive"] : ["toggleButton"])
+        cssClasses = isActive.as(v =>
+            v ? ["toggleButton", "ToggleSectionActive"] : ["toggleButton"],
+        )
     }
 
     const chevronIcon = !hasChevron
         ? ""
         : navigate !== undefined
-            ? "go-next-symbolic"
-            : activeDropdown!.as(s => (s === dropdownIndex) ? "pan-up-symbolic" : "pan-down-symbolic")
+          ? "go-next-symbolic"
+          : activeDropdown!.as(s => (s === dropdownIndex ? "pan-up-symbolic" : "pan-down-symbolic"))
 
-    return <box cssName={"button"} hexpand cssClasses={cssClasses}>
-        <box spacing={8} hexpand>
-            <Gtk.GestureClick
-                button={1}
-                onPressed={() => {
-                    if (activate)
-                        activate()
-                    else
-                        toggleDropdown();
-                }} />
-            <image iconName={icon} />
-            <box orientation={Gtk.Orientation.VERTICAL} valign={Gtk.Align.CENTER} hexpand>
-                <label cssClasses={["toggleTitle"]} label={label} xalign={0} />
-                {subtitle !== undefined &&
-                    <label cssClasses={["toggleSubtitle"]} label={subtitle} xalign={0} />
-                }
-            </box>
-        </box>
-        {hasChevron &&
-            <box cssClasses={["toggleChevron"]}>
-                <image halign={Gtk.Align.END} iconName={chevronIcon} />
+    return (
+        <box cssName={"button"} hexpand cssClasses={cssClasses}>
+            <box spacing={8} hexpand>
                 <Gtk.GestureClick
                     button={1}
                     onPressed={() => {
-                        if (navigate)
-                            navigate()
-                        else
-                            toggleDropdown();
-                    }} />
+                        if (activate) activate()
+                        else toggleDropdown()
+                    }}
+                />
+                <image iconName={icon} />
+                <box orientation={Gtk.Orientation.VERTICAL} valign={Gtk.Align.CENTER} hexpand>
+                    <label cssClasses={["toggleTitle"]} label={label} xalign={0} />
+                    {subtitle !== undefined && (
+                        <label cssClasses={["toggleSubtitle"]} label={subtitle} xalign={0} />
+                    )}
+                </box>
             </box>
-        }
-    </box>
+            {hasChevron && (
+                <box cssClasses={["toggleChevron"]}>
+                    <image halign={Gtk.Align.END} iconName={chevronIcon} />
+                    <Gtk.GestureClick
+                        button={1}
+                        onPressed={() => {
+                            if (navigate) navigate()
+                            else toggleDropdown()
+                        }}
+                    />
+                </box>
+            )}
+        </box>
+    )
 }

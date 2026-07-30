@@ -34,8 +34,7 @@ function loadConfig(env: Record<string, string | null>, configToml?: string): an
     const proc = launcher.spawnv([DUMP])
     const [, stdout, stderr] = proc.communicate_utf8(null, null)
     const status = proc.get_exit_status()
-    if (status !== 0)
-        throw new Error(`config-dump exited ${status}: ${stderr}`)
+    if (status !== 0) throw new Error(`config-dump exited ${status}: ${stderr}`)
     // config.ts logs to stdout; the dump is the last line
     const dump = JSON.parse(stdout.trim().split("\n").pop()!)
     dump.__dir = dir
@@ -83,17 +82,22 @@ test("config: documented defaults without a config file", () => {
 })
 
 test("config: theme fallback with follow_system off", () => {
-    const c = loadConfig({ DESKTOP_SESSION: "hyprland" }, `
+    const c = loadConfig(
+        { DESKTOP_SESSION: "hyprland" },
+        `
 [appearance]
 follow_system = false
-`)
+`,
+    )
     eq(c.theme, "catppuccin-mocha")
 })
 
 // --- invalid values are corrected, not trusted ---
 
 test("config: invalid values fall back to documented defaults", () => {
-    const c = loadConfig({ DESKTOP_SESSION: "hyprland" }, `
+    const c = loadConfig(
+        { DESKTOP_SESSION: "hyprland" },
+        `
 instance_name = "wam-shell-test-x"
 desktop_session_override = "hyprland"
 
@@ -113,7 +117,8 @@ position = "up"
 [[panel]]
 position = "middle"
 left = ["osicon", "bogus-widget", "clock"]
-`)
+`,
+    )
     eq(c.instanceName, "wam-shell-test-x", "instanceName")
     eq(c.desktopSession, "hyprland", "desktopSession override")
     eq(c.tray.spacing, 0, "tray.spacing")
@@ -129,8 +134,11 @@ left = ["osicon", "bogus-widget", "clock"]
 })
 
 test("config: instance cache dir follows XDG_CACHE_HOME and instance name", () => {
-    const c = loadConfig({ DESKTOP_SESSION: "hyprland" }, `
+    const c = loadConfig(
+        { DESKTOP_SESSION: "hyprland" },
+        `
 instance_name = "wam-shell-test-x"
-`)
+`,
+    )
     eq(c.instanceCacheDir, `${c.__dir}/cache/wam-shell-test-x`)
 })

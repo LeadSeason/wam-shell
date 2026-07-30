@@ -24,8 +24,7 @@ export interface PairingRequest {
     respond: (accept: boolean, input?: string) => void
 }
 
-export const [pairingRequest, setPairingRequest] =
-    createState<PairingRequest | null>(null)
+export const [pairingRequest, setPairingRequest] = createState<PairingRequest | null>(null)
 
 /** true while the QS bluetooth pane is on screen: the prompt renders
  *  inline in the pane; otherwise the floating dialog window shows it */
@@ -79,11 +78,11 @@ const AGENT_XML = `<node>
 
 const queue: PairingRequest[] = []
 
-function deviceInfo(path: string): { name: string, icon: string, address: string } {
+function deviceInfo(path: string): { name: string; icon: string; address: string } {
     const mac = path.match(/dev_([0-9A-Fa-f_]+)$/)?.[1].replaceAll("_", ":") ?? ""
     const device = bluetooth.devices.find(d => d.address === mac)
     return {
-        name: device ? (device.alias || device.name || mac) : (mac || path),
+        name: device ? device.alias || device.name || mac : mac || path,
         icon: device?.icon || "bluetooth-symbolic",
         address: mac,
     }
@@ -136,7 +135,9 @@ function makeResponder(
                     invocation.return_value(acceptVariant(input))
                 } else {
                     invocation.return_dbus_error(
-                        "org.bluez.Error.Rejected", "Pairing rejected by user")
+                        "org.bluez.Error.Rejected",
+                        "Pairing rejected by user",
+                    )
                 }
             } catch (e) {
                 console.warn("bluetooth agent: reply failed:", e)
@@ -151,20 +152,27 @@ function makeResponder(
     if (invocation) {
         armByRespond.set(finish, () => {
             if (timer || done) return
-            timer = timeoutAdd("btAgent:promptTimeout", GLib.PRIORITY_DEFAULT, PROMPT_TIMEOUT_MS, () => {
-                timer = 0
-                if (done) return GLib.SOURCE_REMOVE
-                done = true
-                armByRespond.delete(finish)
-                try {
-                    invocation.return_dbus_error(
-                        "org.bluez.Error.Canceled", "Pairing prompt timed out")
-                } catch (e) {
-                    console.warn("bluetooth agent: timeout reply failed:", e)
-                }
-                advance()
-                return GLib.SOURCE_REMOVE
-            })
+            timer = timeoutAdd(
+                "btAgent:promptTimeout",
+                GLib.PRIORITY_DEFAULT,
+                PROMPT_TIMEOUT_MS,
+                () => {
+                    timer = 0
+                    if (done) return GLib.SOURCE_REMOVE
+                    done = true
+                    armByRespond.delete(finish)
+                    try {
+                        invocation.return_dbus_error(
+                            "org.bluez.Error.Canceled",
+                            "Pairing prompt timed out",
+                        )
+                    } catch (e) {
+                        console.warn("bluetooth agent: timeout reply failed:", e)
+                    }
+                    advance()
+                    return GLib.SOURCE_REMOVE
+                },
+            )
         })
     }
     return finish
@@ -180,7 +188,10 @@ function onMethodCall(
     invocation: Gio.DBusMethodInvocation,
 ) {
     const { name, icon, address } = deviceInfo(
-        method === "Cancel" || method === "Release" ? "" : params.get_child_value(0).get_string()[0])
+        method === "Cancel" || method === "Release"
+            ? ""
+            : params.get_child_value(0).get_string()[0],
+    )
 
     switch (method) {
         case "Release":
@@ -218,8 +229,7 @@ function onMethodCall(
                 deviceName: name,
                 deviceAddress: address,
                 icon,
-                respond: makeResponder(invocation,
-                    (input) => new GLib.Variant("(s)", [input ?? ""])),
+                respond: makeResponder(invocation, input => new GLib.Variant("(s)", [input ?? ""])),
             })
             break
         case "RequestPasskey":
@@ -228,15 +238,18 @@ function onMethodCall(
                 deviceName: name,
                 deviceAddress: address,
                 icon,
-                respond: makeResponder(invocation,
-                    (input) => new GLib.Variant("(u)", [Number(input ?? "0")])),
+                respond: makeResponder(
+                    invocation,
+                    input => new GLib.Variant("(u)", [Number(input ?? "0")]),
+                ),
             })
             break
         case "DisplayPinCode":
         case "DisplayPasskey": {
-            const code = method === "DisplayPinCode"
-                ? params.get_child_value(1).get_string()[0]
-                : params.get_child_value(1).get_uint32().toString().padStart(6, "0")
+            const code =
+                method === "DisplayPinCode"
+                    ? params.get_child_value(1).get_string()[0]
+                    : params.get_child_value(1).get_uint32().toString().padStart(6, "0")
             // no answer expected: return now, Close just dismisses the dialog
             invocation.return_value(null)
             present({
@@ -254,8 +267,7 @@ function onMethodCall(
             invocation.return_value(null)
             break
         default:
-            invocation.return_dbus_error(
-                "org.freedesktop.DBus.Error.UnknownMethod", method)
+            invocation.return_dbus_error("org.freedesktop.DBus.Error.UnknownMethod", method)
     }
 }
 
@@ -271,9 +283,15 @@ function register() {
     // async like every other bluez call: a sync call here can freeze the
     // whole shell at startup when bluez is slow
     Gio.DBus.system.call(
-        "org.bluez", "/org/bluez", "org.bluez.AgentManager1", "RegisterAgent",
+        "org.bluez",
+        "/org/bluez",
+        "org.bluez.AgentManager1",
+        "RegisterAgent",
         new GLib.Variant("(os)", [AGENT_PATH, CAPABILITY]),
-        null, Gio.DBusCallFlags.NONE, -1, null,
+        null,
+        Gio.DBusCallFlags.NONE,
+        -1,
+        null,
         (_c, res) => {
             try {
                 Gio.DBus.system.call_finish(res)
@@ -290,15 +308,22 @@ function register() {
                     return
                 }
                 registered = false
-                console.warn("bluetooth: agent registration failed " +
-                    "(pairing degrades to just-works):", e)
+                console.warn(
+                    "bluetooth: agent registration failed " + "(pairing degrades to just-works):",
+                    e,
+                )
                 return
             }
             Gio.DBus.system.call(
-                "org.bluez", "/org/bluez", "org.bluez.AgentManager1",
+                "org.bluez",
+                "/org/bluez",
+                "org.bluez.AgentManager1",
                 "RequestDefaultAgent",
                 new GLib.Variant("(o)", [AGENT_PATH]),
-                null, Gio.DBusCallFlags.NONE, -1, null,
+                null,
+                Gio.DBusCallFlags.NONE,
+                -1,
+                null,
                 (_c2, res2) => {
                     registering = false
                     try {
@@ -322,8 +347,14 @@ export function startBluetoothAgent() {
     register()
     // re-register if bluez restarts
     Gio.DBus.watch_name(
-        Gio.BusType.SYSTEM, "org.bluez", Gio.BusNameWatcherFlags.NONE,
-        () => { if (!registered) register() },
-        () => { registered = false },
+        Gio.BusType.SYSTEM,
+        "org.bluez",
+        Gio.BusNameWatcherFlags.NONE,
+        () => {
+            if (!registered) register()
+        },
+        () => {
+            registered = false
+        },
     )
 }

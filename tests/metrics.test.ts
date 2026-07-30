@@ -23,8 +23,7 @@ function runProbe(enabled: boolean): ProbeOutput {
 
     const proc = launcher.spawnv([PROBE])
     const [, stdout, stderr] = proc.communicate_utf8(null, null)
-    if (proc.get_exit_status() !== 0)
-        throw new Error(`metrics-probe failed: ${stderr}`)
+    if (proc.get_exit_status() !== 0) throw new Error(`metrics-probe failed: ${stderr}`)
 
     // responses are "<instance>: <json>"; JSON starts at the first "{"
     const parse = (prefix: string) => {
