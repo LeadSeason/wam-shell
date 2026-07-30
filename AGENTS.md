@@ -44,6 +44,14 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 - Imports of gnim API (`createState`, `For`, `With`, accessors) come
   from `"gnim"`, GObject from `"ags/gobject"` — not from `"ags"`.
 
+## Resources
+
+- Widget subscriptions pair `subscribe` with `onCleanup`.
+- Lib modules with long-lived sources (timers, D-Bus subscriptions,
+  GObject handlers) expose a `dispose()` that tears everything down,
+  even when nothing calls it yet (see `lib/harvest.ts`,
+  `lib/screenShare.ts`).
+
 ## Commits
 
 - One logical change per commit; split unrelated changes into separate

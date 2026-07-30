@@ -888,7 +888,7 @@ function watchLock() {
                     }
                 },
             )
-            Gio.DBus.system.signal_subscribe(
+            lockedHintSub = Gio.DBus.system.signal_subscribe(
                 "org.freedesktop.login1",
                 "org.freedesktop.DBus.Properties",
                 "PropertiesChanged",
@@ -912,7 +912,7 @@ function watchLock() {
 // signal (the NIC is still coming up then). Failures for ~30s after a
 // resume or reconnect are forgiven, not backed off.
 function watchConnectivity() {
-    Gio.DBus.system.signal_subscribe(
+    prepareSleepSub = Gio.DBus.system.signal_subscribe(
         "org.freedesktop.login1",
         "org.freedesktop.login1.Manager",
         "PrepareForSleep",
@@ -926,11 +926,49 @@ function watchConnectivity() {
         },
     )
     const net = AstalNetwork.get_default()
-    net.connect("notify::connectivity", () => {
+    connectivityHandler = net.connect("notify::connectivity", () => {
         if (net.connectivity !== AstalNetwork.Connectivity.FULL) return
         forgiveFailuresUntil = Date.now() + 30_000
         deltaPoll()
     })
+}
+
+let lockedHintSub = 0
+let prepareSleepSub = 0
+let connectivityHandler = 0
+
+// convention for lib modules with long-lived sources, even though the
+// shell never calls it today: one place that tears everything down
+export function dispose() {
+    if (fastTimer) {
+        GLib.source_remove(fastTimer)
+        fastTimer = 0
+    }
+    if (slowTimer) {
+        GLib.source_remove(slowTimer)
+        slowTimer = 0
+    }
+    if (baselineTimer) {
+        GLib.source_remove(baselineTimer)
+        baselineTimer = 0
+    }
+    if (rolloverTimer) {
+        GLib.source_remove(rolloverTimer)
+        rolloverTimer = 0
+    }
+    disarmTicker()
+    if (lockedHintSub) {
+        Gio.DBus.system.signal_unsubscribe(lockedHintSub)
+        lockedHintSub = 0
+    }
+    if (prepareSleepSub) {
+        Gio.DBus.system.signal_unsubscribe(prepareSleepSub)
+        prepareSleepSub = 0
+    }
+    if (connectivityHandler) {
+        AstalNetwork.get_default().disconnect(connectivityHandler)
+        connectivityHandler = 0
+    }
 }
 
 // -------------------------------------------------------------- startup

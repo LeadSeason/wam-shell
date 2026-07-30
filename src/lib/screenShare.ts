@@ -42,6 +42,7 @@ function scheduleEvaluate() {
 }
 
 let started = false
+let streamsHandler = 0
 
 // started by the consumer (the Harvest panel pill): detection only runs
 // when something actually masks on it
@@ -50,9 +51,22 @@ export function enable() {
     started = true
     const video = AstalWp.get_default()?.video
     if (video) {
-        video.connect("notify::streams", scheduleEvaluate)
+        streamsHandler = video.connect("notify::streams", scheduleEvaluate)
         evaluate()
     } else {
         setSharing(true) // fail closed
     }
+}
+
+// convention for lib modules with long-lived sources, even though the
+// shell never calls it today: one place that tears everything down
+export function dispose() {
+    if (debounce) {
+        GLib.source_remove(debounce)
+        debounce = 0
+    }
+    const video = AstalWp.get_default()?.video
+    if (video && streamsHandler) video.disconnect(streamsHandler)
+    streamsHandler = 0
+    started = false
 }
