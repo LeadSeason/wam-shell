@@ -1,5 +1,6 @@
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
+import System from "system"
 import { exec as agsExec, execAsync as agsExecAsync } from "ags/process"
 import { readFile } from "ags/file"
 import Config from "../config"
@@ -239,7 +240,7 @@ function reset() {
 CommandRegistry.get_default().register({
     name: ["metrics"],
     description: "Performance counters as single-line JSON",
-    subCommands: ["reset"],
+    subCommands: ["reset", "gc"],
     help: `metrics
   Returns a single line of JSON with counters (subprocesses, timers,
   signal handlers, http) and process facts (pid, RSS, fds, context
@@ -247,10 +248,19 @@ CommandRegistry.get_default().register({
   with WAM_SHELL_METRICS=1. Note: the response is prefixed with
   "<instance>: " by the request handler; JSON starts at the first "{".
 metrics reset
-  Zeroes all counters, for measuring a clean window.`,
+  Zeroes all counters, for measuring a clean window.
+metrics gc
+  Forces a garbage collection, so leak counters reflect live objects
+  only (the perf harness calls this after churn, before reading).`,
     main: (argv) => {
         if (argv[0] === "reset") {
             reset()
+            return JSON.stringify({ ok: true })
+        }
+        // force a GC so leak counts aren't polluted by uncollected
+        // garbage (used by the perf harness after churn)
+        if (argv[0] === "gc") {
+            System.gc()
             return JSON.stringify({ ok: true })
         }
         return JSON.stringify(snapshot())
