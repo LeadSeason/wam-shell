@@ -421,10 +421,12 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
 
 // editable accrued time of the paused entry. Same dirty/focus contract
 // as NotesRow: a poll or in-place update never clobbers an edit in
-// progress; Enter, focus-out or Save commits
+// progress; Enter or Save commits. NO focus-out commit: the layer-shell
+// popup drops keyboard focus spontaneously, and a silent hours PATCH is
+// worse than a notes one (see bbb7575)
 function PausedEditor() {
     let entry: Gtk.Entry | null = null
-    let dirty = false
+    const [dirty, setDirty] = createState(false)
     let focused = false
 
     const serverText = () => {
@@ -439,15 +441,15 @@ function PausedEditor() {
         // form 0 means "live timer"): snap back to the server value
         if (hours === null || hours <= 0) {
             entry.set_text(serverText())
-            dirty = false
+            setDirty(false)
             return
         }
         // keep dirty when the update couldn't be attempted (busy)
-        if (Harvest.setHours(p, hours)) dirty = false
+        if (Harvest.setHours(p, hours)) setDirty(false)
     }
 
     const unsub = Harvest.paused.subscribe(() => {
-        if (dirty || focused || !entry) return
+        if (dirty.get() || focused || !entry) return
         entry.set_text(serverText())
     })
     onCleanup(unsub)
@@ -464,7 +466,7 @@ function PausedEditor() {
                 hexpand
                 tooltipText={"Edit hours (e.g. 1.5 or 1:30)"}
                 onChanged={() => {
-                    dirty = entry?.get_text() !== serverText()
+                    setDirty(entry?.get_text() !== serverText())
                 }}
                 onActivate={save}
             >
@@ -474,11 +476,10 @@ function PausedEditor() {
                     }}
                     onLeave={() => {
                         focused = false
-                        if (dirty) save()
                     }}
                 />
             </Gtk.Entry>
-            <button cssClasses={["confirm"]} onClicked={save}>
+            <button cssClasses={["confirm"]} visible={dirty} onClicked={save}>
                 <label label={"Save"} />
             </button>
         </box>
