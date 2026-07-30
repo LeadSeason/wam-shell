@@ -512,7 +512,7 @@ function Timeline() {
     return (
         <box
             orientation={Gtk.Orientation.VERTICAL}
-            spacing={4}
+            spacing={6}
             visible={Harvest.todayEntries.as(r => r.length > 0)}
         >
             <label cssClasses={["section"]} label={"Today"} xalign={0} />
@@ -522,7 +522,7 @@ function Timeline() {
                 propagateNaturalHeight
                 maxContentHeight={300}
             >
-                <box orientation={Gtk.Orientation.VERTICAL} spacing={2}>
+                <box orientation={Gtk.Orientation.VERTICAL} spacing={6}>
                     <For each={Harvest.todayEntries}>
                         {(e: Harvest.Entry) => <TimelineRow entry={e} />}
                     </For>
@@ -582,7 +582,7 @@ function PopupContent() {
         <box
             cssClasses={["harvestPopup"]}
             orientation={Gtk.Orientation.VERTICAL}
-            spacing={10}
+            spacing={12}
             widthRequest={340}
         >
             <box
