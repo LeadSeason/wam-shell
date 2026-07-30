@@ -391,9 +391,6 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
                             duration = self
                         }}
                         cssClasses={["input", "duration"]}
-                        // hug the right edge at natural width so the
-                        // input's edges line up with the buttons below
-                        halign={Gtk.Align.END}
                         placeholderText={Harvest.formatElapsed(0)}
                         widthChars={5}
                         onChanged={self =>
@@ -403,7 +400,9 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
                         }
                         onActivate={start}
                     />
-                    <box halign={Gtk.Align.END} spacing={6}>
+                    {/* fill the column so input and buttons share both
+                    edges; homogeneous gives the buttons equal width */}
+                    <box hexpand homogeneous spacing={6}>
                         <button onClicked={onCancel}>
                             <label label={"Cancel"} />
                         </button>
