@@ -115,13 +115,13 @@ function applyGamma() {
 // Watch the daemon for external gamma/temperature changes (keybinds,
 // other tools). Skipped briefly after our own applies so a mid-drag
 // read can't fight the debounced apply above. hyprland only — hyprctl
-// does not exist elsewhere. 3s: external gamma changes are not
-// sub-second-critical, and this spawns two hyprctl forks per tick for
-// the shell's lifetime on a laptop.
+// does not exist elsewhere. 30s is enough: external changes are rare,
+// and the Quick Settings popup calls this on open, so the slider never
+// shows stale values where the user actually looks at them.
 let watchRunning = false
-if (Config.desktopSession === "hyprland")
-GLib.timeout_add(GLib.PRIORITY_DEFAULT, 3000, () => {
-    if (watchRunning) return GLib.SOURCE_CONTINUE
+export function refreshHyprsunset() {
+    if (Config.desktopSession !== "hyprland") return
+    if (watchRunning) return
     watchRunning = true
     Promise.all([
         execAsync("hyprctl hyprsunset gamma"),
@@ -150,6 +150,11 @@ GLib.timeout_add(GLib.PRIORITY_DEFAULT, 3000, () => {
         })
         .catch(() => { })
         .finally(() => { watchRunning = false })
+}
+
+if (Config.desktopSession === "hyprland")
+GLib.timeout_add(GLib.PRIORITY_DEFAULT, 30000, () => {
+    refreshHyprsunset()
     return GLib.SOURCE_CONTINUE
 })
 

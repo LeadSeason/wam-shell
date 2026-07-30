@@ -8,6 +8,7 @@ import Tray from "./tray";
 import Config from "../../config";
 import CommandRegistry from "../../lib/requestHandler";
 import { isPinned } from "../../lib/trayPinned";
+import { refreshHyprsunset } from "../../lib/hyprsunset";
 
 import { createState } from "gnim";
 import { ToggleSection } from "./toggleSection";
@@ -61,6 +62,9 @@ export default function QSettings() {
         // a hide may have a pending win.hide(); cancel it
         hideTimer?.cancel()
         hideTimer = null
+        // the sliders should reflect external hyprsunset changes now,
+        // not whenever the 30s watch happens to tick next
+        refreshHyprsunset()
         win.present()
         revealer.set_reveal_child(true);
     }

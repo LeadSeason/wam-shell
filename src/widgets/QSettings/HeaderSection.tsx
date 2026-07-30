@@ -4,6 +4,7 @@ import GLib from "gi://GLib?version=2.0";
 import Gio from "gi://Gio?version=2.0";
 import { execAsync } from "ags/process";
 import { createPoll } from "ags/time";
+import { readFile } from "ags/file";
 import AstalBattery from "gi://AstalBattery?version=0.1";
 import { Accessor, createBinding, createComputed, createState, onCleanup } from "gnim";
 import Config from "../../config";
@@ -170,66 +171,41 @@ function useBatteryLine(): { line: Accessor<string> } {
     }
 }
 
-const uptimeConvert = (uptimeOutput: string): string => {
-    // Example input:
-    // "13:22:26 up 16 days, 10:51,  1 user,  load average: 3.14, 2.97, 2.41"
-
-    const upMatch = uptimeOutput.match(/up\s+(.*?),\s+\d+\s+user/);
-    if (!upMatch) return "";
-
-    const upPart = upMatch[1].trim(); // "16 days, 10:51"
-
-    let days = 0;
-    let hours = 0;
-    let minutes = 0;
-
-    // Days
-    const dayMatch = upPart.match(/(\d+)\s+day/);
-    if (dayMatch) {
-        days = parseInt(dayMatch[1], 10);
-    }
-
-    // Time (HH:MM)
-    const timeMatch = upPart.match(/(\d+):(\d+)/);
-    if (timeMatch) {
-        hours = parseInt(timeMatch[1], 10);
-        minutes = parseInt(timeMatch[2], 10);
-    }
+// uptime without the fork: /proc/uptime is "<seconds> <idle>" and
+// /proc/loadavg is "<1m> <5m> <15m> …" — everything `uptime` printed
+const uptimeConvert = (seconds: number): string => {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
 
     const parts: string[] = [];
 
     if (days > 0) parts.push(`${days}d`);
     if (hours > 0) parts.push(`${hours}h`);
+    // minutes only add noise past a day (same rule as the old parser)
     if (minutes > 0 && days === 0) parts.push(`${minutes}m`);
 
     return `Up ${parts.join(" ")}`;
 };
 
-const loadConvert = (uptimeOutput: string): string => {
-    // "load average: 3.14, 2.97, 2.41"
-    const loadMatch = uptimeOutput.match(
-        /load average:\s*([\d.]+),?\s*([\d.]+),?\s*([\d.]+)/
-    );
-
-    if (!loadMatch) return "";
-
-    const [, one, five, fifteen] = loadMatch;
+const loadConvert = (loadavg: string): string => {
+    const [one, five, fifteen] = loadavg.split(" ");
+    if (!one || !five || !fifteen) return "";
     return `Load ${one} ${five} ${fifteen}`;
 };
 
 function useUptimeLine(): { line: Accessor<string> } {
     const [line, setLine] = createState("")
-    const poll = createPoll("", 30_000, async () => {
-        let val = ""
-        await execAsync("uptime").then((v) => { val = v })
-        return val
+    const poll = createPoll("", 30_000, () => {
+        try {
+            const up = uptimeConvert(Number(readFile("/proc/uptime").split(" ")[0]))
+            const load = loadConvert(readFile("/proc/loadavg"))
+            return load ? `${up} · ${load}` : up
+        } catch {
+            return ""
+        }
     })
-    poll.subscribe(() => {
-        const v = poll.get()
-        const up = uptimeConvert(v)
-        const load = loadConvert(v)
-        setLine(load ? `${up} · ${load}` : up)
-    })
+    poll.subscribe(() => setLine(poll.get()))
     return { line }
 }
 

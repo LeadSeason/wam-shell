@@ -1,8 +1,10 @@
 import { createState } from "gnim"
 import { createPoll } from "ags/time"
 import { readFile } from "ags/file"
-import { exec, execAsync } from "ags/process"
+import { exec } from "ags/process"
+import GLib from "gi://GLib?version=2.0"
 import Config from "../config"
+import { streamLines } from "./utils"
 
 // System performance stats, polled on quicksettings.stats_interval.
 // History targets a ~32s window, capped at 64 bars.
@@ -80,18 +82,12 @@ function readNet(intervalSec: number): [number, number] {
     return [Math.round(down), Math.round(up)]
 }
 
-// probe once: no point spawning nvidia-smi every tick without one
+// probe once: no point spawning nvidia-smi at all without one
 const hasNvidia = (() => {
     try { exec("which nvidia-smi"); return true } catch { return false }
 })()
-let inFlight = false
 
-const poll = createPoll("", INTERVAL, async () => {
-    // don't overlap ticks when nvidia-smi is slow
-    if (inFlight) return ""
-    inFlight = true
-
-    try {
+const poll = createPoll("", INTERVAL, () => {
     const step = (label: string, fn: () => void) => {
         try { fn() } catch (e) { console.warn(`sysstats ${label}:`, e) }
     }
@@ -111,35 +107,67 @@ const poll = createPoll("", INTERVAL, async () => {
         setNetDown(down)
         setNetUp(up)
     })
-
-    if (hasNvidia) try {
-        const out = await execAsync([
-            "nvidia-smi",
-            "--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total",
-            "--format=csv,noheader,nounits",
-        ])
-        const [util, temp, vramUsed, vramTotal] = out.trim().split(",").map(Number)
-        setGpu(util)
-        setGpuTemp(temp)
-        setVram([vramUsed, vramTotal])
-        push(gpuHist.get(), setGpuHist, util)
-    } catch {
-        setGpu(null) // driver hiccup: hide the row until it recovers
-    }
-
-    } finally {
-        inFlight = false
-    }
     return ""
 })
+
+// GPU stats come from ONE long-lived nvidia-smi in loop mode; the old
+// per-tick spawn was the shell's most frequent fork. Same CSV fields as
+// the one-shot query, one line per interval.
+const GPU_CMD = [
+    "nvidia-smi",
+    "--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total",
+    "--format=csv,noheader,nounits",
+    `--loop-ms=${Math.max(1, Math.round(INTERVAL))}`,
+]
+
+// restart on death (driver reloads kill the stream), but cap attempts
+// so a persistently failing nvidia-smi can't fork-loop. Any received
+// line proves the driver is healthy, so it resets the budget.
+const GPU_RESTART_DELAY = 5000
+const GPU_MAX_RESTARTS = 5
+let gpuRestarts = 0
+
+function handleGpuLine(line: string) {
+    gpuRestarts = 0
+    const [util, temp, vramUsed, vramTotal] = line.split(",").map(Number)
+    if ([util, temp, vramUsed, vramTotal].some(isNaN)) {
+        // "[N/A]" during driver transitions: hide the row until it recovers
+        setGpu(null)
+        return
+    }
+    setGpu(util)
+    setGpuTemp(temp)
+    setVram([vramUsed, vramTotal])
+    push(gpuHist.get(), setGpuHist, util)
+}
+
+function scheduleGpuRestart() {
+    setGpu(null)
+    if (gpuRestarts >= GPU_MAX_RESTARTS) {
+        console.warn("sysstats gpu: nvidia-smi keeps dying, giving up")
+        return
+    }
+    gpuRestarts++
+    GLib.timeout_add(GLib.PRIORITY_DEFAULT, GPU_RESTART_DELAY, () => {
+        startGpuStream()
+        return GLib.SOURCE_REMOVE
+    })
+}
+
+function startGpuStream() {
+    const proc = streamLines(GPU_CMD, handleGpuLine, scheduleGpuRestart)
+    if (!proc) scheduleGpuRestart()
+}
 
 // createPoll is lazy until subscribed; keep it alive while stats are on
 // (panel lists are authoritative: a "stats" entry in any [[panel]]
 // renders the widget regardless of the legacy toggles)
 if (Config.quicksettings.showStats || Config.quicksettings.statsOnPanel
     || Config.panels.some(p =>
-        [...p.left, ...p.center, ...p.right].includes("stats")))
+        [...p.left, ...p.center, ...p.right].includes("stats"))) {
     poll.subscribe(() => { })
+    if (hasNvidia) startGpuStream()
+}
 
 export function formatRate(bytesPerSec: number): string {
     if (bytesPerSec >= 1024 * 1024)
