@@ -21,9 +21,11 @@
 #
 # Gate: counters only, exact except documented environment tolerances.
 #   - subprocess spawns per binary: ±2 (poll-phase jitter in the 20s
-#     wall-clock window; measured on this machine)
+#     wall-clock window); churn scenario: ±10 (wall-clock driven,
+#     measured ±3 with occasional larger swings — outliers still flake
+#     and should be re-run, not tolerated silently)
 #   - fd count: ±1; startup.fds not gated at all (still settling at the
-#     first-ready read, measured 66..69 across identical runs)
+#     first-ready read, measured 66..74 across identical runs)
 #   - excluded entirely: qsHeader:batTimeDebounce (physical battery
 #     events, 2..17 creations across identical runs), osd:hide (OSD
 #     triggers come from the live session's WirePlumber/MPRIS), and the
@@ -192,8 +194,12 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
 
     def tolerance($path):
         # startup.fds is still settling at the first-ready read
-        # (measured 66..69 across identical runs); idle/churn fds stay ±1
+        # (measured 66..74 across identical runs); idle/churn fds stay ±1
         if ($path | test("^startup\\.fds$")) then 999
+        # churn spawn counts are wall-clock driven (measured ±3 across
+        # identical runs, and larger swings when a leg's timing shifts);
+        # a real regression like a new 1s poll is +20, still caught
+        elif ($path | test("^churn\\.subprocesses\\.")) then 10
         elif ($path | test("\\.subprocesses\\.")) then 2
         elif ($path | test("\\.fds$")) then 1
         else 0 end;
