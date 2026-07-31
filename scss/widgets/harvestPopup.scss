@@ -34,6 +34,11 @@ window.HarvestPopup {
         }
         .duration {
             color: t.$subtext0;
+
+            &.invalid {
+                border-color: t.$red;
+                color: t.$red;
+            }
         }
         // clearly bounded input fields (new-entry form)
         .input {

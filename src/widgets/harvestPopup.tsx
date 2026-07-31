@@ -194,6 +194,10 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
     // the action button says what it will do: a duration logs (saves) a
     // completed entry, empty/zero starts a live timer
     const [actionLabel, setActionLabel] = createState("Start")
+    // garbage must not silently no-op (#17): disable Start and mark the
+    // field instead
+    const [durationText, setDurationText] = createState("")
+    const durationOk = durationText.as(t => t.trim() === "" || parseDuration(t) !== null)
 
     const labelOf = (p: Harvest.Project) => `${p.clientName} — ${p.projectName}`
 
@@ -235,8 +239,8 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
     }
 
     const canStart = createComputed(
-        [Harvest.projects, Harvest.busy],
-        (ps, b) => !b && ps.length > 0,
+        [Harvest.projects, Harvest.busy, durationOk],
+        (ps, b, ok) => !b && ok && ps.length > 0,
     )
 
     // one open selector at a time; opening the project list focuses its
@@ -393,14 +397,18 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
                         $={self => {
                             duration = self
                         }}
-                        cssClasses={["input", "duration"]}
+                        cssClasses={durationOk.as(ok => [
+                            "input",
+                            "duration",
+                            ...(ok ? [] : ["invalid"]),
+                        ])}
                         placeholderText={Harvest.formatElapsed(0)}
                         widthChars={5}
-                        onChanged={self =>
-                            setActionLabel(
-                                (parseDuration(self.get_text()) ?? 0) > 0 ? "Save" : "Start",
-                            )
-                        }
+                        onChanged={self => {
+                            const text = self.get_text()
+                            setDurationText(text)
+                            setActionLabel((parseDuration(text) ?? 0) > 0 ? "Save" : "Start")
+                        }}
                         onActivate={start}
                     />
                     {/* natural width only: hexpand here would compete
