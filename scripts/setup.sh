@@ -182,4 +182,4 @@ log "Installing node modules"
 log "Generating TypeScript types (@girs)"
 (cd "$ROOT" && ags types -d .)
 
-log "Done. Start the shell with: pnpm start"
+log "Done. Manage the shell with the wam command: bash scripts/wam install"
