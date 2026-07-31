@@ -584,6 +584,29 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
             <box orientation={Gtk.Orientation.VERTICAL} visible={prompt.as(p => p === null)}>
                 <ConnectedSection wifi={wifi} />
                 <Gtk.Separator visible={createBinding(wifi, "enabled")} />
+                {/* empty state while the radio is off */}
+                <box
+                    orientation={Gtk.Orientation.VERTICAL}
+                    cssClasses={["wifiEmpty"]}
+                    visible={createBinding(wifi, "enabled").as(e => !e)}
+                    valign={Gtk.Align.CENTER}
+                    vexpand
+                    spacing={6}
+                >
+                    <box cssClasses={["wifiEmptyIcon"]} halign={Gtk.Align.CENTER}>
+                        <image iconName="network-wireless-disabled-symbolic" pixelSize={22} />
+                    </box>
+                    <label
+                        cssClasses={["wifiEmptyTitle"]}
+                        label={"Wi-Fi is off"}
+                        halign={Gtk.Align.CENTER}
+                    />
+                    <label
+                        cssClasses={["wifiEmptyHint"]}
+                        label={"Flip the switch above to turn it on"}
+                        halign={Gtk.Align.CENTER}
+                    />
+                </box>
                 <box
                     orientation={Gtk.Orientation.VERTICAL}
                     visible={createBinding(wifi, "enabled")}
