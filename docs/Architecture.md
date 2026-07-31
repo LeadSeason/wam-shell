@@ -12,7 +12,7 @@ One page on how the pieces fit.
   means a restart (theme reload is the one exception).
 - **`src/lib/`** — shared reactive state and services (gnim
   `createState`/`createBinding`). One module per concern: `notifd`,
-  `mpris`, `bluetooth`, `sleepTimer`, `harvest`, `screenShare`,
+  `mpris`, `bluetooth`, `sleepTimer`, `harvest`, `gcal`, `screenShare`,
   `sysstats`, `kbLayout`, `vpn`, `hyprsunset`, `brightness`, `osd`,
   `requestHandler`, … Widgets never talk to the system directly; they
   consume these.

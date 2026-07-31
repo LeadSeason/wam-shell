@@ -214,6 +214,35 @@
 # work_end = ""
 # hide_when_screen_sharing = true
 
+# [calendar] - Google Calendar in the clock popover: days with events
+#              get a mark, clicking a day lists its events (per-calendar
+#              colors). Multiple calendars are merged into one view.
+# Auth: Google Cloud Console (console.cloud.google.com) → create a
+# project → enable "Google Calendar API" → APIs & Services → Credentials
+# → Create Credentials → OAuth client ID → Application type "Desktop
+# app". Put the resulting pair in ~/.config/wam-shell/google.env
+# (chmod 600), NOT in this file:
+#   GOOGLE_CLIENT_ID=...
+#   GOOGLE_CLIENT_SECRET=...
+# The same names as real environment variables also work and win over
+# the file. Then enable here, restart the shell, open the clock popover
+# and click "Sign in to Google Calendar" — a browser tab asks for
+# read-only calendar access once; the refresh token is stored next to
+# google.env. Without credentials the popover stays a plain calendar,
+# even when enabled.
+#
+# enabled - master toggle (requires the credentials above). default false
+# poll_minutes - minutes between syncs with Google. the popover also
+#                refreshes when opened (at most once a minute). clamped
+#                to >= 5. default 15
+# hidden_calendars - calendar names to hide, matched exactly against the
+#                names Google shows (e.g. "Birthdays", "Tasks"). every
+#                other calendar of the account is shown. default []
+# [calendar]
+# enabled = false
+# poll_minutes = 15
+# hidden_calendars = []
+
 # ════════════════════════════════════════════════════════════════════
 # Quick settings popup
 # ════════════════════════════════════════════════════════════════════

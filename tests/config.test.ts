@@ -79,6 +79,9 @@ test("config: documented defaults without a config file", () => {
     eq(c.notifications.daemon, "auto", "notifications.daemon")
     eq(c.osd.position, "bottom", "osd.position")
     eq(c.panels, [], "panels")
+    eq(c.calendar.enabled, false, "calendar.enabled")
+    eq(c.calendar.pollMinutes, 15, "calendar.pollMinutes")
+    eq(c.calendar.hiddenCalendars, [], "calendar.hiddenCalendars")
 })
 
 test("config: theme fallback with follow_system off", () => {

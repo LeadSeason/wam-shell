@@ -234,6 +234,51 @@ window.Bar {
             color: t.$overlay1;
             margin: 0 s.$padding;
         }
+
+        // google calendar popover: day marks come from Gtk.Calendar
+        // itself (bold); this styles the selected-day list below it
+        popover {
+            .gcalDay {
+                font-size: s.$font-small;
+                font-weight: bold;
+                color: t.$subtext0;
+            }
+
+            button.gcalSignin {
+                margin: 2px 0;
+                padding: 4px 10px;
+                border-radius: s.$radius;
+                background-color: t.$surface050;
+                border: solid 2px t.$accent20;
+
+                &:hover {
+                    background-color: t.$accent20;
+                }
+            }
+
+            .gcalEvent {
+                padding: 1px 0;
+            }
+
+            // the calendar color dot; background-color is set inline
+            // (per-calendar API data, not themeable)
+            .gcalDot {
+                min-width: 8px;
+                min-height: 8px;
+                border-radius: 99px;
+            }
+
+            .gcalTime {
+                font-size: s.$font-small;
+                color: t.$subtext0;
+            }
+
+            .gcalEmpty {
+                font-size: s.$font-small;
+                font-style: italic;
+                color: t.$subtext0;
+            }
+        }
     }
 
     // audio widget
