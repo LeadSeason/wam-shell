@@ -420,20 +420,11 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                             <label cssClasses={statusClass} label={status} xalign={0} />
                         </box>
                     </box>
-                    {/* fixed-width action slots: the cluster lines up
-                    across rows even when a slot is empty for this
-                    network (the slot keeps its width, only the icon
-                    inside hides). the chevron fades in on row hover
-                    (scss) and stays lit while its panel is open */}
+                    {/* the chevron fades in on row hover (scss) and
+                    stays lit while its panel is open; its slot keeps
+                    the width so rows never shift. security is in the
+                    details panel — no per-row lock icon */}
                     <box cssClasses={["wifiActions"]}>
-                        <box widthRequest={26} halign={Gtk.Align.CENTER}>
-                            <image
-                                iconName="changes-prevent-symbolic"
-                                pixelSize={14}
-                                tooltipText={securityOf(ap)}
-                                visible={secured(ap)}
-                            />
-                        </box>
                         <box widthRequest={26} halign={Gtk.Align.CENTER}>
                             <button
                                 cssClasses={detailsOpen.as(o =>
