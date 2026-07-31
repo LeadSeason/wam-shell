@@ -278,11 +278,45 @@ window#QSettings {
     }
 
     // wifi band section headers in the wifi pane
-    .wifiBand {
-        font-size: s.$font-small;
+    // wifi band badge pill, overlaid bottom-right on signal icons
+    // (2.4GHz gets no badge)
+    .bandBadge {
+        font-size: 0.6em;
         font-weight: bold;
+        padding: 0 3px;
+        border-radius: 4px;
+        color: t.$base;
+        &.b5 {
+            background-color: t.$green;
+        }
+        &.b6 {
+            background-color: t.$blue;
+        }
+    }
+
+    .wifiSwitchRow {
+        margin: 2px 4px;
+        label {
+            font-weight: bold;
+        }
+    }
+
+    .wifiConnected {
+        border-radius: s.$radius;
+        background-color: t.$base;
+        padding: s.$gap;
+        margin: 4px 0;
+    }
+    .wifiConnectedSsid {
+        font-weight: bold;
+    }
+    .wifiConnectedInfo,
+    .wifiStatus {
+        font-size: s.$font-small;
         color: t.$subtext0;
-        margin: 4px 0 0 4px;
+    }
+    .wifiStatus {
+        margin: 4px;
     }
 
     // bluetooth pane

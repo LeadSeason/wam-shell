@@ -1,5 +1,5 @@
 import { Accessor, createBinding, createComputed, createState, For, With } from "gnim"
-import { DropdownButton } from "./ToggleButton"
+import { DropdownButton, OverlayIcon, bandBadgeOf } from "./ToggleButton"
 import AstalNetwork from "gi://AstalNetwork?version=0.1"
 import NM from "gi://NM?version=1.0"
 import { execAsync, connect } from "../../../lib/metrics"
@@ -48,11 +48,17 @@ export function WifiButton({ navigate }: { navigate: () => void }) {
         [createBinding(wifi, "enabled"), createBinding(wifi, "ssid")],
         (enabled, ssid) => (enabled ? ssid || "On" : "Off"),
     )
+    // band badge on the tile icon, only while associated
+    const badge = createComputed(
+        [createBinding(wifi, "enabled"), createBinding(wifi, "activeAccessPoint")],
+        (enabled, ap) => (enabled && ap ? bandBadgeOf(ap.frequency) : ""),
+    )
 
     return (
         <DropdownButton
             navigate={navigate}
             icon={createBinding(wifi, "iconName")}
+            badge={badge}
             label={"Wi-Fi"}
             subtitle={subtitle}
             isActive={createBinding(wifi, "enabled")}
@@ -88,6 +94,87 @@ function channelOf(freq: number): number {
     if (freq < 2484) return (freq - 2407) / 5
     if (freq < 5000) return (freq - 2510) / 5 + 15 // rough
     return (freq - 5000) / 5
+}
+
+/** the connected-network card: ssid, band+channel+security, ips, mac
+ *  and negotiated link speed; a status line when off or unassociated */
+function ConnectedSection({ wifi }: { wifi: AstalNetwork.Wifi }) {
+    const enabled = createBinding(wifi, "enabled")
+    const ssid = createBinding(wifi, "ssid")
+    const activeAp = createBinding(wifi, "activeAccessPoint")
+
+    const connected = createComputed([enabled, ssid], (e, s) => e && !!s)
+    const status = createComputed([enabled, ssid], (e, s) =>
+        !e ? "Wi-Fi is off" : "On — not connected",
+    )
+
+    const dev = wifi.device as NM.DeviceWifi | null
+    const ipLine = dev
+        ? createComputed([createBinding(dev, "ip4Config"), createBinding(dev, "ip6Config")], () => {
+              const v4 = dev.get_ip4_config()?.get_addresses()?.[0]?.get_address()
+              const v6addrs = dev.get_ip6_config()?.get_addresses()
+              const v6 = v6addrs && v6addrs.length > 0 ? v6addrs[0].get_address() : null
+              return [v4, v6].filter(Boolean).join(" · ")
+          })
+        : new Accessor(() => "")
+    const hwLine = dev
+        ? createBinding(dev, "bitrate").as(() => {
+              const mac = dev.get_permanent_hw_address() ?? dev.get_hw_address() ?? ""
+              const bitrate = dev.get_bitrate()
+              const speed = bitrate > 0 ? `${Math.round(bitrate / 1000)} Mb/s` : ""
+              return [mac && `MAC ${mac}`, speed].filter(Boolean).join(" · ")
+          })
+        : new Accessor(() => "")
+
+    return (
+        <box orientation={Gtk.Orientation.VERTICAL}>
+            <label label={"Connected network"} cssClasses={["btSection"]} xalign={0} />
+            <box orientation={Gtk.Orientation.VERTICAL} visible={connected}>
+                <box cssClasses={["wifiConnected"]} spacing={10}>
+                    <OverlayIcon
+                        icon={createBinding(wifi, "iconName")}
+                        badge={activeAp.as(ap => (ap ? bandBadgeOf(ap.frequency) : ""))}
+                    />
+                    <box orientation={Gtk.Orientation.VERTICAL} hexpand>
+                        <label
+                            cssClasses={["wifiConnectedSsid"]}
+                            label={ssid}
+                            xalign={0}
+                            maxWidthChars={24}
+                            ellipsize={Pango.EllipsizeMode.END}
+                        />
+                        <label
+                            cssClasses={["wifiConnectedInfo"]}
+                            xalign={0}
+                            label={activeAp.as(ap =>
+                                ap
+                                    ? `${bandOf(ap)} · ch ${Math.round(channelOf(ap.frequency))} · ${securityOf(ap)}`
+                                    : "",
+                            )}
+                        />
+                        <label
+                            cssClasses={["wifiConnectedInfo"]}
+                            xalign={0}
+                            label={ipLine}
+                            visible={ipLine.as(l => l !== "")}
+                        />
+                        <label
+                            cssClasses={["wifiConnectedInfo"]}
+                            xalign={0}
+                            label={hwLine}
+                            visible={hwLine.as(l => l !== "")}
+                        />
+                    </box>
+                </box>
+            </box>
+            <label
+                cssClasses={["wifiStatus"]}
+                label={status}
+                xalign={0}
+                visible={connected.as(c => !c)}
+            />
+        </box>
+    )
 }
 
 export function WifiWidget({ pane, name }: wifiPaneProps) {
@@ -147,7 +234,7 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
             )
     }
 
-    function ApRow({ ap }: { ap: AstalNetwork.AccessPoint }) {
+    function ApRow({ ap, apCount = 1 }: { ap: AstalNetwork.AccessPoint; apCount?: number }) {
         const [error, setError] = createState("")
         const [detailsOpen, setDetailsOpen] = createState(false)
         const [autoconnect, setAutoconnect] = createState<boolean | null>(null)
@@ -174,14 +261,15 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
             }, 4000)
         }
 
+        const apsSuffix = apCount > 1 ? ` · ${apCount} APs` : ""
         const status = createComputed(
             [active, pending, error, isKnown],
             (active, pending, error, known) => {
                 if (error) return error
                 if (pending) return "Connecting…"
                 if (active) return "Connected"
-                if (known) return `Known · ${ap.strength}%`
-                return `${ap.strength}%`
+                if (known) return `Known · ${ap.strength}%${apsSuffix}`
+                return `${ap.strength}%${apsSuffix}`
             },
         )
         const statusClass = error.as(e => (e ? ["status", "error"] : ["status"]))
@@ -317,7 +405,10 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                     re-trigger the row click */}
                     <box spacing={5} hexpand>
                         <Gtk.GestureClick button={1} onPressed={onClick} />
-                        <image iconName={createBinding(ap, "iconName")} />
+                        <OverlayIcon
+                            icon={createBinding(ap, "iconName")}
+                            badge={bandBadgeOf(ap.frequency)}
+                        />
                         <box orientation={Gtk.Orientation.VERTICAL} hexpand>
                             <label
                                 label={ap.ssid}
@@ -452,42 +543,46 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
         )
     }
 
-    const bandNames = ["6GHz", "5GHz", "2.4GHz"]
-    const bandStates = new Map(bandNames.map(b => [b, createState<AstalNetwork.AccessPoint[]>([])]))
-    const [visibleBands, setVisibleBands] = createState<string[]>([])
-
-    const updateBands = () => {
-        const byBand = new Map<string, AstalNetwork.AccessPoint[]>()
-        for (const ap of accessPoints.get()) {
-            const b = bandOf(ap)
-            if (!byBand.has(b)) byBand.set(b, [])
-            byBand.get(b)!.push(ap)
+    // one row per SSID: several APs broadcasting the same name merge
+    // into the strongest one's row, with the AP count in the subtitle
+    const groups = accessPoints.as(aps => {
+        const bySsid = new Map<string, AstalNetwork.AccessPoint[]>()
+        for (const ap of aps) {
+            const g = bySsid.get(ap.ssid)
+            if (g) g.push(ap)
+            else bySsid.set(ap.ssid, [ap])
         }
-        // known first, then by strength
-        for (const b of bandNames) {
-            const [, setAps] = bandStates.get(b)!
-            setAps(
-                (byBand.get(b) ?? [])
-                    .sort((a, c) => Number(known(c)) - Number(known(a)) || c.strength - a.strength)
-                    .slice(0, 8),
-            )
-        }
-        setVisibleBands(bandNames.filter(b => byBand.has(b)))
-    }
-    accessPoints.subscribe(updateBands)
-    updateBands()
+        return (
+            [...bySsid.values()]
+                .map(g => ({
+                    best: g.reduce((a, b) => (b.strength > a.strength ? b : a)),
+                    count: g.length,
+                }))
+                // known first, then by strength
+                .sort(
+                    (a, c) =>
+                        Number(known(c.best)) - Number(known(a.best)) ||
+                        c.best.strength - a.best.strength,
+                )
+                .slice(0, 12)
+        )
+    })
 
     return (
         <box orientation={Gtk.Orientation.VERTICAL}>
             <With value={prompt}>{p => p && <PasswordPrompt p={p} />}</With>
             <box orientation={Gtk.Orientation.VERTICAL} visible={prompt.as(p => p === null)}>
-                <box visible={createBinding(wifi, "enabled").as(e => !e)}>
-                    <box cssName={"button"} spacing={5}>
-                        <Gtk.GestureClick button={1} onPressed={() => wifi.set_enabled(true)} />
-                        <image iconName="network-wireless-disabled-symbolic" />
-                        <label label={"Wi-Fi is off — Turn on"} hexpand xalign={0} />
-                    </box>
+                {/* 2-state on/off slider */}
+                <box cssClasses={["wifiSwitchRow"]}>
+                    <label label={"Wi-Fi"} hexpand xalign={0} />
+                    <Gtk.Switch
+                        active={createBinding(wifi, "enabled")}
+                        onNotifyActive={self => wifi.set_enabled(self.active)}
+                    />
                 </box>
+                <Gtk.Separator />
+                <ConnectedSection wifi={wifi} />
+                <Gtk.Separator />
                 <box
                     orientation={Gtk.Orientation.VERTICAL}
                     visible={createBinding(wifi, "enabled")}
@@ -511,18 +606,9 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                     </box>
                     {/* For in its own container: it re-appends children at
                     the parent's end on every update, which would float
-                    the join row above the bands */}
+                    the join row above the networks */}
                     <box orientation={Gtk.Orientation.VERTICAL}>
-                        <For each={visibleBands}>
-                            {b => (
-                                <box orientation={Gtk.Orientation.VERTICAL}>
-                                    <label label={b} cssClasses={["wifiBand"]} xalign={0} />
-                                    <For each={bandStates.get(b)![0]}>
-                                        {ap => <ApRow ap={ap} />}
-                                    </For>
-                                </box>
-                            )}
-                        </For>
+                        <For each={groups}>{g => <ApRow ap={g.best} apCount={g.count} />}</For>
                     </box>
                     <box cssName={"button"} spacing={5}>
                         <Gtk.GestureClick
