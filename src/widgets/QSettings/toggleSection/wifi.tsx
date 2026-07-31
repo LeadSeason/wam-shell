@@ -423,7 +423,8 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                     {/* fixed-width action slots: the cluster lines up
                     across rows even when a slot is empty for this
                     network (the slot keeps its width, only the icon
-                    inside hides) */}
+                    inside hides). the chevron fades in on row hover
+                    (scss) and stays lit while its panel is open */}
                     <box cssClasses={["wifiActions"]}>
                         <box widthRequest={26} halign={Gtk.Align.CENTER}>
                             <image
@@ -435,7 +436,9 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                         </box>
                         <box widthRequest={26} halign={Gtk.Align.CENTER}>
                             <button
-                                cssClasses={["details"]}
+                                cssClasses={detailsOpen.as(o =>
+                                    o ? ["details", "open"] : ["details"],
+                                )}
                                 tooltipText={"Network details"}
                                 onClicked={() => {
                                     const opening = !detailsOpen.get()
@@ -448,24 +451,6 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                                         o ? "pan-up-symbolic" : "pan-down-symbolic",
                                     )}
                                 />
-                            </button>
-                        </box>
-                        <box widthRequest={26} halign={Gtk.Align.CENTER}>
-                            <button
-                                cssClasses={["forget"]}
-                                visible={createComputed([active, isKnown], (a, k) => !a && k)}
-                                tooltipText={"Forget network"}
-                                onClicked={() => {
-                                    execAsync([
-                                        "nmcli",
-                                        "connection",
-                                        "delete",
-                                        "id",
-                                        profileId(ap),
-                                    ]).catch(e => console.warn("wifi forget failed:", e))
-                                }}
-                            >
-                                <image iconName="user-trash-symbolic" />
                             </button>
                         </box>
                     </box>
@@ -501,6 +486,26 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                                     a === true ? "object-select-symbolic" : "window-close-symbolic",
                                 )}
                             />
+                        </box>
+                        <box
+                            visible={createComputed([active, isKnown], (a, k) => !a && k)}
+                            cssName={"button"}
+                            spacing={5}
+                        >
+                            <Gtk.GestureClick
+                                button={1}
+                                onPressed={() => {
+                                    execAsync([
+                                        "nmcli",
+                                        "connection",
+                                        "delete",
+                                        "id",
+                                        profileId(ap),
+                                    ]).catch(e => console.warn("wifi forget failed:", e))
+                                }}
+                            />
+                            <label label={"Forget network"} hexpand xalign={0} />
+                            <image iconName="user-trash-symbolic" />
                         </box>
                     </box>
                 </revealer>

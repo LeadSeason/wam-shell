@@ -414,14 +414,21 @@ window#QSettings {
         }
     }
 
-    // fixed-width action slots keep the lock/details/forget cluster
-    // aligned across rows (a hidden icon keeps its slot)
+    // fixed-width action slots keep the lock/details cluster aligned
+    // across rows (a hidden icon keeps its slot). the details chevron
+    // only fades in on row hover — the slot keeps its width, so no
+    // layout shift
     .wifiActions {
-        .details,
-        .forget {
+        .details {
             margin: 0;
             padding: 0;
+            opacity: 0;
+            transition: opacity 150ms;
         }
+    }
+    .wifiAp:hover .details,
+    .wifiAp .details.open {
+        opacity: 1;
     }
 
     // performance stats section
