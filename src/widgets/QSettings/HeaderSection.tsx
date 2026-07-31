@@ -28,8 +28,7 @@ function resolveAvatar(): { file: string | null; icon: string } {
     return { file: null, icon: Config.osIcon }
 }
 
-// battery level as a static ring around the avatar (same draw pattern
-// as the notification countdown ring)
+// battery level as a static ring around the avatar
 function Avatar() {
     const avatar = resolveAvatar()
     const bat = AstalBattery.get_default()
