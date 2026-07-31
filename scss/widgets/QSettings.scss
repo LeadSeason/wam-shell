@@ -432,9 +432,10 @@ window#QSettings {
     }
 
     // details-panel actions (auto-connect, forget): plain rows, no
-    // button frame — a hover tint is the only affordance
+    // button frame — a hover tint is the only affordance. generous
+    // padding: easy to click without precision
     .wifiDetailAction {
-        padding: 2px 4px;
+        padding: 6px 8px;
         border-radius: s.$radius;
         &:hover {
             background-color: t.$accent10;
