@@ -16,6 +16,17 @@ const themeDir = `${scssDir}/theme`
 // resolves that through the cache dir load path below
 const activeThemePath = `${Config.instanceCacheDir}/active-theme.scss`
 
+// the cache dir is keyed by instance NAME, so checkouts with the same
+// dir name (repo + worktrees) share it: css compiled from another
+// tree's scss must never be accepted as fresh by this one
+const cssSrcMarkerPath = `${Config.instanceCacheDir}/style.src`
+
+function writeCssSrcMarker() {
+    try {
+        GLib.file_set_contents(cssSrcMarkerPath, scssDir)
+    } catch {}
+}
+
 // array form: no shell, so a repo path with spaces can't break the
 // command. Load paths keep bare-name imports resolving no matter where
 // the importing file lives: the cache dir for the generated
@@ -110,13 +121,20 @@ function newestMtime(dir: string): number {
 
 function cssIsFresh(userScss: string): boolean {
     try {
-        const cssMtime = mtimeUsec(
-            Gio.File.new_for_path(Config.cssPath).query_info(
-                "time::modified,time::modified-usec",
-                Gio.FileQueryInfoFlags.NONE,
-                null,
-            ),
-        )
+        if (readFile(cssSrcMarkerPath) !== scssDir) return false
+        const fileUsec = (path: string) =>
+            mtimeUsec(
+                Gio.File.new_for_path(path).query_info(
+                    "time::modified,time::modified-usec",
+                    Gio.FileQueryInfoFlags.NONE,
+                    null,
+                ),
+            )
+        const cssMtime = fileUsec(Config.cssPath)
+        // the marker is written right after every successful compile, so
+        // css newer than the marker came from a compile this tree didn't
+        // do (a checkout without the marker logic, e.g. a worktree)
+        if (cssMtime > fileUsec(cssSrcMarkerPath)) return false
         let newest = newestMtime(scssDir)
         // a fallback user.scss lives outside the tree the sweep covers
         if (userScss.startsWith(Config.instanceCacheDir)) {
@@ -149,6 +167,7 @@ export function compileScss() {
         // shell starts unstyled
         try {
             Gio.Subprocess.new(sassArgs(), Gio.SubprocessFlags.NONE).wait(null)
+            writeCssSrcMarker()
         } catch (e) {
             // a style failure must not take the whole shell down with it
             console.error("Failed to compile styles:", e)
@@ -158,7 +177,10 @@ export function compileScss() {
     execAsync(sassArgs())
         // app.start's css option only covers compiles that finish before
         // activation — apply the result ourselves when sass is done
-        .then(() => app.apply_css(Config.cssPath))
+        .then(() => {
+            writeCssSrcMarker()
+            app.apply_css(Config.cssPath)
+        })
         // a style failure must not take the whole shell down with it
         .catch(e => console.error("Failed to compile styles:", e))
 }
@@ -170,6 +192,7 @@ export async function reloadStyle() {
         ensureUserScss()
         // a request always forces a recompile, fresh cache or not
         await execAsync(sassArgs())
+        writeCssSrcMarker()
         console.log(`${Config.instanceName}: Style reloaded`)
         app.apply_css(Config.cssPath)
         return "Style reloaded"
@@ -186,7 +209,10 @@ export function setThemeLive(theme: string) {
         Config.theme = theme
         syncActiveTheme()
         execAsync(sassArgs())
-            .then(() => app.apply_css(Config.cssPath))
+            .then(() => {
+                writeCssSrcMarker()
+                app.apply_css(Config.cssPath)
+            })
             .catch(e => console.warn("setThemeLive failed:", e))
     } catch (e) {
         console.warn("setThemeLive failed:", e)
