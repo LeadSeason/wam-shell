@@ -2,7 +2,8 @@ import { Accessor, createBinding, createComputed, createState, For, With } from 
 import { DropdownButton, OverlayIcon, bandBadgeOf } from "./ToggleButton"
 import AstalNetwork from "gi://AstalNetwork?version=0.1"
 import NM from "gi://NM?version=1.0"
-import { execAsync, connect } from "../../../lib/metrics"
+import GLib from "gi://GLib?version=2.0"
+import { execAsync, connect, timeoutAdd, sourceRemove } from "../../../lib/metrics"
 import { Gtk } from "ags/gtk4"
 import Pango from "gi://Pango?version=1.0"
 
@@ -204,17 +205,36 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
         else setPrompt(null) // drop a stale prompt when leaving the pane
     })
 
-    // rescan pulse feedback, same as bluetooth
+    // rescan pulse feedback: the button disables and the icon spins.
+    // gtk css has no keyframe animations, so a ticker steps a rotate
+    // transform while the scan is in flight
     const [rescanning, setRescanning] = createState(false)
+    const [spin, setSpin] = createState(0)
     let rescanToken = 0
+    let spinSource: number | null = null
+    function stopSpin() {
+        if (spinSource !== null) {
+            sourceRemove(spinSource)
+            spinSource = null
+        }
+        setSpin(0)
+    }
     function rescan() {
         // scanning while the radio is off throws in astal-network
         // ("Scanning not allowed while unavailable")
         if (wifi.enabled) wifi.scan()
         setRescanning(true)
+        if (spinSource !== null) sourceRemove(spinSource)
+        spinSource = timeoutAdd("wifi:rescan-spin", GLib.PRIORITY_DEFAULT, 100, () => {
+            setSpin((spin.get() + 30) % 360)
+            return GLib.SOURCE_CONTINUE
+        })
         const token = ++rescanToken
         setTimeout(() => {
-            if (token === rescanToken) setRescanning(false)
+            if (token === rescanToken) {
+                setRescanning(false)
+                stopSpin()
+            }
         }, 3000)
     }
 
@@ -622,13 +642,10 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                             sensitive={rescanning.as(r => !r)}
                             onClicked={rescan}
                         >
-                            <box>
-                                <Gtk.Spinner $={self => self.start()} visible={rescanning} />
-                                <image
-                                    iconName="view-refresh-symbolic"
-                                    visible={rescanning.as(r => !r)}
-                                />
-                            </box>
+                            <image
+                                iconName="view-refresh-symbolic"
+                                css={spin.as(deg => (deg ? `transform: rotate(${deg}deg);` : ""))}
+                            />
                         </button>
                     </box>
                     {/* For in its own container: it re-appends children at
