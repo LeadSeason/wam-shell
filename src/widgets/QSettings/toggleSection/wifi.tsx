@@ -96,6 +96,20 @@ function channelOf(freq: number): number {
     return (freq - 5000) / 5
 }
 
+/** the on/off switch that sits in the wifi pane's header row */
+export function WifiSwitch() {
+    const wifi = AstalNetwork.get_default().wifi
+    if (!wifi) return <></>
+    return (
+        <Gtk.Switch
+            cssClasses={["wifiSwitch"]}
+            valign={Gtk.Align.CENTER}
+            active={createBinding(wifi, "enabled")}
+            onNotifyActive={self => wifi.set_enabled(self.active)}
+        />
+    )
+}
+
 /** the connected-network card: ssid, band+channel+security, ips, mac
  *  and negotiated link speed; a status line when off or unassociated */
 function ConnectedSection({ wifi }: { wifi: AstalNetwork.Wifi }) {
@@ -569,16 +583,6 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
         <box orientation={Gtk.Orientation.VERTICAL}>
             <With value={prompt}>{p => p && <PasswordPrompt p={p} />}</With>
             <box orientation={Gtk.Orientation.VERTICAL} visible={prompt.as(p => p === null)}>
-                {/* 2-state on/off slider (no label: the pane header
-                already says Wi-Fi) */}
-                <box cssClasses={["wifiSwitchRow"]} hexpand>
-                    <Gtk.Switch
-                        halign={Gtk.Align.END}
-                        active={createBinding(wifi, "enabled")}
-                        onNotifyActive={self => wifi.set_enabled(self.active)}
-                    />
-                </box>
-                <Gtk.Separator />
                 <ConnectedSection wifi={wifi} />
                 <Gtk.Separator />
                 <box

@@ -16,19 +16,28 @@ import { HeaderSection } from "./HeaderSection"
 import { SliderSection } from "./SliderSection"
 import { MediaSection, setQsVisible } from "./MediaSection"
 import { StatsSection } from "./StatsSection"
-import { WifiWidget } from "./toggleSection/wifi"
+import { WifiWidget, WifiSwitch } from "./toggleSection/wifi"
 import { WiredWidget } from "./toggleSection/wired"
 import { BluetoothWidget } from "./toggleSection/bluetooth"
 import { PowerProfilesWidget } from "./toggleSection/powerProfile"
 
 const registry = CommandRegistry.get_default()
 
-function PaneHeader({ title, onBack }: { title: string; onBack: () => void }) {
+function PaneHeader({
+    title,
+    onBack,
+    trailing,
+}: {
+    title: string
+    onBack: () => void
+    trailing?: Gtk.Widget
+}) {
     return (
         <box cssName="button" spacing={5}>
             <Gtk.GestureClick button={1} onPressed={onBack} />
             <image iconName="go-previous-symbolic" />
             <label label={title} hexpand xalign={0} />
+            {trailing}
         </box>
     )
 }
@@ -191,7 +200,11 @@ export default function QSettings() {
                                 )}
                             </box>
                             <box $type="named" name="wifi" orientation={Gtk.Orientation.VERTICAL}>
-                                <PaneHeader title="Wi-Fi" onBack={() => setPane("main")} />
+                                <PaneHeader
+                                    title="Wi-Fi"
+                                    onBack={() => setPane("main")}
+                                    trailing={<WifiSwitch />}
+                                />
                                 <WifiWidget pane={pane} name="wifi" />
                             </box>
                             <box
