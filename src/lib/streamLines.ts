@@ -24,10 +24,15 @@ export function streamLines(
     argv: string[],
     onLine: (line: string) => void,
     onExit: () => void,
+    silenceStderr = false,
 ): Gio.Subprocess | null {
     let proc: Gio.Subprocess
     try {
-        proc = Gio.Subprocess.new(argv, Gio.SubprocessFlags.STDOUT_PIPE)
+        proc = Gio.Subprocess.new(
+            argv,
+            Gio.SubprocessFlags.STDOUT_PIPE |
+                (silenceStderr ? Gio.SubprocessFlags.STDERR_SILENCE : 0),
+        )
     } catch (e) {
         console.warn(`streamLines: failed to spawn "${argv.join(" ")}":`, e)
         return null
