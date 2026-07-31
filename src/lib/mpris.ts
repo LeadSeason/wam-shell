@@ -1,5 +1,11 @@
 import AstalMpris from "gi://AstalMpris?version=0.1"
-import { Accessor, createBinding, createState, onCleanup } from "gnim"
+import AstalApps from "gi://AstalApps"
+import GioUnix from "gi://GioUnix?version=2.0"
+import GLib from "gi://GLib?version=2.0"
+import { Gtk } from "ags/gtk4"
+import { Accessor, createBinding, createComputed, createState, onCleanup } from "gnim"
+import { connect, disconnect, execAsync, timeoutAdd, sourceRemove } from "./metrics"
+import Config from "../config"
 import { downloadCover } from "./coverArt"
 
 // Shared MPRIS state + helpers, used by the QS media section and the
@@ -7,10 +13,38 @@ import { downloadCover } from "./coverArt"
 
 const mpris = AstalMpris.get_default()
 
-export const players = createBinding(mpris, "players")
+const rawPlayers = createBinding(mpris, "players")
 
-// the player shown everywhere: the playing one if any, else the first.
-// A manual pick via the popup switcher overrides until that player goes
+// one process can own several MPRIS names when multiple bridges are
+// installed (mpv-mpris uses mpv.instance<PID>, others mpv.instance-<id>
+// and bare "mpv"): each name shows up as its own player. collapse
+// duplicates reporting the same identity and track
+export const players = rawPlayers.as(list => {
+    const seen = new Set<string>()
+    return list.filter(p => {
+        const key = `${p.identity}\n${p.title}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+    })
+})
+
+/** players with a track loaded: a non-empty title, or at least a
+ *  non-stopped playback state (VLC reports no title for untagged
+ *  files). stopped title-less players are zombie browser tabs keeping
+ *  their MPRIS instance alive after playback ended.
+ *  eligibility also changes with per-player title/status, which the
+ *  manager's players list does not notify — the hooks below bump this
+ *  version so dependents (segment strip, switcher, tooltips) refresh */
+const [eligVersion, bumpElig] = createState(0)
+export const eligiblePlayers = createComputed([players, eligVersion], list =>
+    list.filter(p => p.title !== "" || p.playbackStatus !== AstalMpris.PlaybackStatus.STOPPED),
+)
+
+// the player shown everywhere: sticky — stays on the current player
+// until it goes away or another player starts playing (the most recent
+// one wins). A manual pick via the popup switcher or scroll cycling
+// overrides until that player goes
 const [activePlayer, setActivePlayer] = createState<AstalMpris.Player | null>(null)
 const [overridePlayer, setOverride] = createState<AstalMpris.Player | null>(null)
 
@@ -20,6 +54,122 @@ export { activePlayer }
 export function overrideActivePlayer(player: AstalMpris.Player | null) {
     setOverride(player)
     pick()
+}
+
+/** cycle the active player through the eligible ones (scroll on the
+ *  panel pill); a no-op with fewer than two */
+export function cycleActivePlayer(direction: 1 | -1) {
+    const eligible = eligiblePlayers.get()
+    if (eligible.length < 2) return
+    const current = activePlayer.get()
+    const i = current ? eligible.indexOf(current) : -1
+    const next = eligible[(i + direction + eligible.length) % eligible.length]
+    overrideActivePlayer(next)
+}
+
+// smooth-scroll devices emit a stream of small deltas per gesture:
+// accumulate them so one gesture switches one player, not a frenzy
+let scrollAcc = 0
+let scrollAt = 0
+let lastSwitch = 0
+
+/** cycle on scroll: switches once per accumulated wheel notch, and at
+ *  most once per 300ms so a touchpad flick cannot chain-switch */
+export function scrollActivePlayer(dy: number) {
+    if (dy === 0) return
+    const now = GLib.get_monotonic_time() / 1e6
+    // drop the momentum tail right after a switch
+    if (now - lastSwitch < 0.3) {
+        scrollAcc = 0
+        scrollAt = now
+        return
+    }
+    if (now - scrollAt > 0.5) scrollAcc = 0
+    scrollAt = now
+    scrollAcc += dy
+    if (Math.abs(scrollAcc) >= 1) {
+        const direction = scrollAcc > 0 ? 1 : -1
+        lastSwitch = now
+        scrollAcc = 0
+        cycleActivePlayer(direction)
+    }
+}
+
+/** play/pause from shell buttons: pauses all other players
+ *  synchronously first — the playback-status hook does the same
+ *  reactively, but only after a bus round-trip, so a beat of double
+ *  output would slip through */
+export function playPauseExclusive(player: AstalMpris.Player) {
+    if (player.playbackStatus !== AstalMpris.PlaybackStatus.PLAYING) {
+        for (const p of players.get()) {
+            if (p !== player && p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING) {
+                p.pause()
+            }
+        }
+    }
+    player.play_pause()
+}
+
+// app database for the fuzzy name match, built on first use
+let appDb: AstalApps.Apps | null = null
+
+/** resolve a player to its window's wm class via the desktop entry
+ *  database ("Brave" -> "brave-browser", "VLC media player" -> "vlc") */
+function resolveWmClass(player: AstalMpris.Player): string | null {
+    const names = [player.entry, player.identity]
+        .filter((n): n is string => !!n)
+        .map(n => n.replace(/\.desktop$/, "").toLowerCase())
+
+    // desktop entry by id, like the icon resolver does; the -browser
+    // suffix catches identities like "Brave". a shadowing user entry
+    // (~/.local/share/applications/mpv.desktop) may lack
+    // StartupWMClass — then the entry id itself is the best class guess
+    for (const n of names) {
+        const app =
+            GioUnix.DesktopAppInfo.new(`${n}.desktop`) ??
+            GioUnix.DesktopAppInfo.new(`${n}-browser.desktop`)
+        if (app) return app.get_startup_wm_class() ?? n
+    }
+
+    // fuzzy fallback: app name match in the app database
+    if (!appDb) appDb = new AstalApps.Apps()
+    for (const app of appDb.get_list()) {
+        const wm = app.get_wm_class()
+        if (!wm) continue
+        const appName = app.get_name()?.toLowerCase()
+        for (const n of names) {
+            if (appName === n) return wm
+        }
+    }
+    return null
+}
+
+/** raise/focus the player's window. MPRIS Raise only works when the
+ *  player reports CanRaise (firefox) — brave and mpv report false and
+ *  no-op (vlc lies yet complies). when CanRaise is false, focus the
+ *  window through the compositor instead */
+export function raisePlayer(player: AstalMpris.Player) {
+    if (player.canRaise) return player.raise()
+    const wmClass = resolveWmClass(player)?.replace(/[^a-zA-Z0-9._-]/g, "")
+    if (!wmClass) {
+        console.warn(`raisePlayer: no wm class resolved for "${player.identity}"`)
+        return player.raise() // a no-op for these, but costs nothing
+    }
+    if (Config.desktopSession === "hyprland") {
+        // lua dispatcher syntax (hyprland >= 0.55): the old
+        // "focuswindow class:..." form is rejected by the new parser
+        execAsync(`hyprctl dispatch 'hl.dsp.focus({ window = "class:^(?i)${wmClass}$" })'`).catch(
+            e => console.warn("raisePlayer:", e),
+        )
+    } else if (Config.desktopSession === "sway" || Config.desktopSession === "i3") {
+        const msg = Config.desktopSession === "sway" ? "swaymsg" : "i3-msg"
+        // app_id covers wayland-native, class covers X11/XWayland
+        execAsync(`${msg} '[app_id="${wmClass}"] focus; [class="${wmClass}"] focus'`).catch(e =>
+            console.warn("raisePlayer:", e),
+        )
+    } else {
+        player.raise()
+    }
 }
 
 // Shared player-hook registry: every consumer registers one hook
@@ -48,8 +198,13 @@ function syncPlayers() {
         }
         hookedPlayers.set(p, unsubs)
     }
+    bumpElig()
 }
 players.subscribe(syncPlayers)
+// gnim subscribe does not fire on subscription: hook the players that
+// already exist at shell start, or their status/title changes never
+// reach pick() and the exclusive-playback hook
+syncPlayers()
 
 /** run `hook` for every current and future player; the fn it returns
  *  runs when that player quits */
@@ -63,23 +218,59 @@ export function hookPlayers(hook: PlayerHook) {
 }
 
 function pick() {
-    const list = players.get()
     const override = overridePlayer.get()
-    // players keep their MPRIS instance alive with empty metadata after
-    // playback ends — a trackless player is not "active"
-    const eligible = list.filter(p => p.title !== "")
+    const eligible = eligiblePlayers.get()
+    // release pins on players that went away instead of retaining them
+    if (override && !eligible.includes(override)) setOverride(null)
+    if (lastPlaying && !eligible.includes(lastPlaying)) lastPlaying = null
+    // the most recently started player wins over one that has been
+    // playing all along ("a video was playing in firefox, then one was
+    // started in brave" -> brave takes over)
+    const playing =
+        lastPlaying &&
+        eligible.includes(lastPlaying) &&
+        lastPlaying.playbackStatus === AstalMpris.PlaybackStatus.PLAYING
+            ? lastPlaying
+            : eligible.find(p => p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING)
+    const current = activePlayer.get()
     setActivePlayer(
         override && eligible.includes(override)
             ? override
-            : (eligible.find(p => p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING) ??
-                  eligible[0] ??
-                  null),
+            : // stick with the current player: only switch away when it
+              // went away or ANOTHER player started playing (pausing
+              // must not flip to the next eligible player)
+              current && eligible.includes(current) && (!playing || playing === current)
+              ? current
+              : (playing ?? eligible[0] ?? null),
     )
 }
+
+// the player that most recently entered PLAYING state
+let lastPlaying: AstalMpris.Player | null = null
+
 players.subscribe(pick)
 hookPlayers(p => {
-    const status = createBinding(p, "playbackStatus").subscribe(pick)
-    const title = createBinding(p, "title").subscribe(pick)
+    const status = createBinding(p, "playbackStatus").subscribe(() => {
+        bumpElig()
+        if (p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING) {
+            lastPlaying = p
+            // a newly playing player always takes over, even from a
+            // scroll-pinned one
+            if (overridePlayer.get() !== p) setOverride(null)
+            // exclusive playback wherever playback starts from — shell
+            // buttons, the player's own UI or playerctl: pause the rest
+            for (const other of players.get()) {
+                if (other !== p && other.playbackStatus === AstalMpris.PlaybackStatus.PLAYING) {
+                    other.pause()
+                }
+            }
+        }
+        pick()
+    })
+    const title = createBinding(p, "title").subscribe(() => {
+        bumpElig()
+        pick()
+    })
     return () => {
         status()
         title()
@@ -123,6 +314,195 @@ export function formatTime(seconds: number): string {
     const m = Math.floor(seconds / 60)
     const s = Math.floor(seconds % 60)
     return `${m}:${s.toString().padStart(2, "0")}`
+}
+
+export interface SmoothedPosition {
+    accessor: Accessor<number>
+    /** false while the true position is unknowable: firefox sometimes
+     *  never reports Position, and for media that was already playing
+     *  when the shell started there is no data source at all. becomes
+     *  true on the first real position change, track change or user
+     *  seek — the UI shows --:-- until then */
+    known: Accessor<boolean>
+    /** re-anchor the clock at a user-requested seek target */
+    seekTo(value: number): void
+}
+
+/** playback position with a client-side clock. some players do not
+ *  track Position at all (firefox reports it as 0 while playing), and
+ *  online players apply SetPosition asynchronously, so the raw property
+ *  is only trusted when it CHANGES: between changes the clock
+ *  extrapolates from the last anchor at playback rate. the clock only
+ *  runs while playing AND `active` (when given) holds — a hidden
+ *  consumer must not wake the shell every second */
+export function positionState(
+    player: AstalMpris.Player,
+    active?: Accessor<boolean>,
+): SmoothedPosition {
+    const raw = createBinding(player, "position")
+    const [smooth, setSmooth] = createState(raw.get())
+    // a positive position at creation must have come from the player;
+    // 0 tells nothing (true track start or a silent player)
+    const [known, setKnown] = createState(raw.get() > 0)
+
+    let anchor = raw.get()
+    let anchorAt = GLib.get_monotonic_time() / 1e6
+    const reanchor = (value: number) => {
+        anchor = value
+        anchorAt = GLib.get_monotonic_time() / 1e6
+        setSmooth(value)
+    }
+
+    // 1s clock, only while playing and active: idle costs nothing
+    let timer: number | null = null
+    const startClock = () => {
+        if (timer !== null) return
+        timer = timeoutAdd("mpris:position", GLib.PRIORITY_DEFAULT, 1000, () => {
+            setSmooth(anchor + (GLib.get_monotonic_time() / 1e6 - anchorAt))
+            return GLib.SOURCE_CONTINUE
+        })
+    }
+    const stopClock = () => {
+        if (timer === null) return
+        sourceRemove(timer)
+        timer = null
+    }
+
+    const isOn = () =>
+        player.playbackStatus === AstalMpris.PlaybackStatus.PLAYING &&
+        (active ? active.get() : true)
+    const syncClock = () => {
+        if (isOn()) {
+            // resume from the frozen position, not from when the clock
+            // last ticked — that would count the paused/hidden time
+            anchor = smooth.get()
+            anchorAt = GLib.get_monotonic_time() / 1e6
+            startClock()
+        } else {
+            stopClock()
+        }
+    }
+
+    const unsubs = [
+        // the raw property is only believed when it changes: a real
+        // seek or a track transition (notify does not fire for an
+        // unchanged value, and firefox keeps it at 0 forever)
+        raw.subscribe(() => {
+            setKnown(true)
+            reanchor(raw.get())
+        }),
+        // firefox never moves Position even across tracks; a new title
+        // is the only track-change signal it gives. a fresh track
+        // genuinely starts at the raw position (usually 0)
+        createBinding(player, "title").subscribe(() => {
+            setKnown(true)
+            reanchor(raw.get())
+        }),
+        createBinding(player, "playbackStatus").subscribe(syncClock),
+    ]
+    if (active) unsubs.push(active.subscribe(syncClock))
+    syncClock()
+
+    onCleanup(() => {
+        unsubs.forEach(u => u())
+        stopClock()
+    })
+
+    return {
+        accessor: smooth,
+        known,
+        seekTo(value: number) {
+            setKnown(true)
+            reanchor(value)
+        },
+    }
+}
+
+/** last known positive track length. browser players can drop
+ *  mpris:length from a mid-track metadata update (e.g. right after a
+ *  seek) — or never send it at all (firefox) — which would flash the
+ *  end time to 0:00 and collapse the seek range. resets on track
+ *  change so a stale length never leaks into the next track */
+export function lengthState(player: AstalMpris.Player): Accessor<number> {
+    const length = createBinding(player, "length")
+    const title = createBinding(player, "title")
+    const [effective, setEffective] = createState(length.get())
+    let lastTitle = title.get()
+    const unsubs = [
+        title.subscribe(() => {
+            if (title.get() !== lastTitle) {
+                lastTitle = title.get()
+                setEffective(length.get())
+            }
+        }),
+        length.subscribe(() => {
+            const l = length.get()
+            if (l > 0) setEffective(l)
+        }),
+    ]
+    onCleanup(() => unsubs.forEach(u => u()))
+    return effective
+}
+
+/** wire a Gtk.Scale as a seek bar for `player`: range follows the track
+ *  length, the fill follows the position, drags seek. `onSeek` runs on
+ *  every user-initiated change, before the position is set. */
+export function bindSeekScale(
+    self: Gtk.Scale,
+    player: AstalMpris.Player,
+    position: SmoothedPosition,
+    onSeek?: (value: number) => void,
+) {
+    const length = lengthState(player)
+
+    // when the player never reports a duration but can seek, use a
+    // sliding window 2 min past the position: the proportion is a lie,
+    // but the bar stays usable (backward seeks are exact)
+    const end = () => {
+        const l = length.get()
+        return l > 0 ? l : Math.max(60, position.accessor.get() + 120)
+    }
+
+    // change-value fires only on user input (drag, keys, scroll), never
+    // on set_value — so position ticks must yield for a while after the
+    // last input instead of testing has_focus (keyboard focus, which
+    // dragging does not imply: the tick would fight the drag mid-seek)
+    let lastInputAt = 0
+    const interacting = () => GLib.get_monotonic_time() / 1e6 - lastInputAt < 1.5
+
+    const syncRange = () => self.set_range(0, end())
+    syncRange()
+    self.set_value(position.known.get() ? Math.min(position.accessor.get(), end()) : 0)
+
+    const unsubs = [
+        length.subscribe(syncRange),
+        // an unknowable position shows an empty bar, not a wrong one
+        position.known.subscribe(() => {
+            self.set_value(position.known.get() ? Math.min(position.accessor.get(), end()) : 0)
+        }),
+        position.accessor.subscribe(() => {
+            if (interacting() || !position.known.get()) return
+            syncRange() // keep the fallback window sliding
+            self.set_value(Math.min(position.accessor.get(), end()))
+        }),
+    ]
+    const handler = connect(
+        self,
+        "change-value",
+        (_s: Gtk.Scale, _scroll: unknown, value: number) => {
+            if (!player.canSeek) return
+            lastInputAt = GLib.get_monotonic_time() / 1e6
+            onSeek?.(value)
+            position.seekTo(value)
+            player.position = value
+        },
+    )
+    // the position unsubscribe also keeps the binding from notifying a
+    // dead scale after unmount (#16)
+    onCleanup(() => {
+        unsubs.forEach(u => u())
+        disconnect(self, handler)
+    })
 }
 
 export default mpris
