@@ -1,38 +1,44 @@
 import GLib from "gi://GLib?version=2.0"
-import AstalWp from "gi://AstalWp?version=0.1"
+import Gio from "gi://Gio?version=2.0"
 import { createState } from "gnim"
-import { timeoutAdd, connect, disconnect, sourceRemove } from "./metrics"
+import { execAsync, timeoutAdd, sourceRemove } from "./metrics"
+import { streamLines } from "./streamLines"
 
-// Screen-share detection, signal-driven through WirePlumber. A video
-// PRODUCER stream means a capture is active (portal screencast always
-// creates one, verified by a local gst spike); consumers (webcam
-// grabbers) land in the recorders list and do NOT count, and cameras
-// are devices, never streams — so joining a call with the camera on is
-// not a share.
+// Screen-share detection, event-driven through PipeWire itself. Any
+// node with media.class Stream/Input/Video means a capture is active
+// (portal screencast, camera grab). pw-dump -m streams graph changes
+// through one long-lived process (streamLines); each burst re-reads
+// the graph once (debounced).
 //
-// Fails closed: AstalWp missing or an update throwing => sharing.
+// Note: the previous implementation counted AstalWp video streams, but
+// AstalWp tracks zero streams on some setups (libastal/WirePlumber
+// tracking gap) and the mask silently never engaged.
+//
+// Fails closed: pw-dump missing, spawn failing or an update throwing
+// => sharing.
+//
+// Over-masking is accepted: a camera grab (a call with the camera on)
+// counts too. TODO: discriminate portal screencasts from v4l2 grabs
+// via the link target if that ever bothers anyone.
 
 const [sharing, setSharing] = createState(false)
 export { sharing }
 
-// TODO: name-based discrimination of benign producers (OBS virtual
-// camera) needs a calibration pass against a real share; until then
-// every producer counts — over-masking is the safe side for privacy.
-
 let debounce = 0
+let monitor: Gio.Subprocess | null = null
 
-function evaluate() {
+async function evaluate() {
     try {
-        const video = AstalWp.get_default()?.video
-        if (!video) return setSharing(true) // fail closed
-        setSharing((video.get_streams() ?? []).length > 0)
+        const out = await execAsync(["pw-dump"])
+        const matches = out.match(/"media\.class": "Stream\/Input\/Video"/g)
+        setSharing((matches?.length ?? 0) > 0)
     } catch {
         setSharing(true) // fail closed
     }
 }
 
-// the portal churns nodes during negotiation and teardown; debounce so
-// the mask doesn't flicker
+// portal negotiation and teardown churn the graph; debounce so the
+// mask doesn't flicker
 function scheduleEvaluate() {
     if (debounce) return
     debounce = timeoutAdd("screenShare:debounce", GLib.PRIORITY_DEFAULT, 300, () => {
@@ -43,20 +49,21 @@ function scheduleEvaluate() {
 }
 
 let started = false
-let streamsHandler = 0
 
 // started by the consumer (the Harvest panel pill): detection only runs
 // when something actually masks on it
 export function enable() {
     if (started) return
     started = true
-    const video = AstalWp.get_default()?.video
-    if (video) {
-        streamsHandler = connect(video, "notify::streams", scheduleEvaluate)
-        evaluate()
-    } else {
-        setSharing(true) // fail closed
-    }
+    monitor = streamLines(
+        ["pw-dump", "-m"],
+        () => scheduleEvaluate(),
+        () => {
+            // the monitor died: we can't know — fail closed
+            setSharing(true)
+        },
+    )
+    if (!monitor) setSharing(true) // fail closed
 }
 
 // convention for lib modules with long-lived sources, even though the
@@ -66,8 +73,7 @@ export function dispose() {
         sourceRemove(debounce)
         debounce = 0
     }
-    const video = AstalWp.get_default()?.video
-    if (video && streamsHandler) disconnect(video, streamsHandler)
-    streamsHandler = 0
+    monitor?.force_exit()
+    monitor = null
     started = false
 }
