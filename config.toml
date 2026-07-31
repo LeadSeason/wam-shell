@@ -243,6 +243,35 @@
 # poll_minutes = 15
 # hidden_calendars = []
 
+# [github] - GitHub notifications inside the notification center: your
+#            unread GitHub inbox merges into the center's list, and a
+#            GitHub icon in the center's header filters to just them.
+#            clicking an item opens the thread in the browser (and
+#            marks it read); dismissing an item marks it done on
+#            GitHub (recoverable via the Done filter on github.com)
+# Auth: create a personal access token (github.com/settings/tokens):
+#       a fine-grained token with Notifications read access, or a
+#       classic token with the "notifications" scope. Put it in
+#       ~/.config/wam-shell/github.env (chmod 600), NOT in this file:
+#         GITHUB_TOKEN=...
+#       The same name as a real environment variable also works and
+#       wins over the file. Without a token the center shows desktop
+#       notifications only, even when enabled.
+#
+# enabled - master toggle (requires the token above). default false
+# poll_minutes - minutes between inbox syncs. the center also refreshes
+#                when opened (at most once a minute). re-polls are
+#                conditional (If-Modified-Since) and rate-limit free.
+#                clamped to >= 1. default 5
+# popups - show a transient banner for brand-new GitHub threads (the
+#          first sync after startup is a baseline and stays quiet).
+#          respects do-not-disturb; banners expire on their own — the
+#          item stays in the center either way. only shown when our
+#          notification daemon is used. default true
+# [github]
+# enabled = false
+# poll_minutes = 5
+# popups = true
 # ════════════════════════════════════════════════════════════════════
 # Quick settings popup
 # ════════════════════════════════════════════════════════════════════

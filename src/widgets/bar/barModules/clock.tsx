@@ -29,7 +29,7 @@ function CalendarPopover() {
 
     const dayHeader = selectedDay.as(day => {
         const [y, m, d] = day.split("-").map(Number)
-        return GLib.DateTime.new_local(y, m, d, 0, 0,0).format("%a, %d.%m.%Y") ?? day
+        return GLib.DateTime.new_local(y, m, d, 0, 0, 0).format("%a, %d.%m.%Y") ?? day
     })
 
     function remark() {
@@ -100,7 +100,9 @@ function CalendarPopover() {
                                         <box
                                             cssClasses={["gcalDot"]}
                                             valign={Gtk.Align.CENTER}
-                                            css={`background-color: ${e.color};`}
+                                            css={`
+                                                background-color: ${e.color};
+                                            `}
                                         />
                                         <label
                                             cssClasses={["gcalTime"]}

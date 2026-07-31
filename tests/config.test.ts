@@ -82,6 +82,9 @@ test("config: documented defaults without a config file", () => {
     eq(c.calendar.enabled, false, "calendar.enabled")
     eq(c.calendar.pollMinutes, 15, "calendar.pollMinutes")
     eq(c.calendar.hiddenCalendars, [], "calendar.hiddenCalendars")
+    eq(c.github.enabled, false, "github.enabled")
+    eq(c.github.pollMinutes, 5, "github.pollMinutes")
+    eq(c.github.popups, true, "github.popups")
 })
 
 test("config: theme fallback with follow_system off", () => {

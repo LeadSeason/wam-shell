@@ -65,8 +65,8 @@ export default function NotificationPopups({ gdkMonitor }: { gdkMonitor: Gdk.Mon
             visible={visible}
         >
             <box cssClasses={["popups"]} orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-                <For each={rows} id={n => n.id}>
-                    {n => <PopupRow n={n} />}
+                <For each={rows} id={e => e.key}>
+                    {e => <PopupRow entry={e} />}
                 </For>
             </box>
         </window>

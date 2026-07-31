@@ -426,6 +426,28 @@ function getCalendarConfig() {
     }
 }
 
+// GitHub notifications in the notification center. Section-only keys:
+// no top-level fallbacks exist for these names and none should leak in
+function getGitHubConfig() {
+    const g = configData.github ?? {}
+
+    let pollMinutes = g["poll_minutes"] ?? 5
+    if (typeof pollMinutes !== "number" || pollMinutes <= 0) {
+        console.error(
+            `Config "github.poll_minutes" must be a positive number, got "${pollMinutes}"`,
+        )
+        pollMinutes = 5
+    }
+    // floor: a config typo must not burn the GitHub API rate limit
+    if (pollMinutes < 1) pollMinutes = 1
+
+    return {
+        enabled: g["enabled"] ?? false,
+        pollMinutes,
+        popups: g["popups"] ?? true,
+    }
+}
+
 function getNotificationsConfig() {
     const n = configData.notifications ?? {}
     const get = (key: string, fallback: any) => n[key] ?? configData[key] ?? fallback
@@ -672,7 +694,7 @@ export default class Config {
     static sleepTimer = getSleepTimerConfig()
     static harvest = getHarvestConfig()
     static calendar = getCalendarConfig()
-
+    static github = getGitHubConfig()
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`
 

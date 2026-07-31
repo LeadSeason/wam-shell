@@ -288,7 +288,10 @@ function request(
         } catch (e) {
             reply = { ok: false, status: 0, json: null }
         }
-        if (!reply.ok) console.warn(`GCal: ${method} ${url.split("?")[0]} -> ${reply.status || "network error"}`)
+        if (!reply.ok)
+            console.warn(
+                `GCal: ${method} ${url.split("?")[0]} -> ${reply.status || "network error"}`,
+            )
         cb(reply)
     })
 }
@@ -381,32 +384,30 @@ export function authenticate() {
             finishAuth(false)
             return
         }
-        conn
-            .get_input_stream()
-            .read_bytes_async(8192, GLib.PRIORITY_DEFAULT, null, (s, res2) => {
-                let code: string | null = null
-                try {
-                    const bytes = (s as Gio.InputStream).read_bytes_finish(res2)
-                    const text = new TextDecoder().decode(bytes.get_data() ?? new Uint8Array())
-                    const path = text.split("\r\n")[0]?.match(/^GET\s+(\S+)/)?.[1] ?? ""
-                    code = path.match(/[?&]code=([^&\s]+)/)?.[1] ?? null
-                    if (code) code = decodeURIComponent(code)
-                    else console.warn("GCal: redirect without a code (denied?)")
-                } catch (e) {
-                    console.warn("GCal: failed reading the redirect:", e)
-                }
-                const body = code
-                    ? "<h3>wam-shell: Google Calendar sign-in complete</h3>You can close this tab."
-                    : "<h3>wam-shell: sign-in failed</h3>You can close this tab."
-                const http = `HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n${body}`
-                try {
-                    conn!
-                        .get_output_stream()
-                        .write_bytes(new GLib.Bytes(new TextEncoder().encode(http)), null)
-                    conn!.close(null)
-                } catch {}
-                finishAuth(!!code, code ?? undefined)
-            })
+        conn.get_input_stream().read_bytes_async(8192, GLib.PRIORITY_DEFAULT, null, (s, res2) => {
+            let code: string | null = null
+            try {
+                const bytes = (s as Gio.InputStream).read_bytes_finish(res2)
+                const text = new TextDecoder().decode(bytes.get_data() ?? new Uint8Array())
+                const path = text.split("\r\n")[0]?.match(/^GET\s+(\S+)/)?.[1] ?? ""
+                code = path.match(/[?&]code=([^&\s]+)/)?.[1] ?? null
+                if (code) code = decodeURIComponent(code)
+                else console.warn("GCal: redirect without a code (denied?)")
+            } catch (e) {
+                console.warn("GCal: failed reading the redirect:", e)
+            }
+            const body = code
+                ? "<h3>wam-shell: Google Calendar sign-in complete</h3>You can close this tab."
+                : "<h3>wam-shell: sign-in failed</h3>You can close this tab."
+            const http = `HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: ${body.length}\r\nConnection: close\r\n\r\n${body}`
+            try {
+                conn!
+                    .get_output_stream()
+                    .write_bytes(new GLib.Bytes(new TextEncoder().encode(http)), null)
+                conn!.close(null)
+            } catch {}
+            finishAuth(!!code, code ?? undefined)
+        })
     })
 
     const params = [
@@ -506,7 +507,8 @@ function fetchPaged(
         if (!r.ok || !r.json) return cb(r.ok ? acc : null)
         const items = acc.concat(r.json[key] ?? [])
         const next: string | null = r.json.nextPageToken ?? null
-        if (next) fetchPaged(`${path}&pageToken=${encodeURIComponent(next)}`, key, items, cb, page + 1)
+        if (next)
+            fetchPaged(`${path}&pageToken=${encodeURIComponent(next)}`, key, items, cb, page + 1)
         else cb(items)
     })
 }
@@ -532,53 +534,58 @@ export function sync(focus?: { y: number; m: number }) {
     const rfc3339 = (ms: number) => new Date(ms).toISOString()
     const range = `timeMin=${encodeURIComponent(rfc3339(from))}&timeMax=${encodeURIComponent(rfc3339(to))}`
 
-    fetchPaged(`/users/me/calendarList?fields=items(id,summary,backgroundColor)`, "items", [], cals => {
-        if (!cals) {
-            syncInFlight = false
-            return
-        }
-        const visible: GoogleCalendar[] = cals
-            .filter((c: any) => c.id && c.summary)
-            .map((c: any) => ({
-                id: c.id,
-                summary: c.summary,
-                color: typeof c.backgroundColor === "string" ? c.backgroundColor : "#888888",
-            }))
-            .filter((c: GoogleCalendar) => !Config.calendar.hiddenCalendars.includes(c.summary))
-        if (visible.length === 0) {
-            loadedFrom = from
-            loadedTo = to
-            setEvents([])
-            writeCache([])
-            syncInFlight = false
-            return
-        }
+    fetchPaged(
+        `/users/me/calendarList?fields=items(id,summary,backgroundColor)`,
+        "items",
+        [],
+        cals => {
+            if (!cals) {
+                syncInFlight = false
+                return
+            }
+            const visible: GoogleCalendar[] = cals
+                .filter((c: any) => c.id && c.summary)
+                .map((c: any) => ({
+                    id: c.id,
+                    summary: c.summary,
+                    color: typeof c.backgroundColor === "string" ? c.backgroundColor : "#888888",
+                }))
+                .filter((c: GoogleCalendar) => !Config.calendar.hiddenCalendars.includes(c.summary))
+            if (visible.length === 0) {
+                loadedFrom = from
+                loadedTo = to
+                setEvents([])
+                writeCache([])
+                syncInFlight = false
+                return
+            }
 
-        const fields = "nextPageToken,items(id,status,summary,start,end)"
-        const merged: CalEvent[] = []
-        let pending = visible.length
-        const settle = () => {
-            if (--pending > 0) return
-            merged.sort((a, b) => a.startMs - b.startMs)
-            loadedFrom = from
-            loadedTo = to
-            setEvents(merged)
-            writeCache(merged)
-            syncInFlight = false
-        }
-        for (const cal of visible) {
-            const path = `/calendars/${encodeURIComponent(cal.id)}/events?${range}&singleEvents=true&maxResults=2500&fields=${encodeURIComponent(fields)}`
-            fetchPaged(path, "items", [], items => {
-                // a failed calendar degrades to no events for it rather
-                // than poisoning the whole merge
-                for (const raw of items ?? []) {
-                    const e = mapGoogleEvent(cal.id, cal.summary, cal.color, raw)
-                    if (e) merged.push(e)
-                }
-                settle()
-            })
-        }
-    })
+            const fields = "nextPageToken,items(id,status,summary,start,end)"
+            const merged: CalEvent[] = []
+            let pending = visible.length
+            const settle = () => {
+                if (--pending > 0) return
+                merged.sort((a, b) => a.startMs - b.startMs)
+                loadedFrom = from
+                loadedTo = to
+                setEvents(merged)
+                writeCache(merged)
+                syncInFlight = false
+            }
+            for (const cal of visible) {
+                const path = `/calendars/${encodeURIComponent(cal.id)}/events?${range}&singleEvents=true&maxResults=2500&fields=${encodeURIComponent(fields)}`
+                fetchPaged(path, "items", [], items => {
+                    // a failed calendar degrades to no events for it rather
+                    // than poisoning the whole merge
+                    for (const raw of items ?? []) {
+                        const e = mapGoogleEvent(cal.id, cal.summary, cal.color, raw)
+                        if (e) merged.push(e)
+                    }
+                    settle()
+                })
+            }
+        },
+    )
 }
 
 // the popover navigated to a month outside the loaded window

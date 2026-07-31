@@ -10,6 +10,11 @@
 - The notification center toggles via a request command:
   `ags request -i wam-shell notifications` (bind it in the compositor
   config).
+- External services merge into the center through the provider registry
+  (`src/lib/notificationProviders.ts`): one lib module per service
+  (`src/lib/github.ts` is the first, `[github]` + `github.env`), a
+  filter icon per provider in the center's header. New providers
+  (YouTube, ProtonMail) need no center changes.
 - Performance counters: start the shell with `WAM_SHELL_METRICS=1`,
   then query `ags request -i <instance> metrics` (single-line JSON,
   prefixed with `<instance>: ` by the request handler) or

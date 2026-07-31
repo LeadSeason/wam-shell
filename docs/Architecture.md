@@ -12,8 +12,8 @@ One page on how the pieces fit.
   means a restart (theme reload is the one exception).
 - **`src/lib/`** — shared reactive state and services (gnim
   `createState`/`createBinding`). One module per concern: `notifd`,
-  `mpris`, `bluetooth`, `sleepTimer`, `harvest`, `gcal`, `screenShare`,
-  `sysstats`, `kbLayout`, `vpn`, `hyprsunset`, `brightness`, `osd`,
+  `mpris`, `bluetooth`, `sleepTimer`, `harvest`, `gcal`, `github`,
+  `screenShare`,  `sysstats`, `kbLayout`, `vpn`, `hyprsunset`, `brightness`, `osd`,
   `requestHandler`, … Widgets never talk to the system directly; they
   consume these.
 - **`src/widgets/`** — GTK4/JSX UI. Bars per monitor, the quick settings

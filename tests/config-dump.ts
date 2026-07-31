@@ -26,7 +26,7 @@ const dump = {
     sleepTimer: Config.sleepTimer,
     harvest: Config.harvest,
     calendar: Config.calendar,
-}
+    github: Config.github,}
 
 // must stay the last stdout line — config.test.ts parses it
 print(JSON.stringify(dump))
