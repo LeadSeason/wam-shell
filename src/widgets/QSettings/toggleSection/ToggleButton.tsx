@@ -1,4 +1,5 @@
 import { Gtk } from "ags/gtk4"
+import Pango from "gi://Pango?version=1.0"
 import { Accessor, Setter } from "gnim"
 
 interface TbButtonProps {
@@ -70,9 +71,25 @@ export function DropdownButton({
                 />
                 <image iconName={icon} />
                 <box orientation={Gtk.Orientation.VERTICAL} valign={Gtk.Align.CENTER} hexpand>
-                    <label cssClasses={["toggleTitle"]} label={label} xalign={0} />
+                    {/* bounded natural width + ellipsize: a wide fallback
+                    font (missing Nerd Fonts) must not inflate the card */}
+                    <label
+                        cssClasses={["toggleTitle"]}
+                        label={label}
+                        xalign={0}
+                        hexpand
+                        maxWidthChars={20}
+                        ellipsize={Pango.EllipsizeMode.END}
+                    />
                     {subtitle !== undefined && (
-                        <label cssClasses={["toggleSubtitle"]} label={subtitle} xalign={0} />
+                        <label
+                            cssClasses={["toggleSubtitle"]}
+                            label={subtitle}
+                            xalign={0}
+                            hexpand
+                            maxWidthChars={24}
+                            ellipsize={Pango.EllipsizeMode.END}
+                        />
                     )}
                 </box>
             </box>

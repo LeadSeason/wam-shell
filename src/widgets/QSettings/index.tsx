@@ -148,57 +148,72 @@ export default function QSettings() {
                     cssClasses={["qSettings"]}
                     widthRequest={240}
                 >
-                    <stack
-                        // set the visible child after construction: as a prop it
-                        // is applied before the named children exist, which makes
-                        // Gtk warn about a missing child
-                        $={self => {
-                            self.visibleChildName = "main"
-                            // subscribe callbacks receive no value, read it
-                            pane.subscribe(() => (self.visibleChildName = pane.get()))
-                        }}
-                        transitionType={Gtk.StackTransitionType.SLIDE_LEFT_RIGHT}
-                        transitionDuration={200}
+                    {/* the scrolled window pins the width: without it the
+                    card's natural width is child-driven, and a wide
+                    fallback font (missing Nerd Fonts) or long content
+                    inflates the popup far past its design width */}
+                    <Gtk.ScrolledWindow
+                        vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                        hscrollbarPolicy={Gtk.PolicyType.NEVER}
+                        propagateNaturalHeight
+                        widthRequest={450}
                     >
-                        <box $type="named" name="main" orientation={Gtk.Orientation.VERTICAL}>
-                            {/* header (battery, power, …) only on the main pane */}
-                            <HeaderSection />
-                            <SliderSection />
-                            <Gtk.Separator />
-                            {toggleSection.widget}
-                            {Config.quicksettings.showStats && <StatsSection />}
-                            <MediaSection />
-                            {!Config.tray.onPanel && <Gtk.Separator />}
-                            {!Config.tray.onPanel && (
-                                <Tray
-                                    filter={item => !isPinned(item)}
-                                    iconSize={Config.tray.popupIconSize}
-                                    pill
-                                    spacing={8}
-                                />
-                            )}
-                        </box>
-                        <box $type="named" name="wifi" orientation={Gtk.Orientation.VERTICAL}>
-                            <PaneHeader title="Wi-Fi" onBack={() => setPane("main")} />
-                            <WifiWidget pane={pane} name="wifi" />
-                        </box>
-                        <box $type="named" name="bluetooth" orientation={Gtk.Orientation.VERTICAL}>
-                            <PaneHeader title="Bluetooth" onBack={() => setPane("main")} />
-                            <BluetoothWidget pane={pane} name="bluetooth" />
-                        </box>
-                        <box $type="named" name="wired" orientation={Gtk.Orientation.VERTICAL}>
-                            <PaneHeader title="Wired" onBack={() => setPane("main")} />
-                            <WiredWidget pane={pane} name="wired" />
-                        </box>
-                        <box
-                            $type="named"
-                            name="powerprofiles"
-                            orientation={Gtk.Orientation.VERTICAL}
+                        <stack
+                            // set the visible child after construction: as a prop it
+                            // is applied before the named children exist, which makes
+                            // Gtk warn about a missing child
+                            $={self => {
+                                self.visibleChildName = "main"
+                                // subscribe callbacks receive no value, read it
+                                pane.subscribe(() => (self.visibleChildName = pane.get()))
+                            }}
+                            transitionType={Gtk.StackTransitionType.SLIDE_LEFT_RIGHT}
+                            transitionDuration={200}
                         >
-                            <PaneHeader title="Power Mode" onBack={() => setPane("main")} />
-                            <PowerProfilesWidget />
-                        </box>
-                    </stack>
+                            <box $type="named" name="main" orientation={Gtk.Orientation.VERTICAL}>
+                                {/* header (battery, power, …) only on the main pane */}
+                                <HeaderSection />
+                                <SliderSection />
+                                <Gtk.Separator />
+                                {toggleSection.widget}
+                                {Config.quicksettings.showStats && <StatsSection />}
+                                <MediaSection />
+                                {!Config.tray.onPanel && <Gtk.Separator />}
+                                {!Config.tray.onPanel && (
+                                    <Tray
+                                        filter={item => !isPinned(item)}
+                                        iconSize={Config.tray.popupIconSize}
+                                        pill
+                                        spacing={8}
+                                    />
+                                )}
+                            </box>
+                            <box $type="named" name="wifi" orientation={Gtk.Orientation.VERTICAL}>
+                                <PaneHeader title="Wi-Fi" onBack={() => setPane("main")} />
+                                <WifiWidget pane={pane} name="wifi" />
+                            </box>
+                            <box
+                                $type="named"
+                                name="bluetooth"
+                                orientation={Gtk.Orientation.VERTICAL}
+                            >
+                                <PaneHeader title="Bluetooth" onBack={() => setPane("main")} />
+                                <BluetoothWidget pane={pane} name="bluetooth" />
+                            </box>
+                            <box $type="named" name="wired" orientation={Gtk.Orientation.VERTICAL}>
+                                <PaneHeader title="Wired" onBack={() => setPane("main")} />
+                                <WiredWidget pane={pane} name="wired" />
+                            </box>
+                            <box
+                                $type="named"
+                                name="powerprofiles"
+                                orientation={Gtk.Orientation.VERTICAL}
+                            >
+                                <PaneHeader title="Power Mode" onBack={() => setPane("main")} />
+                                <PowerProfilesWidget />
+                            </box>
+                        </stack>
+                    </Gtk.ScrolledWindow>
                 </box>
             </revealer>
         </window>
