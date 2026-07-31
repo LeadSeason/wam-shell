@@ -60,13 +60,19 @@ start_detached() {
 
 cmd_install() {
     # populate the durable home: everything below runs from WAM_HOME, so
-    # the clone this script was invoked from may be deleted afterwards
-    local src
-    src="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
-    if [[ "$src" != "$ROOT" && ! -d "$ROOT/.git" ]]; then
-        # clone from the invoking repo's origin when available, else upstream
-        local url
-        url="$(git -C "$src" remote get-url origin 2>/dev/null || echo "$REPO_URL")"
+    # the clone this script was invoked from may be deleted afterwards.
+    # also works piped (curl | bash): then there is no invoking repo at
+    # all and the clone comes straight from upstream
+    command -v git >/dev/null || die "git is required for install"
+
+    local src=""
+    src="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." 2>/dev/null && pwd || true)"
+    if [[ ! -d "$ROOT/.git" ]]; then
+        # clone from the invoking repo's origin when there is one, else upstream
+        local url="$REPO_URL"
+        if [[ -n "$src" && -d "$src/.git" ]]; then
+            url="$(git -C "$src" remote get-url origin 2>/dev/null || echo "$REPO_URL")"
+        fi
         log "Cloning $url into $ROOT"
         git clone --branch master "$url" "$ROOT"
         # the durable home tracks upstream, not the bootstrap clone
