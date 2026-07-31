@@ -37,4 +37,4 @@ EOF
     echo "installed $HOOK"
 fi
 
-echo "the gate runs all scenarios against origin/develop (~2 min); bypass with git push --no-verify"
+echo "the gate runs all scenarios against origin/master (~2 min); bypass with git push --no-verify"

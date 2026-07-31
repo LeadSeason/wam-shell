@@ -10,7 +10,7 @@ all of that — nothing to calibrate, nothing to go stale.
 ## Usage
 
 ```sh
-pnpm perf                          # A/B: working tree vs merge-base with origin/develop
+pnpm perf                          # A/B: working tree vs merge-base with origin/master
 pnpm perf --base <ref>             # compare against a specific ref
 pnpm perf --scenario idle-1mon     # one scenario (about a minute)
 pnpm perf --json                   # full per-scenario data
