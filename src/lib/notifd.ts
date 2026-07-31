@@ -45,7 +45,18 @@ if (!useOurs) console.log("Notifications: using the system daemon")
 const notifd = AstalNotifd.get_default()
 
 const notifications = createBinding(notifd, "notifications")
-export const count = notifications.as(n => n.length)
+// notifications that belong in the center's history: everything except
+// ones with the spec `transient` hint ("excluded from persistency" —
+// attention-only events like a device connecting) and apps filtered out
+// via notifications.transient_apps. Popups are unaffected by both.
+export const persistent: Accessor<AstalNotifd.Notification[]> = notifications.as(list =>
+    list.filter(
+        n =>
+            !n.transient &&
+            !Config.notifications.transientApps.includes((n.appName || "unknown").toLowerCase()),
+    ),
+)
+export const count = persistent.as(n => n.length)
 export const dnd = createBinding(notifd, "dontDisturb")
 
 export function toggleDnd() {

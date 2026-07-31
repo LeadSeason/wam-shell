@@ -20,8 +20,12 @@ interface WatchState {
 const watched = new Map<string, WatchState>()
 
 /** send a notification through the daemon (we ARE the daemon; calling
- *  our own bus name loops through the bus like any other client) */
-function notify(summary: string, body: string, icon: string, urgency: number) {
+ *  our own bus name loops through the bus like any other client).
+ *  transient marks it attention-only: shown as a popup, excluded from
+ *  the center's history (the spec `transient` hint) */
+function notify(summary: string, body: string, icon: string, urgency: number, transient = false) {
+    const hints: Record<string, GLib.Variant> = { urgency: new GLib.Variant("y", urgency) }
+    if (transient) hints.transient = new GLib.Variant("b", true)
     Gio.DBus.session.call(
         "org.freedesktop.Notifications",
         "/org/freedesktop/Notifications",
@@ -36,7 +40,7 @@ function notify(summary: string, body: string, icon: string, urgency: number) {
             [],
             // a{sv} inside a tuple must be a plain object of variants
             // for gjs to pack it
-            { urgency: new GLib.Variant("y", urgency) },
+            hints,
             -1,
         ]),
         null,
@@ -80,6 +84,7 @@ function watchDevice(device: AstalBluetooth.Device) {
                 device.connected ? "Connected" : "Disconnected",
                 device.icon || "bluetooth-symbolic",
                 0, // low urgency
+                true, // attention-only: no history in the center
             )
         }),
     )
