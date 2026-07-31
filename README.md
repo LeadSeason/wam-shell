@@ -7,11 +7,14 @@ ags inspect -i [config name, wam]
 
 ### Install
 
+One line, no clone needed:
+
 ```shell
-git clone https://github.com/LeadSeason/wam-shell.git
-cd wam-shell
-scripts/wam install
+curl -fsSL https://raw.githubusercontent.com/LeadSeason/wam-shell/master/scripts/wam | bash -s -- install
 ```
+
+or from a clone: `scripts/wam install` (extra args go to
+`scripts/setup.sh`, e.g. `--source`).
 
 Install clones the repo into `~/.local/share/wam-shell` and installs
 the `wam` command itself into `~/.local/bin`. Everything runs from
