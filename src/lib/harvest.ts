@@ -1182,9 +1182,7 @@ export function init() {
     request("GET", "/users/me", null, r => {
         if (r.ok && r.json) {
             userId = Number(r.json.id) || 0
-            console.log(
-                `Harvest: signed in as ${r.json.first_name ?? ""} ${r.json.last_name ?? ""} (account timezone: ${r.json.timezone ?? "unknown"})`,
-            )
+            console.log(`Harvest: account timezone: ${r.json.timezone ?? "unknown"}`)
         }
         authFailed ||= r.authFailed
         startupDone()
