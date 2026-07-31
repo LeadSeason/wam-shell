@@ -295,9 +295,28 @@ window#QSettings {
     }
 
     .wifiSwitchRow {
-        margin: 2px 4px;
-        label {
-            font-weight: bold;
+        margin: 0 4px;
+        // the theme does all:unset — the switch is invisible without this
+        switch {
+            background-color: t.$surface0;
+            border: 1px solid t.$surface1;
+            border-radius: 999px;
+            slider {
+                background-color: t.$text;
+                border-radius: 50%;
+                min-width: 14px;
+                min-height: 14px;
+                margin: 3px;
+            }
+            &:checked {
+                background-color: t.$accent;
+                slider {
+                    background-color: t.$base;
+                }
+            }
+            &:disabled {
+                opacity: 0.35;
+            }
         }
     }
 
