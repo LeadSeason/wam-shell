@@ -55,6 +55,8 @@ let started = false
 export function enable() {
     if (started) return
     started = true
+    // stderr silenced: pw-dump prints protocol noise during portal
+    // churn (resource races), which would otherwise flood the shell log
     monitor = streamLines(
         ["pw-dump", "-m"],
         () => scheduleEvaluate(),
@@ -62,6 +64,7 @@ export function enable() {
             // the monitor died: we can't know — fail closed
             setSharing(true)
         },
+        true,
     )
     if (!monitor) setSharing(true) // fail closed
 }
