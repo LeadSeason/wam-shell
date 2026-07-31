@@ -133,24 +133,24 @@ left = ["osicon", "bogus-widget", "clock"]
     eq(c.panels[0].left, ["osicon", "clock"], "panels[0].left filters unknown widgets")
 })
 
-test("config: harvest mask_when_sharing toggles the streaming-mode mask", () => {
+test("config: harvest hide_when_screen_sharing toggles the streaming-mode mask", () => {
     const on = loadConfig(
         { DESKTOP_SESSION: "hyprland" },
         `
 [harvest]
-mask_when_sharing = true
+hide_when_screen_sharing = true
 `,
     )
-    eq(on.harvest.maskWhenSharing, true)
+    eq(on.harvest.hideWhenScreenSharing, true)
 
     const off = loadConfig(
         { DESKTOP_SESSION: "hyprland" },
         `
 [harvest]
-mask_when_sharing = false
+hide_when_screen_sharing = false
 `,
     )
-    eq(off.harvest.maskWhenSharing, false)
+    eq(off.harvest.hideWhenScreenSharing, false)
 })
 
 test("config: instance cache dir follows XDG_CACHE_HOME and instance name", () => {

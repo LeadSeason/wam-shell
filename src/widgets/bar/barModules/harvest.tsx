@@ -67,9 +67,9 @@ export default function HarvestTimer({
     if (!Harvest.active) return <></>
     if (!Config.harvest.onPanel && !authoritative) return <></>
     // detection runs only once something actually masks on it
-    if (Config.harvest.maskWhenSharing) enableShareWatch()
+    if (Config.harvest.hideWhenScreenSharing) enableShareWatch()
 
-    const masked = sharing.as(s => s && Config.harvest.maskWhenSharing)
+    const masked = sharing.as(s => s && Config.harvest.hideWhenScreenSharing)
 
     const visible = createComputed(
         [Harvest.running, Harvest.paused, workHours],
