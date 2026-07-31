@@ -333,10 +333,16 @@ export default function Clock() {
         <menubutton
             cssName={"clock"}
             $={self => {
-                // stale-while-revalidate each time the popover opens
-                connect(self, "notify::active", () => {
-                    if (self.active) Gcal.refresh()
-                })
+                // stale-while-revalidate each time the popover opens.
+                // Gated on the calendar being configured: an always-on
+                // connection per bar would cost every shell user for a
+                // feature most don't run (and the perf gate counts
+                // startup signal connections)
+                if (Gcal.active) {
+                    connect(self, "notify::active", () => {
+                        if (self.active) Gcal.refresh()
+                    })
+                }
             }}
         >
             {/* centerbox hack to center the clock in the middle of the bar */}
