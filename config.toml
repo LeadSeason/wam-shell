@@ -1,43 +1,70 @@
 # wam-shell configuration
-# Enviroemntal variables don't work. here. if a environmental variable is
-# mentioned to default or specifically specified that will work with
-# environmental variables
 #
-# Paths (scss, themes, scripts) resolve against the directory ags is
-# started from. Set WAM_SHELL_DIR to the repo root when launching from
-# somewhere else.
+# Every option is commented out below — uncomment to override a default.
+# Everything ships with sane defaults; an empty file is a valid config.
+#
+# Where the shell looks for a config file (first hit wins):
+#   1. $XDG_CONFIG_HOME/wam-shell/config.toml
+#   2. ~/.config/wam-shell/config.toml
+#   3. <repo>/config-override.toml   (generated: this file + your values)
+#   4. <repo>/config.toml            (this file)
+#
+# Section keys ([workspaces], [tray], ...) can also be set flat at the
+# top level; the section wins when both are set. Two exceptions are
+# section-only: sleep_timer.on_panel and harvest.on_panel.
+#
+# Environment variables do NOT expand in this file. Two env vars affect
+# the shell itself:
+#   WAM_SHELL_DIR      paths (scss, themes, scripts) resolve against the
+#                      directory ags is started from; set this to the repo
+#                      root when launching from somewhere else
+#   WAM_SHELL_METRICS  set to 1 to enable the performance counters
+#                      (ags request -i <instance> metrics)
 
-# Name of the instance, defaults to wam-shell, Recommended not to change
+# ════════════════════════════════════════════════════════════════════
+# General
+# ════════════════════════════════════════════════════════════════════
+
+# instance_name - name of the ags instance, used for ags request -i and
+#                 the cache dir (~/.cache/<instance_name>). recommended
+#                 not to change. default "wam-shell"
 # instance_name = "wam-shell"
 
-# Desktop session override, overrides the desktop session, Normally picks up
-# $DESKTOP_SESSION variable. sway - i3 - hyprland. defaults to $DESKTOP_SESSION,
+# desktop_session_override - overrides the session detection, which
+#                 normally reads $DESKTOP_SESSION. one of "hyprland",
+#                 "sway", "i3". default $DESKTOP_SESSION
 # desktop_session_override = "hyprland"
 
-# os_icon
-# The icon in the topleft, can be a file or a icon name. File will be used if
-# string contains "/" otherwise icon is used. can also use relative paths,
-# relative paths start at the project root / instanceSrcDir. If left undefined
-# will resolve icon from /etc/os-release, if that fails will be empty string and
-# missing-icon is used.
+# os_icon - the icon in the top left. an icon name, or a file path when
+#           the string contains "/" (relative paths start at the repo
+#           root). unset = the LOGO from /etc/os-release, else a generic
+#           missing-icon
 # os_icon = ""
 
-# sway_gaps - SwayGaps module
-# Enable sway_gaps feature, Defaults to true if desktop session is sway.
-# otherwise disabled
-# sway_gaps = true
-
-# theme - color theme, a file in scss/theme/<name>.scss. shipped:
+# theme - color theme, a file scss/theme/<name>.scss. shipped:
 #         catppuccin-mocha (default), catppuccin-macchiato,
 #         catppuccin-frappe, catppuccin-latte, gruvbox, gruvbox-light
 # theme = "catppuccin-mocha"
 
-# [appearance] - themes applied when the Dark Style quick settings
-#                toggle flips (the shell follows the app's color
-#                scheme). live only: the theme key above wins again on
-#                restart
-# dark_theme - applied when Dark Style turns on. default
-#              "catppuccin-mocha"
+# sway_gaps - the SwayGaps module (runtime-adjustable inner/outer gaps
+#             via ags request). only relevant on sway/i3. default true
+# sway_gaps = true
+
+# arch_updates_threshold - minimum number of pending Arch updates before
+#             the update icon shows on the panel. requires the
+#             pending-updates-daemon user service (see extra/).
+#             default 50
+# arch_updates_threshold = 50
+
+# ════════════════════════════════════════════════════════════════════
+# Appearance — Dark Style themes
+# ════════════════════════════════════════════════════════════════════
+
+# Themes applied when the Dark Style quick settings toggle flips.
+# Live only: the theme key above wins again on restart, unless
+# follow_system is on.
+#
+# dark_theme - applied when Dark Style turns on. default "catppuccin-mocha"
 # light_theme - applied when it turns off. default "catppuccin-latte"
 # follow_system - also follow the system color scheme at startup, so
 #                 Dark Style survives a shell restart. default true
@@ -46,11 +73,14 @@
 # light_theme = "catppuccin-latte"
 # follow_system = true
 
-# bar_monitors - list of monitors that get a panel. Entries match the
-#                connector ("HDMI-A-1"), the model ("X34 P") or a
-#                substring of the description ("Acer"). Unset or empty
-#                list shows the panel on every monitor.
-#                Ignored when [[panel]] blocks are defined.
+# ════════════════════════════════════════════════════════════════════
+# Panels
+# ════════════════════════════════════════════════════════════════════
+
+# bar_monitors - monitors that get a panel. entries match the connector
+#                ("HDMI-A-1"), the model ("X34 P") or a substring of the
+#                description ("Acer"). unset or empty = every monitor.
+#                ignored when [[panel]] blocks are defined
 # bar_monitors = ["Acer X34 P"]
 
 # [[panel]] - multiple configurable panels
@@ -62,7 +92,7 @@
 # position - "top" or "bottom". default "top"
 # class - extra css class on the panel window, for per-panel styling
 #         in scss (e.g. class = "laptop" -> window.Bar.laptop). optional
-# left/center/right - widget lists. Available widgets:
+# left/center/right - widget lists. available widgets:
 #                osicon, workspaces, clock, stats, tray, quicksettings,
 #                language, notifications, media, sleeptimer, harvest
 #                The lists are authoritative: a listed widget always
@@ -84,11 +114,11 @@
 # center = []
 # right = ["notifications"]
 
-# [workspaces] - Workspace indicator widget
-# Shows the workspace indicator for the running session (sway/i3 or hyprland)
-# Keys can be set inside a [workspaces] section or flat at the top level
-# (like the rest of this file). The section takes precedence if both are set.
-#
+# ════════════════════════════════════════════════════════════════════
+# Bar widgets
+# ════════════════════════════════════════════════════════════════════
+
+# [workspaces] - workspace indicator (sway/i3 or hyprland)
 # enabled - show the widget at all. default true
 # position - "left" (next to the os icon) or "right" (right edge of the
 #            tray section). default "left"
@@ -96,33 +126,31 @@
 # show_labels - show the workspace number/name. default true
 # hide_empty - hide workspaces with no windows. the focused workspace is
 #              always shown. default false
-# collapse_icons - show each app icon only once per workspace, no matter how
-#                  many windows of that app are open. default false
+# collapse_icons - show each app icon only once per workspace, no matter
+#                  how many windows of that app are open. default false
 # [workspaces]
 # enabled = true
 # position = "left"
 # show_icons = true
 # show_labels = true
-# hide_empty = true
+# hide_empty = false
 # collapse_icons = false
 
-# [tray] - System tray widget
-# Keys can be set inside a [tray] section or flat at the top level.
-#
+# [tray] - system tray
 # on_panel - show tray items directly on the bar instead of inside the
 #            quick settings popup. default false
 # spacing - horizontal gap between tray icons, in pixels. default 0
-# position - "left" or "right" of the quick settings button. default "left"
-#            NOTE: flat at the top level this key is "tray_position", a
-#            bare "position" would collide with workspaces.position
+# position - "left" or "right" of the quick settings button. default
+#            "left". NOTE: flat at the top level this key is
+#            "tray_position" — a bare "position" would collide with
+#            workspaces.position
 # always_on_panel - list of app ids whose tray icons always show on the
-#                   bar, even when the rest of the tray is nested. entries
-#                   are matched against the SNI Id, title and icon name,
-#                   and as a substring of the tooltip. use the tooltip
-#                   match for Electron apps, they all report
+#                   bar, even when the rest of the tray is nested.
+#                   entries are matched against the SNI Id, title and
+#                   icon name, and as a substring of the tooltip. use
+#                   the tooltip match for Electron apps: they all report
 #                   "chrome_status_icon_1" as Id with an empty title
-#                   (e.g. "Connected" for Mullvad VPN).
-#                   default []
+#                   (e.g. "Connected" for Mullvad VPN). default []
 # popup_icon_size - pixel size of tray icons inside the quick settings
 #                   popup. the pill around them scales with it.
 #                   default 22
@@ -133,13 +161,68 @@
 # always_on_panel = ["TelegramDesktop"]
 # popup_icon_size = 22
 
-# [quicksettings] - Quick settings popup
-# Keys can be set inside a [quicksettings] section or flat at the top level.
+# [media] - media controls (mpris) on the panel + popup
+# enabled - show the media widget in the classic (non-[[panel]]) bar
+#           layout. default false. [[panel]] lists always render it
+# show_controls - show prev/play/next buttons on the panel. default true
+# max_width - maximum characters of the track label. default 20
+# [media]
+# enabled = false
+# show_controls = true
+# max_width = 20
+
+# [harvest] - Harvest time tracking (getharvest.com): running timer on
+#             the panel + a picker popup (start/stop/resume/notes/new
+#             entries)
+# Auth: create a Personal Access Token at id.getharvest.com (Developers
+# section), note the token and your account id, and put them in
+# ~/.config/wam-shell/harvest.env (chmod 600), NOT in this file:
+#   HARVEST_TOKEN=...
+#   HARVEST_ACCOUNT_ID=...
+# The same names as real environment variables also work and win over
+# the file. Without credentials the widget stays off, even when enabled.
 #
-# show_battery_percentage - show the battery percentage next to the battery
-#                           icon on the panel. default true
-# show_device_names - overlay the active input/output device name on the
-#                     volume sliders. default false
+# enabled - master toggle (requires the credentials above). default false
+# on_panel - show the timer on the panel: elapsed while running, the day
+#            total when idle inside work hours. left-click opens the
+#            picker popup, right-click stops/resumes. default true.
+#            section-only key. position it like any other widget:
+#            "harvest" in a [[panel]] list
+# poll_interval - seconds between syncs with Harvest. the sync is a
+#                 small delta query (entries updated since the last seen
+#                 updated_at), usually empty; a full re-sync runs every
+#                 5 min. while the session is locked the interval is
+#                 60s. clamped to >= 5. default 10
+# recents - recent project/task pairs listed in the picker popup's
+#           Resume section. default 5
+# work_start / work_end - "HH:MM". when both are set the panel widget
+#           also shows while idle inside this window (dimmed, with the
+#           day total). windows may wrap midnight ("22:00"-"06:00").
+#           default empty = the widget only appears while a timer runs
+# hide_when_screen_sharing - "streaming mode": while screen sharing,
+#           hide the elapsed and the pause button and mask project/task
+#           (tooltip included); the pill shows only a blinking icon, so
+#           viewers can't tell a timer is running. set false to disable
+#           the mask entirely — the screen-share monitor (pw-dump) then
+#           never starts. default true
+# [harvest]
+# enabled = false
+# on_panel = true
+# poll_interval = 10
+# recents = 5
+# work_start = ""
+# work_end = ""
+# hide_when_screen_sharing = true
+
+# ════════════════════════════════════════════════════════════════════
+# Quick settings popup
+# ════════════════════════════════════════════════════════════════════
+
+# [quicksettings]
+# show_battery_percentage - show the battery percentage next to the
+#                     battery icon on the panel. default true
+# show_device_names - overlay the active input/output device name on
+#                     the volume sliders. default false
 # show_stats - show the performance stats section (cpu/ram/gpu/network)
 #              in the popup. default false
 # stats_on_panel - show the resource utilization monitor (cpu/ram/gpu
@@ -171,6 +254,28 @@
 # [bluetooth]
 # notifications = true
 
+# [sleep_timer] - quick settings sleep timer (pauses all playing media
+#                 after the picked duration)
+# enabled - show the sleep timer toggle in quick settings. default true
+# presets - preset durations in minutes shown in the dropdown. custom
+#           values can always be typed in the entry. must be a non-empty
+#           list of positive numbers. default [10, 15, 20, 30, 45, 60]
+# on_panel - show the countdown on the panel while a timer runs. click
+#            it to pause/resume. default true. section-only key.
+#            position it like any other widget: "sleeptimer" in a
+#            [[panel]] list
+# dim - when the timer fires, dim the screen to half its current
+#       brightness (never below 10%). default true
+# [sleep_timer]
+# enabled = true
+# presets = [10, 15, 20, 30, 45, 60]
+# on_panel = true
+# dim = true
+
+# ════════════════════════════════════════════════════════════════════
+# Notifications
+# ════════════════════════════════════════════════════════════════════
+
 # [notifications] - notification banners + center
 # daemon - whose notification daemon is used:
 #          "auto" (default) - the system's daemon if one is already
@@ -186,20 +291,21 @@
 #          breaks through). only shown when our daemon is used.
 #          default true
 # popup_timeout - milliseconds before a popup hides itself. low urgency
-#                 drains in half the time; critical stays until dismissed.
-#                 default 5000
+#                 drains in half the time; critical stays until
+#                 dismissed. default 5000
 # position - where banners appear: "topRight" or "topCenter".
 #            default "topRight"
 # popup_width - fixed banner width in pixels. the whole stack is the
 #               same width and does not resize as notifications arrive
 #               and expire. default 460
 # transient_apps - list of app names whose notifications are popup-only:
-#                  shown as banners but excluded from the center's history
-#                  (attention-only events you never consult later).
-#                  matched case-insensitively against the app name.
-#                  notifications carrying the spec "transient" hint (e.g.
-#                  wam-shell's own bluetooth connect/disconnect) are
-#                  always excluded, regardless of this list. default []
+#                  shown as banners but excluded from the center's
+#                  history (attention-only events you never consult
+#                  later). matched case-insensitively against the app
+#                  name. notifications carrying the spec "transient"
+#                  hint (e.g. wam-shell's own bluetooth
+#                  connect/disconnect) are always excluded, regardless
+#                  of this list. default []
 # [notifications]
 # daemon = "auto"
 # popups = true
@@ -208,28 +314,9 @@
 # popup_width = 460
 # transient_apps = ["Spotify"]
 
-# [media] - panel media controls (mpris) + popup
-# enabled - show the media widget in the legacy (non-[[panel]]) bar
-#           layout. default false. panel lists always render it
-# show_controls - show prev/play/next buttons on the panel. default true
-# max_width - maximum characters of the track label. default 20
-# [media]
-# enabled = false
-# show_controls = true
-# max_width = 20
-
-# temperature_default - color temperature in kelvin used normally (night
-#                       light off, gamma at or below 100%). default 6000
-# temperature_outdoor - color temperature applied in outdoor mode (gamma
-#                       above 100%). falls back to temperature_default
-#                       when omitted
-# night_temp - color temperature when night light is on. default 4000
-# gamma_outdoor - gamma in outdoor mode, in percent. may exceed 100.
-#                 default 150
-# temperature_default = 6000
-# temperature_outdoor = 7200
-# night_temp = 4000
-# gamma_outdoor = 150
+# ════════════════════════════════════════════════════════════════════
+# On-screen display
+# ════════════════════════════════════════════════════════════════════
 
 # [osd] - on-screen display for volume/mic/brightness/lock-key/layout
 #         changes
@@ -249,61 +336,22 @@
 # lock_keys = true
 # media = true
 
-# arch_updates_threshold - Check updates module
-# The minimum amount of updates required to show a update icon.
-# arch_updates_threshold = 50
-# [sleep_timer] - quick settings sleep timer (pauses all playing media
-#                 after the picked duration)# enabled - show the sleep timer toggle in quick settings. default true
-# presets - preset durations in minutes shown in the dropdown. custom
-#           values can always be typed in the entry. must be a
-#           non-empty list of positive numbers.
-#           default [10, 15, 20, 30, 45, 60]
-# on_panel - show the countdown on the panel while a timer runs.
-#            click it to pause/resume. default true. position it like
-#            any other widget: "sleeptimer" in a [[panel]] list
-# dim - when the timer fires, dim the screen to half its current
-#       brightness (never below 10%). default true
-# [sleep_timer]
-# enabled = true
-# presets = [10, 15, 20, 30, 45, 60]
-# on_panel = true
-# dim = true
+# ════════════════════════════════════════════════════════════════════
+# Night light (hyprsunset, hyprland only)
+# ════════════════════════════════════════════════════════════════════
 
-# [harvest] - Harvest time tracking (getharvest.com): running timer on the
-#             panel + a picker popup (start/stop/resume/notes/new entries)
-# Auth: create a Personal Access Token at id.getharvest.com (Developers
-# section), note the token and your account id, and put them in
-# ~/.config/wam-shell/harvest.env (chmod 600), NOT in this file:
-#   HARVEST_TOKEN=...
-#   HARVEST_ACCOUNT_ID=...
-# The same names as real environment variables also work and win over the
-# file. Without credentials the widget stays off, even when enabled.
-#
-# enabled - master toggle (requires the credentials above). default false
-# on_panel - show the timer on the panel: elapsed while running, the day
-#            total when idle inside work hours. left-click opens the
-#            picker popup, right-click stops/resumes. default true.
-#            position it like any other widget: "harvest" in a
-#            [[panel]] list
-# poll_interval - seconds between syncs with Harvest. the sync is a small
-#                 delta query (entries updated since the last seen
-#                 updated_at), usually empty; a full re-sync runs every
-#                 5 min. while the session is locked the interval is 60s.
-#                 clamped to >= 5. default 10
-# recents - recent project/task pairs listed in the picker popup's
-#           Resume section. default 5
-# work_start / work_end - "HH:MM". when both are set the panel widget also
-#           shows while idle inside this window (dimmed, with the day
-#           total). windows may wrap midnight ("22:00"-"06:00"). default
-#           empty = the widget only appears while a timer runs
-# mask_when_sharing - while screen sharing, hide project/task from the
-#           panel (tooltip included) and show only icon + elapsed with a
-#           .sharing indicator. default true
-# [harvest]
-# enabled = false
-# on_panel = true
-# poll_interval = 30
-# recents = 5
-# work_start = ""
-# work_end = ""
-# mask_when_sharing = true
+# [hyprsunset]
+# temperature_default - color temperature in kelvin used normally
+#                       (night light off, gamma at or below 100%).
+#                       default 6000
+# temperature_outdoor - color temperature applied in outdoor mode
+#                       (gamma above 100%). falls back to
+#                       temperature_default when omitted
+# night_temp - color temperature when night light is on. default 4000
+# gamma_outdoor - gamma in outdoor mode, in percent. may exceed 100.
+#                 default 150
+# [hyprsunset]
+# temperature_default = 6000
+# temperature_outdoor = 7200
+# night_temp = 4000
+# gamma_outdoor = 150

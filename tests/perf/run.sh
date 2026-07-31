@@ -99,6 +99,20 @@ stop_shell() {
     SHELL_PID=""
 }
 
+# fetch the metrics blob and fail loudly when it is missing or not
+# JSON — emitting an unterminated blob downstream reads as "zero
+# counters" (a slow request under load returns nothing, and an empty
+# %s makes printf produce `{"scenario":...,"metrics":}`)
+metrics_json() {
+    local m
+    m="$(request_json metrics)"
+    if [[ -z "$m" ]] || ! echo "$m" | jq empty 2>/dev/null; then
+        cat "$LEG/shell.log" >&2
+        die "metrics request returned nothing usable — instance died mid-scenario?"
+    fi
+    printf '%s' "$m"
+}
+
 # --- scenarios ---------------------------------------------------------
 
 scenario_idle() {
@@ -109,7 +123,7 @@ scenario_idle() {
     log "idle-1mon: measuring ${WINDOW}s"
     sleep "$WINDOW"
     local m
-    m="$(request_json metrics)"
+    m="$(metrics_json)"
     stop_shell
     printf '{"scenario":"idle-1mon","windowSec":%d,"metrics":%s}\n' "$WINDOW" "$m"
 }
@@ -131,7 +145,7 @@ scenario_churn() {
     # by uncollected garbage
     request "metrics gc" > /dev/null
     local m
-    m="$(request_json metrics)"
+    m="$(metrics_json)"
     stop_shell
     printf '{"scenario":"churn","cycles":%d,"metrics":%s}\n' "$CHURN_CYCLES" "$m"
 }
@@ -152,7 +166,7 @@ scenario_startup() {
     t1=$(date +%s%3N)
     ms=$((t1 - t0))
     local m blocking
-    m="$(request_json metrics)"
+    m="$(metrics_json)"
     blocking="$(printf '%s' "$m" | grep -o '"blockingMs":[0-9.]*' \
         | awk -F: '{ s += $2 } END { printf "%.3f", s }')"
     stop_shell

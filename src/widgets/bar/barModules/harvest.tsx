@@ -54,8 +54,8 @@ if (Config.harvest.workStart && Config.harvest.workEnd) {
 // or idle inside work hours (harvest.work_start/work_end). Left-click
 // opens the picker popup below the pill, right-click stops a running
 // timer / resumes the last one. While screen sharing the entry details
-// are masked: icon + elapsed stay, project/task and the real tooltip are
-// hidden (.harvest.sharing for the indicator styling).
+// are masked: elapsed and the pause button hide too — viewers only see
+// a blinking icon, never that a timer runs (.harvest.sharing styling).
 export default function HarvestTimer({
     monitor,
     authoritative = false,
@@ -67,9 +67,9 @@ export default function HarvestTimer({
     if (!Harvest.active) return <></>
     if (!Config.harvest.onPanel && !authoritative) return <></>
     // detection runs only once something actually masks on it
-    if (Config.harvest.maskWhenSharing) enableShareWatch()
+    if (Config.harvest.hideWhenScreenSharing) enableShareWatch()
 
-    const masked = sharing.as(s => s && Config.harvest.maskWhenSharing)
+    const masked = sharing.as(s => s && Config.harvest.hideWhenScreenSharing)
 
     const visible = createComputed(
         [Harvest.running, Harvest.paused, workHours],
@@ -140,18 +140,19 @@ export default function HarvestTimer({
                 />
                 <box spacing={4}>
                     <image cssClasses={["harvestIcon"]} iconName="harvest-symbolic" />
-                    {/* fixed request: h:mm must not resize the module and shift
-                    neighbours as the digits change (sized for 10:23) */}
-                    <label widthChars={5} label={label} />
+                    {/* hidden while sharing: viewers must not see a timer
+                    is running; sized for 10:23 so it can't shift neighbours */}
+                    <label widthChars={5} label={label} visible={masked.as(m => !m)} />
                 </box>
             </box>
             {/* pause/resume on the panel itself; sibling of the click area so
-            it doesn't trigger the popup gesture */}
+            it doesn't trigger the popup gesture. Hidden while sharing for
+            the same reason as the elapsed */}
             <button
                 cssClasses={["pp"]}
                 visible={createComputed(
-                    [Harvest.running, Harvest.paused],
-                    (r, p) => r !== null || p !== null,
+                    [Harvest.running, Harvest.paused, masked],
+                    (r, p, m) => (r !== null || p !== null) && !m,
                 )}
                 tooltipText={Harvest.running.as(r => (r ? "Pause" : "Resume"))}
                 sensitive={Harvest.busy.as(b => !b)}
