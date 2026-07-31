@@ -6,6 +6,7 @@ import app from "ags/gtk4/app"
 import { Accessor, For, With, createComputed, createRoot, createState, onCleanup } from "gnim"
 import CommandRegistry from "../lib/requestHandler"
 import { timeoutAdd, sourceRemove, connect } from "../lib/metrics"
+import { hideOnFocusLoss } from "../lib/popupFocus"
 import * as Harvest from "../lib/harvest"
 import Config from "../config"
 
@@ -796,6 +797,7 @@ function ensureWindow() {
                 <window
                     $={self => {
                         win = self
+                        hideOnFocusLoss(win, hide)
                     }}
                     name="HarvestPopup"
                     class="HarvestPopup"
@@ -808,9 +810,7 @@ function ensureWindow() {
                     }
                     // ON_DEMAND, not EXCLUSIVE: popovers (entry context
                     // menu, emoji picker) cannot grab the seat under
-                    // EXCLUSIVE. Plain text entries would work — the
-                    // seat is already grabbed; QSettings runs entries
-                    // under EXCLUSIVE
+                    // EXCLUSIVE. Focus loss closes the window (popupFocus)
                     keymode={Astal.Keymode.ON_DEMAND}
                     visible={false}
                 >

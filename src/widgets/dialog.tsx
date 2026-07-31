@@ -4,6 +4,7 @@ import Graphene from "gi://Graphene?version=1.0"
 import Config from "../config"
 import app from "ags/gtk4/app"
 import CommandRegistry from "../lib/requestHandler"
+import { hideOnFocusLoss } from "../lib/popupFocus"
 import { Accessor, createBinding, createState, With } from "gnim"
 import { Setter } from "gnim"
 import GObject, { register } from "gnim/gobject"
@@ -122,7 +123,10 @@ class Dialog {
                 namespace={`${Config.instanceName}Dialog`}
                 anchor={TOP | BOTTOM | LEFT | RIGHT}
                 exclusivity={Astal.Exclusivity.IGNORE}
-                keymode={Astal.Keymode.EXCLUSIVE}
+                // ON_DEMAND, not EXCLUSIVE: the grab stole input from
+                // other surfaces; focus loss closes instead (popupFocus)
+                keymode={Astal.Keymode.ON_DEMAND}
+                $={(self: Gtk.Window) => hideOnFocusLoss(self, this.hide)}
                 onNotifyVisible={visible => {
                     if (visible) this.revealer.reveal_child = true
                 }}

@@ -8,6 +8,7 @@ import Config from "../../config"
 import CommandRegistry from "../../lib/requestHandler"
 import { isPinned } from "../../lib/trayPinned"
 import { refreshHyprsunset } from "../../lib/hyprsunset"
+import { hideOnFocusLoss } from "../../lib/popupFocus"
 
 import { createState } from "gnim"
 import { ToggleSection } from "./toggleSection"
@@ -118,6 +119,7 @@ export default function QSettings() {
         <window
             $={ref => {
                 win = ref
+                hideOnFocusLoss(win, hide)
             }}
             name="QSettings"
             class="QSettings"
@@ -127,7 +129,9 @@ export default function QSettings() {
             // Keep the overlay below the bar so bar widgets (volume scroll,
             // buttons) stay interactive while the popup is open
             marginTop={30}
-            keymode={Astal.Keymode.EXCLUSIVE}
+            // ON_DEMAND, not EXCLUSIVE: the grab stole input from other
+            // surfaces; focus loss closes the window instead (popupFocus)
+            keymode={Astal.Keymode.ON_DEMAND}
         >
             <Gtk.EventControllerKey onKeyPressed={onKey} />
             <Gtk.GestureClick onPressed={onClick} />
