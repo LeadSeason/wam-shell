@@ -128,10 +128,22 @@ test("gcal agendaGroups: days ascending, empty days skipped, fromDay honored", (
         ev("e0", "2026-07-30T09:00:00", "2026-07-30T10:00:00"), // before fromDay
     ]
     const groups = agendaGroups(events, "2026-07-31", "2026-07-31")
-    eq(groups.map(g => g.day), ["2026-07-31", "2026-08-01", "2026-08-02"])
-    eq(groups[0].events.map(e => e.summary), ["e1"])
-    eq(groups[1].events.map(e => e.summary), ["e1"]) // the spanning event repeats
-    eq(groups[2].events.map(e => e.summary), ["e2"])
+    eq(
+        groups.map(g => g.day),
+        ["2026-07-31", "2026-08-01", "2026-08-02"],
+    )
+    eq(
+        groups[0].events.map(e => e.summary),
+        ["e1"],
+    )
+    eq(
+        groups[1].events.map(e => e.summary),
+        ["e1"],
+    ) // the spanning event repeats
+    eq(
+        groups[2].events.map(e => e.summary),
+        ["e2"],
+    )
 })
 
 test("gcal agendaGroups: Today/Tomorrow labels, dates beyond", () => {
@@ -155,13 +167,16 @@ test("gcal agendaGroups: empty when nothing is upcoming", () => {
 test("gcal monthGrid: 6x7 Monday-first grid covering the month", () => {
     const grid = monthGrid(2026, 6) // July 2026 starts on a Wednesday
     eq(grid.length, 6)
-    eq(grid.every(w => w.length === 7), true)
+    eq(
+        grid.every(w => w.length === 7),
+        true,
+    )
     // Monday of the first row is June 29
     eq(grid[0][0].key, "2026-06-29")
     eq(grid[0][0].inMonth, false)
-    eq(grid[0][3].key, "2026-07-01")
-    eq(grid[0][3].inMonth, true)
-    // Friday July 31 sits in week 5 col 4
+    eq(grid[0][2].key, "2026-07-01")
+    eq(grid[0][2].inMonth, true)
+    // Friday July 31 sits in week 5 (row index 4), Friday column
     eq(grid[4][4].key, "2026-07-31")
     // every day of the month appears exactly once, marked inMonth
     const nums = grid.flat().filter(d => d.inMonth).length

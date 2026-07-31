@@ -58,14 +58,12 @@ function CalendarPopover() {
                 }
             }
             return Gcal.monthGrid(y, m).map(week =>
-                week.map(
-                    (day): GridCell => ({
-                        ...day,
-                        today: day.key === todayKey,
-                        selected: day.key === sel,
-                        dots: dots.get(day.key) ?? [],
-                    }),
-                ),
+                week.map((day): GridCell => ({
+                    ...day,
+                    today: day.key === todayKey,
+                    selected: day.key === sel,
+                    dots: dots.get(day.key) ?? [],
+                })),
             )
         },
     )
@@ -141,13 +139,14 @@ function CalendarPopover() {
                         {/* plain map: cells are static within the week row
                         the outer For rebuilds */}
                         {week.map(day => (
-                            <button
-                                cssClasses={cellClass(day)}
-                                onClicked={() => pick(day)}
-                            >
+                            <button cssClasses={cellClass(day)} onClicked={() => pick(day)}>
                                 <box orientation={Gtk.Orientation.VERTICAL}>
                                     <label label={String(day.num)} />
-                                    <box cssClasses={["calDots"]} halign={Gtk.Align.CENTER} spacing={2}>
+                                    <box
+                                        cssClasses={["calDots"]}
+                                        halign={Gtk.Align.CENTER}
+                                        spacing={2}
+                                    >
                                         {day.dots.map(c => (
                                             <box
                                                 cssClasses={["calDot"]}

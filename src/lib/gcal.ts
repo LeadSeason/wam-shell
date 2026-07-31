@@ -199,9 +199,7 @@ export { calendars }
 // session visibility overrides (calendar id -> visible); defaults come
 // from config's hidden_calendars. Toggles live here so month dots and
 // the agenda follow the same source
-const [visibilityOverrides, setVisibilityOverrides] = createState<Record<string, boolean>>(
-    {},
-)
+const [visibilityOverrides, setVisibilityOverrides] = createState<Record<string, boolean>>({})
 export { visibilityOverrides }
 
 export function toggleCalendar(id: string) {
