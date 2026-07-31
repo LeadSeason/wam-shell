@@ -8,6 +8,7 @@ import { For, With, createBinding, createComputed, createRoot, createState, onCl
 import { createPoll } from "ags/time"
 import CommandRegistry from "../lib/requestHandler"
 import { timeoutAdd, sourceRemove, connect, disconnect } from "../lib/metrics"
+import { hideOnFocusLoss } from "../lib/popupFocus"
 import { activePlayer, coverState, formatTime, overrideActivePlayer, players } from "../lib/mpris"
 import { createIconResolver } from "../lib/appIcon"
 import Config from "../config"
@@ -303,6 +304,7 @@ function ensureWindow() {
                 <window
                     $={self => {
                         win = self
+                        hideOnFocusLoss(win, hide)
                     }}
                     name="MediaPopup"
                     class="MediaPopup"
@@ -314,7 +316,9 @@ function ensureWindow() {
                     marginRight={12}
                     // pill center minus half the popup width (360)
                     marginLeft={popupAnchor.as(a => (a ? Math.max(0, Math.round(a.x - 180)) : 12))}
-                    keymode={Astal.Keymode.EXCLUSIVE}
+                    // ON_DEMAND, not EXCLUSIVE: the grab stole input from
+                    // other surfaces; focus loss closes instead
+                    keymode={Astal.Keymode.ON_DEMAND}
                     visible={false}
                 >
                     <Gtk.EventControllerKey onKeyPressed={onKey} />
