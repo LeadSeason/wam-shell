@@ -425,7 +425,7 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                     the width so rows never shift. security is in the
                     details panel — no per-row lock icon */}
                     <box cssClasses={["wifiActions"]}>
-                        <box widthRequest={26} halign={Gtk.Align.CENTER}>
+                        <box widthRequest={32} halign={Gtk.Align.CENTER}>
                             <button
                                 cssClasses={detailsOpen.as(o =>
                                     o ? ["details", "open"] : ["details"],
