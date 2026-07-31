@@ -4,12 +4,21 @@ import Pango from "gi://Pango?version=1.0"
 import Graphene from "gi://Graphene?version=1.0"
 import AstalMpris from "gi://AstalMpris?version=0.1"
 import app from "ags/gtk4/app"
-import { For, With, createBinding, createComputed, createRoot, createState, onCleanup } from "gnim"
-import { createPoll } from "ags/time"
+import { For, With, createBinding, createComputed, createRoot, createState } from "gnim"
 import CommandRegistry from "../lib/requestHandler"
-import { timeoutAdd, sourceRemove, connect, disconnect } from "../lib/metrics"
+import { timeoutAdd, sourceRemove } from "../lib/metrics"
 import { hideOnFocusLoss } from "../lib/popupFocus"
-import { activePlayer, coverState, formatTime, overrideActivePlayer, players } from "../lib/mpris"
+import {
+    activePlayer,
+    bindSeekScale,
+    coverState,
+    eligiblePlayers,
+    formatTime,
+    lengthState,
+    overrideActivePlayer,
+    playPauseExclusive,
+    positionState,
+} from "../lib/mpris"
 import { createIconResolver } from "../lib/appIcon"
 import Config from "../config"
 
@@ -22,8 +31,8 @@ export const [popupAnchor, setPopupAnchor] = createState<{
 } | null>(null)
 
 // the popup window stays mounted (hidden) after close so its reveal
-// animation can play. PopupContent owns a 1s seek-position poll and must
-// not keep ticking once closed, so it is only mounted while visible.
+// animation can play. PopupContent is only mounted while visible so its
+// player subscriptions (position, cover, …) are torn down on close.
 const [popupVisible, setPopupVisible] = createState(false)
 
 // the popup appears where the pill is: centered for the center section,
@@ -44,15 +53,22 @@ function mediaAnchor(): number {
     return zones.size === 0 ? TOP | RIGHT : TOP
 }
 
+// the pin this popup made (if any): hide() only clears its own pin,
+// never one made from the quick settings card or the panel pill
+let popupPin: AstalMpris.Player | null = null
+
 function PlayerSwitcher() {
     return (
-        <box cssClasses={["switcher"]} spacing={6} visible={players.as(l => l.length > 1)}>
+        <box cssClasses={["switcher"]} spacing={6} visible={eligiblePlayers.as(l => l.length > 1)}>
             <label label={"Player"} cssClasses={["section"]} xalign={0} hexpand />
-            <For each={players}>
+            <For each={eligiblePlayers}>
                 {p => (
                     <button
                         cssClasses={activePlayer.as(a => (a === p ? ["active"] : [""]))}
-                        onClicked={() => overrideActivePlayer(p)}
+                        onClicked={() => {
+                            popupPin = p
+                            overrideActivePlayer(p)
+                        }}
                     >
                         <label
                             label={p.identity}
@@ -73,9 +89,12 @@ function PopupContent({ player }: { player: AstalMpris.Player }) {
         Gtk.IconTheme.get_for_display(Gdk.Display.get_default()!),
     )
 
-    // 1s ticker driving the seek position while the popup is open
-    const position = createPoll(0, 1000, () => player.position)
-    const length = createBinding(player, "length")
+    // client-side clock — players that do not track Position (firefox
+    // reports 0) still get a moving bar
+    const position = positionState(player)
+    // last known positive length: survives players dropping mpris:length
+    // mid-track; 0 = the player never reported a duration (firefox)
+    const length = lengthState(player)
     const canSeek = createBinding(player, "canSeek")
 
     const shuffleClass = createBinding(player, "shuffleStatus").as(s =>
@@ -150,37 +169,21 @@ function PopupContent({ player }: { player: AstalMpris.Player }) {
                 ellipsize={Pango.EllipsizeMode.END}
             />
             <box spacing={6}>
-                <label cssClasses={["time"]} label={position.as(p => formatTime(p))} />
+                <label
+                    cssClasses={["time"]}
+                    label={createComputed([position.accessor, position.known], (p, k) =>
+                        k ? formatTime(p) : "--:--",
+                    )}
+                />
                 <Gtk.Scale
-                    $={self => {
-                        self.set_range(0, Math.max(1, length.get()))
-                        self.set_value(position.get())
-                        // these must be released on rebuild — the position one
-                        // keeps the 1s poll alive otherwise, and the
-                        // change-value handler leaks one per scope (#16)
-                        const unsubs = [
-                            length.subscribe(() => self.set_range(0, Math.max(1, length.get()))),
-                            position.subscribe(() => {
-                                // only follow the player while the user is not dragging
-                                if (!self.has_focus) self.set_value(position.get())
-                            }),
-                        ]
-                        const handler = connect(
-                            self,
-                            "change-value",
-                            (_s: Gtk.Scale, _scroll: unknown, value: number) => {
-                                if (player.canSeek) player.position = value
-                            },
-                        )
-                        onCleanup(() => {
-                            unsubs.forEach(u => u())
-                            disconnect(self, handler)
-                        })
-                    }}
+                    $={self => bindSeekScale(self, player, position)}
                     hexpand
                     sensitive={canSeek}
                 />
-                <label cssClasses={["time"]} label={length.as(l => formatTime(l))} />
+                <label
+                    cssClasses={["time"]}
+                    label={length.as(l => (l > 0 ? formatTime(l) : "--:--"))}
+                />
             </box>
             <box cssClasses={["controls"]} spacing={6} halign={Gtk.Align.CENTER}>
                 <button
@@ -200,7 +203,7 @@ function PopupContent({ player }: { player: AstalMpris.Player }) {
                 </button>
                 <button
                     cssClasses={["play"]}
-                    onClicked={() => player.play_pause()}
+                    onClicked={() => playPauseExclusive(player)}
                     sensitive={createBinding(player, "canPlay")}
                 >
                     <image
@@ -266,9 +269,12 @@ function hide() {
         hideSource = null
         win!.hide()
         // unmount PopupContent now the slide-out has played: this tears
-        // down the 1s seek-position poll instead of ticking forever
+        // down its player subscriptions instead of keeping them alive
         setPopupVisible(false)
-        overrideActivePlayer(null)
+        // only clear a pin this popup made; pins from the quick
+        // settings card or the panel pill stay
+        if (popupPin && activePlayer.get() === popupPin) overrideActivePlayer(null)
+        popupPin = null
         return GLib.SOURCE_REMOVE
     })
 }
