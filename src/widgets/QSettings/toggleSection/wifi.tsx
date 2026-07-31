@@ -418,34 +418,55 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                             <label cssClasses={statusClass} label={status} xalign={0} />
                         </box>
                     </box>
-                    {secured(ap) && <image iconName="changes-prevent-symbolic" pixelSize={12} />}
-                    <button
-                        cssClasses={["details"]}
-                        tooltipText={"Network details"}
-                        onClicked={() => {
-                            const opening = !detailsOpen.get()
-                            setDetailsOpen(opening)
-                            if (opening && isKnown.get()) loadAutoconnect()
-                        }}
-                    >
-                        <image
-                            iconName={detailsOpen.as(o =>
-                                o ? "pan-up-symbolic" : "dialog-information-symbolic",
-                            )}
-                        />
-                    </button>
-                    <button
-                        cssClasses={["forget"]}
-                        visible={createComputed([active, isKnown], (a, k) => !a && k)}
-                        tooltipText={"Forget network"}
-                        onClicked={() => {
-                            execAsync(["nmcli", "connection", "delete", "id", profileId(ap)]).catch(
-                                e => console.warn("wifi forget failed:", e),
-                            )
-                        }}
-                    >
-                        <image iconName="user-trash-symbolic" />
-                    </button>
+                    {/* fixed-width action slots: the cluster lines up
+                    across rows even when a slot is empty for this
+                    network (the slot keeps its width, only the icon
+                    inside hides) */}
+                    <box cssClasses={["wifiActions"]}>
+                        <box widthRequest={26} halign={Gtk.Align.CENTER}>
+                            <image
+                                iconName="changes-prevent-symbolic"
+                                pixelSize={14}
+                                tooltipText={securityOf(ap)}
+                                visible={secured(ap)}
+                            />
+                        </box>
+                        <box widthRequest={26} halign={Gtk.Align.CENTER}>
+                            <button
+                                cssClasses={["details"]}
+                                tooltipText={"Network details"}
+                                onClicked={() => {
+                                    const opening = !detailsOpen.get()
+                                    setDetailsOpen(opening)
+                                    if (opening && isKnown.get()) loadAutoconnect()
+                                }}
+                            >
+                                <image
+                                    iconName={detailsOpen.as(o =>
+                                        o ? "pan-up-symbolic" : "pan-down-symbolic",
+                                    )}
+                                />
+                            </button>
+                        </box>
+                        <box widthRequest={26} halign={Gtk.Align.CENTER}>
+                            <button
+                                cssClasses={["forget"]}
+                                visible={createComputed([active, isKnown], (a, k) => !a && k)}
+                                tooltipText={"Forget network"}
+                                onClicked={() => {
+                                    execAsync([
+                                        "nmcli",
+                                        "connection",
+                                        "delete",
+                                        "id",
+                                        profileId(ap),
+                                    ]).catch(e => console.warn("wifi forget failed:", e))
+                                }}
+                            >
+                                <image iconName="user-trash-symbolic" />
+                            </button>
+                        </box>
+                    </box>
                 </box>
                 <revealer
                     revealChild={detailsOpen}
@@ -576,16 +597,11 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                         <button
                             cssClasses={["rescan"]}
                             tooltipText={"Scan again"}
+                            // always visible; only disabled mid-scan
                             sensitive={rescanning.as(r => !r)}
                             onClicked={rescan}
                         >
-                            <box>
-                                <Gtk.Spinner $={self => self.start()} visible={rescanning} />
-                                <image
-                                    iconName="view-refresh-symbolic"
-                                    visible={rescanning.as(r => !r)}
-                                />
-                            </box>
+                            <image iconName="view-refresh-symbolic" />
                         </button>
                     </box>
                     {/* For in its own container: it re-appends children at

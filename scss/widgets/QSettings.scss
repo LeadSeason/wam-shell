@@ -409,6 +409,19 @@ window#QSettings {
 
     .rescan {
         padding: 0 4px;
+        &:disabled {
+            opacity: 0.35;
+        }
+    }
+
+    // fixed-width action slots keep the lock/details/forget cluster
+    // aligned across rows (a hidden icon keeps its slot)
+    .wifiActions {
+        .details,
+        .forget {
+            margin: 0;
+            padding: 0;
+        }
     }
 
     // performance stats section
