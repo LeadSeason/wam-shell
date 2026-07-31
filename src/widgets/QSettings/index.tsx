@@ -14,7 +14,7 @@ import { createState } from "gnim"
 import { ToggleSection } from "./toggleSection"
 import { HeaderSection } from "./HeaderSection"
 import { SliderSection } from "./SliderSection"
-import { MediaSection } from "./MediaSection"
+import { MediaSection, setQsVisible } from "./MediaSection"
 import { StatsSection } from "./StatsSection"
 import { WifiWidget } from "./toggleSection/wifi"
 import { WiredWidget } from "./toggleSection/wired"
@@ -46,6 +46,7 @@ export default function QSettings() {
         // For some reason it does'nt want to play the animation, Setting
         // timeout to 0 for this reason
         revealer.set_reveal_child(false)
+        setQsVisible(false)
         // give some time for the animation to play.
         hideTimer?.cancel()
         hideTimer = timeout(50, () => {
@@ -63,6 +64,7 @@ export default function QSettings() {
         // the sliders should reflect external hyprsunset changes now,
         // not whenever the 30s watch happens to tick next
         refreshHyprsunset()
+        setQsVisible(true)
         win.present()
         revealer.set_reveal_child(true)
     }
