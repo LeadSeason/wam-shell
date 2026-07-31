@@ -7,7 +7,7 @@ import app from "ags/gtk4/app"
 import { For, With, createBinding, createComputed, createRoot, createState, onCleanup } from "gnim"
 import { createPoll } from "ags/time"
 import CommandRegistry from "../lib/requestHandler"
-import { timeoutAdd, sourceRemove, connect } from "../lib/metrics"
+import { timeoutAdd, sourceRemove, connect, disconnect } from "../lib/metrics"
 import { activePlayer, coverState, formatTime, overrideActivePlayer, players } from "../lib/mpris"
 import { createIconResolver } from "../lib/appIcon"
 import Config from "../config"
@@ -155,7 +155,8 @@ function PopupContent({ player }: { player: AstalMpris.Player }) {
                         self.set_range(0, Math.max(1, length.get()))
                         self.set_value(position.get())
                         // these must be released on rebuild — the position one
-                        // keeps the 1s poll alive otherwise
+                        // keeps the 1s poll alive otherwise, and the
+                        // change-value handler leaks one per scope (#16)
                         const unsubs = [
                             length.subscribe(() => self.set_range(0, Math.max(1, length.get()))),
                             position.subscribe(() => {
@@ -163,14 +164,17 @@ function PopupContent({ player }: { player: AstalMpris.Player }) {
                                 if (!self.has_focus) self.set_value(position.get())
                             }),
                         ]
-                        onCleanup(() => unsubs.forEach(u => u()))
-                        connect(
+                        const handler = connect(
                             self,
                             "change-value",
                             (_s: Gtk.Scale, _scroll: unknown, value: number) => {
                                 if (player.canSeek) player.position = value
                             },
                         )
+                        onCleanup(() => {
+                            unsubs.forEach(u => u())
+                            disconnect(self, handler)
+                        })
                     }}
                     hexpand
                     sensitive={canSeek}
