@@ -7,6 +7,7 @@ import "./trayPinned.test"
 import "./config.test"
 import "./metrics.test"
 import "./harvestTimeline.test"
+import "./github.test"
 
 import { summary } from "./framework"
 

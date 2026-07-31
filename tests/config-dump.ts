@@ -25,6 +25,7 @@ const dump = {
     notifications: Config.notifications,
     sleepTimer: Config.sleepTimer,
     harvest: Config.harvest,
+    github: Config.github,
 }
 
 // must stay the last stdout line — config.test.ts parses it

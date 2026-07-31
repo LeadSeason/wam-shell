@@ -4,6 +4,7 @@ import GLib from "gi://GLib?version=2.0"
 import { Accessor, createBinding, createState } from "gnim"
 import { connect, disconnect, timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
+import type { ProviderItem } from "./notificationProviders"
 
 // Shared notification daemon state. The first instantiation becomes
 // the daemon (so swaync must not run alongside).
@@ -79,6 +80,15 @@ const TICK_MS = 200
 // monitor switch must not replay the slide-in
 export const POPUP_SLIDE_IN_MS = 400
 
+// one banner slot: a desktop notification from our daemon, or a provider
+// item (GitHub & co.). key is unique across both: "desktop:<id>" for
+// daemon notifications, the provider's own "<provider>:<id>" otherwise
+export interface PopupEntry {
+    key: string
+    desktop: AstalNotifd.Notification | null
+    item: ProviderItem | null
+}
+
 export interface PopupTimer {
     // ms; 0 = never expires (critical)
     duration: number
@@ -88,23 +98,23 @@ export interface PopupTimer {
     expiring: boolean
 }
 
-const [popupsState, setPopups] = createState<AstalNotifd.Notification[]>([])
-export const popups: Accessor<AstalNotifd.Notification[]> = popupsState
+const [popupsState, setPopups] = createState<PopupEntry[]>([])
+export const popups: Accessor<PopupEntry[]> = popupsState
 
-// popup id -> countdown state. Mutated in place by the manager tick;
+// popup key -> countdown state. Mutated in place by the manager tick;
 // popupTimerVersion is the change signal rows subscribe to
-const timers = new Map<number, PopupTimer>()
+const timers = new Map<string, PopupTimer>()
 const [timerVersion, setTimerVersion] = createState(0)
 export const popupTimerVersion: Accessor<number> = timerVersion
 const bumpTimerVersion = () => setTimerVersion(timerVersion.get() + 1)
 
-export function popupTimer(id: number): PopupTimer | null {
-    return timers.get(id) ?? null
+export function popupTimer(key: string): PopupTimer | null {
+    return timers.get(key) ?? null
 }
 
-export function removePopup(id: number) {
-    if (timers.delete(id)) bumpTimerVersion()
-    setPopups(popupsState.get().filter(n => n.id !== id))
+export function removePopup(key: string) {
+    if (timers.delete(key)) bumpTimerVersion()
+    setPopups(popupsState.get().filter(p => p.key !== key))
 }
 
 // hovering ANY banner freezes every countdown: if a banner above the
@@ -130,14 +140,14 @@ function ensurePopupTick() {
         const dt = now - last
         last = now
         if (!anyPopupHovered() && dt > 0) {
-            for (const [id, t] of timers) {
+            for (const [key, t] of timers) {
                 if (t.duration === 0 || t.expiring) continue
                 t.remaining -= dt
                 if (t.remaining <= 0) {
                     t.expiring = true
                     // let the collapse animation play before dropping it
                     timeoutAdd("notifd:popupExpire", GLib.PRIORITY_DEFAULT, 220, () => {
-                        removePopup(id)
+                        removePopup(key)
                         return GLib.SOURCE_REMOVE
                     })
                 }
@@ -152,40 +162,53 @@ function ensurePopupTick() {
     })
 }
 
-const notifiedId = connect(notifd, "notified", (_s: AstalNotifd.Notifd, id: number) => {
-    if (!useOurs) return
-    const n = notifd.get_notification(id)
-    if (!n) return
+// shared banner admission: DND gate, dedupe, countdown, cap. Returns
+// false when the banner was not admitted
+function addPopup(entry: PopupEntry, urgency: AstalNotifd.Urgency | null): boolean {
     // DND silences popups; critical notifications still break through
-    if (notifd.dontDisturb && n.urgency !== AstalNotifd.Urgency.CRITICAL) return
-
+    if (notifd.dontDisturb && urgency !== AstalNotifd.Urgency.CRITICAL) return false
     const current = popupsState.get()
-    if (current.some(p => p.id === id)) return
+    if (current.some(p => p.key === entry.key)) return false
     // low urgency drains faster; critical never drains (duration 0)
     const total = Config.notifications.popupTimeout
     const duration =
-        n.urgency === AstalNotifd.Urgency.CRITICAL
+        urgency === AstalNotifd.Urgency.CRITICAL
             ? 0
-            : n.urgency === AstalNotifd.Urgency.LOW
+            : urgency === AstalNotifd.Urgency.LOW
               ? total / 2
               : total
-    timers.set(id, {
+    timers.set(entry.key, {
         duration,
         remaining: duration,
         addedAt: GLib.get_monotonic_time() / 1000,
         expiring: false,
     })
-    setPopups([...current, n].slice(-MAX_POPUPS))
+    setPopups([...current, entry].slice(-MAX_POPUPS))
     // prune entries of popups the MAX_POPUPS slice just dropped
-    const live = new Set(popupsState.get().map(p => p.id))
+    const live = new Set(popupsState.get().map(p => p.key))
     for (const key of timers.keys()) if (!live.has(key)) timers.delete(key)
     bumpTimerVersion()
     ensurePopupTick()
+    return true
+}
+
+// a brand-new provider thread (github poll diff) wants a banner. The
+// banner expiring is NOT a dismissal: the item stays in the center
+export function addProviderPopup(item: ProviderItem) {
+    if (!useOurs) return // no popup windows exist in that case
+    addPopup({ key: item.id, desktop: null, item }, null)
+}
+
+const notifiedId = connect(notifd, "notified", (_s: AstalNotifd.Notifd, id: number) => {
+    if (!useOurs) return
+    const n = notifd.get_notification(id)
+    if (!n) return
+    addPopup({ key: `desktop:${id}`, desktop: n, item: null }, n.urgency)
 })
 
 // dismissed/expired elsewhere (center, app) -> drop the banner too
 const resolvedId = connect(notifd, "resolved", (_s: AstalNotifd.Notifd, id: number) =>
-    removePopup(id),
+    removePopup(`desktop:${id}`),
 )
 
 export function dispose() {

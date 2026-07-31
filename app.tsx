@@ -24,6 +24,7 @@ import "./src/widgets/notifications"
 import "./src/widgets/mediaPopup"
 import "./src/widgets/harvestPopup"
 import { init as initHarvest } from "./src/lib/harvest"
+import { init as initGitHub } from "./src/lib/github"
 import { forceExitStreamedChildren } from "./src/lib/streamLines"
 
 // long-lived streamed children (mullvad listen, nvidia-smi --loop-ms)
@@ -47,6 +48,7 @@ function main() {
     )
 
     initHarvest()
+    initGitHub()
 
     if (Config.swayGaps && (Config.desktopSession == "sway" || Config.desktopSession == "i3"))
         SwayGaps.get_default()

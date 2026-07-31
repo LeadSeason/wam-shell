@@ -99,6 +99,15 @@ window.Notifications {
                 border: solid 2px t.$accent20;
             }
         }
+        // provider filter icons: dimmed until selected
+        button.provider {
+            opacity: 0.45;
+            &.active {
+                opacity: 1;
+                background-color: t.$accent40;
+                border: solid 2px t.$accent40;
+            }
+        }
     }
 
     .filter {
