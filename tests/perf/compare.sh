@@ -5,7 +5,7 @@
 #   tests/perf/compare.sh [--base <ref>] [--scenario <name>] [--json]
 #
 #     --base       ref to compare against
-#                  (default: git merge-base HEAD origin/develop)
+#                  (default: git merge-base HEAD origin/master)
 #     --scenario   run only this scenario (idle-1mon|churn|startup)
 #     --json       emit full per-scenario data instead of the summary
 #
@@ -52,7 +52,7 @@ inconclusive() {
 usage() {
     cat >&2 <<'EOF'
 usage: pnpm perf [--base <ref>] [--scenario <name>] [--json]
-  --base       ref to compare against (default: merge-base HEAD origin/develop)
+  --base       ref to compare against (default: merge-base HEAD origin/master)
   --scenario   run only this scenario (idle-1mon|churn|startup)
   --json       emit full per-scenario data instead of the human summary
 EOF
@@ -88,8 +88,8 @@ done
 # --- base ref and worktree ---------------------------------------------
 
 if [[ -z "$BASE_REF" ]]; then
-    BASE_REF="$(git -C "$ROOT" merge-base HEAD origin/develop 2>/dev/null)" \
-        || inconclusive "cannot resolve merge-base HEAD origin/develop — pass --base <ref>"
+    BASE_REF="$(git -C "$ROOT" merge-base HEAD origin/master 2>/dev/null)" \
+        || inconclusive "cannot resolve merge-base HEAD origin/master — pass --base <ref>"
 fi
 BASE_SHA="$(git -C "$ROOT" rev-parse "$BASE_REF" 2>/dev/null)" \
     || inconclusive "unknown base ref: $BASE_REF"
