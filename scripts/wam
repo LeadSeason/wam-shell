@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # wam — manage the wam-shell install: dependencies, updates, the running
-# shell, and autostart. Lives in the repo at scripts/wam; `wam install`
-# symlinks it into ~/.local/bin.
+# shell, and autostart. `wam install` clones the repo into WAM_HOME
+# (~/.local/share/wam-shell) and copies this script into ~/.local/bin:
+# after that the original clone can be deleted — update, lifecycle and
+# autostart all work from the installed copy.
 set -euo pipefail
 
-# canonicalize: invoked via the ~/.local/bin symlink, BASH_SOURCE still
-# points at the link, which would resolve ROOT to ~/.local
-ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+WAM_HOME="${WAM_HOME:-$HOME/.local/share/wam-shell}"
+REPO_URL="https://github.com/LeadSeason/wam-shell.git"
+ROOT="$WAM_HOME"
 SERVICE="wam-shell.service"
 UNIT_DIR="$HOME/.config/systemd/user"
 LOG_DIR="$HOME/.cache/wam-shell"
@@ -22,16 +24,27 @@ usage() {
     cat <<EOF
 usage: wam <command>
 
-  install          install dependencies + fonts, link wam onto PATH
+  install          clone into $WAM_HOME, install
+                   dependencies + fonts there, and install wam itself into
+                   ~/.local/bin — the invoking clone can then be deleted
                    (extra args are passed to scripts/setup.sh, e.g. --source)
-  update           git pull --ff-only + pnpm i (restarts the service when active)
+  update           git fetch + fast-forward merge (upstream when set,
+                   origin/master otherwise) + pnpm i
+                   (restarts the service when active)
   start            start the shell (no-op when already running)
   stop             stop the shell
   restart          stop, then start
   force-start      kill EVERY ags instance, then start (stale-instance broom)
   autostart <enable|disable|status>
                    manage the systemd user service ($SERVICE)
+  status           install, runtime and autostart state at a glance
+  version          installed commit of the shell
 EOF
+}
+
+require_install() {
+    [[ -d "$ROOT/.git" ]] ||
+        die "not installed — clone the repo and run: bash scripts/wam install"
 }
 
 running() { ags list 2>/dev/null | grep -qx "$INSTANCE"; }
@@ -46,18 +59,35 @@ start_detached() {
 # --- install / update ---------------------------------------------------------
 
 cmd_install() {
+    # populate the durable home: everything below runs from WAM_HOME, so
+    # the clone this script was invoked from may be deleted afterwards
+    local src
+    src="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+    if [[ "$src" != "$ROOT" && ! -d "$ROOT/.git" ]]; then
+        # clone from the invoking repo's origin when available, else upstream
+        local url
+        url="$(git -C "$src" remote get-url origin 2>/dev/null || echo "$REPO_URL")"
+        log "Cloning $url into $ROOT"
+        git clone --branch master "$url" "$ROOT"
+        # the durable home tracks upstream, not the bootstrap clone
+        git -C "$ROOT" remote set-url origin "$REPO_URL"
+    fi
+
     bash "$ROOT/scripts/setup.sh" "$@"
-    log "Linking wam into ~/.local/bin"
+
+    log "Installing wam into ~/.local/bin (a copy — independent of any clone)"
     mkdir -p "$HOME/.local/bin"
-    ln -sfn "$ROOT/scripts/wam" "$HOME/.local/bin/wam"
+    install -m 755 "$ROOT/scripts/wam" "$HOME/.local/bin/wam"
     case ":$PATH:" in
         *":$HOME/.local/bin:"*) ;;
         *) log "NOTE: ~/.local/bin is not on PATH" ;;
     esac
     log "Done. Start now with: wam start — or autostart on login: wam autostart enable"
+    log "The shell now lives in $ROOT; the clone may be deleted."
 }
 
 cmd_update() {
+    require_install
     log "Pulling $ROOT"
     git -C "$ROOT" fetch origin || die "fetch failed"
     local branch upstream
@@ -67,11 +97,11 @@ cmd_update() {
         git -C "$ROOT" merge --ff-only "$upstream" ||
             die "not fast-forward: $branch has diverged from $upstream"
     else
-        # local develop-* branches usually have no upstream: sync with
-        # develop instead of failing with git's "no tracking information"
-        log "No upstream for $branch — syncing with origin/develop"
-        git -C "$ROOT" merge --ff-only origin/develop ||
-            die "not fast-forward: $branch has commits not in origin/develop — merge it yourself: git merge origin/develop"
+        # local feature branches usually have no upstream: sync with
+        # master instead of failing with git's "no tracking information"
+        log "No upstream for $branch — syncing with origin/master"
+        git -C "$ROOT" merge --ff-only origin/master ||
+            die "not fast-forward: $branch has commits not in origin/master — merge it yourself: git merge origin/master"
     fi
     log "pnpm i"
     (cd "$ROOT" && pnpm i)
@@ -86,6 +116,7 @@ cmd_update() {
 # --- lifecycle ------------------------------------------------------------------
 
 cmd_start() {
+    require_install
     if service_enabled; then
         systemctl --user start "$SERVICE"
         return
@@ -110,6 +141,7 @@ cmd_stop() {
 }
 
 cmd_restart() {
+    require_install
     if service_enabled; then
         systemctl --user restart "$SERVICE"
         return
@@ -122,6 +154,7 @@ cmd_restart() {
 }
 
 cmd_force_start() {
+    require_install
     if service_enabled; then
         log "Stopping the service first (Restart=always would respawn it)"
         systemctl --user stop "$SERVICE"
@@ -174,6 +207,7 @@ EOF
 cmd_autostart() {
     case "${1:-}" in
         enable)
+            require_install
             write_unit
             systemctl --user daemon-reload
             systemctl --user enable "$SERVICE"
@@ -203,6 +237,49 @@ cmd_autostart() {
     esac
 }
 
+# --- status / version -----------------------------------------------------------
+
+cmd_status() {
+    if [[ -d "$ROOT/.git" ]]; then
+        printf 'installed: %s\n' "$(git -C "$ROOT" log -1 --format='%h %s (%cs)')"
+        printf 'home:      %s\n' "$ROOT"
+        local dirty
+        dirty="$(git -C "$ROOT" status --porcelain | wc -l)"
+        ((dirty > 0)) && printf 'dirty:     %s modified file(s)\n' "$dirty"
+    else
+        printf 'installed: no (%s missing)\n' "$ROOT"
+    fi
+    if [[ -L "$HOME/.local/bin/wam" ]]; then
+        printf 'wam:       %s -> %s (symlink)\n' \
+            "$HOME/.local/bin/wam" "$(readlink "$HOME/.local/bin/wam")"
+    elif [[ -f "$HOME/.local/bin/wam" ]]; then
+        printf 'wam:       %s\n' "$HOME/.local/bin/wam"
+    else
+        printf 'wam:       not installed (~/.local/bin/wam missing)\n'
+    fi
+    if running; then
+        printf 'shell:     running (instance %s)\n' "$INSTANCE"
+    else
+        printf 'shell:     not running\n'
+    fi
+    printf 'autostart: %s / %s\n' \
+        "$(systemctl --user is-enabled "$SERVICE" 2>&1 || true)" \
+        "$(systemctl --user is-active "$SERVICE" 2>&1 || true)"
+}
+
+cmd_version() {
+    if [[ ! -d "$ROOT/.git" ]]; then
+        echo "wam-shell: not installed"
+        return
+    fi
+    local hash branch date dirty
+    hash="$(git -C "$ROOT" rev-parse --short HEAD)"
+    branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
+    date="$(git -C "$ROOT" log -1 --format=%cs)"
+    dirty="$(git -C "$ROOT" status --porcelain | head -1)"
+    echo "wam-shell $hash ($branch, $date)${dirty:+, dirty}"
+}
+
 # --- dispatch -------------------------------------------------------------------
 
 case "${1:-}" in
@@ -219,6 +296,8 @@ case "${1:-}" in
         shift
         cmd_autostart "$@"
         ;;
+    status) cmd_status ;;
+    version) cmd_version ;;
     "")
         usage
         ;;

@@ -13,8 +13,10 @@ cd wam-shell
 scripts/wam install
 ```
 
-`wam` is the shell's management command (it links itself into
-`~/.local/bin` during install):
+Install clones the repo into `~/.local/share/wam-shell` and installs
+the `wam` command itself into `~/.local/bin`. Everything runs from
+those two spots, so **the original clone can be deleted** — `wam` is
+all you need from then on:
 
 - `wam install` — dependencies (ags + astal libraries, AUR helper on
   Arch, `--source` build otherwise), the Nerd Fonts the shell uses
@@ -22,14 +24,18 @@ scripts/wam install
   upstream release zips into `~/.local/share/fonts` elsewhere), node
   modules and TypeScript types. Passes extra args to `scripts/setup.sh`
   (e.g. `wam install --source`).
-- `wam update` — `git pull --ff-only` + `pnpm i` (restarts the systemd
-  service when active).
+- `wam update` — `git fetch` + fast-forward merge (the branch's
+  upstream when set, `origin/master` otherwise) + `pnpm i`, all in
+  `~/.local/share/wam-shell`. Restarts the systemd service when active.
 - `wam start` / `stop` / `restart` / `force-start` — lifecycle for the
   running shell. `force-start` kills EVERY ags instance first — the
   fix for "some stale instance holds the bus name".
 - `wam autostart enable|disable|status` — a systemd user service
   (`wam-shell.service`) that starts the shell at login. Enable is
   enough once; no compositor config edits.
+- `wam status` — install location, current commit, runtime and
+  autostart state at a glance.
+- `wam version` — the installed shell's commit (hash, branch, date).
 
 Notes:
 
