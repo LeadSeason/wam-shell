@@ -29,16 +29,24 @@ export const players = rawPlayers.as(list => {
     })
 })
 
-/** players with a track loaded: a non-empty title, or at least a
+/** a player with a track loaded: a non-empty title, or at least a
  *  non-stopped playback state (VLC reports no title for untagged
  *  files). stopped title-less players are zombie browser tabs keeping
- *  their MPRIS instance alive after playback ended.
+ *  their MPRIS instance alive after playback ended */
+const isEligible = (p: AstalMpris.Player) =>
+    p.title !== "" || p.playbackStatus !== AstalMpris.PlaybackStatus.STOPPED
+
+/** eligible players for display (segment strip, switcher, tooltips).
  *  eligibility also changes with per-player title/status, which the
  *  manager's players list does not notify — the hooks below bump this
- *  version so dependents (segment strip, switcher, tooltips) refresh */
+ *  version so dependents refresh.
+ *  NOTE: imperative readers (pick, cycle) must NOT use this accessor:
+ *  createComputed caches dep values with a falsy check, and an empty
+ *  [] cached at startup (players load async) is truthy and never
+ *  refreshes without a subscriber. use players.get().filter(isEligible) */
 const [eligVersion, bumpElig] = createState(0)
 export const eligiblePlayers = createComputed([players, eligVersion], list =>
-    list.filter(p => p.title !== "" || p.playbackStatus !== AstalMpris.PlaybackStatus.STOPPED),
+    list.filter(isEligible),
 )
 
 // the player shown everywhere: sticky — stays on the current player
@@ -59,7 +67,7 @@ export function overrideActivePlayer(player: AstalMpris.Player | null) {
 /** cycle the active player through the eligible ones (scroll on the
  *  panel pill); a no-op with fewer than two */
 export function cycleActivePlayer(direction: 1 | -1) {
-    const eligible = eligiblePlayers.get()
+    const eligible = players.get().filter(isEligible)
     if (eligible.length < 2) return
     const current = activePlayer.get()
     const i = current ? eligible.indexOf(current) : -1
@@ -219,7 +227,7 @@ export function hookPlayers(hook: PlayerHook) {
 
 function pick() {
     const override = overridePlayer.get()
-    const eligible = eligiblePlayers.get()
+    const eligible = players.get().filter(isEligible)
     // release pins on players that went away instead of retaining them
     if (override && !eligible.includes(override)) setOverride(null)
     if (lastPlaying && !eligible.includes(lastPlaying)) lastPlaying = null
