@@ -184,5 +184,17 @@ window.HarvestPopup {
         button.resumeNow {
             padding: 4px 6px;
         }
+
+        // timeline row delete (two-step: trash swaps into confirm/cancel
+        // with an identical footprint, so the row never shifts)
+        button.rowDelete,
+        button.confirm,
+        button.cancel {
+            padding: 4px 6px;
+        }
+        button.rowDelete:hover {
+            background-color: t.$red20;
+            border-color: t.$red20;
+        }
     }
 }

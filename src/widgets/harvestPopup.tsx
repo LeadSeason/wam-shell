@@ -506,6 +506,12 @@ function TimelineRow({ entry }: { entry: Harvest.Entry }) {
 
     const [expanded, setExpanded] = createState(false)
     const [dirty, setDirty] = createState(false)
+    // two-step delete: trash swaps into confirm/cancel in place
+    const [confirming, setConfirming] = createState(false)
+    // row action buttons (resume/delete) hide until the row is hovered —
+    // the freed width goes to the entry title. Driven by a motion
+    // controller, not CSS :hover (unreliable on layer-shell surfaces)
+    const [hovered, setHovered] = createState(false)
     let noteEntry: Gtk.Entry | null = null
 
     const save = () => {
@@ -521,6 +527,10 @@ function TimelineRow({ entry }: { entry: Harvest.Entry }) {
 
     return (
         <box orientation={Gtk.Orientation.VERTICAL} cssClasses={cssClasses}>
+            <Gtk.EventControllerMotion
+                onEnter={() => setHovered(true)}
+                onLeave={() => setHovered(false)}
+            />
             <box spacing={6}>
                 <label
                     cssClasses={["rowTime"]}
@@ -567,13 +577,52 @@ function TimelineRow({ entry }: { entry: Harvest.Entry }) {
                 <button
                     cssClasses={["resumeNow"]}
                     valign={Gtk.Align.START}
-                    visible={!entry.isRunning}
+                    visible={createComputed(
+                        [hovered, confirming],
+                        (h, c) => !entry.isRunning && h && !c,
+                    )}
                     sensitive={Harvest.busy.as(b => !b)}
                     tooltipText={"Resume"}
                     onClicked={() => Harvest.resumeEntry(entry)}
                 >
                     <image iconName="media-playback-start-symbolic" />
                 </button>
+                <button
+                    cssClasses={["rowDelete"]}
+                    valign={Gtk.Align.START}
+                    visible={createComputed(
+                        [hovered, confirming],
+                        (h, c) => !entry.isRunning && h && !c,
+                    )}
+                    tooltipText={"Delete entry"}
+                    onClicked={() => setConfirming(true)}
+                >
+                    <image iconName="user-trash-symbolic" />
+                </button>
+                {/* same footprint as the resume+delete pair it replaces:
+                identical button padding and 6px spacing, no layout shift */}
+                <box spacing={6} visible={confirming}>
+                    <button
+                        cssClasses={["confirm"]}
+                        valign={Gtk.Align.START}
+                        sensitive={Harvest.busy.as(b => !b)}
+                        tooltipText={"Confirm delete"}
+                        onClicked={() => {
+                            Harvest.deleteEntry(entry)
+                            setConfirming(false)
+                        }}
+                    >
+                        <image iconName="object-select-symbolic" />
+                    </button>
+                    <button
+                        cssClasses={["cancel"]}
+                        valign={Gtk.Align.START}
+                        tooltipText={"Cancel"}
+                        onClicked={() => setConfirming(false)}
+                    >
+                        <image iconName="window-close-symbolic" />
+                    </button>
+                </box>
             </box>
             <revealer revealChild={expanded}>
                 <box spacing={6}>

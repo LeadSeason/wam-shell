@@ -1004,6 +1004,30 @@ export function setHours(entry: Entry, hours: number): boolean {
     return true
 }
 
+// delete an entry from Harvest. The UI confirms with the user before
+// calling this. Same return contract as setEntryNotes: false = not
+// attempted (busy/disabled)
+export function deleteEntry(entry: Entry): boolean {
+    if (mutInFlight || authDisabled.get()) return false
+    mutate(done => {
+        request("DELETE", `/time_entries/${entry.id}`, null, r => {
+            try {
+                if (r.ok) {
+                    // local state is authoritative until the next full
+                    // reseed (the delta poll can't observe deletions)
+                    todayMap.delete(entry.id)
+                    refreshStoppedFromMap()
+                    if (paused.get()?.id === entry.id) setPaused(null)
+                    if (running.get()?.id === entry.id) adoptRunning(null)
+                } else console.warn(`Harvest: delete failed (status ${r.status})`)
+            } finally {
+                done()
+            }
+        })
+    })
+    return true
+}
+
 // stale-while-revalidate when the picker popup opens; age-gated so
 // fidgety toggling doesn't burn request quota
 export function refreshSlow() {
