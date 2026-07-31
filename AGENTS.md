@@ -110,6 +110,15 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   start/stop/restart/force-start, and `autostart` (systemd user
   service).
 
+## Privacy
+
+- Never put personal data in commits, PRs, issues, code comments or
+  docs: no SSIDs/network names, host or device names or descriptions,
+  MAC/IP addresses, usernames, real names, media titles, or account
+  details. Use placeholders ("MyWiFi") or generic descriptions ("a
+  secondary machine"). The same applies to screenshots and log
+  excerpts quoted in artifacts.
+
 ## Issues
 
 - When work surfaces a bug or problem unrelated to the current branch,
