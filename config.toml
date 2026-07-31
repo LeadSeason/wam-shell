@@ -180,9 +180,9 @@
 #          "system" - force the system's, even when none is running
 #          (nothing will display notifications in that case)
 #          decided at startup; restart the shell after changing daemons
-# popups - show transient banners (pill with countdown ring) for incoming
-#          notifications. they follow the focused monitor, freeze and
-#          unfold on hover, and respect do-not-disturb (critical still
+# popups - show transient banners (card with a countdown bar) for
+#          incoming notifications. they follow the focused monitor,
+#          freeze on hover, and respect do-not-disturb (critical still
 #          breaks through). only shown when our daemon is used.
 #          default true
 # popup_timeout - milliseconds before a popup hides itself. low urgency
@@ -193,12 +193,20 @@
 # popup_width - fixed banner width in pixels. the whole stack is the
 #               same width and does not resize as notifications arrive
 #               and expire. default 460
+# transient_apps - list of app names whose notifications are popup-only:
+#                  shown as banners but excluded from the center's history
+#                  (attention-only events you never consult later).
+#                  matched case-insensitively against the app name.
+#                  notifications carrying the spec "transient" hint (e.g.
+#                  wam-shell's own bluetooth connect/disconnect) are
+#                  always excluded, regardless of this list. default []
 # [notifications]
 # daemon = "auto"
 # popups = true
 # popup_timeout = 5000
 # position = "topRight"
 # popup_width = 460
+# transient_apps = ["Spotify"]
 
 # [media] - panel media controls (mpris) + popup
 # enabled - show the media widget in the legacy (non-[[panel]]) bar

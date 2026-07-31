@@ -2,84 +2,66 @@
 @use "../conf.scss" as s;
 @use "sass:color";
 
-window.Notifications {
-    background: transparent;
+// Shared notification card (Marble-style): dimmed header with app icon +
+// name + time + dismiss, thumbnail left, summary/body right.
+// Widget classes: .notification (card), .critical / .low (urgency),
+// .rtl (RTL summary — larger, brighter body), .appName/.time (header),
+// .image (thumbnail), .summary/.body, .actions, .dismiss, .filter (the
+// center's app-filter entry).
+.notification {
+    background: t.$base;
+    color: t.$text;
+    border-radius: s.$radius;
+    padding: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 
-    .notifications {
-        background: t.$crust;
-        color: t.$text;
-        border-radius: s.$radius;
-        border: solid 2px color.mix(t.$surface0, transparent, 60%);
-        margin: 5px 12px 12px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        padding: 8px;
-    }
-
-    .header {
-        padding: 4px 8px 8px;
-        label {
-            font-weight: bold;
-        }
-    }
-
-    .empty {
-        padding: 24px;
-        label {
-            color: t.$subtext0;
-        }
-    }
-
-    .group {
-        margin-top: 8px;
-    }
-
-    .groupHeader {
-        padding: 0 4px;
-
-        .appName, .count {
-            font-size: s.$font-small;
-            color: t.$subtext0;
-        }
-    }
-
-    .notification {
-        background-color: t.$base;
-        border-radius: s.$radius;
-        border: solid 2px transparent;
-        padding: 8px;
-
-        &.critical {
-            border-color: t.$red20;
-            .summary {
-                color: t.$red;
-            }
-        }
-        &.low {
-            .summary, .appName {
-                color: t.$subtext0;
-            }
-        }
-
-        .appName, .time {
-            font-size: s.$font-small;
-            color: t.$subtext0;
-        }
+    &.critical {
+        // straight urgency rail: square left corners so the spine runs
+        // straight from top to bottom
+        border-radius: 0 s.$radius s.$radius 0;
+        border-left: solid 4px t.$red;
         .summary {
-            font-weight: bold;
+            color: t.$red;
         }
-        .body {
-            font-size: s.$font-small;
+        .time {
+            color: t.$red;
+        }
+    }
+    &.low {
+        .summary,
+        .appName {
             color: t.$subtext0;
         }
-        .image {
-            border-radius: s.$radius;
-        }
-        .dismiss {
-            padding: 0 4px;
-        }
-        .actions {
-            margin-top: 2px;
-        }
+    }
+    // Arabic fallback fonts render optically smaller than the Latin Nerd
+    // Font at the same size — bump the body back to full size and raise
+    // its contrast
+    &.rtl .body {
+        font-size: 1em;
+        color: t.$subtext1;
+    }
+
+    .appName,
+    .time {
+        font-size: s.$font-small;
+        color: t.$subtext0;
+    }
+    .summary {
+        font-weight: bold;
+    }
+    .body {
+        font-size: s.$font-small;
+        color: t.$subtext0;
+    }
+    .image {
+        background: t.$surface0;
+        border-radius: s.$radius;
+    }
+    // hidden until the card is hovered (swaps with the timestamp via the
+    // card's motion controller — CSS :hover is unreliable on layer-shell
+    // surfaces)
+    .dismiss {
+        padding: 0 4px;
     }
 
     button {
@@ -93,81 +75,77 @@ window.Notifications {
     }
 }
 
-// Transient popup banners (pill + countdown ring).
-// Widget classes: .popup (banner, pill shape), .popup.open (hover-unfolded
-// card), .popup.critical / .popup.low (urgency), .ring (countdown arc —
-// its css `color` is what the cairo draw picks up), .inline (pill line),
-// .appName/.summary/.body/.actions/.dismiss (unfolded state).
+// Notification center window.
+window.Notifications {
+    background: transparent;
+
+    .notifications {
+        background: t.$crust;
+        color: t.$text;
+        border-radius: s.$radius;
+        border: solid 2px color.mix(t.$surface0, transparent, 60%);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        padding: 8px;
+    }
+
+    .header {
+        padding: 0 4px 4px;
+        button {
+            border-radius: s.$radius;
+            border: solid 2px transparent;
+            padding: 1px 6px;
+            &:hover {
+                background-color: t.$accent20;
+                border: solid 2px t.$accent20;
+            }
+        }
+    }
+
+    .filter {
+        background: t.$base;
+        border-radius: s.$radius;
+        border: solid 2px transparent;
+        padding: 2px 8px;
+        caret-color: t.$accent;
+        &:focus {
+            border-color: t.$accent40;
+        }
+        > placeholder {
+            color: t.$subtext0;
+        }
+    }
+
+    .empty {
+        padding: 24px;
+        label {
+            color: t.$subtext0;
+        }
+    }
+
+    .list {
+        padding-top: 8px;
+    }
+}
+
+// Transient popup banners: the shared card plus a thin countdown bar at
+// the bottom edge (.timeoutBar — its css `color` is what the cairo draw
+// picks up). Hovering a banner freezes every countdown.
 window.NotificationPopups {
     background: transparent;
 
     .popup {
-        background: t.$crust;
-        color: t.$text;
-        border-radius: 999px;
-        // accent-tinted border + subtle shadow: visible against both
-        // light and dark backgrounds without compositor blur
-        border: solid 2px t.$accent40;
-        // urgency spine, integrated into the border (follows the pill's
-        // rounding, unlike a rail widget)
-        border-left: solid 4px t.$accent;
-        // subtle on purpose: a big blur reads as a square silhouette
-        // behind the rounded pill
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
-        // slower than the global 200ms: the pill->card radius morph
-        // looked yanky at full speed
-        transition: border-radius 350ms ease;
-        // identical padding in both states: only the radius morphs on
-        // hover, so the pill doesn't shift when it unfolds
-        padding: 5px 12px 5px 5px;
-
-        &.open {
-            border-radius: s.$radius;
-        }
-
-        &.critical {
-            border-color: t.$red40;
-            border-left-color: t.$red;
-            .ring { color: t.$red; }
-            .summary { color: t.$red; }
-        }
-        &.low {
-            border-left-color: t.$surface0;
-            .inline, .summary { color: t.$subtext0; }
-        }
-
-        .ring { color: t.$accent; }
-
-        // pill text at full size (was font-small — hard to read at a
-        // glance)
-        .summary {
-            font-weight: bold;
-        }
-        .body {
-            color: t.$subtext1;
-        }
-        .inline {
-            color: t.$subtext1;
-        }
-        .image {
-            border-radius: s.$radius;
-            margin-top: 4px;
-        }
-        .dismiss {
-            padding: 0 4px;
-        }
-        .actions {
-            margin-top: 4px;
-        }
+        background: transparent;
     }
 
-    button {
-        border-radius: 999px;
-        border: solid 2px transparent;
-        padding: 1px 8px;
-        &:hover {
-            background-color: t.$accent20;
-            border: solid 2px t.$accent20;
-        }
+    .timeoutBar {
+        color: t.$accent;
+        margin: 3px 2px 0;
+    }
+
+    .notification.critical + .timeoutBar {
+        color: t.$red;
+        // flush with the card's bottom and left edges: the bar and the
+        // urgency rail join into a continuous ⌐
+        margin: 0 2px 0 0;
     }
 }

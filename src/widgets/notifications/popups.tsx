@@ -14,7 +14,7 @@ export default function NotificationPopups({ gdkMonitor }: { gdkMonitor: Gdk.Mon
 
     const position = Config.notifications.position
     const anchor = position === "topCenter" ? TOP : TOP | RIGHT
-    // 38px bar + gap: the pill's top edge used to overlap the bar by
+    // 38px bar + gap: the banner's top edge used to overlap the bar by
     // 4px, and hovering it flapped between bar and banner hover areas
     const margins =
         position === "topCenter" ? { marginTop: 42 } : { marginTop: 42, marginRight: 12 }
@@ -46,9 +46,10 @@ export default function NotificationPopups({ gdkMonitor }: { gdkMonitor: Gdk.Mon
     )
 
     // rows exist only on the focused window: every window builds rows
-    // from the same shared list, and each PopupRow owns a countdown —
-    // an unfocused window's copy would keep draining (it can't be
-    // hovered) and expire the popup out from under the user
+    // from the same shared list. The rows are pure views (countdown and
+    // expiry live in lib/notifd), so this rebuild is cheap and lossless —
+    // parallel rows on unfocused windows would double-render and fight
+    // over hover freeze
     const rows = createComputed([popups, isFocused], (list, focused) => (focused ? list : []))
 
     return (

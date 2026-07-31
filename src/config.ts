@@ -421,6 +421,15 @@ function getNotificationsConfig() {
         daemon = "auto"
     }
 
+    let transientApps = get("transient_apps", [])
+    if (!Array.isArray(transientApps)) {
+        console.error(`Config "notifications.transient_apps" must be a list of app names`)
+        transientApps = []
+    }
+    transientApps = transientApps
+        .filter((a: any) => typeof a === "string" && a !== "")
+        .map((a: string) => a.toLowerCase())
+
     return {
         // transient banners for incoming notifications
         popups: get("popups", true),
@@ -443,6 +452,9 @@ function getNotificationsConfig() {
         // whose notification daemon is used: auto = the system's if one
         // is running, ours otherwise
         daemon: daemon as "auto" | "wam-shell" | "system",
+        // app names (lowercased) whose notifications are popup-only:
+        // shown as banners but excluded from the center's history
+        transientApps: transientApps as string[],
     }
 }
 
