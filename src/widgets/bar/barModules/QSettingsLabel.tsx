@@ -10,6 +10,7 @@ import AstalBattery from "gi://AstalBattery?version=0.1"
 import ArchUpdates from "../../../lib/archUpdates"
 import trayNeedsAttention from "../../../lib/trayAttention"
 import vpnStatus from "../../../lib/vpn"
+import Brightness from "../../../lib/brightness"
 import { execAsync } from "../../../lib/metrics"
 import Config from "../../../config"
 
@@ -97,6 +98,67 @@ ${GLib.markup_escape_text(driver.description ?? "", -1)}`) // Keep this indent. 
             </revealer>
         </box>
     ) as Gtk.MenuButton // TS Jank, For some reason it a type error
+}
+
+// brightness twin of audioWidget: scroll adjusts the level in fixed
+// steps, hover reveals the percentage, right-click restores the
+// previous level (the lib's restorePrevious)
+function brightnessWidget() {
+    const brightness = Brightness.get_default()
+    if (!brightness.screenIsPresent) return null
+
+    const screen = createBinding(brightness, "screen")
+    const previous = createBinding(brightness, "previous")
+
+    const [visible, setVisible] = createState<boolean>(false)
+    let count = 0
+    const show = () => {
+        setVisible(true)
+        count++
+        timeout(750, () => {
+            count--
+            if (count === 0 && visible.get()) {
+                setVisible(false)
+            }
+        })
+    }
+
+    // released when the bar is destroyed (monitor hotplug) — same
+    // pattern as audioWidget/Battery in this file
+    const disposers = [screen.subscribe(show)]
+    onCleanup(() => {
+        for (const d of disposers) d()
+    })
+
+    return (
+        <box
+            cssClasses={["brightness"]}
+            tooltipText={screen.as(v => `Brightness ${Math.floor(v * 100)}%`)}
+        >
+            <Gtk.EventControllerScroll
+                flags={Gtk.EventControllerScrollFlags.VERTICAL}
+                onScroll={(_s, _dx, dy) => {
+                    show()
+                    // fixed step per notch, same as the volume widgets
+                    const step = dy < 0 ? 0.05 : -0.05
+                    brightness.screen = Math.min(1, Math.max(0.05, brightness.screen + step))
+                    return true
+                }}
+            />
+            <Gtk.GestureClick
+                button={3}
+                onPressed={() => {
+                    show()
+                    if (previous.get() >= 0) brightness.restorePrevious()
+                    return true
+                }}
+            />
+            <image iconName={"display-brightness-symbolic"} />
+            <revealer revealChild={visible} transitionType={Gtk.RevealerTransitionType.SLIDE_RIGHT}>
+                <label marginStart={5} label={screen.as(v => `${Math.floor(v * 100)}%`)} />
+            </revealer>
+        </box>
+    ) as Gtk.Widget // TS jank, same as audioWidget
 }
 
 function powerProfile() {
@@ -248,6 +310,7 @@ function ButtonLabel() {
                     {microphone => microphone && audioWidget(microphone)}
                 </With>
             )}
+            {brightnessWidget()}
             {powerProfile()}
             {vpnIndicator()}
             {bat.isPresent && <Battery />}
