@@ -34,9 +34,13 @@ function PaneHeader({
 }) {
     return (
         <box cssName="button" spacing={5}>
-            <Gtk.GestureClick button={1} onPressed={onBack} />
-            <image iconName="go-previous-symbolic" />
-            <label label={title} hexpand xalign={0} />
+            {/* the gesture covers only the back icon + title — a click
+            on a trailing widget (the wifi switch) must not navigate */}
+            <box spacing={5} hexpand>
+                <Gtk.GestureClick button={1} onPressed={onBack} />
+                <image iconName="go-previous-symbolic" />
+                <label label={title} hexpand xalign={0} />
+            </box>
             {trailing}
         </box>
     )

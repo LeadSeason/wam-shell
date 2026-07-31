@@ -208,7 +208,9 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
     const [rescanning, setRescanning] = createState(false)
     let rescanToken = 0
     function rescan() {
-        wifi.scan()
+        // scanning while the radio is off throws in astal-network
+        // ("Scanning not allowed while unavailable")
+        if (wifi.enabled) wifi.scan()
         setRescanning(true)
         const token = ++rescanToken
         setTimeout(() => {
