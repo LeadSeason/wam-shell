@@ -48,8 +48,10 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 - Prettier is the formatter; config lives in `.prettierrc` (there is
   intentionally no `prettier` key in package.json — it would shadow the
   file). Run `node_modules/.bin/prettier --check "src/**/*.{ts,tsx}"`
-  before committing; a pre-commit hook running the same command (or
-  `--write`) is recommended.
+  (`--write` to fix) once at the end of a piece of work — before
+  creating the PR and/or merging, whichever comes last, same
+  checkpoint as the perf gate. Don't gate every intermediate commit
+  on it.
 - Imports of gnim API (`createState`, `For`, `With`, accessors) come
   from `"gnim"`, GObject from `"ags/gobject"` — not from `"ags"`.
 
@@ -63,10 +65,11 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 
 ## Perf gate
 
-- Before completing any change under `src/lib/` or `src/widgets/`, run
-  `pnpm perf` and include the verdict line in your summary. If it
-  reports a regression, either fix it or state explicitly why the cost
-  is justified.
+- Run `pnpm perf` once at the end of a piece of work — before creating
+  the PR and/or merging, whichever comes last. Don't run it on every
+  intermediate iteration. Include the verdict line in your summary. If
+  it reports a regression, either fix it or state explicitly why the
+  cost is justified.
 - `pnpm perf` compares the working tree against the merge-base with
   origin/develop. Flags: `--base <ref>`, `--scenario <name>` (one
   scenario in about a minute), `--json` (full data).
@@ -99,6 +102,13 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   with `-i wam-shell-test`.
 - A bare checkout is not runnable (`.sys/`, `node_modules/` are
   gitignored): run `scripts/setup.sh` (or `pnpm i`) first.
+
+## Issues
+
+- When work surfaces a bug or problem unrelated to the current branch,
+  do not fix it in passing and do not let it evaporate: file a GitHub
+  issue (`gh issue create`) with evidence and a repro, reference it in
+  the summary, and leave the fix to a branch of its own.
 
 ## Commits
 

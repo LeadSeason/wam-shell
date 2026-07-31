@@ -5,7 +5,7 @@ import Graphene from "gi://Graphene?version=1.0"
 import app from "ags/gtk4/app"
 import { Accessor, For, With, createComputed, createRoot, createState, onCleanup } from "gnim"
 import CommandRegistry from "../lib/requestHandler"
-import { timeoutAdd, sourceRemove } from "../lib/metrics"
+import { timeoutAdd, sourceRemove, connect } from "../lib/metrics"
 import * as Harvest from "../lib/harvest"
 import Config from "../config"
 
@@ -55,59 +55,77 @@ function parseDuration(text: string): number | null {
 // but a different timer taking over always resets it (the header is
 // visibility-toggled now, not rebuilt per entry)
 function NotesRow() {
-    let entry: Gtk.Entry | null = null
-    let dirty = false
+    let buffer: Gtk.TextBuffer | null = null
+    // Save stays hidden until the text actually differs from the server
+    const [dirty, setDirty] = createState(false)
     let focused = false
     let lastId: number | null = Harvest.running.get()?.id ?? null
 
     const serverNotes = () => Harvest.running.get()?.notes ?? ""
+    const currentText = () => buffer?.text ?? ""
     const save = () => {
-        if (!entry) return
+        if (!buffer) return
         // keep dirty when the update couldn't be attempted (busy), so the
         // text isn't silently dropped
-        if (Harvest.setNotes(entry.get_text())) dirty = false
+        if (Harvest.setNotes(currentText())) setDirty(false)
     }
 
     const unsub = Harvest.running.subscribe(() => {
-        if (!entry) return
+        if (!buffer) return
         const id = Harvest.running.get()?.id ?? null
         if (id !== lastId) {
             // a different timer now: drop edits belonging to the old one
             lastId = id
-            dirty = false
-            entry.set_text(serverNotes())
+            setDirty(false)
+            buffer.set_text(serverNotes(), -1)
             return
         }
-        if (dirty || focused) return
-        entry.set_text(serverNotes())
+        if (dirty.get() || focused) return
+        buffer.set_text(serverNotes(), -1)
     })
     onCleanup(unsub)
 
     return (
         <box spacing={6} sensitive={Harvest.busy.as(b => !b)}>
-            <Gtk.Entry
-                $={self => {
-                    entry = self
-                    self.set_text(serverNotes())
-                }}
-                placeholderText={"Notes…"}
+            {/* multi-line: a single-line entry forces horizontal
+            scrolling for longer notes */}
+            <Gtk.ScrolledWindow
+                cssClasses={["input"]}
                 hexpand
-                onChanged={() => {
-                    dirty = entry?.get_text() !== serverNotes()
-                }}
-                onActivate={save}
+                propagateNaturalHeight
+                minContentHeight={66}
+                maxContentHeight={132}
+                vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                hscrollbarPolicy={Gtk.PolicyType.NEVER}
             >
-                <Gtk.EventControllerFocus
-                    onEnter={() => {
-                        focused = true
+                <Gtk.TextView
+                    $={self => {
+                        buffer = self.buffer
+                        buffer.set_text(serverNotes(), -1)
+                        connect(buffer, "changed", () => setDirty(currentText() !== serverNotes()))
                     }}
-                    onLeave={() => {
-                        focused = false
-                        if (dirty) save()
-                    }}
-                />
-            </Gtk.Entry>
-            <button cssClasses={["confirm"]} onClicked={save}>
+                    wrapMode={Gtk.WrapMode.WORD_CHAR}
+                >
+                    <Gtk.EventControllerFocus
+                        onEnter={() => {
+                            focused = true
+                        }}
+                        onLeave={() => {
+                            // no auto-save: the layer-shell popup drops
+                            // keyboard focus spontaneously ~1s after the
+                            // last keystroke, which committed edits
+                            // without the user asking. Save is explicit.
+                            focused = false
+                        }}
+                    />
+                </Gtk.TextView>
+            </Gtk.ScrolledWindow>
+            <button
+                cssClasses={["confirm"]}
+                valign={Gtk.Align.START}
+                visible={dirty}
+                onClicked={save}
+            >
                 <label label={"Save"} />
             </button>
         </box>
@@ -161,7 +179,7 @@ function RunningHeader() {
 // natural width follows the selected text, resizing the whole popup.
 // Lives inside IdleContent's expander; Cancel collapses back to it
 function NewEntryForm({ onCancel }: { onCancel: () => void }) {
-    let notes: Gtk.Entry
+    let notesBuffer: Gtk.TextBuffer
     let duration: Gtk.Entry
     let search: Gtk.Entry
 
@@ -207,12 +225,12 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
         if (!p || !t) return
         const hours = parseDuration(duration.get_text())
         if (hours === null) return
-        const text = notes.get_text().trim() || undefined
+        const text = notesBuffer.text.trim() || undefined
         // 0 = start a live timer (replaces the running one); >0 = log a
         // completed entry and leave any running timer alone
         if (hours > 0) Harvest.addEntry(p.projectId, t.taskId, hours, text)
         else Harvest.startTimer(p.projectId, t.taskId, text)
-        notes.set_text("")
+        notesBuffer.set_text("", -1)
         duration.set_text("")
     }
 
@@ -349,35 +367,53 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
                 </revealer>
             </box>
 
-            <box spacing={6}>
-                <Gtk.Entry
-                    $={self => {
-                        notes = self
-                    }}
-                    placeholderText={"Add Notes"}
+            {/* notes taking the row (multi-line, grows downwards),
+            duration adjacent on the right; both bounded (.input) */}
+            <box spacing={6} valign={Gtk.Align.START}>
+                <Gtk.ScrolledWindow
+                    cssClasses={["input"]}
                     hexpand
-                    onActivate={start}
-                />
-                <Gtk.Entry
-                    $={self => {
-                        duration = self
-                    }}
-                    cssClasses={["duration"]}
-                    placeholderText={Harvest.formatElapsed(0)}
-                    widthChars={5}
-                    onChanged={self =>
-                        setActionLabel((parseDuration(self.get_text()) ?? 0) > 0 ? "Save" : "Start")
-                    }
-                    onActivate={start}
-                />
-            </box>
-            <box halign={Gtk.Align.END} spacing={6}>
-                <button onClicked={onCancel}>
-                    <label label={"Cancel"} />
-                </button>
-                <button cssClasses={["start"]} sensitive={canStart} onClicked={start}>
-                    <label label={actionLabel} />
-                </button>
+                    propagateNaturalHeight
+                    minContentHeight={66}
+                    maxContentHeight={132}
+                    vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                    hscrollbarPolicy={Gtk.PolicyType.NEVER}
+                >
+                    <Gtk.TextView
+                        $={self => {
+                            notesBuffer = self.buffer
+                        }}
+                        wrapMode={Gtk.WrapMode.WORD_CHAR}
+                    />
+                </Gtk.ScrolledWindow>
+                {/* right column: duration on top, action buttons below it,
+                in the space the tall notes box frees up */}
+                <box orientation={Gtk.Orientation.VERTICAL} spacing={6} valign={Gtk.Align.START}>
+                    <Gtk.Entry
+                        $={self => {
+                            duration = self
+                        }}
+                        cssClasses={["input", "duration"]}
+                        placeholderText={Harvest.formatElapsed(0)}
+                        widthChars={5}
+                        onChanged={self =>
+                            setActionLabel(
+                                (parseDuration(self.get_text()) ?? 0) > 0 ? "Save" : "Start",
+                            )
+                        }
+                        onActivate={start}
+                    />
+                    {/* natural width only: hexpand here would compete
+                    with the notes box for the row's slack */}
+                    <box homogeneous spacing={6}>
+                        <button onClicked={onCancel}>
+                            <label label={"Cancel"} />
+                        </button>
+                        <button cssClasses={["start"]} sensitive={canStart} onClicked={start}>
+                            <label label={actionLabel} />
+                        </button>
+                    </box>
+                </box>
             </box>
         </box>
     )
@@ -385,10 +421,12 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
 
 // editable accrued time of the paused entry. Same dirty/focus contract
 // as NotesRow: a poll or in-place update never clobbers an edit in
-// progress; Enter, focus-out or Save commits
+// progress; Enter or Save commits. NO focus-out commit: the layer-shell
+// popup drops keyboard focus spontaneously, and a silent hours PATCH is
+// worse than a notes one (see bbb7575)
 function PausedEditor() {
     let entry: Gtk.Entry | null = null
-    let dirty = false
+    const [dirty, setDirty] = createState(false)
     let focused = false
 
     const serverText = () => {
@@ -403,15 +441,15 @@ function PausedEditor() {
         // form 0 means "live timer"): snap back to the server value
         if (hours === null || hours <= 0) {
             entry.set_text(serverText())
-            dirty = false
+            setDirty(false)
             return
         }
         // keep dirty when the update couldn't be attempted (busy)
-        if (Harvest.setHours(p, hours)) dirty = false
+        if (Harvest.setHours(p, hours)) setDirty(false)
     }
 
     const unsub = Harvest.paused.subscribe(() => {
-        if (dirty || focused || !entry) return
+        if (dirty.get() || focused || !entry) return
         entry.set_text(serverText())
     })
     onCleanup(unsub)
@@ -428,7 +466,7 @@ function PausedEditor() {
                 hexpand
                 tooltipText={"Edit hours (e.g. 1.5 or 1:30)"}
                 onChanged={() => {
-                    dirty = entry?.get_text() !== serverText()
+                    setDirty(entry?.get_text() !== serverText())
                 }}
                 onActivate={save}
             >
@@ -438,105 +476,203 @@ function PausedEditor() {
                     }}
                     onLeave={() => {
                         focused = false
-                        if (dirty) save()
                     }}
                 />
             </Gtk.Entry>
-            <button cssClasses={["confirm"]} onClicked={save}>
+            <button cssClasses={["confirm"]} visible={dirty} onClicked={save}>
                 <label label={"Save"} />
             </button>
         </box>
     )
 }
 
-function IdleContent() {
-    // resume targets: paused first, then today's stopped entries, padded
-    // from the wide recents window; deduped by id, capped by config
-    const resumables = createComputed(
-        [Harvest.paused, Harvest.recentStopped, Harvest.recents],
-        (p, stopped, rec) => {
-            const out: Harvest.Entry[] = []
-            const seen = new Set<number>()
-            for (const e of [p, ...stopped, ...rec]) {
-                if (!e || seen.has(e.id)) continue
-                seen.add(e.id)
-                out.push(e)
-                if (out.length >= Config.harvest.recents) break
-            }
-            return out
-        },
-    )
-    // the new-entry form and resume list sit behind an expander: the
-    // compact default view is just the timer state and totals
+// one timeline row: start time, client — project · task (task is the
+// visual primary), hours, notes on a dim second line when set. Clicking
+// the row body expands an inline notes editor (editing never starts a
+// timer); resuming is explicit via the play button. The running entry
+// is highlighted and inert (its notes live in the card above).
+function TimelineRow({ entry }: { entry: Harvest.Entry }) {
+    const esc = (s: string) => GLib.markup_escape_text(s, -1)
+    const time = Harvest.startTimeLabel(entry)
+    const isPaused = Harvest.paused.as(p => p?.id === entry.id)
+
     const [expanded, setExpanded] = createState(false)
+    const [dirty, setDirty] = createState(false)
+    let noteEntry: Gtk.Entry | null = null
+
+    const save = () => {
+        if (!noteEntry) return
+        if (Harvest.setEntryNotes(entry, noteEntry.get_text())) setDirty(false)
+    }
+
+    const cssClasses = isPaused.as(p => [
+        "todayRow",
+        ...(entry.isRunning ? ["running"] : []),
+        ...(p ? ["paused"] : []),
+    ])
 
     return (
-        <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-            <box
-                spacing={8}
-                visible={createComputed(
-                    [Harvest.paused, Harvest.dayTotal],
-                    (p, t) => p !== null || t > 0,
-                )}
+        <box orientation={Gtk.Orientation.VERTICAL} cssClasses={cssClasses}>
+            <box spacing={6}>
+                <label
+                    cssClasses={["rowTime"]}
+                    widthChars={5}
+                    xalign={0}
+                    visible={time !== ""}
+                    label={time}
+                />
+                <button
+                    cssClasses={["rowBody"]}
+                    hexpand
+                    sensitive={!entry.isRunning}
+                    tooltipText={
+                        entry.isRunning
+                            ? entryLabel(entry)
+                            : `${entryLabel(entry)}\nclick to edit notes`
+                    }
+                    onClicked={() => setExpanded(!expanded.get())}
+                >
+                    <box>
+                        <box orientation={Gtk.Orientation.VERTICAL} hexpand>
+                            <label
+                                xalign={0}
+                                useMarkup
+                                maxWidthChars={32}
+                                ellipsize={Pango.EllipsizeMode.END}
+                                label={`<span alpha="60%">${esc(`${entry.clientName} — ${entry.projectName} · `)}</span><b>${esc(entry.taskName)}</b>`}
+                            />
+                            <label
+                                cssClasses={["rowNotes"]}
+                                xalign={0}
+                                maxWidthChars={40}
+                                ellipsize={Pango.EllipsizeMode.END}
+                                visible={expanded.as(e => entry.notes !== "" && !e)}
+                                label={entry.notes}
+                            />
+                        </box>
+                        <label
+                            cssClasses={["dim"]}
+                            label={Harvest.formatElapsed(entry.hours * 3600)}
+                        />
+                    </box>
+                </button>
+                <button
+                    cssClasses={["resumeNow"]}
+                    valign={Gtk.Align.START}
+                    visible={!entry.isRunning}
+                    sensitive={Harvest.busy.as(b => !b)}
+                    tooltipText={"Resume"}
+                    onClicked={() => Harvest.resumeEntry(entry)}
+                >
+                    <image iconName="media-playback-start-symbolic" />
+                </button>
+            </box>
+            <revealer revealChild={expanded}>
+                <box spacing={6}>
+                    <Gtk.Entry
+                        $={self => {
+                            noteEntry = self
+                            self.set_text(entry.notes)
+                        }}
+                        cssClasses={["input"]}
+                        hexpand
+                        onChanged={() => setDirty(noteEntry?.get_text() !== entry.notes)}
+                        onActivate={save}
+                    />
+                    <button cssClasses={["confirm"]} visible={dirty} onClicked={save}>
+                        <label label={"Save"} />
+                    </button>
+                </box>
+            </revealer>
+        </box>
+    )
+}
+
+// the entire day as a timeline, ascending by start time (lib sorts)
+function Timeline() {
+    return (
+        <box
+            orientation={Gtk.Orientation.VERTICAL}
+            spacing={6}
+            visible={Harvest.todayEntries.as(r => r.length > 0)}
+        >
+            <label cssClasses={["section"]} label={"Today"} xalign={0} />
+            <Gtk.ScrolledWindow
+                vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                hscrollbarPolicy={Gtk.PolicyType.NEVER}
+                propagateNaturalHeight
+                maxContentHeight={300}
             >
+                <box orientation={Gtk.Orientation.VERTICAL} spacing={6}>
+                    <For each={Harvest.todayEntries}>
+                        {(e: Harvest.Entry) => <TimelineRow entry={e} />}
+                    </For>
+                </box>
+            </Gtk.ScrolledWindow>
+        </box>
+    )
+}
+
+// paused entry gets its own card: which entry it is, the hours editor
+// and a resume button
+function PausedCard() {
+    const label = Harvest.paused.as(p => (p ? entryLabel(p) : ""))
+    const tooltip = Harvest.paused.as(p =>
+        p?.notes ? `${entryLabel(p)}\n${p.notes}` : p ? entryLabel(p) : "",
+    )
+
+    return (
+        <box
+            orientation={Gtk.Orientation.VERTICAL}
+            spacing={4}
+            visible={Harvest.paused.as(p => p !== null)}
+        >
+            <box spacing={8}>
                 <image cssClasses={["harvestIcon"]} iconName="harvest-symbolic" pixelSize={20} />
                 {/* keyed on the entry id: in-place updates (a successful
                 hours edit) must not rebuild the editor under the user */}
                 <With value={Harvest.paused.as(p => p?.id ?? null)}>
-                    {id =>
-                        id !== null ? (
-                            <PausedEditor />
-                        ) : (
-                            <label
-                                cssClasses={["elapsed", "dim"]}
-                                hexpand
-                                xalign={0}
-                                label={Harvest.dayTotal.as(
-                                    t => `Today: ${Harvest.formatElapsed(t)}`,
-                                )}
-                            />
-                        )
-                    }
+                    {/* null, not <></>: With appends the child into its own
+                    Fragment, and nested Fragments are unsupported */}
+                    {id => (id !== null ? <PausedEditor /> : null)}
                 </With>
+                <button
+                    cssClasses={["resumeNow"]}
+                    sensitive={Harvest.busy.as(b => !b)}
+                    tooltipText={"Resume"}
+                    onClicked={() => Harvest.resumeLast()}
+                >
+                    <image iconName="media-playback-start-symbolic" />
+                </button>
             </box>
-            <button cssClasses={["ddButton"]} onClicked={() => setExpanded(!expanded.get())}>
-                <box>
-                    <label xalign={0} hexpand label={"Add or resume entry"} />
-                    <image
-                        iconName={expanded.as(e => (e ? "pan-up-symbolic" : "pan-down-symbolic"))}
-                    />
-                </box>
+            {/* which entry is paused — meaningless hours without it */}
+            <label
+                cssClasses={["elapsed", "dim"]}
+                xalign={0}
+                maxWidthChars={44}
+                ellipsize={Pango.EllipsizeMode.END}
+                tooltipText={tooltip}
+                label={label}
+            />
+        </box>
+    )
+}
+
+function Footer({ onNewEntry }: { onNewEntry: () => void }) {
+    return (
+        <box cssClasses={["footer"]}>
+            {/* only the number is emphasized, "Today:" stays dim */}
+            <box hexpand spacing={4}>
+                <label cssClasses={["elapsed", "dim"]} xalign={0} label={"Today:"} />
+                <label
+                    cssClasses={["elapsed", "dim", "total"]}
+                    xalign={0}
+                    label={Harvest.dayTotal.as(t => Harvest.formatElapsed(t))}
+                />
+            </box>
+            <button cssClasses={["newEntry"]} onClicked={onNewEntry}>
+                <label label={"+ New entry"} />
             </button>
-            <revealer revealChild={expanded}>
-                <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-                    <NewEntryForm onCancel={() => setExpanded(false)} />
-                    <box
-                        orientation={Gtk.Orientation.VERTICAL}
-                        spacing={2}
-                        visible={resumables.as(r => r.length > 0)}
-                    >
-                        <label cssClasses={["section"]} label={"Resume"} xalign={0} />
-                        <For each={resumables}>
-                            {(e: Harvest.Entry) => (
-                                <button
-                                    cssClasses={["resume"]}
-                                    sensitive={Harvest.busy.as(b => !b)}
-                                    tooltipText={entryLabel(e)}
-                                    onClicked={() => Harvest.resumeEntry(e)}
-                                >
-                                    <label
-                                        xalign={0}
-                                        hexpand
-                                        maxWidthChars={38}
-                                        ellipsize={Pango.EllipsizeMode.END}
-                                        label={entryLabel(e)}
-                                    />
-                                </button>
-                            )}
-                        </For>
-                    </box>
-                </box>
-            </revealer>
         </box>
     )
 }
@@ -545,12 +681,14 @@ function PopupContent() {
     // running section always built and visibility-toggled, never lazily
     // inserted: a <With> child created when the timer starts would be
     // re-appended *below* the idle content instead of taking the top
+    const [formOpen, setFormOpen] = createState(false)
+
     return (
         <box
             cssClasses={["harvestPopup"]}
             orientation={Gtk.Orientation.VERTICAL}
-            spacing={10}
-            widthRequest={340}
+            spacing={12}
+            widthRequest={480}
         >
             <box
                 orientation={Gtk.Orientation.VERTICAL}
@@ -560,7 +698,12 @@ function PopupContent() {
                 <RunningHeader />
                 <Gtk.Separator />
             </box>
-            <IdleContent />
+            <PausedCard />
+            <Timeline />
+            <Footer onNewEntry={() => setFormOpen(!formOpen.get())} />
+            <revealer revealChild={formOpen}>
+                <NewEntryForm onCancel={() => setFormOpen(false)} />
+            </revealer>
         </box>
     )
 }
@@ -591,8 +734,8 @@ function show() {
 function popupMarginLeft(): number {
     const anchor = popupAnchor.get()
     if (!anchor) return 12
-    // window width: 340 request + horizontal margins
-    const POPUP_W = 340 + 24
+    // window width: 480 request + horizontal margins
+    const POPUP_W = 480 + 24
     const monW = anchor.monitor.get_geometry().width
     return Math.max(0, Math.min(Math.round(anchor.x - POPUP_W / 2), monW - POPUP_W))
 }
