@@ -211,13 +211,16 @@ Shows / hides the scratchpad tool on request.
             $={ref => {
                 win = ref
                 gtkIconTheme = Gtk.IconTheme.get_for_display(win.display)
+                hideOnFocusLoss(win, hide)
             }}
             name="Scratchpad"
             class="Scratchpad"
             namespace={`${Config.instanceName}Scratchpad`}
             anchor={TOP | BOTTOM | LEFT | RIGHT}
             exclusivity={Astal.Exclusivity.IGNORE}
-            keymode={Astal.Keymode.EXCLUSIVE}
+            // ON_DEMAND, not EXCLUSIVE: the grab stole input from other
+            // surfaces; focus loss closes instead (popupFocus)
+            keymode={Astal.Keymode.ON_DEMAND}
             onNotifyVisible={({ visible }) => {
                 if (visible) {
                     setList(apps.get())

@@ -197,7 +197,7 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
         # (measured 66..74 across identical runs); idle/churn fds stay ±1
         if ($path | test("^startup\\.fds$")) then 999
         # churn spawn counts are wall-clock driven (measured ±3 across
-        # identical runs, and larger swings when a leg's timing shifts);
+        # identical runs, and larger swings when leg timing shifts);
         # a real regression like a new 1s poll is +20, still caught
         elif ($path | test("^churn\\.subprocesses\\.")) then 10
         elif ($path | test("\\.subprocesses\\.")) then 2

@@ -7,6 +7,7 @@ import notifd, { dnd, persistent, toggleDnd } from "../../lib/notifd"
 import { createBinding } from "gnim"
 import CommandRegistry from "../../lib/requestHandler"
 import { timeoutAdd, sourceRemove } from "../../lib/metrics"
+import { hideOnFocusLoss } from "../../lib/popupFocus"
 import NotificationCard from "./NotificationCard"
 
 const registry = CommandRegistry.get_default()
@@ -89,6 +90,7 @@ function ensureWindow() {
                 <window
                     $={self => {
                         win = self
+                        hideOnFocusLoss(win, hide)
                     }}
                     name="Notifications"
                     class="Notifications"
@@ -97,7 +99,9 @@ function ensureWindow() {
                     // edge-anchored window grows with the list but never
                     // shrinks back — the card inside clamps to content
                     anchor={TOP | BOTTOM | LEFT | RIGHT}
-                    keymode={Astal.Keymode.EXCLUSIVE}
+                    // ON_DEMAND, not EXCLUSIVE: the grab stole input from
+                    // other surfaces; focus loss closes instead
+                    keymode={Astal.Keymode.ON_DEMAND}
                     visible={false}
                 >
                     <Gtk.EventControllerKey onKeyPressed={onKey} />

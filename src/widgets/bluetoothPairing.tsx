@@ -1,6 +1,7 @@
 import { Astal, Gtk, Gdk } from "ags/gtk4"
 import { With } from "gnim"
 import { pairingRequest, btPaneOpen, PairingRequest } from "../lib/bluetoothAgent"
+import { hideOnFocusLoss } from "../lib/popupFocus"
 
 export function PromptContent({ req }: { req: PairingRequest }) {
     let entry: Gtk.Entry | null = null
@@ -98,6 +99,7 @@ export default function BluetoothPairing() {
         <window
             $={self => {
                 win = self
+                hideOnFocusLoss(win, () => win.hide())
             }}
             name="BluetoothPairing"
             class="BluetoothPairing"
@@ -106,7 +108,10 @@ export default function BluetoothPairing() {
             // hidden behind it (and unclickable) when pairing from the pane
             layer={Astal.Layer.OVERLAY}
             // no anchors: centered
-            keymode={Astal.Keymode.EXCLUSIVE}
+            // ON_DEMAND, not EXCLUSIVE: the grab stole input from other
+            // surfaces; focus loss hides the prompt instead (the agent's
+            // prompt timeout cleans up)
+            keymode={Astal.Keymode.ON_DEMAND}
             visible={false}
         >
             <Gtk.EventControllerKey onKeyPressed={onKey} />
