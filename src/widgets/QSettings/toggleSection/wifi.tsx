@@ -138,7 +138,7 @@ function ConnectedSection({ wifi }: { wifi: AstalNetwork.Wifi }) {
                     <box orientation={Gtk.Orientation.VERTICAL} hexpand>
                         <label
                             cssClasses={["wifiConnectedSsid"]}
-                            label={ssid}
+                            label={ssid.as(f => {return f ? f : "-"})}
                             xalign={0}
                             maxWidthChars={24}
                             ellipsize={Pango.EllipsizeMode.END}
