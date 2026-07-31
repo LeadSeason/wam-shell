@@ -555,10 +555,11 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
         <box orientation={Gtk.Orientation.VERTICAL}>
             <With value={prompt}>{p => p && <PasswordPrompt p={p} />}</With>
             <box orientation={Gtk.Orientation.VERTICAL} visible={prompt.as(p => p === null)}>
-                {/* 2-state on/off slider */}
-                <box cssClasses={["wifiSwitchRow"]}>
-                    <label label={"Wi-Fi"} hexpand xalign={0} />
+                {/* 2-state on/off slider (no label: the pane header
+                already says Wi-Fi) */}
+                <box cssClasses={["wifiSwitchRow"]} hexpand>
                     <Gtk.Switch
+                        halign={Gtk.Align.END}
                         active={createBinding(wifi, "enabled")}
                         onNotifyActive={self => wifi.set_enabled(self.active)}
                     />
