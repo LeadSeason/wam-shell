@@ -1,24 +1,27 @@
 import { Gtk } from "ags/gtk4"
 import GLib from "gi://GLib?version=2.0"
-import AstalNotifd from "gi://AstalNotifd?version=0.1"
 import { onCleanup } from "gnim"
 import Config from "../../config"
 import {
     POPUP_SLIDE_IN_MS,
+    PopupEntry,
     popupTimer,
     popupTimerVersion,
     removePopup,
     setPopupHovered,
 } from "../../lib/notifd"
 import NotificationCard from "./NotificationCard"
+import ProviderCard from "./ProviderCard"
 
 // Pure view over the popup controller in lib/notifd: the countdown,
 // expiry and hover-freeze live there, so rows like this one can be
 // destroyed and rebuilt on monitor focus switches without consequence.
-export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
+// Renders either card kind: desktop notifications (daemon) and provider
+// items (GitHub & co.) share the same countdown/revealer machinery
+export default function PopupRow({ entry }: { entry: PopupEntry }) {
     function drawBar(self: Gtk.DrawingArea, cr: any, w: number, h: number) {
         const c = self.get_color()
-        const t = popupTimer(n.id)
+        const t = popupTimer(entry.key)
         const frac = !t || t.duration === 0 ? 1 : Math.max(0, t.remaining / t.duration)
         // track
         cr.setSourceRGBA(c.red, c.green, c.blue, 0.18)
@@ -55,12 +58,12 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
 
     // the banner slides in only when it is new — a row rebuilt on a
     // monitor switch appears instantly (0ms transition)
-    const t = popupTimer(n.id)
+    const t = popupTimer(entry.key)
     const young = t !== null && GLib.get_monotonic_time() / 1000 - t.addedAt < POPUP_SLIDE_IN_MS
 
     // controller state changes: redraw the bar, collapse when expiring
     const unsub = popupTimerVersion.subscribe(() => {
-        const timer = popupTimer(n.id)
+        const timer = popupTimer(entry.key)
         if (timer?.expiring && rev) rev.revealChild = false
         area?.queue_draw()
     })
@@ -92,14 +95,28 @@ export default function PopupRow({ n }: { n: AstalNotifd.Notification }) {
                     onEnter={() => hover(true)}
                     onLeave={() => hover(false)}
                 />
-                <NotificationCard
-                    n={n}
-                    onDismiss={() => {
-                        removePopup(n.id)
-                        n.dismiss()
-                    }}
-                    onActivate={() => removePopup(n.id)}
-                />
+                {entry.desktop ? (
+                    <NotificationCard
+                        n={entry.desktop}
+                        onDismiss={() => {
+                            removePopup(entry.key)
+                            entry.desktop!.dismiss()
+                        }}
+                        onActivate={() => removePopup(entry.key)}
+                    />
+                ) : (
+                    <ProviderCard
+                        item={entry.item!}
+                        onDismiss={() => {
+                            removePopup(entry.key)
+                            entry.item!.dismiss()
+                        }}
+                        onActivate={() => {
+                            removePopup(entry.key)
+                            entry.item!.activate()
+                        }}
+                    />
+                )}
                 <Gtk.DrawingArea
                     $={self => {
                         area = self

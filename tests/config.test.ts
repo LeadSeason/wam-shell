@@ -79,6 +79,9 @@ test("config: documented defaults without a config file", () => {
     eq(c.notifications.daemon, "auto", "notifications.daemon")
     eq(c.osd.position, "bottom", "osd.position")
     eq(c.panels, [], "panels")
+    eq(c.github.enabled, false, "github.enabled")
+    eq(c.github.pollMinutes, 5, "github.pollMinutes")
+    eq(c.github.popups, true, "github.popups")
 })
 
 test("config: theme fallback with follow_system off", () => {
