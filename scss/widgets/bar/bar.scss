@@ -48,9 +48,9 @@ window.Bar {
     // wifi band badge pill on the QS label's wifi indicator (2.4GHz
     // gets no badge)
     .bandBadge {
-        font-size: 0.6em;
+        font-size: 0.75em;
         font-weight: bold;
-        padding: 0 3px;
+        padding: 0 4px;
         border-radius: 4px;
         color: t.$base;
         &.b5 {

@@ -11,7 +11,9 @@ export function bandBadgeOf(freq: number): string {
 }
 
 /** icon with a small band badge pill overlaid on the bottom-right;
- *  empty badge text renders just the icon */
+ *  empty badge text renders just the icon. the overlay is wider than
+ *  the icon so the badge sits beside the glyph instead of on top of
+ *  it (a badge wider than the icon would hide it) */
 export function OverlayIcon({
     icon,
     badge,
@@ -21,8 +23,8 @@ export function OverlayIcon({
 }) {
     const badgeAcc = typeof badge === "string" ? new Accessor(() => badge) : badge
     return (
-        <Gtk.Overlay>
-            <image iconName={icon} />
+        <Gtk.Overlay widthRequest={30}>
+            <image iconName={icon} pixelSize={20} />
             <label
                 $type="overlay"
                 cssClasses={badgeAcc.as(b => ["bandBadge", b === "6G" ? "b6" : "b5"])}
