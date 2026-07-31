@@ -118,9 +118,7 @@ function ConnectedSection({ wifi }: { wifi: AstalNetwork.Wifi }) {
     const activeAp = createBinding(wifi, "activeAccessPoint")
 
     const connected = createComputed([enabled, ssid], (e, s) => e && !!s)
-    const status = createComputed([enabled, ssid], (e, s) =>
-        !e ? "Wi-Fi is off" : "On — not connected",
-    )
+    const status = createComputed([enabled, ssid], (e, s) => (e && !s ? "On — not connected" : ""))
 
     const dev = wifi.device as NM.DeviceWifi | null
     const ipLine = dev
@@ -141,7 +139,8 @@ function ConnectedSection({ wifi }: { wifi: AstalNetwork.Wifi }) {
         : new Accessor(() => "")
 
     return (
-        <box orientation={Gtk.Orientation.VERTICAL}>
+        // hidden entirely when wifi is off — the header switch says it
+        <box orientation={Gtk.Orientation.VERTICAL} visible={enabled}>
             <label label={"Connected network"} cssClasses={["btSection"]} xalign={0} />
             <box orientation={Gtk.Orientation.VERTICAL} visible={connected}>
                 <box cssClasses={["wifiConnected"]} spacing={10}>
@@ -584,7 +583,7 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
             <With value={prompt}>{p => p && <PasswordPrompt p={p} />}</With>
             <box orientation={Gtk.Orientation.VERTICAL} visible={prompt.as(p => p === null)}>
                 <ConnectedSection wifi={wifi} />
-                <Gtk.Separator />
+                <Gtk.Separator visible={createBinding(wifi, "enabled")} />
                 <box
                     orientation={Gtk.Orientation.VERTICAL}
                     visible={createBinding(wifi, "enabled")}
