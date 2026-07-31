@@ -934,9 +934,36 @@ export function setNotes(text: string): boolean {
 // edit the notes of any entry, running or stopped. Same return contract
 // as setNotes: false = not attempted, the field stays dirty
 export function setEntryNotes(entry: Entry, text: string): boolean {
+    return updateEntry(entry, { notes: text })
+}
+
+// one PATCH carrying every changed field (notes and/or project/task
+// reassignment). The client moves implicitly: it is a property of the
+// project, so "editing the client" means picking another project. A
+// project move must name a task assigned to that project (task ids are
+// account-wide, so the same task id is usually valid there). Same
+// return contract as setNotes: false = not attempted, fields stay dirty
+export function updateEntry(
+    entry: Entry,
+    fields: { notes?: string; projectId?: number; taskId?: number },
+): boolean {
+    const body: Record<string, any> = {}
+    if (fields.notes !== undefined && fields.notes !== entry.notes) body.notes = fields.notes
+    if (
+        fields.projectId !== undefined &&
+        fields.projectId !== entry.projectId &&
+        fields.taskId !== undefined &&
+        fields.taskId > 0
+    ) {
+        body.project_id = fields.projectId
+        body.task_id = fields.taskId
+    } else if (fields.taskId !== undefined && fields.taskId !== entry.taskId && fields.taskId > 0) {
+        body.task_id = fields.taskId
+    }
+    if (Object.keys(body).length === 0) return true
     if (mutInFlight || authDisabled.get()) return false
     mutate(done => {
-        request("PATCH", `/time_entries/${entry.id}`, { notes: text }, r => {
+        request("PATCH", `/time_entries/${entry.id}`, body, r => {
             try {
                 if (r.ok && r.json) {
                     const e = mapEntry(r.json)
@@ -952,7 +979,7 @@ export function setEntryNotes(entry: Entry, text: string): boolean {
                         refreshStoppedFromMap()
                         if (paused.get()?.id === e.id) setPaused(e)
                     }
-                } else console.warn(`Harvest: notes update failed (status ${r.status})`)
+                } else console.warn(`Harvest: entry update failed (status ${r.status})`)
             } finally {
                 done()
             }

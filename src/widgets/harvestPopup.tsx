@@ -175,6 +175,38 @@ function RunningHeader() {
     )
 }
 
+// shared by the new-entry form and the timeline row's reassignment
+// editor: a button showing the current selection with an open/closed
+// chevron, toggling an inline list (Gtk.DropDown popovers are unstyled
+// here and their natural width follows the selected text, resizing the
+// whole popup)
+function SelectorButton({
+    label,
+    open,
+    onClick,
+    sensitive = true,
+}: {
+    label: Accessor<string>
+    open: Accessor<boolean>
+    onClick: () => void
+    sensitive?: boolean | Accessor<boolean>
+}) {
+    return (
+        <button cssClasses={["ddButton"]} sensitive={sensitive} onClicked={onClick}>
+            <box>
+                <label
+                    xalign={0}
+                    hexpand
+                    maxWidthChars={30}
+                    ellipsize={Pango.EllipsizeMode.END}
+                    label={label}
+                />
+                <image iconName={open.as(o => (o ? "pan-up-symbolic" : "pan-down-symbolic"))} />
+            </box>
+        </button>
+    )
+}
+
 // the Harvest-style new-entry form. Inline expanding selectors rather
 // than Gtk.DropDown: dropdown popovers are unstyled here and their
 // natural width follows the selected text, resizing the whole popup.
@@ -255,33 +287,6 @@ function NewEntryForm({ onCancel }: { onCancel: () => void }) {
     const toggleTask = () => {
         setProjectOpen(false)
         setTaskOpen(!taskOpen.get())
-    }
-
-    function SelectorButton({
-        label,
-        open,
-        onClick,
-        sensitive = true,
-    }: {
-        label: Accessor<string>
-        open: Accessor<boolean>
-        onClick: () => void
-        sensitive?: boolean | Accessor<boolean>
-    }) {
-        return (
-            <button cssClasses={["ddButton"]} sensitive={sensitive} onClicked={onClick}>
-                <box>
-                    <label
-                        xalign={0}
-                        hexpand
-                        maxWidthChars={30}
-                        ellipsize={Pango.EllipsizeMode.END}
-                        label={label}
-                    />
-                    <image iconName={open.as(o => (o ? "pan-up-symbolic" : "pan-down-symbolic"))} />
-                </box>
-            </button>
-        )
     }
 
     return (
@@ -495,29 +500,197 @@ function PausedEditor() {
     )
 }
 
+// reassignment editor: move the entry to another project and/or task.
+// The client follows implicitly (it is a property of the project in
+// Harvest), so project rows are labeled "Client — Project". Selection
+// is purely local — the row's Save commits it via updateEntry together
+// with any notes edit
+function AssignmentEditor({
+    entry,
+    projectSel,
+    taskSel,
+    onSelect,
+}: {
+    entry: Harvest.Entry
+    projectSel: Accessor<number>
+    taskSel: Accessor<number>
+    onSelect: (projectId: number, taskId: number) => void
+}) {
+    let search: Gtk.Entry
+    const [projectOpen, setProjectOpen] = createState(false)
+    const [taskOpen, setTaskOpen] = createState(false)
+    const [query, setQuery] = createState("")
+
+    const labelOf = (p: Harvest.Project) => `${p.clientName} — ${p.projectName}`
+
+    const projectRows = createComputed([Harvest.projects, query], (ps, q) =>
+        ps.filter(p => !q || labelOf(p).toLowerCase().includes(q.toLowerCase())),
+    )
+    const tasks = createComputed(
+        [Harvest.projects, projectSel],
+        (ps, id) => ps.find(p => p.projectId === id)?.tasks ?? [],
+    )
+
+    // the entry's project may be archived (absent from the assignments
+    // list): fall back to the names the entry itself carries
+    const projectLabel = createComputed([Harvest.projects, projectSel], (ps, id) => {
+        const p = ps.find(p => p.projectId === id)
+        return p ? labelOf(p) : `${entry.clientName} — ${entry.projectName}`
+    })
+    const taskLabel = createComputed(
+        [tasks, taskSel],
+        (ts, id) => ts.find(t => t.taskId === id)?.taskName ?? entry.taskName,
+    )
+
+    const toggleProject = () => {
+        setTaskOpen(false)
+        const opening = !projectOpen.get()
+        setProjectOpen(opening)
+        if (opening) search.grab_focus()
+    }
+    const toggleTask = () => {
+        setProjectOpen(false)
+        setTaskOpen(!taskOpen.get())
+    }
+
+    return (
+        <box orientation={Gtk.Orientation.VERTICAL} spacing={6} hexpand>
+            <box orientation={Gtk.Orientation.VERTICAL}>
+                <SelectorButton label={projectLabel} open={projectOpen} onClick={toggleProject} />
+                <revealer revealChild={projectOpen}>
+                    <box cssClasses={["ddList"]} orientation={Gtk.Orientation.VERTICAL} spacing={4}>
+                        <Gtk.Entry
+                            $={self => {
+                                search = self
+                            }}
+                            placeholderText={"Search…"}
+                            onChanged={self => setQuery(self.get_text())}
+                        />
+                        <Gtk.ScrolledWindow
+                            vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                            hscrollbarPolicy={Gtk.PolicyType.NEVER}
+                            propagateNaturalHeight
+                            maxContentHeight={180}
+                        >
+                            <box orientation={Gtk.Orientation.VERTICAL} spacing={2}>
+                                <For each={projectRows}>
+                                    {(p: Harvest.Project) => (
+                                        <button
+                                            tooltipText={labelOf(p)}
+                                            onClicked={() => {
+                                                // keep the task across the
+                                                // move when the new project
+                                                // has one with the same name
+                                                const curName =
+                                                    tasks
+                                                        .get()
+                                                        .find(t => t.taskId === taskSel.get())
+                                                        ?.taskName ?? entry.taskName
+                                                const t =
+                                                    p.tasks.find(t => t.taskName === curName) ??
+                                                    p.tasks[0]
+                                                onSelect(p.projectId, t?.taskId ?? 0)
+                                                setProjectOpen(false)
+                                                setQuery("")
+                                                search.set_text("")
+                                            }}
+                                        >
+                                            <label
+                                                xalign={0}
+                                                maxWidthChars={34}
+                                                ellipsize={Pango.EllipsizeMode.END}
+                                                label={labelOf(p)}
+                                            />
+                                        </button>
+                                    )}
+                                </For>
+                            </box>
+                        </Gtk.ScrolledWindow>
+                    </box>
+                </revealer>
+            </box>
+            <box orientation={Gtk.Orientation.VERTICAL}>
+                <SelectorButton
+                    label={taskLabel}
+                    open={taskOpen}
+                    onClick={toggleTask}
+                    sensitive={tasks.as(ts => ts.length > 0)}
+                />
+                <revealer revealChild={taskOpen}>
+                    <box cssClasses={["ddList"]} orientation={Gtk.Orientation.VERTICAL} spacing={2}>
+                        <For each={tasks}>
+                            {(t: { taskId: number; taskName: string }) => (
+                                <button
+                                    tooltipText={t.taskName}
+                                    onClicked={() => {
+                                        onSelect(projectSel.get(), t.taskId)
+                                        setTaskOpen(false)
+                                    }}
+                                >
+                                    <label
+                                        xalign={0}
+                                        maxWidthChars={34}
+                                        ellipsize={Pango.EllipsizeMode.END}
+                                        label={t.taskName}
+                                    />
+                                </button>
+                            )}
+                        </For>
+                    </box>
+                </revealer>
+            </box>
+        </box>
+    )
+}
+
 // one timeline row: start time, client — project · task (task is the
 // visual primary), hours, notes on a dim second line when set. Clicking
-// the row body expands an inline notes editor (editing never starts a
-// timer); resuming is explicit via the play button. The running entry
-// is highlighted and inert (its notes live in the card above).
+// the row body expands an inline editor (notes + project/task
+// reassignment; editing never starts a timer); resuming is explicit via
+// the play button. The running entry is highlighted and inert (its
+// notes live in the card above).
 function TimelineRow({ entry }: { entry: Harvest.Entry }) {
     const esc = (s: string) => GLib.markup_escape_text(s, -1)
     const time = Harvest.startTimeLabel(entry)
     const isPaused = Harvest.paused.as(p => p?.id === entry.id)
 
     const [expanded, setExpanded] = createState(false)
-    const [dirty, setDirty] = createState(false)
+    // separate dirty tracking: notes text and project/task selection.
+    // One Save commits both in a single PATCH (updateEntry)
+    const [notesDirty, setNotesDirty] = createState(false)
+    const [projectSel, setProjectSel] = createState(entry.projectId)
+    const [taskSel, setTaskSel] = createState(entry.taskId)
+    const assignDirty = createComputed(
+        [projectSel, taskSel],
+        (p, t) => p !== entry.projectId || t !== entry.taskId,
+    )
+    const dirty = createComputed([notesDirty, assignDirty], (n, a) => n || a)
     // two-step delete: trash swaps into confirm/cancel in place
     const [confirming, setConfirming] = createState(false)
     // row action buttons (resume/delete) hide until the row is hovered —
     // the freed width goes to the entry title. Driven by a motion
     // controller, not CSS :hover (unreliable on layer-shell surfaces)
     const [hovered, setHovered] = createState(false)
-    let noteEntry: Gtk.Entry | null = null
+    // build the assignment editor on first expand, then keep it: eager
+    // building would multiply the project list by every row of the day,
+    // and a With keyed on `expanded` itself would vanish mid-collapse
+    const [editorBuilt, setEditorBuilt] = createState(false)
+    let notesBuffer: Gtk.TextBuffer | null = null
 
     const save = () => {
-        if (!noteEntry) return
-        if (Harvest.setEntryNotes(entry, noteEntry.get_text())) setDirty(false)
+        const fields: { notes?: string; projectId?: number; taskId?: number } = {}
+        const text = notesBuffer?.text
+        if (text !== undefined && text !== entry.notes) fields.notes = text
+        if (assignDirty.get()) {
+            fields.projectId = projectSel.get()
+            fields.taskId = taskSel.get()
+        }
+        if (Object.keys(fields).length === 0) return
+        // keep dirty when the update couldn't be attempted (busy). On a
+        // successful PATCH the bumped updatedAt rebuilds this row with
+        // fresh state, collapsing the editor — the new values show in
+        // the row itself
+        if (Harvest.updateEntry(entry, fields)) setNotesDirty(false)
     }
 
     const cssClasses = isPaused.as(p => [
@@ -545,11 +718,12 @@ function TimelineRow({ entry }: { entry: Harvest.Entry }) {
                     hexpand
                     sensitive={!entry.isRunning}
                     tooltipText={
-                        entry.isRunning
-                            ? entryLabel(entry)
-                            : `${entryLabel(entry)}\nclick to edit notes`
+                        entry.isRunning ? entryLabel(entry) : `${entryLabel(entry)}\nclick to edit`
                     }
-                    onClicked={() => setExpanded(!expanded.get())}
+                    onClicked={() => {
+                        if (!expanded.get()) setEditorBuilt(true)
+                        setExpanded(!expanded.get())
+                    }}
                 >
                     <box>
                         <box orientation={Gtk.Orientation.VERTICAL} hexpand>
@@ -626,20 +800,60 @@ function TimelineRow({ entry }: { entry: Harvest.Entry }) {
                 </box>
             </box>
             <revealer revealChild={expanded}>
-                <box spacing={6}>
-                    <Gtk.Entry
-                        $={self => {
-                            noteEntry = self
-                            self.set_text(entry.notes)
-                        }}
-                        cssClasses={["input"]}
-                        hexpand
-                        onChanged={() => setDirty(noteEntry?.get_text() !== entry.notes)}
-                        onActivate={save}
-                    />
-                    <button cssClasses={["confirm"]} visible={dirty} onClicked={save}>
-                        <label label={"Save"} />
-                    </button>
+                <box orientation={Gtk.Orientation.VERTICAL} spacing={6}>
+                    {/* latched on first expand: not built for rows the
+                    user never opens, and survives the collapse animation */}
+                    <With value={editorBuilt}>
+                        {/* null, not <></>: With appends the child into its
+                        own Fragment, and nested Fragments are unsupported */}
+                        {built =>
+                            built ? (
+                                <AssignmentEditor
+                                    entry={entry}
+                                    projectSel={projectSel}
+                                    taskSel={taskSel}
+                                    onSelect={(p, t) => {
+                                        setProjectSel(p)
+                                        setTaskSel(t)
+                                    }}
+                                />
+                            ) : null
+                        }
+                    </With>
+                    <box spacing={6} valign={Gtk.Align.START}>
+                        {/* multi-line like the header's notes field: three
+                        rows tall, grows to six, then scrolls. No Enter
+                        commit — Enter inserts a newline; Save is explicit */}
+                        <Gtk.ScrolledWindow
+                            cssClasses={["input"]}
+                            hexpand
+                            propagateNaturalHeight
+                            minContentHeight={66}
+                            maxContentHeight={132}
+                            vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                            hscrollbarPolicy={Gtk.PolicyType.NEVER}
+                        >
+                            <Gtk.TextView
+                                $={self => {
+                                    notesBuffer = self.buffer
+                                    notesBuffer.set_text(entry.notes, -1)
+                                    connect(notesBuffer, "changed", () =>
+                                        setNotesDirty(notesBuffer?.text !== entry.notes),
+                                    )
+                                }}
+                                wrapMode={Gtk.WrapMode.WORD_CHAR}
+                            />
+                        </Gtk.ScrolledWindow>
+                        <button
+                            cssClasses={["confirm"]}
+                            valign={Gtk.Align.START}
+                            visible={dirty}
+                            sensitive={Harvest.busy.as(b => !b)}
+                            onClicked={save}
+                        >
+                            <label label={"Save"} />
+                        </button>
+                    </box>
                 </box>
             </revealer>
         </box>
