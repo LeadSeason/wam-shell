@@ -278,11 +278,62 @@ window#QSettings {
     }
 
     // wifi band section headers in the wifi pane
-    .wifiBand {
-        font-size: s.$font-small;
+    // wifi band badge pill, overlaid bottom-right on signal icons
+    // (2.4GHz gets no badge)
+    .bandBadge {
+        font-size: 0.75em;
         font-weight: bold;
+        padding: 0 4px;
+        border-radius: 4px;
+        color: t.$base;
+        &.b5 {
+            background-color: t.$green;
+        }
+        &.b6 {
+            background-color: t.$blue;
+        }
+    }
+
+    // the pane header's on/off switch: the theme does all:unset, so
+    // Gtk.Switch is invisible without this
+    .wifiSwitch {
+        background-color: t.$surface0;
+        border: 1px solid t.$surface1;
+        border-radius: 999px;
+        slider {
+            background-color: t.$text;
+            border-radius: 50%;
+            min-width: 14px;
+            min-height: 14px;
+            margin: 3px;
+        }
+        &:checked {
+            background-color: t.$accent;
+            slider {
+                background-color: t.$base;
+            }
+        }
+        &:disabled {
+            opacity: 0.35;
+        }
+    }
+
+    .wifiConnected {
+        border-radius: s.$radius;
+        background-color: t.$base;
+        padding: s.$gap;
+        margin: 4px 0;
+    }
+    .wifiConnectedSsid {
+        font-weight: bold;
+    }
+    .wifiConnectedInfo,
+    .wifiStatus {
+        font-size: s.$font-small;
         color: t.$subtext0;
-        margin: 4px 0 0 4px;
+    }
+    .wifiStatus {
+        margin: 4px;
     }
 
     // bluetooth pane
@@ -374,7 +425,57 @@ window#QSettings {
     }
 
     .rescan {
-        padding: 0 4px;
+        padding: 4px 6px;
+        &:disabled {
+            opacity: 0.35;
+        }
+    }
+
+    // details-panel actions (auto-connect, forget): plain rows, no
+    // button frame — a hover tint is the only affordance. generous
+    // padding: easy to click without precision
+    .wifiDetailAction {
+        padding: 6px 8px;
+        border-radius: s.$radius;
+        &:hover {
+            background-color: t.$accent10;
+        }
+    }
+
+    // empty state while the radio is off
+    .wifiEmpty {
+        margin: 20px 0;
+    }
+    .wifiEmptyIcon {
+        background-color: t.$surface0;
+        border-radius: s.$radius;
+        padding: 10px;
+        color: t.$subtext0;
+    }
+    .wifiEmptyTitle {
+        font-weight: bold;
+    }
+    .wifiEmptyHint {
+        font-size: s.$font-small;
+        color: t.$subtext0;
+    }
+
+    // fixed-width action slots keep the lock/details cluster aligned
+    // across rows (a hidden icon keeps its slot). the details chevron
+    // only fades in on row hover — the slot keeps its width, so no
+    // layout shift
+    .wifiActions {
+        // generous click target: the chevron must not need precision
+        .details {
+            margin: 0;
+            padding: 4px 8px;
+            opacity: 0;
+            transition: opacity 150ms;
+        }
+    }
+    .wifiAp:hover .details,
+    .wifiAp .details.open {
+        opacity: 1;
     }
 
     // performance stats section
