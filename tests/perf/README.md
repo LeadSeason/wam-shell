@@ -45,9 +45,9 @@ fd count (±1; `startup.fds` report-only).
 
 Tolerances and exclusions exist because the session is live, and each
 one is measured, not guessed (see the comment block in compare.sh):
-poll-phase jitter on spawn counts (±2; ±10 on churn, whose counts are
-wall-clock driven — outliers still flake and should be re-run, not
-silently tolerated), physical battery events
+poll-phase jitter on spawn counts (±2 on idle; churn spawn counts are
+not gated at all — refresh coalescing makes them load-dominated, so
+churn gates on leaks only), physical battery events
 (`qsHeader:batTimeDebounce`), OSD triggers from the session's
 WirePlumber/MPRIS (`osd:hide`), and per-tray-item signal buckets that
 scale with whatever tray apps the developer happens to run.

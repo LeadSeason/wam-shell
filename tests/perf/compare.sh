@@ -21,9 +21,10 @@
 #
 # Gate: counters only, exact except documented environment tolerances.
 #   - subprocess spawns per binary: ±2 (poll-phase jitter in the 20s
-#     wall-clock window); churn scenario: ±10 (wall-clock driven,
-#     measured ±3 with occasional larger swings — outliers still flake
-#     and should be re-run, not tolerated silently)
+#     wall-clock window); NOT gated on churn at all — refresh
+#     coalescing makes churn spawn counts load-dominated (measured
+#     196→66, 140→64 on identical trees). churn gates on leaks only
+#     (alive timers/signals/fds); idle measures rates.
 #   - fd count: ±1; startup.fds not gated at all (still settling at the
 #     first-ready read, measured 66..74 across identical runs)
 #   - excluded entirely: qsHeader:batTimeDebounce (physical battery
@@ -152,8 +153,11 @@ REPORT="$(
 jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
     def per_scenario(a): [a[] | { (.scenario): . }] | add;
 
-    def gated: .metrics | {
-        subprocesses: (.subprocesses | with_entries(.value = .value.count)),
+    # churn gates on leaks (alive timers/signals/fds), not spawn
+    # counts: hyprsunset refreshes coalesce in-flight, so churn spawn
+    # counts are dominated by leg timing and machine load (measured
+    # 196→66, 140→64 on identical trees). idle measures rates instead.
+    def gatedCounters: {
         timerAliveByLabel: (.timers.byLabel
             | with_entries(select(.key != "qsHeader:batTimeDebounce"
                 and .key != "osd:hide"))
@@ -164,6 +168,12 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
                 | not))),
         fds: .process.fds,
     };
+
+    def gatedFor(scenario): .metrics as $m |
+        if scenario == "churn" then $m | gatedCounters
+        else ($m | gatedCounters) + {
+            subprocesses: ($m.subprocesses | with_entries(.value = .value.count)),
+        } end;
 
     def reported: {
         rssKb: .metrics.process.rssKb,
@@ -196,10 +206,6 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
         # startup.fds is still settling at the first-ready read
         # (measured 66..74 across identical runs); idle/churn fds stay ±1
         if ($path | test("^startup\\.fds$")) then 999
-        # churn spawn counts are wall-clock driven (measured ±3 across
-        # identical runs, and larger swings when leg timing shifts);
-        # a real regression like a new 1s poll is +20, still caught
-        elif ($path | test("^churn\\.subprocesses\\.")) then 10
         elif ($path | test("\\.subprocesses\\.")) then 2
         elif ($path | test("\\.fds$")) then 1
         else 0 end;
@@ -211,7 +217,7 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
 
     (per_scenario($base)) as $b | (per_scenario($cur)) as $c |
     [ (($b|keys) + ($c|keys) | unique[]) as $s |
-        ([diffs($b[$s]|gated; $c[$s]|gated; [$s])]) as $d |
+        ([diffs($b[$s]|gatedFor($s); $c[$s]|gatedFor($s); [$s])]) as $d |
         {
             scenario: $s,
             gated: [$d[] | select(verdict == "gated")],
