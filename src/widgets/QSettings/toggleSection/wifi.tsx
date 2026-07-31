@@ -234,7 +234,7 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
             )
     }
 
-    function ApRow({ ap, apCount = 1 }: { ap: AstalNetwork.AccessPoint; apCount?: number }) {
+    function ApRow({ ap }: { ap: AstalNetwork.AccessPoint }) {
         const [error, setError] = createState("")
         const [detailsOpen, setDetailsOpen] = createState(false)
         const [autoconnect, setAutoconnect] = createState<boolean | null>(null)
@@ -261,15 +261,14 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
             }, 4000)
         }
 
-        const apsSuffix = apCount > 1 ? ` · ${apCount} APs` : ""
         const status = createComputed(
             [active, pending, error, isKnown],
             (active, pending, error, known) => {
                 if (error) return error
                 if (pending) return "Connecting…"
                 if (active) return "Connected"
-                if (known) return `Known · ${ap.strength}%${apsSuffix}`
-                return `${ap.strength}%${apsSuffix}`
+                if (known) return `Known · ${ap.strength}%`
+                return `${ap.strength}%`
             },
         )
         const statusClass = error.as(e => (e ? ["status", "error"] : ["status"]))
@@ -543,30 +542,14 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
         )
     }
 
-    // one row per SSID: several APs broadcasting the same name merge
-    // into the strongest one's row, with the AP count in the subtitle
-    const groups = accessPoints.as(aps => {
-        const bySsid = new Map<string, AstalNetwork.AccessPoint[]>()
-        for (const ap of aps) {
-            const g = bySsid.get(ap.ssid)
-            if (g) g.push(ap)
-            else bySsid.set(ap.ssid, [ap])
-        }
-        return (
-            [...bySsid.values()]
-                .map(g => ({
-                    best: g.reduce((a, b) => (b.strength > a.strength ? b : a)),
-                    count: g.length,
-                }))
-                // known first, then by strength
-                .sort(
-                    (a, c) =>
-                        Number(known(c.best)) - Number(known(a.best)) ||
-                        c.best.strength - a.best.strength,
-                )
-                .slice(0, 12)
-        )
-    })
+    // flat per-AP list: no SSID merging and no band sections — each
+    // access point is its own row, the band shows as the icon badge.
+    // known first, then by strength
+    const sortedAps = accessPoints.as(aps =>
+        [...aps]
+            .sort((a, b) => Number(known(b)) - Number(known(a)) || b.strength - a.strength)
+            .slice(0, 12),
+    )
 
     return (
         <box orientation={Gtk.Orientation.VERTICAL}>
@@ -608,7 +591,7 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                     the parent's end on every update, which would float
                     the join row above the networks */}
                     <box orientation={Gtk.Orientation.VERTICAL}>
-                        <For each={groups}>{g => <ApRow ap={g.best} apCount={g.count} />}</For>
+                        <For each={sortedAps}>{ap => <ApRow ap={ap} />}</For>
                     </box>
                     <box cssName={"button"} spacing={5}>
                         <Gtk.GestureClick
