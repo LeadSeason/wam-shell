@@ -2,8 +2,7 @@ import { Gtk } from "ags/gtk4"
 import GLib from "gi://GLib?version=2.0"
 import { timeout } from "ags/time"
 import AstalWp from "gi://AstalWp?version=0.1"
-import AstalNetwork from "gi://AstalNetwork?version=0.1"
-import { createBinding, createComputed, createState, onCleanup, With } from "gnim"
+import { createBinding, createState, onCleanup, With } from "gnim"
 import CommandRegistry from "../../../lib/requestHandler"
 import { SliderSection } from "../../QSettings/SliderSection"
 import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1"
@@ -13,7 +12,6 @@ import trayNeedsAttention from "../../../lib/trayAttention"
 import vpnStatus from "../../../lib/vpn"
 import Brightness from "../../../lib/brightness"
 import { execAsync } from "../../../lib/metrics"
-import { OverlayIcon, bandBadgeOf } from "../../QSettings/toggleSection/ToggleButton"
 import Config from "../../../config"
 
 const registry = CommandRegistry.get_default()
@@ -186,31 +184,6 @@ function vpnIndicator() {
     ) as Gtk.Image // TS Jank
 }
 
-function wifiIndicator() {
-    const wifi = AstalNetwork.get_default().wifi
-    // no wifi device on this machine
-    if (!wifi) return null
-
-    const activeAp = createBinding(wifi, "activeAccessPoint")
-    // only visible while associated, like the vpn indicator
-    const visible = createComputed(
-        [createBinding(wifi, "enabled"), createBinding(wifi, "ssid")],
-        (enabled, ssid) => enabled && !!ssid,
-    )
-    return (
-        <box
-            cssClasses={["wifiIndicator"]}
-            tooltipText={createBinding(wifi, "ssid")}
-            visible={visible}
-        >
-            <OverlayIcon
-                icon={createBinding(wifi, "iconName")}
-                badge={activeAp.as(ap => (ap ? bandBadgeOf(ap.frequency) : ""))}
-            />
-        </box>
-    ) as Gtk.Widget // TS Jank
-}
-
 function Battery() {
     const bat = AstalBattery.get_default()
     const batIcon = createBinding(bat, "batteryIconName")
@@ -338,7 +311,6 @@ function ButtonLabel() {
                 </With>
             )}
             {brightnessWidget()}
-            {wifiIndicator()}
             {powerProfile()}
             {vpnIndicator()}
             {bat.isPresent && <Battery />}

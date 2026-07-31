@@ -2,46 +2,11 @@ import { Gtk } from "ags/gtk4"
 import Pango from "gi://Pango?version=1.0"
 import { Accessor, Setter } from "gnim"
 
-/** badge text for a frequency in MHz: "" hides the badge
- *  (2.4GHz gets none, by design) */
-export function bandBadgeOf(freq: number): string {
-    if (freq >= 5925) return "6G"
-    if (freq >= 5000) return "5G"
-    return ""
-}
-
-/** icon with a small band badge pill overlaid on the bottom-right;
- *  empty badge text renders just the icon */
-export function OverlayIcon({
-    icon,
-    badge,
-}: {
-    icon: string | Accessor<string>
-    badge: string | Accessor<string>
-}) {
-    const badgeAcc = typeof badge === "string" ? new Accessor(() => badge) : badge
-    return (
-        <Gtk.Overlay>
-            <image iconName={icon} />
-            <label
-                $type="overlay"
-                cssClasses={badgeAcc.as(b => ["bandBadge", b === "6G" ? "b6" : "b5"])}
-                label={badgeAcc}
-                visible={badgeAcc.as(b => b !== "")}
-                halign={Gtk.Align.END}
-                valign={Gtk.Align.END}
-            />
-        </Gtk.Overlay>
-    )
-}
-
 interface TbButtonProps {
     label: string | Accessor<string>
     subtitle?: string | Accessor<string>
 
     icon?: string | Accessor<string>
-    /** overlaid band badge on the icon (e.g. "5G"); empty hides it */
-    badge?: Accessor<string>
     isActive?: boolean | Accessor<boolean>
     activate?: () => void
 
@@ -61,7 +26,6 @@ export function DropdownButton({
     label,
     subtitle = undefined,
     icon = "applications-system-symbolic",
-    badge = undefined,
     isActive = false,
     activate: activate = undefined,
     navigate = undefined,
@@ -105,7 +69,7 @@ export function DropdownButton({
                         else toggleDropdown()
                     }}
                 />
-                {badge ? <OverlayIcon icon={icon} badge={badge} /> : <image iconName={icon} />}
+                <image iconName={icon} />
                 <box orientation={Gtk.Orientation.VERTICAL} valign={Gtk.Align.CENTER} hexpand>
                     {/* bounded natural width + ellipsize: a wide fallback
                     font (missing Nerd Fonts) must not inflate the card */}
