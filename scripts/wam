@@ -39,6 +39,9 @@ usage: wam <command>
                    manage the systemd user service ($SERVICE)
   harvest setup    guided Harvest credentials setup (token, account id,
                    writes ~/.config/wam-shell/harvest.env, verifies)
+  config <edit|path|show>
+                   edit the config in $EDITOR (seeds the commented
+                   template on first run), print its path, print it
   status           install, runtime and autostart state at a glance
   version          installed commit of the shell
 EOF
@@ -245,6 +248,79 @@ cmd_autostart() {
     esac
 }
 
+# --- config ---------------------------------------------------------------------
+
+# the file the shell reads first, following its search order (xdg user
+# config, ~/.config fallback, then the repo copies)
+active_config_file() {
+    local config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+    local candidates=(
+        "$config_home/wam-shell/config.toml"
+        "$HOME/.config/wam-shell/config.toml"
+        "$ROOT/config-override.toml"
+        "$ROOT/config.toml"
+    )
+    local c
+    for c in "${candidates[@]}"; do
+        [[ -f "$c" ]] && {
+            printf '%s\n' "$c"
+            return
+        }
+    done
+    printf '%s\n' "${candidates[0]}"
+}
+
+cmd_config() {
+    case "${1:-}" in
+        edit) cmd_config_edit ;;
+        path) cmd_config_path ;;
+        show) cmd_config_show ;;
+        *) die "usage: wam config <edit|path|show>" ;;
+    esac
+}
+
+cmd_config_path() {
+    active_config_file
+}
+
+cmd_config_show() {
+    local f
+    f="$(active_config_file)"
+    if [[ -f "$f" ]]; then
+        log "$f"
+        cat "$f"
+    else
+        log "no config file — running on defaults. create one with: wam config edit"
+    fi
+}
+
+cmd_config_edit() {
+    require_install # the commented template ships with the install
+    local config_home dir file
+    config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+    dir="$config_home/wam-shell"
+    file="$dir/config.toml"
+    if [[ ! -f "$file" ]]; then
+        mkdir -p "$dir"
+        cp "$ROOT/config.toml" "$file"
+        log "Created $file from the commented template"
+    fi
+    local editor="${EDITOR:-${VISUAL:-}}"
+    if [[ -z "$editor" ]]; then
+        local e
+        for e in nano vim vi; do
+            command -v "$e" >/dev/null && {
+                editor="$e"
+                break
+            }
+        done
+    fi
+    [[ -n "$editor" ]] || die "no editor found — set \$EDITOR"
+    # unquoted: allows "code --wait" style EDITOR values
+    $editor "$file"
+    log "Most options apply on restart: wam restart"
+}
+
 # --- harvest -------------------------------------------------------------------
 
 cmd_harvest() {
@@ -385,6 +461,10 @@ case "${1:-}" in
     harvest)
         shift
         cmd_harvest "$@"
+        ;;
+    config)
+        shift
+        cmd_config "$@"
         ;;
     status) cmd_status ;;
     version) cmd_version ;;
