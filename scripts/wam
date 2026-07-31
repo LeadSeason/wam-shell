@@ -59,7 +59,20 @@ cmd_install() {
 
 cmd_update() {
     log "Pulling $ROOT"
-    git -C "$ROOT" pull --ff-only || die "pull was not fast-forward (local commits ahead?)"
+    git -C "$ROOT" fetch origin || die "fetch failed"
+    local branch upstream
+    branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
+    upstream="$(git -C "$ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
+    if [[ -n "$upstream" ]]; then
+        git -C "$ROOT" merge --ff-only "$upstream" ||
+            die "not fast-forward: $branch has diverged from $upstream"
+    else
+        # local develop-* branches usually have no upstream: sync with
+        # develop instead of failing with git's "no tracking information"
+        log "No upstream for $branch — syncing with origin/develop"
+        git -C "$ROOT" merge --ff-only origin/develop ||
+            die "not fast-forward: $branch has commits not in origin/develop — merge it yourself: git merge origin/develop"
+    fi
     log "pnpm i"
     (cd "$ROOT" && pnpm i)
     if systemctl --user is-active "$SERVICE" &>/dev/null; then
