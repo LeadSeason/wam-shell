@@ -37,6 +37,8 @@ usage: wam <command>
   force-start      kill EVERY ags instance, then start (stale-instance broom)
   autostart <enable|disable|status>
                    manage the systemd user service ($SERVICE)
+  harvest setup    guided Harvest credentials setup (token, account id,
+                   writes ~/.config/wam-shell/harvest.env, verifies)
   status           install, runtime and autostart state at a glance
   version          installed commit of the shell
 EOF
@@ -243,6 +245,84 @@ cmd_autostart() {
     esac
 }
 
+# --- harvest -------------------------------------------------------------------
+
+cmd_harvest() {
+    case "${1:-}" in
+        setup) cmd_harvest_setup ;;
+        *) die "usage: wam harvest setup" ;;
+    esac
+}
+
+cmd_harvest_setup() {
+    command -v curl >/dev/null || die "curl is required for credential verification"
+
+    local env_dir env_file
+    env_dir="${XDG_CONFIG_HOME:-$HOME/.config}/wam-shell"
+    env_file="$env_dir/harvest.env"
+
+    if [[ -f "$env_file" ]]; then
+        local existing
+        existing="$(grep -oE '^HARVEST_ACCOUNT_ID=.*' "$env_file" 2>/dev/null | head -1)"
+        log "Existing credentials found ($existing)"
+        read -r -p "Replace them? [y/N] " replace
+        [[ "$replace" =~ ^[Yy] ]] || {
+            log "Kept existing credentials"
+            return
+        }
+    fi
+
+    cat <<'EOF'
+
+  1. Open https://id.getharvest.com/developers (sign in if asked)
+  2. Choose "Create New Personal Access Token", name it e.g. wam-shell
+  3. Copy the token, and the account id shown next to it
+
+EOF
+    read -r -p "Press Enter when you have both... "
+
+    local token account
+    read -r -s -p "Personal Access Token: " token
+    echo
+    read -r -p "Account ID: " account
+
+    [[ -n "$token" ]] || die "token must not be empty"
+    [[ "$account" =~ ^[0-9]+$ ]] || die "account id must be numeric"
+
+    log "Verifying with the Harvest API…"
+    local response code
+    response="$(curl -sS --max-time 15 \
+        -H "Authorization: Bearer $token" \
+        -H "Harvest-Account-Id: $account" \
+        -H "User-Agent: wam-shell" \
+        -w '\n%{http_code}' \
+        https://api.harvestapp.com/v2/users/me)" || die "could not reach the Harvest API"
+    code="${response##*$'\n'}"
+    response="${response%$'\n'*}"
+
+    if [[ "$code" != "200" ]]; then
+        die "verification failed (HTTP $code) — check the token and account id and run again"
+    fi
+    local name
+    name="$(printf '%s' "$response" | grep -oE '"first_name":"[^"]*"' | cut -d'"' -f4) $(printf '%s' "$response" | grep -oE '"last_name":"[^"]*"' | cut -d'"' -f4)"
+
+    # write with owner-only permissions from the start
+    mkdir -p "$env_dir"
+    (umask 077 && printf 'HARVEST_TOKEN=%s\nHARVEST_ACCOUNT_ID=%s\n' "$token" "$account" >"$env_file")
+    chmod 600 "$env_file"
+
+    log "Verified — signed in as ${name:-unknown}. Credentials written to $env_file (mode 600)"
+    cat <<EOF
+
+  Last step: enable the widget in your config:
+
+      [harvest]
+      enabled = true
+
+  Then restart the shell: wam restart
+EOF
+}
+
 # --- status / version -----------------------------------------------------------
 
 cmd_status() {
@@ -301,6 +381,10 @@ case "${1:-}" in
     autostart)
         shift
         cmd_autostart "$@"
+        ;;
+    harvest)
+        shift
+        cmd_harvest "$@"
         ;;
     status) cmd_status ;;
     version) cmd_version ;;
