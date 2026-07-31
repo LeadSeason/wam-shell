@@ -7,11 +7,15 @@ Not merged.
 ## What it does
 
 - Days with events get a mark (bold) on the `Gtk.Calendar` in the clock
-  popover; clicking a day lists its events below the calendar.
-- All calendars of the account merge into one list, each event carrying
-  its calendar's color (Google's `backgroundColor`) and name (tooltip).
+  popover; below it an **agenda** (Google's schedule layout) lists days
+  with events from the selected day onward — "Today", "Tomorrow", then
+  dated headers, empty days skipped. Clicking a day in the month grid
+  starts the agenda there.
+- All calendars of **every signed-in Google account** merge into one
+  list, each event carrying its calendar's color (Google's
+  `backgroundColor`) and name + account in the tooltip.
   `hidden_calendars` in `[calendar]` hides named calendars
-  (e.g. "Birthdays").
+  (e.g. "Birthdays"); `"email:Name"` hides one in a single account.
 - Sync covers ~5 months around the viewed month (`[focus-1mo,
   focus+4mo)`), re-syncs when navigation leaves the loaded window, and
   refreshes every `poll_minutes` (default 15) plus on popover open
@@ -21,14 +25,18 @@ Not merged.
 
 ## Setup (also in config.toml comments)
 
-1. Google Cloud Console → project → enable **Google Calendar API** →
-   Credentials → **OAuth client ID** → type **Desktop app**.
-2. `~/.config/wam-shell/google.env` (chmod 600):
-   `GOOGLE_CLIENT_ID=...`, `GOOGLE_CLIENT_SECRET=...`
-3. `[calendar] enabled = true`, restart, open the clock popover →
-   **Sign in to Google Calendar** (browser consent once).
-4. Google warns "unverified app" for personal clients — Advanced →
-   proceed.
+1. Nothing to create: the project ships an OAuth desktop client
+   (installed-app client secrets are public per Google's docs).
+2. `[calendar] enabled = true`, restart, open the clock popover →
+   **Sign in to Google Calendar** (browser consent once per account;
+   the button becomes **+ Add Google account** for the next one).
+3. Google's consent screen warns "unverified app" — Advanced →
+   proceed. Managed Workspace accounts may be blocked by org policy.
+4. Prefer your own client (no warning, no test-user cap)? Create an
+   OAuth client ID (type **Desktop app**) at console.cloud.google.com
+   and drop it in `~/.config/wam-shell/google.env` (chmod 600):
+   `GOOGLE_CLIENT_ID=...`, `GOOGLE_CLIENT_SECRET=...` — it wins over
+   the embedded one.
 
 ## Design notes
 
@@ -36,14 +44,16 @@ Not merged.
   credentials, perms warning, Soup session, metrics wrappers, explicit
   `init()` from `app.tsx`, `dispose()`.
 - Auth: OAuth2 installed-app flow, loopback redirect (RFC 8252) on a
-  random 127.0.0.1 port via `Gio.SocketListener`; refresh token at
-  `~/.config/wam-shell/gcal-tokens.json`. Read-only scope only
-  (`calendar.readonly`). `invalid_grant` → tokens wiped, popover shows
-  the sign-in button again.
-- Sync is a **full refetch** of the window (no syncToken/incremental
-  machinery): small, quota-cheap, stateless. Pagination capped at 10
-  pages per request. A failed calendar degrades to zero events for it
-  instead of failing the merge.
+  random 127.0.0.1 port via `Gio.SocketListener`; **one OAuth client,
+  any number of accounts** — refresh tokens per account at
+  `~/.config/wam-shell/gcal-tokens.json`, keyed by email (discovered
+  from the primary calendar's id, no extra scope). Read-only scope only
+  (`calendar.readonly`). `invalid_grant` drops just that account;
+  the popover's sign-in button adds/re-authorizes accounts.
+- Sync is a **full refetch** of the window per account (no syncToken/
+  incremental machinery): small, quota-cheap, stateless. Pagination
+  capped at 10 pages per request. A failed account or calendar degrades
+  to zero events for it instead of failing the merge.
 - Google quirks handled in `mapGoogleEvent` (unit-tested): `status:
   cancelled` dropped, all-day `end.date` is **exclusive**, timed events
   ending at midnight don't spill, zero-length events cover their start
