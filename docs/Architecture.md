@@ -17,7 +17,7 @@ One page on how the pieces fit.
   `requestHandler`, … Widgets never talk to the system directly; they
   consume these.
 - **`src/widgets/`** — GTK4/JSX UI. Bars per monitor, the quick settings
-  popup, notification popups + center, launcher, media popup, harvest
+  popup, notification popups + center, media popup, harvest
   popup, OSD, sway scratchpad.
 
 ## Windows
@@ -27,17 +27,16 @@ Two lifetimes:
 - **Eager** (built at startup): the bars and the OSD — they react to
   events and must always exist (a hidden layer window still claims
   input, so visibility is bound on content).
-- **Lazy** (built on first use): launcher, notification center, media
+- **Lazy** (built on first use): notification center, media
   popup, harvest popup. They register a request command at import and
-  construct their window inside `ensureWindow()` on first toggle —
-  heavy resources (the AstalApps db) build there too, not at startup.
+  construct their window inside `ensureWindow()` on first toggle.
 
 ## IPC
 
 `src/lib/requestHandler.ts` is a singleton command registry. Widgets
 `register()` named commands; external callers use
 `ags request -i wam-shell <name>` (compositor keybinds toggle the
-launcher and notification center this way).
+notification center this way).
 
 ## Styling
 
