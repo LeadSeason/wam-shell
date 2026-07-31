@@ -7,10 +7,9 @@
   the shell defers to it at startup (`[notifications] daemon`, default
   "auto"); "wam-shell"/"system" force one or the other. Running swaync
   alongside is still not recommended.
-- The app launcher and notification center toggle via request
-  commands: `ags request -i wam-shell launcher` and
-  `ags request -i wam-shell notifications` (bind these in the
-  compositor config).
+- The notification center toggles via a request command:
+  `ags request -i wam-shell notifications` (bind it in the compositor
+  config).
 - Performance counters: start the shell with `WAM_SHELL_METRICS=1`,
   then query `ags request -i <instance> metrics` (single-line JSON,
   prefixed with `<instance>: ` by the request handler) or
