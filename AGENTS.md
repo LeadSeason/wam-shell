@@ -100,7 +100,10 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   `org.freedesktop.Notifications`, and `ags quit` is only ever called
   with `-i wam-shell-test`.
 - A bare checkout is not runnable (`.sys/`, `node_modules/` are
-  gitignored): run `scripts/setup.sh` (or `pnpm i`) first.
+  gitignored): run `scripts/wam install` (or `scripts/setup.sh`) first.
+  `scripts/wam` is the user-facing management command: install, update,
+  start/stop/restart/force-start, and `autostart` (systemd user
+  service).
 
 ## Issues
 

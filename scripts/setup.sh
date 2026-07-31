@@ -174,6 +174,8 @@ command -v ags >/dev/null || { log "ERROR: ags not found after install."; exit 1
 
 link_ags_js
 
+bash "$ROOT/scripts/install-fonts.sh"
+
 log "Installing node modules"
 (cd "$ROOT" && pnpm i)
 
