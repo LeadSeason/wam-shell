@@ -39,9 +39,11 @@ usage: wam <command>
                    manage the systemd user service ($SERVICE)
   harvest setup    guided Harvest credentials setup (token, account id,
                    writes ~/.config/wam-shell/harvest.env, verifies)
-  config <edit|path|show>
+  config <edit|path|show|diff|sync>
                    edit the config in $EDITOR (seeds the commented
-                   template on first run), print its path, print it
+                   template on first run), print its path, print it,
+                   list template options your file predates (diff),
+                   rewrite it as latest template + your values (sync)
   status           install, runtime and autostart state at a glance
   version          installed commit of the shell
 EOF
@@ -101,7 +103,8 @@ cmd_update() {
     require_install
     log "Pulling $ROOT"
     git -C "$ROOT" fetch origin || die "fetch failed"
-    local branch upstream
+    local branch upstream prev
+    prev="$(git -C "$ROOT" rev-parse HEAD)"
     branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
     upstream="$(git -C "$ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
     if [[ -n "$upstream" ]]; then
@@ -113,6 +116,11 @@ cmd_update() {
         log "No upstream for $branch — syncing with origin/master"
         git -C "$ROOT" merge --ff-only origin/master ||
             die "not fast-forward: $branch has commits not in origin/master — merge it yourself: git merge origin/master"
+    fi
+    # awareness: the update touched the config template -> there may be
+    # new options the user's config predates
+    if [[ -n "$(git -C "$ROOT" diff --name-only "$prev"..HEAD -- config.toml)" ]]; then
+        log "The config template changed in this update — see what's new: wam config diff"
     fi
     log "pnpm i"
     (cd "$ROOT" && pnpm i)
@@ -275,7 +283,9 @@ cmd_config() {
         edit) cmd_config_edit ;;
         path) cmd_config_path ;;
         show) cmd_config_show ;;
-        *) die "usage: wam config <edit|path|show>" ;;
+        diff) cmd_config_diff ;;
+        sync) cmd_config_sync ;;
+        *) die "usage: wam config <edit|path|show|diff|sync>" ;;
     esac
 }
 
@@ -319,6 +329,75 @@ cmd_config_edit() {
     # unquoted: allows "code --wait" style EDITOR values
     $editor "$file"
     log "Most options apply on restart: wam restart"
+}
+
+cmd_config_diff() {
+    require_install # diffs against the install's template
+    local f
+    f="$(active_config_file)"
+    [[ -f "$f" ]] || die "no user config yet — run: wam config edit"
+    if [[ "$f" == "$ROOT/config.toml" || "$f" == "$ROOT/config-override.toml" ]]; then
+        log "your active config IS the install's copy ($f) — always current, nothing to diff"
+        return
+    fi
+
+    # template options the user file never mentions (commented or not),
+    # grouped by section; each key listed once
+    local missing=0 section printed_section="" key
+    while IFS=$'\t' read -r section key; do
+        [[ -z "$key" ]] && continue
+        grep -qE "^[[:space:]]*#?[[:space:]]*${key}[[:space:]]*=" "$f" && continue
+        if [[ "$section" != "$printed_section" ]]; then
+            printf '  %s\n' "$section"
+            printed_section="$section"
+        fi
+        printf '    %s\n' "$key"
+        missing=$((missing + 1))
+    done < <(awk '
+        /^# ═/ { s = "(top level)"; next }
+        /^# \[/ { s = $0; sub(/^# */, "", s); next }
+        /^# [a-z_]+[ \t]*=/ {
+            line = $0; sub(/^# */, "", line)
+            split(line, a, /[ \t]/)
+            if (!(a[1] in seen)) {
+                seen[a[1]] = 1
+                print (s == "" ? "(top level)" : s) "\t" a[1]
+            }
+        }
+    ' "$ROOT/config.toml")
+
+    if [[ "$missing" -eq 0 ]]; then
+        log "$f mentions every option in the template"
+    else
+        log "$missing option(s) above are new since your config was written (details in $ROOT/config.toml; merge them in with: wam config sync)"
+    fi
+}
+
+cmd_config_sync() {
+    require_install # the new template ships with the install
+    local f
+    f="$(active_config_file)"
+    [[ -f "$f" ]] || die "no user config yet — run: wam config edit"
+    if [[ "$f" == "$ROOT/config.toml" || "$f" == "$ROOT/config-override.toml" ]]; then
+        die "your active config IS the install's copy ($f) — create a user config first: wam config edit"
+    fi
+
+    # the config-override pattern: latest template + the user's active
+    # values appended. the template is all comments, so the appended
+    # sections never collide with it
+    local values backup
+    backup="$f.bak"
+    values="$(grep -vE '^[[:space:]]*(#|$)' "$f" || true)"
+    cp "$f" "$backup"
+    cp "$ROOT/config.toml" "$f"
+    if [[ -n "$values" ]]; then
+        {
+            printf '\n# --- your values (preserved by wam config sync, %s) ---\n' "$(date +%F)"
+            printf '%s\n' "$values"
+        } >>"$f"
+    fi
+    log "Synced $f with the latest template (backup: $backup)"
+    log "Review with: wam config edit — most options apply on restart: wam restart"
 }
 
 # --- harvest -------------------------------------------------------------------
