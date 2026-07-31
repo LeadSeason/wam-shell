@@ -133,10 +133,21 @@ window.Bar {
             opacity: 0.6;
         }
 
-        // masked while screen sharing: red "recording" tint on the icon,
-        // the widget hides the entry details itself
+        // masked while screen sharing: elapsed and controls are hidden
+        // by the widget, only a blinking red icon says anything at all
         &.sharing .harvestIcon {
             color: t.$red;
+            animation: harvestSharingBlink 1.2s ease-in-out infinite;
+        }
+
+        @keyframes harvestSharingBlink {
+            0%,
+            100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.25;
+            }
         }
     }
 
