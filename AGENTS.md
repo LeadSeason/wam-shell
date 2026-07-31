@@ -81,7 +81,7 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   it reports a regression, either fix it or state explicitly why the
   cost is justified.
 - `pnpm perf` compares the working tree against the merge-base with
-  origin/develop. Flags: `--base <ref>`, `--scenario <name>` (one
+  origin/master. Flags: `--base <ref>`, `--scenario <name>` (one
   scenario in about a minute), `--json` (full data).
 - Verdicts: `VERDICT: OK` (exit 0), `VERDICT: REGRESSION` (exit 1),
   `VERDICT: INCONCLUSIVE` (exit 2 — never infer a pass from it; read
@@ -120,6 +120,15 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   start/stop/restart/force-start, and `autostart` (systemd user
   service).
 
+## Privacy
+
+- Never put personal data in commits, PRs, issues, code comments or
+  docs: no SSIDs/network names, host or device names or descriptions,
+  MAC/IP addresses, usernames, real names, media titles, or account
+  details. Use placeholders ("MyWiFi") or generic descriptions ("a
+  secondary machine"). The same applies to screenshots and log
+  excerpts quoted in artifacts.
+
 ## Issues
 
 - When work surfaces a bug or problem unrelated to the current branch,
@@ -132,8 +141,8 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 - One logical change per commit; split unrelated changes into separate
   commits when asked.
 - Always sync before merging: `git fetch origin`, then merge
-  `origin/develop` into the branch and resolve conflicts there, before
-  merging the branch into develop. Several sessions commit to develop;
+  `origin/master` into the branch and resolve conflicts there, before
+  merging the branch into master. Several sessions commit to master;
   a stale branch conflicts at PR time and has orphaned commits before.
 - Before merging a branch, do a code review of its changes
   (correctness, races, leaks, consistency) unless one was already done

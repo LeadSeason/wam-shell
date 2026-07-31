@@ -10,7 +10,7 @@ import Pango from "gi://Pango?version=1.0"
 // (per-AP) CRASHES on stale/dropped access point objects (nm-access-point
 // assertion + segfault) — never call methods on AP objects, read the
 // client's connection list instead. Match by SSID, not profile name:
-// they differ ("Tenzin 1" for SSID "Tenzin")
+// they differ (NM appends a counter, e.g. "MyWiFi 1" for SSID "MyWiFi")
 const nmClient = NM.Client.new(null)
 
 const [savedNetworks, setSavedNetworks] = createState<Map<string, string>>(new Map())
@@ -201,8 +201,8 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
             }
             const restore = () => {
                 if (previous && previous !== ap.ssid) {
-                    // profile names differ from SSIDs ("Tenzin 1" for
-                    // SSID "Tenzin") — nmcli needs the profile name
+                    // profile names differ from SSIDs (NM appends a
+                    // counter, e.g. "MyWiFi 1") — nmcli needs the profile name
                     const prevId = savedNetworks.get().get(previous) ?? previous
                     execAsync(["nmcli", "connection", "up", "id", prevId]).catch(e =>
                         console.warn("wifi restore failed:", e),
