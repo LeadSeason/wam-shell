@@ -296,7 +296,7 @@
 #           shows while idle inside this window (dimmed, with the day
 #           total). windows may wrap midnight ("22:00"-"06:00"). default
 #           empty = the widget only appears while a timer runs
-# mask_when_sharing - "streaming mode": while screen sharing, hide the
+# hide_when_screen_sharing - "streaming mode": while screen sharing, hide the
 #           elapsed and the pause button and mask project/task (tooltip
 #           included); the pill shows only a blinking icon, so viewers
 #           can't tell a timer is running. set false to disable the mask
@@ -309,4 +309,4 @@
 # recents = 5
 # work_start = ""
 # work_end = ""
-# mask_when_sharing = true
+# hide_when_screen_sharing = true

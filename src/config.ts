@@ -389,7 +389,7 @@ function getHarvestConfig() {
         workStart,
         workEnd,
         // while screen sharing, mask entry details on the panel
-        maskWhenSharing: get("mask_when_sharing", true),
+        hideWhenScreenSharing: get("hide_when_screen_sharing", true),
     }
 }
 
