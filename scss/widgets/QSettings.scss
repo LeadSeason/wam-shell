@@ -414,6 +414,16 @@ window#QSettings {
         }
     }
 
+    // details-panel actions (auto-connect, forget): plain rows, no
+    // button frame — a hover tint is the only affordance
+    .wifiDetailAction {
+        padding: 2px 4px;
+        border-radius: s.$radius;
+        &:hover {
+            background-color: t.$accent10;
+        }
+    }
+
     // fixed-width action slots keep the lock/details cluster aligned
     // across rows (a hidden icon keeps its slot). the details chevron
     // only fades in on row hover — the slot keeps its width, so no

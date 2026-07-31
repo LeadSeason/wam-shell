@@ -464,12 +464,7 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                                 />
                             </box>
                         ))}
-                        <box
-                            visible={isKnown}
-                            cssName={"button"}
-                            spacing={5}
-                            cssClasses={autoconnect.as(a => (a === true ? ["active"] : [""]))}
-                        >
+                        <box visible={isKnown} spacing={5} cssClasses={["wifiDetailAction"]}>
                             <Gtk.GestureClick button={1} onPressed={toggleAutoconnect} />
                             <label label={"Auto-connect"} hexpand xalign={0} />
                             <image
@@ -480,8 +475,8 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                         </box>
                         <box
                             visible={createComputed([active, isKnown], (a, k) => !a && k)}
-                            cssName={"button"}
                             spacing={5}
+                            cssClasses={["wifiDetailAction"]}
                         >
                             <Gtk.GestureClick
                                 button={1}
@@ -595,11 +590,17 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                         <button
                             cssClasses={["rescan"]}
                             tooltipText={"Scan again"}
-                            // always visible; only disabled mid-scan
+                            // always visible; disabled and spinning mid-scan
                             sensitive={rescanning.as(r => !r)}
                             onClicked={rescan}
                         >
-                            <image iconName="view-refresh-symbolic" />
+                            <box>
+                                <Gtk.Spinner $={self => self.start()} visible={rescanning} />
+                                <image
+                                    iconName="view-refresh-symbolic"
+                                    visible={rescanning.as(r => !r)}
+                                />
+                            </box>
                         </button>
                     </box>
                     {/* For in its own container: it re-appends children at
