@@ -214,6 +214,43 @@
 # work_end = ""
 # hide_when_screen_sharing = true
 
+# [calendar] - Google Calendar in the clock popover: days with events
+#              get a mark on the month grid, and an agenda (schedule
+#              view, from the selected day onward) lists what's coming
+#              with per-calendar colors. Multiple calendars and multiple
+#              Google ACCOUNTS are merged into one view.
+# Auth: nothing to set up — the project ships an OAuth desktop client
+#       (Google treats installed-app client secrets as public). enable
+#       here, restart, open the clock popover and click "Sign in to
+#       Google Calendar" — a browser tab asks for read-only calendar
+#       access once per account; repeat for every Google account you
+#       want (the button turns into "+ Add Google account"). Refresh
+#       tokens are stored in ~/.config/wam-shell/gcal-tokens.json.
+#       Google's consent screen warns "unverified app" — Advanced →
+#       proceed. to use your OWN client instead (no warning, no
+#       test-user cap): create an OAuth client ID (type "Desktop app")
+#       at console.cloud.google.com and put it in
+#       ~/.config/wam-shell/google.env (chmod 600), NOT in this file:
+#         GOOGLE_CLIENT_ID=...
+#         GOOGLE_CLIENT_SECRET=...
+#       The same names as real environment variables also work and win
+#       over both the file and the embedded client.
+#
+# enabled - master toggle (requires the credentials above). default false
+# poll_minutes - minutes between syncs with Google. the popover also
+#                refreshes when opened (at most once a minute). clamped
+#                to >= 5. default 15
+# hidden_calendars - calendar names hidden BY DEFAULT, matched exactly
+#                against the names Google shows (e.g. "Birthdays",
+#                "Tasks"). a bare name hides that calendar in every
+#                account; "email:Name" hides it only in that account.
+#                the popover's Calendars pane toggles visibility at
+#                runtime (session-only, overrides this). default []
+# [calendar]
+# enabled = false
+# poll_minutes = 15
+# hidden_calendars = []
+
 # [github] - GitHub notifications inside the notification center: your
 #            unread GitHub inbox merges into the center's list, and a
 #            GitHub icon in the center's header filters to just them.
@@ -243,7 +280,6 @@
 # enabled = false
 # poll_minutes = 5
 # popups = true
-
 # ════════════════════════════════════════════════════════════════════
 # Quick settings popup
 # ════════════════════════════════════════════════════════════════════

@@ -15,6 +15,12 @@
   (`src/lib/github.ts` is the first, `[github]` + `github.env`), a
   filter icon per provider in the center's header. New providers
   (YouTube, ProtonMail) need no center changes.
+- The clock popover is a Google Calendar (`src/lib/gcal.ts`,
+  `[calendar]`): OAuth installed-app flow over loopback (the project
+  ships a desktop client; `google.env`/env vars override it), one
+  sign-in per Google account, tokens in
+  `~/.config/wam-shell/gcal-tokens.json`. Design notes + resume
+  checklist: `docs/gcal.md`.
 - Performance counters: start the shell with `WAM_SHELL_METRICS=1`,
   then query `ags request -i <instance> metrics` (single-line JSON,
   prefixed with `<instance>: ` by the request handler) or
@@ -88,6 +94,10 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 - `pnpm test` runs the unit suite: tests in `tests/*.test.ts` are bundled
   with `ags bundle` and run under `gjs` against the real modules (see
   `tests/run.sh`). New suites must be registered in `tests/main.ts` —
+  the bundler needs static imports. Run the suite once at the end of a
+  piece of work — before creating the PR and/or merging, whichever
+  comes last, same checkpoint as prettier and the perf gate. Don't run
+  it on every intermediate iteration.
   the bundler needs static imports.
 - `pnpm test:smoke` (opt-in) boots the real shell as an isolated
   `wam-shell-test` instance and asserts a clean startup.

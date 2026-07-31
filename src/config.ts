@@ -393,6 +393,39 @@ function getHarvestConfig() {
     }
 }
 
+// Google Calendar in the clock popover. Section-only keys: no top-level
+// fallbacks exist for these names and none should leak in
+function getCalendarConfig() {
+    const c = configData.calendar ?? {}
+
+    let pollMinutes = c["poll_minutes"] ?? 15
+    if (typeof pollMinutes !== "number" || pollMinutes <= 0) {
+        console.error(
+            `Config "calendar.poll_minutes" must be a positive number, got "${pollMinutes}"`,
+        )
+        pollMinutes = 15
+    }
+    // floor: a config typo must not burn the Calendar API quota
+    if (pollMinutes < 5) pollMinutes = 5
+
+    let hiddenCalendars = c["hidden_calendars"] ?? []
+    if (
+        !Array.isArray(hiddenCalendars) ||
+        hiddenCalendars.some((x: any) => typeof x !== "string")
+    ) {
+        console.error(
+            `Config "calendar.hidden_calendars" must be a list of strings, got "${JSON.stringify(hiddenCalendars)}"`,
+        )
+        hiddenCalendars = []
+    }
+
+    return {
+        enabled: c["enabled"] ?? false,
+        pollMinutes,
+        hiddenCalendars,
+    }
+}
+
 // GitHub notifications in the notification center. Section-only keys:
 // no top-level fallbacks exist for these names and none should leak in
 function getGitHubConfig() {
@@ -660,8 +693,8 @@ export default class Config {
     static notifications = getNotificationsConfig()
     static sleepTimer = getSleepTimerConfig()
     static harvest = getHarvestConfig()
+    static calendar = getCalendarConfig()
     static github = getGitHubConfig()
-
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`
 
