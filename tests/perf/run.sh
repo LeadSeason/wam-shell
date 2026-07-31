@@ -21,7 +21,7 @@ cd "$ROOT"
 INSTANCE="wam-shell-perf"
 WINDOW=20
 CHURN_CYCLES=100
-CHURN_COMMANDS=(launcher notifications media harvest qSettings)
+CHURN_COMMANDS=(notifications media harvest qSettings)
 
 TMP=""
 SHELL_PID=""

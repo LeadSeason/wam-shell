@@ -21,7 +21,6 @@ import "./src/lib/metrics"
 // request-driven windows register their toggle command at import and
 // build their window lazily on first use instead of at startup
 import "./src/widgets/notifications"
-import "./src/widgets/launcher"
 import "./src/widgets/mediaPopup"
 import "./src/widgets/harvestPopup"
 import { init as initHarvest } from "./src/lib/harvest"
