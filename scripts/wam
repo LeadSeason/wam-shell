@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+# wam — manage the wam-shell install: dependencies, updates, the running
+# shell, and autostart. Lives in the repo at scripts/wam; `wam install`
+# symlinks it into ~/.local/bin.
+set -euo pipefail
+
+# canonicalize: invoked via the ~/.local/bin symlink, BASH_SOURCE still
+# points at the link, which would resolve ROOT to ~/.local
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+SERVICE="wam-shell.service"
+UNIT_DIR="$HOME/.config/systemd/user"
+LOG_DIR="$HOME/.cache/wam-shell"
+INSTANCE="wam-shell"
+
+log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+die() {
+    printf '\033[1;31merror:\033[0m %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    cat <<EOF
+usage: wam <command>
+
+  install          install dependencies + fonts, link wam onto PATH
+                   (extra args are passed to scripts/setup.sh, e.g. --source)
+  update           git pull --ff-only + pnpm i (restarts the service when active)
+  start            start the shell (no-op when already running)
+  stop             stop the shell
+  restart          stop, then start
+  force-start      kill EVERY ags instance, then start (stale-instance broom)
+  autostart <enable|disable|status>
+                   manage the systemd user service ($SERVICE)
+EOF
+}
+
+running() { ags list 2>/dev/null | grep -qx "$INSTANCE"; }
+service_enabled() { systemctl --user is-enabled "$SERVICE" &>/dev/null; }
+
+start_detached() {
+    mkdir -p "$LOG_DIR"
+    log "Starting wam-shell (log: $LOG_DIR/shell.log)"
+    (cd "$ROOT" && setsid nohup ags run app.tsx >"$LOG_DIR/shell.log" 2>&1 &)
+}
+
+# --- install / update ---------------------------------------------------------
+
+cmd_install() {
+    bash "$ROOT/scripts/setup.sh" "$@"
+    log "Linking wam into ~/.local/bin"
+    mkdir -p "$HOME/.local/bin"
+    ln -sfn "$ROOT/scripts/wam" "$HOME/.local/bin/wam"
+    case ":$PATH:" in
+        *":$HOME/.local/bin:"*) ;;
+        *) log "NOTE: ~/.local/bin is not on PATH" ;;
+    esac
+    log "Done. Start now with: wam start — or autostart on login: wam autostart enable"
+}
+
+cmd_update() {
+    log "Pulling $ROOT"
+    git -C "$ROOT" pull --ff-only || die "pull was not fast-forward (local commits ahead?)"
+    log "pnpm i"
+    (cd "$ROOT" && pnpm i)
+    if systemctl --user is-active "$SERVICE" &>/dev/null; then
+        log "Restarting the service"
+        systemctl --user restart "$SERVICE"
+    elif running; then
+        log "Shell is running outside the service — apply with: wam restart"
+    fi
+}
+
+# --- lifecycle ------------------------------------------------------------------
+
+cmd_start() {
+    if service_enabled; then
+        systemctl --user start "$SERVICE"
+        return
+    fi
+    if running; then
+        log "already running"
+        return
+    fi
+    start_detached
+}
+
+cmd_stop() {
+    if service_enabled; then
+        systemctl --user stop "$SERVICE"
+        return
+    fi
+    if running; then
+        ags quit -i "$INSTANCE" || true
+    else
+        log "not running"
+    fi
+}
+
+cmd_restart() {
+    if service_enabled; then
+        systemctl --user restart "$SERVICE"
+        return
+    fi
+    if running; then
+        ags quit -i "$INSTANCE" || true
+        sleep 1
+    fi
+    start_detached
+}
+
+cmd_force_start() {
+    if service_enabled; then
+        log "Stopping the service first (Restart=always would respawn it)"
+        systemctl --user stop "$SERVICE"
+    fi
+    log "Quitting all ags instances"
+    local inst
+    for inst in $(ags list 2>/dev/null); do
+        ags quit -i "$inst" 2>/dev/null || true
+    done
+    # anything that ignored the polite quit: the launcher and every gjs
+    # bundle (perf/test instances included — that is the point).
+    # Patterns are anchored: a bare substring also matches any wrapper
+    # shell whose command line mentions "ags run app.tsx" (like the
+    # caller of this very script) and pkill would kill it too
+    pkill -f '^ags run app\.tsx' 2>/dev/null || true
+    pkill -f "^gjs -m /run/user/$(id -u)/ags[.]js" 2>/dev/null || true
+    sleep 1
+    if service_enabled; then
+        systemctl --user start "$SERVICE"
+    else
+        start_detached
+    fi
+}
+
+# --- autostart ------------------------------------------------------------------
+
+write_unit() {
+    mkdir -p "$UNIT_DIR"
+    local target="graphical-session.target"
+    systemctl --user list-units --type=target --no-legend 2>/dev/null | grep -q "$target" ||
+        target="default.target"
+    cat >"$UNIT_DIR/$SERVICE" <<EOF
+[Unit]
+Description=wam-shell (ags desktop shell)
+After=$target
+PartOf=$target
+
+[Service]
+Type=simple
+WorkingDirectory=$ROOT
+ExecStart=$(command -v ags) run app.tsx
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=$target
+EOF
+}
+
+cmd_autostart() {
+    case "${1:-}" in
+        enable)
+            write_unit
+            systemctl --user daemon-reload
+            systemctl --user enable "$SERVICE"
+            # make the CURRENT session's wayland env visible to services
+            # started manually from now on (uwsm does this at login)
+            systemctl --user import-environment \
+                WAYLAND_DISPLAY DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS \
+                2>/dev/null || true
+            log "Enabled (not started now — 'wam start' when ready, or it starts at login)"
+            ;;
+        disable)
+            systemctl --user disable --now "$SERVICE" 2>/dev/null || true
+            rm -f "$UNIT_DIR/$SERVICE"
+            systemctl --user daemon-reload
+            log "Disabled"
+            ;;
+        status)
+            printf 'enabled: %s\n' "$(systemctl --user is-enabled "$SERVICE" 2>&1 || true)"
+            printf 'active:  %s\n' "$(systemctl --user is-active "$SERVICE" 2>&1 || true)"
+            [[ -f "$UNIT_DIR/$SERVICE" ]] &&
+                grep -E 'WorkingDirectory|ExecStart' "$UNIT_DIR/$SERVICE" || true
+            ;;
+        *)
+            usage
+            exit 1
+            ;;
+    esac
+}
+
+# --- dispatch -------------------------------------------------------------------
+
+case "${1:-}" in
+    install)
+        shift
+        cmd_install "$@"
+        ;;
+    update) cmd_update ;;
+    start) cmd_start ;;
+    stop) cmd_stop ;;
+    restart) cmd_restart ;;
+    force-start) cmd_force_start ;;
+    autostart)
+        shift
+        cmd_autostart "$@"
+        ;;
+    "")
+        usage
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+esac

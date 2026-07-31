@@ -5,25 +5,31 @@ GTK_DEBUG=interactive ags run
 ags inspect -i [config name, wam]
 ```
 
-### Dev env install
+### Install
 
 ```shell
 git clone https://github.com/LeadSeason/wam-shell.git
 cd wam-shell
-pnpm run setup
-pnpm start
+scripts/wam install
 ```
 
-`pnpm run setup` installs ags and the required astal libraries, links the
-ags js modules into `.sys/`, installs node modules, and generates the
-TypeScript types. It picks the install method automatically:
+`wam` is the shell's management command (it links itself into
+`~/.local/bin` during install):
 
-- **Arch with an AUR helper** (paru or yay): installs `aylurs-gtk-shell`,
-  `dart-sass`, the `libastal-*-git` packages, and `i3ipc-glib-git`
-  (sway IPC) from the AUR and official repos.
-- **Everything else**: builds the astal libraries and i3ipc-glib from
-  source (build deps installed via pacman/dnf when available). You can
-  force this path with `pnpm run setup -- --source`.
+- `wam install` — dependencies (ags + astal libraries, AUR helper on
+  Arch, `--source` build otherwise), the Nerd Fonts the shell uses
+  (`ttf-firacode-nerd` + `ttf-nerd-fonts-symbols-mono` on Arch,
+  upstream release zips into `~/.local/share/fonts` elsewhere), node
+  modules and TypeScript types. Passes extra args to `scripts/setup.sh`
+  (e.g. `wam install --source`).
+- `wam update` — `git pull --ff-only` + `pnpm i` (restarts the systemd
+  service when active).
+- `wam start` / `stop` / `restart` / `force-start` — lifecycle for the
+  running shell. `force-start` kills EVERY ags instance first — the
+  fix for "some stale instance holds the bus name".
+- `wam autostart enable|disable|status` — a systemd user service
+  (`wam-shell.service`) that starts the shell at login. Enable is
+  enough once; no compositor config edits.
 
 Notes:
 
