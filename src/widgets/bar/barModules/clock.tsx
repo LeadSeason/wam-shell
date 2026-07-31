@@ -2,7 +2,7 @@ import { Gtk } from "ags/gtk4"
 import { createPoll } from "ags/time"
 import GLib from "gi://GLib?version=2.0"
 import Pango from "gi://Pango?version=1.0"
-import { For, createComputed, createState, onCleanup } from "gnim"
+import { For, createComputed, createState } from "gnim"
 import * as Gcal from "../../../lib/gcal"
 import { connect } from "../../../lib/metrics"
 
@@ -15,118 +15,311 @@ const now = createPoll(["", ""] as [string, string], 1000, () => {
     return [dt.format("%H:%M:%S")!, dt.format("%d.%m.%Y")!] as [string, string]
 })
 
-// popover content: the plain Gtk.Calendar plus, when Google Calendar is
-// configured, day marks for days with events and a list for the
-// selected day. Marks are imperative (Gtk.Calendar API), re-applied on
-// month navigation and on every sync
-function CalendarPopover() {
-    let cal: Gtk.Calendar | null = null
-    const [selectedDay, setSelectedDay] = createState(Gcal.dayKey(Date.now()))
+// weekday initials, Monday first, locale-aware (2024-01-01 was a Monday)
+const WEEKDAYS = Array.from(
+    { length: 7 },
+    (_, i) => GLib.DateTime.new_local(2024, 1, 1 + i, 12, 0, 0).format("%a") ?? "",
+)
 
-    const dayEvents = createComputed([Gcal.events, selectedDay], (evts, day) =>
-        evts.filter(e => e.days.includes(day)),
+interface GridCell extends Gcal.GridDay {
+    today: boolean
+    selected: boolean
+    dots: string[] // up to 3 calendar colors with events that day
+}
+
+// Two-pane calendar popover (GNOME-shell style): custom month grid on
+// the left — today/selected rings, per-calendar event dots — agenda of
+// upcoming days on the right with per-calendar color bars. No stock
+// Gtk.Calendar: it can't show dots, and its Adwaita chrome clashes with
+// the theme. Without Google Calendar the month pane stands alone.
+function CalendarPopover() {
+    const now0 = new Date()
+    const todayKey = Gcal.dayKey(now0.getTime())
+    const [viewY, setViewY] = createState(now0.getFullYear())
+    const [viewM, setViewM] = createState(now0.getMonth()) // 0-based
+    // the agenda starts here; clicking a day in the grid moves it
+    const [selectedDay, setSelectedDay] = createState(todayKey)
+
+    const monthLabel = createComputed(
+        [viewY, viewM],
+        (y, m) => GLib.DateTime.new_local(y, m + 1, 1, 0, 0, 0).format("%B %Y") ?? "",
     )
 
-    const dayHeader = selectedDay.as(day => {
-        const [y, m, d] = day.split("-").map(Number)
-        return GLib.DateTime.new_local(y, m, d, 0, 0, 0).format("%a, %d.%m.%Y") ?? day
-    })
-
-    function remark() {
-        if (!cal) return
-        cal.clear_marks()
-        if (!Gcal.active) return
-        // marks apply to the displayed month; GLib months are 1-based
-        const d = cal.get_date()
-        const prefix = `${d.get_year()}-${String(d.get_month()).padStart(2, "0")}-`
-        const marked = new Set<number>()
-        for (const e of Gcal.events.get()) {
-            for (const day of e.days) {
-                if (!day.startsWith(prefix)) continue
-                marked.add(Number(day.slice(8)))
+    const grid = createComputed(
+        [viewY, viewM, selectedDay, Gcal.visibleEvents],
+        (y, m, sel, evts) => {
+            // day -> up to 3 distinct calendar colors with events that day
+            const dots = new Map<string, string[]>()
+            for (const e of evts) {
+                for (const d of e.days) {
+                    let arr = dots.get(d)
+                    if (!arr) dots.set(d, (arr = []))
+                    if (arr.length < 3 && !arr.includes(e.color)) arr.push(e.color)
+                }
             }
+            return Gcal.monthGrid(y, m).map(week =>
+                week.map(
+                    (day): GridCell => ({
+                        ...day,
+                        today: day.key === todayKey,
+                        selected: day.key === sel,
+                        dots: dots.get(day.key) ?? [],
+                    }),
+                ),
+            )
+        },
+    )
+
+    // agenda pane: days with events from the selected day onward,
+    // empty days skipped (Google's schedule layout)
+    const agenda = createComputed([Gcal.visibleEvents, selectedDay], (evts, day) =>
+        Gcal.agendaGroups(evts, day, todayKey),
+    )
+
+    const nav = (delta: number) => {
+        let m = viewM.get() + delta
+        let y = viewY.get()
+        if (m < 0) {
+            m = 11
+            y--
+        } else if (m > 11) {
+            m = 0
+            y++
         }
-        for (const day of marked) cal.mark_day(day)
+        setViewY(y)
+        setViewM(m)
+        Gcal.ensureCoverage(y, m)
     }
 
-    // marks follow syncs even when the popover is closed
-    const unsub = Gcal.events.subscribe(remark)
-    onCleanup(unsub)
+    const goToday = () => {
+        const n = new Date()
+        setViewY(n.getFullYear())
+        setViewM(n.getMonth())
+        setSelectedDay(Gcal.dayKey(n.getTime()))
+        Gcal.ensureCoverage(n.getFullYear(), n.getMonth())
+    }
+
+    const pick = (day: GridCell) => {
+        setSelectedDay(day.key)
+        // a dimmed adjacent-month day: jump the view to its month
+        if (!day.inMonth) {
+            const [y, m] = day.key.split("-").map(Number)
+            setViewY(y)
+            setViewM(m - 1)
+            Gcal.ensureCoverage(y, m - 1)
+        }
+    }
+
+    const cellClass = (day: GridCell) => [
+        "calDay",
+        ...(day.inMonth ? [] : ["otherMonth"]),
+        ...(day.today ? ["today"] : []),
+        ...(day.selected ? ["selected"] : []),
+    ]
+
+    const monthPane = (
+        <box cssClasses={["monthPane"]} orientation={Gtk.Orientation.VERTICAL} spacing={6}>
+            <box cssClasses={["monthHeader"]}>
+                <button cssClasses={["monthNav"]} onClicked={() => nav(-1)}>
+                    <image iconName="go-previous-symbolic" />
+                </button>
+                <button cssClasses={["monthLabel"]} hexpand onClicked={goToday}>
+                    <label label={monthLabel} />
+                </button>
+                <button cssClasses={["monthNav"]} onClicked={() => nav(1)}>
+                    <image iconName="go-next-symbolic" />
+                </button>
+            </box>
+            <box homogeneous>
+                {WEEKDAYS.map(w => (
+                    <label cssClasses={["weekday"]} label={w} />
+                ))}
+            </box>
+            <For each={grid}>
+                {(week: GridCell[]) => (
+                    <box homogeneous>
+                        {/* plain map: cells are static within the week row
+                        the outer For rebuilds */}
+                        {week.map(day => (
+                            <button
+                                cssClasses={cellClass(day)}
+                                onClicked={() => pick(day)}
+                            >
+                                <box orientation={Gtk.Orientation.VERTICAL}>
+                                    <label label={String(day.num)} />
+                                    <box cssClasses={["calDots"]} halign={Gtk.Align.CENTER} spacing={2}>
+                                        {day.dots.map(c => (
+                                            <box
+                                                cssClasses={["calDot"]}
+                                                css={`
+                                                    background-color: ${c};
+                                                `}
+                                            />
+                                        ))}
+                                    </box>
+                                </box>
+                            </button>
+                        ))}
+                    </box>
+                )}
+            </For>
+        </box>
+    )
 
     return (
-        <box orientation={Gtk.Orientation.VERTICAL} spacing={6}>
-            {/* https://docs.gtk.org/gtk4/class.Calendar.html */}
-            <Gtk.Calendar
-                $={self => {
-                    cal = self
-                    remark()
-                    // month navigation: re-mark (marks are per displayed
-                    // month) and widen the sync window when it runs out
-                    connect(self, "notify::date", () => {
-                        remark()
-                        const d = self.get_date()
-                        Gcal.ensureCoverage(d.get_year(), d.get_month() - 1)
-                    })
-                }}
-                showWeekNumbers={true}
-                onDaySelected={self => {
-                    setSelectedDay(self.get_date().format("%Y-%m-%d")!)
-                }}
-            />
+        <box cssClasses={["clockPopover"]} spacing={16}>
             {Gcal.active ? (
-                <box orientation={Gtk.Orientation.VERTICAL} spacing={4}>
-                    <label cssClasses={["gcalDay"]} xalign={0} label={dayHeader} />
-                    <button
-                        cssClasses={["gcalSignin"]}
-                        visible={Gcal.authenticated.as(a => !a)}
-                        onClicked={() => Gcal.authenticate()}
+                <box spacing={16}>
+                    {/* picker pane: visibility toggles per calendar,
+                    sign-in/add account at the bottom */}
+                    <box
+                        cssClasses={["calPane"]}
+                        orientation={Gtk.Orientation.VERTICAL}
+                        spacing={6}
                     >
-                        <label label={"Sign in to Google Calendar"} />
-                    </button>
-                    <Gtk.ScrolledWindow
-                        visible={Gcal.authenticated}
-                        vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
-                        hscrollbarPolicy={Gtk.PolicyType.NEVER}
-                        propagateNaturalHeight
-                        maxContentHeight={160}
-                    >
-                        <box orientation={Gtk.Orientation.VERTICAL} spacing={2}>
-                            <For each={dayEvents}>
-                                {(e: Gcal.CalEvent) => (
-                                    <box cssClasses={["gcalEvent"]} spacing={6}>
-                                        {/* calendar color is API data, not
-                                        theme: the only inline style in the
-                                        shell, by necessity */}
-                                        <box
-                                            cssClasses={["gcalDot"]}
-                                            valign={Gtk.Align.CENTER}
-                                            css={`
-                                                background-color: ${e.color};
-                                            `}
-                                        />
-                                        <label
-                                            cssClasses={["gcalTime"]}
-                                            label={Gcal.timeLabel(e)}
-                                        />
-                                        <label
-                                            xalign={0}
-                                            hexpand
-                                            maxWidthChars={28}
-                                            ellipsize={Pango.EllipsizeMode.END}
-                                            tooltipText={`${e.summary} — ${e.calendarName}`}
-                                            label={e.summary}
-                                        />
-                                    </box>
-                                )}
-                            </For>
+                        <label cssClasses={["paneTitle"]} xalign={0} label={"Calendars"} />
+                        <Gtk.ScrolledWindow
+                            vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                            hscrollbarPolicy={Gtk.PolicyType.NEVER}
+                            propagateNaturalHeight
+                            maxContentHeight={250}
+                            vexpand
+                        >
+                            <box orientation={Gtk.Orientation.VERTICAL} spacing={2}>
+                                <For each={Gcal.calendars}>
+                                    {(cal: Gcal.CalInfo) => (
+                                        <button
+                                            cssClasses={["calRow"]}
+                                            tooltipText={`${cal.summary} — ${cal.account}`}
+                                            onClicked={() => Gcal.toggleCalendar(cal.id)}
+                                        >
+                                            <box spacing={6}>
+                                                <box
+                                                    cssClasses={["calCheck"]}
+                                                    valign={Gtk.Align.CENTER}
+                                                    // calendar color is API
+                                                    // data, not theme
+                                                    css={Gcal.visibilityOverrides.as(ovs => {
+                                                        const v = Gcal.calendarVisible(cal, ovs)
+                                                        return `background-color: ${v ? cal.color : "transparent"}; border-color: ${cal.color};`
+                                                    })}
+                                                />
+                                                <label
+                                                    xalign={0}
+                                                    hexpand
+                                                    maxWidthChars={14}
+                                                    ellipsize={Pango.EllipsizeMode.END}
+                                                    label={cal.summary}
+                                                />
+                                            </box>
+                                        </button>
+                                    )}
+                                </For>
+                            </box>
+                        </Gtk.ScrolledWindow>
+                        {/* always available: each run adds (or
+                        re-authorizes) one Google account */}
+                        <button
+                            cssClasses={["gcalSignin"]}
+                            tooltipText={Gcal.accountEmails.as(a =>
+                                a.length > 0 ? `Signed in: ${a.join(", ")}` : "",
+                            )}
+                            onClicked={() => Gcal.authenticate()}
+                        >
                             <label
-                                cssClasses={["gcalEmpty"]}
-                                xalign={0}
-                                visible={dayEvents.as(l => l.length === 0)}
-                                label={"No events"}
+                                label={createComputed(
+                                    [Gcal.accountEmails, Gcal.authBusy],
+                                    (a, busy) =>
+                                        busy
+                                            ? "Waiting for sign-in…"
+                                            : a.length > 0
+                                              ? "+ Add Google account"
+                                              : "Sign in to Google Calendar",
+                                )}
                             />
-                        </box>
-                    </Gtk.ScrolledWindow>
+                        </button>
+                    </box>
+                    <Gtk.Separator orientation={Gtk.Orientation.VERTICAL} />
+                </box>
+            ) : null}
+            {monthPane}
+            {Gcal.active ? (
+                <box spacing={16} hexpand>
+                    <Gtk.Separator orientation={Gtk.Orientation.VERTICAL} />
+                    <box
+                        cssClasses={["agendaPane"]}
+                        orientation={Gtk.Orientation.VERTICAL}
+                        spacing={8}
+                        hexpand
+                    >
+                        <label cssClasses={["paneTitle"]} xalign={0} label={"Agenda"} />
+                        <Gtk.ScrolledWindow
+                            visible={Gcal.accountEmails.as(a => a.length > 0)}
+                            vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                            hscrollbarPolicy={Gtk.PolicyType.NEVER}
+                            propagateNaturalHeight
+                            maxContentHeight={250}
+                            vexpand
+                        >
+                            <box orientation={Gtk.Orientation.VERTICAL} spacing={4}>
+                                <For each={agenda}>
+                                    {(group: Gcal.AgendaGroup) => (
+                                        <box
+                                            cssClasses={["gcalAgendaGroup"]}
+                                            orientation={Gtk.Orientation.VERTICAL}
+                                            spacing={4}
+                                        >
+                                            <label
+                                                cssClasses={["gcalAgendaDay"]}
+                                                xalign={0}
+                                                label={group.label}
+                                            />
+                                            {/* plain map, not For: the group's
+                                            events are a static array — the
+                                            outer For rebuilds the group when
+                                            the agenda changes */}
+                                            {group.events.map((e: Gcal.CalEvent) => (
+                                                <box
+                                                    cssClasses={["gcalEvent"]}
+                                                    spacing={8}
+                                                    // calendar color is API data,
+                                                    // not theme: the only inline
+                                                    // style in the shell
+                                                    css={`
+                                                        border-left-color: ${e.color};
+                                                    `}
+                                                >
+                                                    <box
+                                                        orientation={Gtk.Orientation.VERTICAL}
+                                                        valign={Gtk.Align.START}
+                                                    >
+                                                        <label
+                                                            xalign={0}
+                                                            maxWidthChars={26}
+                                                            ellipsize={Pango.EllipsizeMode.END}
+                                                            tooltipText={`${e.summary} — ${e.calendarName} (${e.account})`}
+                                                            label={e.summary}
+                                                        />
+                                                        <label
+                                                            cssClasses={["gcalMeta"]}
+                                                            xalign={0}
+                                                            label={`${Gcal.timeLabel(e)} · ${e.calendarName}`}
+                                                        />
+                                                    </box>
+                                                </box>
+                                            ))}
+                                        </box>
+                                    )}
+                                </For>
+                                <label
+                                    cssClasses={["gcalEmpty"]}
+                                    xalign={0.5}
+                                    visible={agenda.as(l => l.length === 0)}
+                                    label={"No upcoming events"}
+                                />
+                            </box>
+                        </Gtk.ScrolledWindow>
+                    </box>
                 </box>
             ) : null}
         </box>

@@ -235,40 +235,126 @@ window.Bar {
             margin: 0 s.$padding;
         }
 
-        // google calendar popover: day marks come from Gtk.Calendar
-        // itself (bold); this styles the selected-day list below it
+        // two-pane calendar popover: custom month grid left (rings +
+        // per-calendar dots), agenda with color-bar event cards right
         popover {
-            .gcalDay {
+            .clockPopover {
+                padding: 14px;
+            }
+
+            // ---- month pane
+            .monthHeader {
+                button {
+                    background: transparent;
+                    border: solid 2px transparent;
+                    border-radius: s.$radius;
+                    padding: 2px 8px;
+
+                    &:hover {
+                        background-color: t.$accent20;
+                    }
+                }
+                .monthLabel label {
+                    font-weight: bold;
+                    font-size: 1.05em;
+                }
+            }
+
+            .weekday {
+                font-size: s.$font-small;
+                color: t.$subtext0;
+            }
+
+            button.calDay {
+                min-width: 34px;
+                min-height: 34px;
+                padding: 0;
+                background: transparent;
+                border: solid 2px transparent;
+                border-radius: s.$radius;
+
+                &:hover {
+                    background-color: t.$accent20;
+                }
+                &.otherMonth {
+                    opacity: 0.35;
+                }
+                &.today {
+                    background-color: t.$accent;
+                    label {
+                        color: t.$crust;
+                        font-weight: bold;
+                    }
+                    &:hover {
+                        background-color: color.mix(t.$accent, t.$text, 88%);
+                    }
+                }
+                &.selected {
+                    border-color: t.$accent;
+                }
+            }
+
+            // fixed slot: cells with and without dots stay the same height
+            .calDots {
+                min-height: 5px;
+            }
+            .calDot {
+                min-width: 4px;
+                min-height: 4px;
+                border-radius: 99px;
+            }
+
+            // ---- picker pane
+            .paneTitle {
                 font-size: s.$font-small;
                 font-weight: bold;
                 color: t.$subtext0;
             }
 
-            button.gcalSignin {
-                margin: 2px 0;
-                padding: 4px 10px;
+            button.calRow {
+                background: transparent;
+                border: solid 2px transparent;
                 border-radius: s.$radius;
-                background-color: t.$surface050;
-                border: solid 2px t.$accent20;
+                padding: 3px 6px;
 
                 &:hover {
                     background-color: t.$accent20;
                 }
             }
 
+            // checkbox square: filled with the calendar color when
+            // visible, hollow when hidden (colors set inline, API data)
+            .calCheck {
+                min-width: 12px;
+                min-height: 12px;
+                border: solid 2px;
+                border-radius: 3px;
+            }
+
+            // ---- agenda pane
+            .gcalAgendaGroup {
+                &:not(:first-child) {
+                    margin-top: 12px;
+                }
+            }
+
+            .gcalAgendaDay {
+                font-size: s.$font-small;
+                font-weight: bold;
+                color: t.$subtext0;
+                margin-bottom: 2px;
+            }
+
+            // event card: the calendar color is a left bar (set inline,
+            // per-calendar API data); the card itself is themed
             .gcalEvent {
-                padding: 1px 0;
+                background-color: t.$surface050;
+                border-radius: s.$radius;
+                border-left: 3px solid;
+                padding: 4px 8px;
             }
 
-            // the calendar color dot; background-color is set inline
-            // (per-calendar API data, not themeable)
-            .gcalDot {
-                min-width: 8px;
-                min-height: 8px;
-                border-radius: 99px;
-            }
-
-            .gcalTime {
+            .gcalMeta {
                 font-size: s.$font-small;
                 color: t.$subtext0;
             }
@@ -277,6 +363,23 @@ window.Bar {
                 font-size: s.$font-small;
                 font-style: italic;
                 color: t.$subtext0;
+                padding: 16px 0;
+            }
+
+            // flat text button, bottom of the agenda pane
+            button.gcalSignin {
+                background: transparent;
+                border: solid 2px transparent;
+                border-radius: s.$radius;
+                padding: 4px 8px;
+
+                label {
+                    color: t.$accent;
+                    font-size: s.$font-small;
+                }
+                &:hover {
+                    background-color: t.$accent20;
+                }
             }
         }
     }
