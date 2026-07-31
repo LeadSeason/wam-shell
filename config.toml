@@ -296,9 +296,12 @@
 #           shows while idle inside this window (dimmed, with the day
 #           total). windows may wrap midnight ("22:00"-"06:00"). default
 #           empty = the widget only appears while a timer runs
-# mask_when_sharing - while screen sharing, hide project/task from the
-#           panel (tooltip included) and show only icon + elapsed with a
-#           .sharing indicator. default true
+# mask_when_sharing - "streaming mode": while screen sharing, hide the
+#           elapsed and the pause button and mask project/task (tooltip
+#           included); the pill shows only a blinking icon, so viewers
+#           can't tell a timer is running. set false to disable the mask
+#           entirely — the screen-share monitor (pw-dump) then never
+#           starts. default true
 # [harvest]
 # enabled = false
 # on_panel = true
