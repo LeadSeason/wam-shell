@@ -5,7 +5,12 @@ import { Gtk } from "ags/gtk4"
 import { With, createBinding, createComputed, onCleanup } from "gnim"
 import Config from "../../../config"
 import CommandRegistry from "../../../lib/requestHandler"
-import { activePlayer } from "../../../lib/mpris"
+import {
+    activePlayer,
+    eligiblePlayers,
+    playPauseExclusive,
+    scrollActivePlayer,
+} from "../../../lib/mpris"
 import { createIconResolver } from "../../../lib/appIcon"
 import { popupAnchor, setPopupAnchor } from "../../mediaPopup"
 
@@ -36,10 +41,20 @@ function MediaWidget({
         <box
             cssClasses={["media"]}
             orientation={Gtk.Orientation.VERTICAL}
+            // scroll switches between players when more than one has a
+            // track loaded (e.g. Firefox and Brave)
+            tooltipText={eligiblePlayers.as(l => (l.length > 1 ? "Scroll to switch player" : ""))}
             $={self => {
                 mediaBox = self
             }}
         >
+            <Gtk.EventControllerScroll
+                flags={Gtk.EventControllerScrollFlags.VERTICAL}
+                onScroll={(_e, _dx, dy) => {
+                    scrollActivePlayer(dy)
+                    return true
+                }}
+            />
             <box>
                 <box spacing={6}>
                     {/* left click: popup below the pill, right click: play/pause */}
@@ -54,7 +69,7 @@ function MediaWidget({
                             registry.execute(["media"], true)
                         }}
                     />
-                    <Gtk.GestureClick button={3} onPressed={() => player.play_pause()} />
+                    <Gtk.GestureClick button={3} onPressed={() => playPauseExclusive(player)} />
                     <image
                         iconName={createBinding(player, "entry").as(
                             e =>
@@ -78,7 +93,7 @@ function MediaWidget({
                             <image iconName="media-skip-backward-symbolic" />
                         </button>
                         <button
-                            onClicked={() => player.play_pause()}
+                            onClicked={() => playPauseExclusive(player)}
                             sensitive={createBinding(player, "canPlay")}
                         >
                             <image

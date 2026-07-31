@@ -214,6 +214,32 @@ window#QSettings {
         min-width: 2em;
         min-height: 2em;
         padding: 0;
+        &:disabled {
+            opacity: 0.35;
+        }
+    }
+    .mediaSeek {
+        .mediaTime {
+            font-size: s.$font-small;
+            color: t.$subtext0;
+        }
+        // thinner than the volume sliders: a position indicator, not a
+        // primary control
+        scale trough {
+            min-height: 6px;
+        }
+    }
+    // scroll-position strip on the card's left edge: one segment per
+    // player, the shown one lit; wide enough to click
+    .mediaSegments {
+        .mediaSegment {
+            min-width: 4px;
+            border-radius: 2px;
+            background-color: t.$surface1;
+            &.active {
+                background-color: t.$accent;
+            }
+        }
     }
     .toggleTitle {
         font-weight: bold;
@@ -439,5 +465,11 @@ window#QSettings {
 
 // brightness undo button before the first recorded value
 .brightnessRestore.disabled {
+    opacity: 0.35;
+}
+
+// seek-revert button until a drag has been recorded (or the player
+// can't seek)
+.mediaSeekRevert.disabled {
     opacity: 0.35;
 }
