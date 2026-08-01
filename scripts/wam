@@ -37,6 +37,13 @@ usage: wam <command>
   force-start      kill EVERY ags instance, then start (stale-instance broom)
   autostart <enable|disable|status>
                    manage the systemd user service ($SERVICE)
+  harvest setup    guided Harvest credentials setup (token, account id,
+                   writes ~/.config/wam-shell/harvest.env, verifies)
+  config <edit|path|show|diff|sync>
+                   edit the config in $EDITOR (seeds the commented
+                   template on first run), print its path, print it,
+                   list template options your file predates (diff),
+                   rewrite it as latest template + your values (sync)
   status           install, runtime and autostart state at a glance
   version          installed commit of the shell
 EOF
@@ -96,7 +103,8 @@ cmd_update() {
     require_install
     log "Pulling $ROOT"
     git -C "$ROOT" fetch origin || die "fetch failed"
-    local branch upstream
+    local branch upstream prev
+    prev="$(git -C "$ROOT" rev-parse HEAD)"
     branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
     upstream="$(git -C "$ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
     if [[ -n "$upstream" ]]; then
@@ -108,6 +116,11 @@ cmd_update() {
         log "No upstream for $branch — syncing with origin/master"
         git -C "$ROOT" merge --ff-only origin/master ||
             die "not fast-forward: $branch has commits not in origin/master — merge it yourself: git merge origin/master"
+    fi
+    # awareness: the update touched the config template -> there may be
+    # new options the user's config predates
+    if [[ -n "$(git -C "$ROOT" diff --name-only "$prev"..HEAD -- config.toml)" ]]; then
+        log "The config template changed in this update — see what's new: wam config diff"
     fi
     log "pnpm i"
     (cd "$ROOT" && pnpm i)
@@ -243,6 +256,228 @@ cmd_autostart() {
     esac
 }
 
+# --- config ---------------------------------------------------------------------
+
+# the file the shell reads first, following its search order (xdg user
+# config, ~/.config fallback, then the repo copies)
+active_config_file() {
+    local config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+    local candidates=(
+        "$config_home/wam-shell/config.toml"
+        "$HOME/.config/wam-shell/config.toml"
+        "$ROOT/config-override.toml"
+        "$ROOT/config.toml"
+    )
+    local c
+    for c in "${candidates[@]}"; do
+        [[ -f "$c" ]] && {
+            printf '%s\n' "$c"
+            return
+        }
+    done
+    printf '%s\n' "${candidates[0]}"
+}
+
+cmd_config() {
+    case "${1:-}" in
+        edit) cmd_config_edit ;;
+        path) cmd_config_path ;;
+        show) cmd_config_show ;;
+        diff) cmd_config_diff ;;
+        sync) cmd_config_sync ;;
+        *) die "usage: wam config <edit|path|show|diff|sync>" ;;
+    esac
+}
+
+cmd_config_path() {
+    active_config_file
+}
+
+cmd_config_show() {
+    local f
+    f="$(active_config_file)"
+    if [[ -f "$f" ]]; then
+        log "$f"
+        cat "$f"
+    else
+        log "no config file — running on defaults. create one with: wam config edit"
+    fi
+}
+
+cmd_config_edit() {
+    require_install # the commented template ships with the install
+    local config_home dir file
+    config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+    dir="$config_home/wam-shell"
+    file="$dir/config.toml"
+    if [[ ! -f "$file" ]]; then
+        mkdir -p "$dir"
+        cp "$ROOT/config.toml" "$file"
+        log "Created $file from the commented template"
+    fi
+    local editor="${EDITOR:-${VISUAL:-}}"
+    if [[ -z "$editor" ]]; then
+        local e
+        for e in nano vim vi; do
+            command -v "$e" >/dev/null && {
+                editor="$e"
+                break
+            }
+        done
+    fi
+    [[ -n "$editor" ]] || die "no editor found — set \$EDITOR"
+    # unquoted: allows "code --wait" style EDITOR values
+    $editor "$file"
+    log "Most options apply on restart: wam restart"
+}
+
+cmd_config_diff() {
+    require_install # diffs against the install's template
+    local f
+    f="$(active_config_file)"
+    [[ -f "$f" ]] || die "no user config yet — run: wam config edit"
+    if [[ "$f" == "$ROOT/config.toml" || "$f" == "$ROOT/config-override.toml" ]]; then
+        log "your active config IS the install's copy ($f) — always current, nothing to diff"
+        return
+    fi
+
+    # template options the user file never mentions (commented or not),
+    # grouped by section; each key listed once
+    local missing=0 section printed_section="" key
+    while IFS=$'\t' read -r section key; do
+        [[ -z "$key" ]] && continue
+        grep -qE "^[[:space:]]*#?[[:space:]]*${key}[[:space:]]*=" "$f" && continue
+        if [[ "$section" != "$printed_section" ]]; then
+            printf '  %s\n' "$section"
+            printed_section="$section"
+        fi
+        printf '    %s\n' "$key"
+        missing=$((missing + 1))
+    done < <(awk '
+        /^# ═/ { s = "(top level)"; next }
+        /^# \[/ { s = $0; sub(/^# */, "", s); next }
+        /^# [a-z_]+[ \t]*=/ {
+            line = $0; sub(/^# */, "", line)
+            split(line, a, /[ \t]/)
+            if (!(a[1] in seen)) {
+                seen[a[1]] = 1
+                print (s == "" ? "(top level)" : s) "\t" a[1]
+            }
+        }
+    ' "$ROOT/config.toml")
+
+    if [[ "$missing" -eq 0 ]]; then
+        log "$f mentions every option in the template"
+    else
+        log "$missing option(s) above are new since your config was written (details in $ROOT/config.toml; merge them in with: wam config sync)"
+    fi
+}
+
+cmd_config_sync() {
+    require_install # the new template ships with the install
+    local f
+    f="$(active_config_file)"
+    [[ -f "$f" ]] || die "no user config yet — run: wam config edit"
+    if [[ "$f" == "$ROOT/config.toml" || "$f" == "$ROOT/config-override.toml" ]]; then
+        die "your active config IS the install's copy ($f) — create a user config first: wam config edit"
+    fi
+
+    # the config-override pattern: latest template + the user's active
+    # values appended. the template is all comments, so the appended
+    # sections never collide with it
+    local values backup
+    backup="$f.bak"
+    values="$(grep -vE '^[[:space:]]*(#|$)' "$f" || true)"
+    cp "$f" "$backup"
+    cp "$ROOT/config.toml" "$f"
+    if [[ -n "$values" ]]; then
+        {
+            printf '\n# --- your values (preserved by wam config sync, %s) ---\n' "$(date +%F)"
+            printf '%s\n' "$values"
+        } >>"$f"
+    fi
+    log "Synced $f with the latest template (backup: $backup)"
+    log "Review with: wam config edit — most options apply on restart: wam restart"
+}
+
+# --- harvest -------------------------------------------------------------------
+
+cmd_harvest() {
+    case "${1:-}" in
+        setup) cmd_harvest_setup ;;
+        *) die "usage: wam harvest setup" ;;
+    esac
+}
+
+cmd_harvest_setup() {
+    command -v curl >/dev/null || die "curl is required for credential verification"
+
+    local env_dir env_file
+    env_dir="${XDG_CONFIG_HOME:-$HOME/.config}/wam-shell"
+    env_file="$env_dir/harvest.env"
+
+    if [[ -f "$env_file" ]]; then
+        local existing
+        existing="$(grep -oE '^HARVEST_ACCOUNT_ID=.*' "$env_file" 2>/dev/null | head -1)"
+        log "Existing credentials found ($existing)"
+        read -r -p "Replace them? [y/N] " replace
+        [[ "$replace" =~ ^[Yy] ]] || {
+            log "Kept existing credentials"
+            return
+        }
+    fi
+
+    cat <<'EOF'
+
+  1. Open https://id.getharvest.com/developers (sign in if asked)
+  2. Choose "Create New Personal Access Token", name it e.g. wam-shell
+  3. Copy the token, and the account id shown next to it
+
+EOF
+    read -r -p "Press Enter when you have both... "
+
+    local token account
+    read -r -s -p "Personal Access Token: " token
+    echo
+    read -r -p "Account ID: " account
+
+    [[ -n "$token" ]] || die "token must not be empty"
+    [[ "$account" =~ ^[0-9]+$ ]] || die "account id must be numeric"
+
+    log "Verifying with the Harvest API…"
+    local response code
+    response="$(curl -sS --max-time 15 \
+        -H "Authorization: Bearer $token" \
+        -H "Harvest-Account-Id: $account" \
+        -H "User-Agent: wam-shell" \
+        -w '\n%{http_code}' \
+        https://api.harvestapp.com/v2/users/me)" || die "could not reach the Harvest API"
+    code="${response##*$'\n'}"
+    response="${response%$'\n'*}"
+
+    if [[ "$code" != "200" ]]; then
+        die "verification failed (HTTP $code) — check the token and account id and run again"
+    fi
+    local name
+    name="$(printf '%s' "$response" | grep -oE '"first_name":"[^"]*"' | cut -d'"' -f4) $(printf '%s' "$response" | grep -oE '"last_name":"[^"]*"' | cut -d'"' -f4)"
+
+    # write with owner-only permissions from the start
+    mkdir -p "$env_dir"
+    (umask 077 && printf 'HARVEST_TOKEN=%s\nHARVEST_ACCOUNT_ID=%s\n' "$token" "$account" >"$env_file")
+    chmod 600 "$env_file"
+
+    log "Verified — signed in as ${name:-unknown}. Credentials written to $env_file (mode 600)"
+    cat <<EOF
+
+  Last step: enable the widget in your config:
+
+      [harvest]
+      enabled = true
+
+  Then restart the shell: wam restart
+EOF
+}
+
 # --- status / version -----------------------------------------------------------
 
 cmd_status() {
@@ -301,6 +536,14 @@ case "${1:-}" in
     autostart)
         shift
         cmd_autostart "$@"
+        ;;
+    harvest)
+        shift
+        cmd_harvest "$@"
+        ;;
+    config)
+        shift
+        cmd_config "$@"
         ;;
     status) cmd_status ;;
     version) cmd_version ;;

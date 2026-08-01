@@ -1,8 +1,9 @@
 import { Accessor, createBinding, createComputed, createState, For, With } from "gnim"
-import { DropdownButton } from "./ToggleButton"
+import { DropdownButton, OverlayIcon, bandBadgeOf } from "./ToggleButton"
 import AstalNetwork from "gi://AstalNetwork?version=0.1"
 import NM from "gi://NM?version=1.0"
-import { execAsync, connect } from "../../../lib/metrics"
+import GLib from "gi://GLib?version=2.0"
+import { execAsync, connect, timeoutAdd, sourceRemove } from "../../../lib/metrics"
 import { Gtk } from "ags/gtk4"
 import Pango from "gi://Pango?version=1.0"
 
@@ -48,11 +49,17 @@ export function WifiButton({ navigate }: { navigate: () => void }) {
         [createBinding(wifi, "enabled"), createBinding(wifi, "ssid")],
         (enabled, ssid) => (enabled ? ssid || "On" : "Off"),
     )
+    // band badge on the tile icon, only while associated
+    const badge = createComputed(
+        [createBinding(wifi, "enabled"), createBinding(wifi, "activeAccessPoint")],
+        (enabled, ap) => (enabled && ap ? bandBadgeOf(ap.frequency) : ""),
+    )
 
     return (
         <DropdownButton
             navigate={navigate}
             icon={createBinding(wifi, "iconName")}
+            badge={badge}
             label={"Wi-Fi"}
             subtitle={subtitle}
             isActive={createBinding(wifi, "enabled")}
@@ -90,6 +97,102 @@ function channelOf(freq: number): number {
     return (freq - 5000) / 5
 }
 
+/** the on/off switch that sits in the wifi pane's header row */
+export function WifiSwitch() {
+    const wifi = AstalNetwork.get_default().wifi
+    if (!wifi) return <></>
+    return (
+        <Gtk.Switch
+            cssClasses={["wifiSwitch"]}
+            valign={Gtk.Align.CENTER}
+            active={createBinding(wifi, "enabled")}
+            onNotifyActive={self => wifi.set_enabled(self.active)}
+        />
+    )
+}
+
+/** the connected-network card: ssid, band+channel+security, ips, mac
+ *  and negotiated link speed; a status line when off or unassociated */
+function ConnectedSection({ wifi }: { wifi: AstalNetwork.Wifi }) {
+    const enabled = createBinding(wifi, "enabled")
+    const ssid = createBinding(wifi, "ssid")
+    const activeAp = createBinding(wifi, "activeAccessPoint")
+
+    const connected = createComputed([enabled, ssid], (e, s) => e && !!s)
+    const status = createComputed([enabled, ssid], (e, s) => (e && !s ? "On — not connected" : ""))
+
+    const dev = wifi.device as NM.DeviceWifi | null
+    const ipLine = dev
+        ? createComputed([createBinding(dev, "ip4Config"), createBinding(dev, "ip6Config")], () => {
+              const v4 = dev.get_ip4_config()?.get_addresses()?.[0]?.get_address()
+              const v6addrs = dev.get_ip6_config()?.get_addresses()
+              const v6 = v6addrs && v6addrs.length > 0 ? v6addrs[0].get_address() : null
+              return [v4, v6].filter(Boolean).join(" · ")
+          })
+        : new Accessor(() => "")
+    const hwLine = dev
+        ? createBinding(dev, "bitrate").as(() => {
+              const mac = dev.get_permanent_hw_address() ?? dev.get_hw_address() ?? ""
+              const bitrate = dev.get_bitrate()
+              const speed = bitrate > 0 ? `${Math.round(bitrate / 1000)} Mb/s` : ""
+              return [mac && `MAC ${mac}`, speed].filter(Boolean).join(" · ")
+          })
+        : new Accessor(() => "")
+
+    return (
+        // hidden entirely when wifi is off — the header switch says it
+        <box orientation={Gtk.Orientation.VERTICAL} visible={enabled}>
+            <label label={"Connected network"} cssClasses={["btSection"]} xalign={0} />
+            <box orientation={Gtk.Orientation.VERTICAL} visible={connected}>
+                <box cssClasses={["wifiConnected"]} spacing={10}>
+                    <OverlayIcon
+                        icon={createBinding(wifi, "iconName")}
+                        badge={activeAp.as(ap => (ap ? bandBadgeOf(ap.frequency) : ""))}
+                    />
+                    <box orientation={Gtk.Orientation.VERTICAL} hexpand>
+                        <label
+                            cssClasses={["wifiConnectedSsid"]}
+                            label={ssid.as(f => {
+                                return f ? f : "-"
+                            })}
+                            xalign={0}
+                            maxWidthChars={24}
+                            ellipsize={Pango.EllipsizeMode.END}
+                        />
+                        <label
+                            cssClasses={["wifiConnectedInfo"]}
+                            xalign={0}
+                            label={activeAp.as(ap =>
+                                ap
+                                    ? `${bandOf(ap)} · ch ${Math.round(channelOf(ap.frequency))} · ${securityOf(ap)}`
+                                    : "",
+                            )}
+                        />
+                        <label
+                            cssClasses={["wifiConnectedInfo"]}
+                            xalign={0}
+                            label={ipLine}
+                            visible={ipLine.as(l => l !== "")}
+                        />
+                        <label
+                            cssClasses={["wifiConnectedInfo"]}
+                            xalign={0}
+                            label={hwLine}
+                            visible={hwLine.as(l => l !== "")}
+                        />
+                    </box>
+                </box>
+            </box>
+            <label
+                cssClasses={["wifiStatus"]}
+                label={status}
+                xalign={0}
+                visible={connected.as(c => !c)}
+            />
+        </box>
+    )
+}
+
 export function WifiWidget({ pane, name }: wifiPaneProps) {
     const wifi = AstalNetwork.get_default().wifi
     if (!wifi) return <></>
@@ -102,15 +205,36 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
         else setPrompt(null) // drop a stale prompt when leaving the pane
     })
 
-    // rescan pulse feedback, same as bluetooth
+    // rescan pulse feedback: the button disables and the icon spins.
+    // gtk css has no keyframe animations, so a ticker steps a rotate
+    // transform while the scan is in flight
     const [rescanning, setRescanning] = createState(false)
+    const [spin, setSpin] = createState(0)
     let rescanToken = 0
+    let spinSource: number | null = null
+    function stopSpin() {
+        if (spinSource !== null) {
+            sourceRemove(spinSource)
+            spinSource = null
+        }
+        setSpin(0)
+    }
     function rescan() {
-        wifi.scan()
+        // scanning while the radio is off throws in astal-network
+        // ("Scanning not allowed while unavailable")
+        if (wifi.enabled) wifi.scan()
         setRescanning(true)
+        if (spinSource !== null) sourceRemove(spinSource)
+        spinSource = timeoutAdd("wifi:rescan-spin", GLib.PRIORITY_DEFAULT, 100, () => {
+            setSpin((spin.get() + 30) % 360)
+            return GLib.SOURCE_CONTINUE
+        })
         const token = ++rescanToken
         setTimeout(() => {
-            if (token === rescanToken) setRescanning(false)
+            if (token === rescanToken) {
+                setRescanning(false)
+                stopSpin()
+            }
         }, 3000)
     }
 
@@ -317,7 +441,10 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                     re-trigger the row click */}
                     <box spacing={5} hexpand>
                         <Gtk.GestureClick button={1} onPressed={onClick} />
-                        <image iconName={createBinding(ap, "iconName")} />
+                        <OverlayIcon
+                            icon={createBinding(ap, "iconName")}
+                            badge={bandBadgeOf(ap.frequency)}
+                        />
                         <box orientation={Gtk.Orientation.VERTICAL} hexpand>
                             <label
                                 label={ap.ssid}
@@ -328,34 +455,31 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                             <label cssClasses={statusClass} label={status} xalign={0} />
                         </box>
                     </box>
-                    {secured(ap) && <image iconName="changes-prevent-symbolic" pixelSize={12} />}
-                    <button
-                        cssClasses={["details"]}
-                        tooltipText={"Network details"}
-                        onClicked={() => {
-                            const opening = !detailsOpen.get()
-                            setDetailsOpen(opening)
-                            if (opening && isKnown.get()) loadAutoconnect()
-                        }}
-                    >
-                        <image
-                            iconName={detailsOpen.as(o =>
-                                o ? "pan-up-symbolic" : "dialog-information-symbolic",
-                            )}
-                        />
-                    </button>
-                    <button
-                        cssClasses={["forget"]}
-                        visible={createComputed([active, isKnown], (a, k) => !a && k)}
-                        tooltipText={"Forget network"}
-                        onClicked={() => {
-                            execAsync(["nmcli", "connection", "delete", "id", profileId(ap)]).catch(
-                                e => console.warn("wifi forget failed:", e),
-                            )
-                        }}
-                    >
-                        <image iconName="user-trash-symbolic" />
-                    </button>
+                    {/* the chevron fades in on row hover (scss) and
+                    stays lit while its panel is open; its slot keeps
+                    the width so rows never shift. security is in the
+                    details panel — no per-row lock icon */}
+                    <box cssClasses={["wifiActions"]}>
+                        <box widthRequest={32} halign={Gtk.Align.CENTER}>
+                            <button
+                                cssClasses={detailsOpen.as(o =>
+                                    o ? ["details", "open"] : ["details"],
+                                )}
+                                tooltipText={"Network details"}
+                                onClicked={() => {
+                                    const opening = !detailsOpen.get()
+                                    setDetailsOpen(opening)
+                                    if (opening && isKnown.get()) loadAutoconnect()
+                                }}
+                            >
+                                <image
+                                    iconName={detailsOpen.as(o =>
+                                        o ? "pan-up-symbolic" : "pan-down-symbolic",
+                                    )}
+                                />
+                            </button>
+                        </box>
+                    </box>
                 </box>
                 <revealer
                     revealChild={detailsOpen}
@@ -375,12 +499,7 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                                 />
                             </box>
                         ))}
-                        <box
-                            visible={isKnown}
-                            cssName={"button"}
-                            spacing={5}
-                            cssClasses={autoconnect.as(a => (a === true ? ["active"] : [""]))}
-                        >
+                        <box visible={isKnown} spacing={5} cssClasses={["wifiDetailAction"]}>
                             <Gtk.GestureClick button={1} onPressed={toggleAutoconnect} />
                             <label label={"Auto-connect"} hexpand xalign={0} />
                             <image
@@ -388,6 +507,26 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                                     a === true ? "object-select-symbolic" : "window-close-symbolic",
                                 )}
                             />
+                        </box>
+                        <box
+                            visible={createComputed([active, isKnown], (a, k) => !a && k)}
+                            spacing={5}
+                            cssClasses={["wifiDetailAction"]}
+                        >
+                            <Gtk.GestureClick
+                                button={1}
+                                onPressed={() => {
+                                    execAsync([
+                                        "nmcli",
+                                        "connection",
+                                        "delete",
+                                        "id",
+                                        profileId(ap),
+                                    ]).catch(e => console.warn("wifi forget failed:", e))
+                                }}
+                            />
+                            <label label={"Forget network"} hexpand xalign={0} />
+                            <image iconName="user-trash-symbolic" />
                         </box>
                     </box>
                 </revealer>
@@ -452,41 +591,43 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
         )
     }
 
-    const bandNames = ["6GHz", "5GHz", "2.4GHz"]
-    const bandStates = new Map(bandNames.map(b => [b, createState<AstalNetwork.AccessPoint[]>([])]))
-    const [visibleBands, setVisibleBands] = createState<string[]>([])
-
-    const updateBands = () => {
-        const byBand = new Map<string, AstalNetwork.AccessPoint[]>()
-        for (const ap of accessPoints.get()) {
-            const b = bandOf(ap)
-            if (!byBand.has(b)) byBand.set(b, [])
-            byBand.get(b)!.push(ap)
-        }
-        // known first, then by strength
-        for (const b of bandNames) {
-            const [, setAps] = bandStates.get(b)!
-            setAps(
-                (byBand.get(b) ?? [])
-                    .sort((a, c) => Number(known(c)) - Number(known(a)) || c.strength - a.strength)
-                    .slice(0, 8),
-            )
-        }
-        setVisibleBands(bandNames.filter(b => byBand.has(b)))
-    }
-    accessPoints.subscribe(updateBands)
-    updateBands()
+    // flat per-AP list: no SSID merging and no band sections — each
+    // access point is its own row, the band shows as the icon badge.
+    // known first, then by strength
+    const sortedAps = accessPoints.as(aps =>
+        [...aps]
+            .sort((a, b) => Number(known(b)) - Number(known(a)) || b.strength - a.strength)
+            .slice(0, 12),
+    )
 
     return (
         <box orientation={Gtk.Orientation.VERTICAL}>
             <With value={prompt}>{p => p && <PasswordPrompt p={p} />}</With>
             <box orientation={Gtk.Orientation.VERTICAL} visible={prompt.as(p => p === null)}>
-                <box visible={createBinding(wifi, "enabled").as(e => !e)}>
-                    <box cssName={"button"} spacing={5}>
-                        <Gtk.GestureClick button={1} onPressed={() => wifi.set_enabled(true)} />
-                        <image iconName="network-wireless-disabled-symbolic" />
-                        <label label={"Wi-Fi is off — Turn on"} hexpand xalign={0} />
+                <ConnectedSection wifi={wifi} />
+                <Gtk.Separator visible={createBinding(wifi, "enabled")} />
+                {/* empty state while the radio is off */}
+                <box
+                    orientation={Gtk.Orientation.VERTICAL}
+                    cssClasses={["wifiEmpty"]}
+                    visible={createBinding(wifi, "enabled").as(e => !e)}
+                    valign={Gtk.Align.CENTER}
+                    vexpand
+                    spacing={6}
+                >
+                    <box cssClasses={["wifiEmptyIcon"]} halign={Gtk.Align.CENTER}>
+                        <image iconName="network-wireless-disabled-symbolic" pixelSize={22} />
                     </box>
+                    <label
+                        cssClasses={["wifiEmptyTitle"]}
+                        label={"Wi-Fi is off"}
+                        halign={Gtk.Align.CENTER}
+                    />
+                    <label
+                        cssClasses={["wifiEmptyHint"]}
+                        label={"Flip the switch above to turn it on"}
+                        halign={Gtk.Align.CENTER}
+                    />
                 </box>
                 <box
                     orientation={Gtk.Orientation.VERTICAL}
@@ -497,32 +638,21 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
                         <button
                             cssClasses={["rescan"]}
                             tooltipText={"Scan again"}
+                            // always visible; disabled and spinning mid-scan
                             sensitive={rescanning.as(r => !r)}
                             onClicked={rescan}
                         >
-                            <box>
-                                <Gtk.Spinner $={self => self.start()} visible={rescanning} />
-                                <image
-                                    iconName="view-refresh-symbolic"
-                                    visible={rescanning.as(r => !r)}
-                                />
-                            </box>
+                            <image
+                                iconName="view-refresh-symbolic"
+                                css={spin.as(deg => (deg ? `transform: rotate(${deg}deg);` : ""))}
+                            />
                         </button>
                     </box>
                     {/* For in its own container: it re-appends children at
                     the parent's end on every update, which would float
-                    the join row above the bands */}
+                    the join row above the networks */}
                     <box orientation={Gtk.Orientation.VERTICAL}>
-                        <For each={visibleBands}>
-                            {b => (
-                                <box orientation={Gtk.Orientation.VERTICAL}>
-                                    <label label={b} cssClasses={["wifiBand"]} xalign={0} />
-                                    <For each={bandStates.get(b)![0]}>
-                                        {ap => <ApRow ap={ap} />}
-                                    </For>
-                                </box>
-                            )}
-                        </For>
+                        <For each={sortedAps}>{ap => <ApRow ap={ap} />}</For>
                     </box>
                     <box cssName={"button"} spacing={5}>
                         <Gtk.GestureClick

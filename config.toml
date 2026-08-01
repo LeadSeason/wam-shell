@@ -173,14 +173,14 @@
 
 # [harvest] - Harvest time tracking (getharvest.com): running timer on
 #             the panel + a picker popup (start/stop/resume/notes/new
-#             entries)
-# Auth: create a Personal Access Token at id.getharvest.com (Developers
-# section), note the token and your account id, and put them in
-# ~/.config/wam-shell/harvest.env (chmod 600), NOT in this file:
-#   HARVEST_TOKEN=...
-#   HARVEST_ACCOUNT_ID=...
-# The same names as real environment variables also work and win over
-# the file. Without credentials the widget stays off, even when enabled.
+#                         entries)
+# Auth: run `wam harvest setup` — it walks you through creating a
+# Personal Access Token, writes ~/.config/wam-shell/harvest.env with
+# mode 600, and verifies the credentials against the API. (Manual
+# alternative: put HARVEST_TOKEN and HARVEST_ACCOUNT_ID in that file
+# yourself; real environment variables with the same names work too
+# and win over the file.) Without credentials the widget stays off,
+# even when enabled.
 #
 # enabled - master toggle (requires the credentials above). default false
 # on_panel - show the timer on the panel: elapsed while running, the day
