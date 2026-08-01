@@ -199,6 +199,15 @@
 #           also shows while idle inside this window (dimmed, with the
 #           day total). windows may wrap midnight ("22:00"-"06:00").
 #           default empty = the widget only appears while a timer runs
+# work_days - days the panel widget shows while idle, as a
+#           comma-separated list of numeric ranges; 0=Sunday, 1=Monday
+#           .. 6=Saturday ("1-5" = Mon-Fri, "6,0" = the weekend).
+#           ranges may wrap the week ("5-1" = Fri,Sat,Sun,Mon). empty
+#           (default) = every day. a running or paused timer always
+#           shows, on any day; tracking is unaffected
+# collapse_off_days - on days outside work_days, shrink the panel
+#           widget to a bare icon instead of hiding it (left click
+#           still opens the popup). default false
 # hide_when_screen_sharing - "streaming mode": while screen sharing,
 #           hide the elapsed and the pause button and mask project/task
 #           (tooltip included); the pill shows only a blinking icon, so
@@ -212,6 +221,8 @@
 # recents = 5
 # work_start = ""
 # work_end = ""
+# work_days = ""
+# collapse_off_days = false
 # hide_when_screen_sharing = true
 
 # [calendar] - Google Calendar in the clock popover: days with events

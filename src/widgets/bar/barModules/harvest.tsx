@@ -6,6 +6,7 @@ import * as Harvest from "../../../lib/harvest"
 import { sharing, enable as enableShareWatch } from "../../../lib/screenShare"
 import { setPopupAnchor } from "../../harvestPopup"
 import CommandRegistry from "../../../lib/requestHandler"
+import { timeoutAdd } from "../../../lib/metrics"
 
 const registry = CommandRegistry.get_default()
 
@@ -22,9 +23,16 @@ function withinWorkHours(): boolean {
     return start <= end ? mins >= start && mins < end : mins >= start || mins < end
 }
 
+// empty work_days list = every day; otherwise Date.getDay() must be in it
+function withinWorkDays(): boolean {
+    const days = Config.harvest.workDays
+    return days.length === 0 || days.includes(new Date().getDay())
+}
+
 // one shared evaluation for every bar instance: re-armed to the next
 // HH:MM boundary (~2 wakeups/day, not a 30s poll per monitor)
 const [workHours, setWorkHours] = createState(withinWorkHours())
+const [workDays, setWorkDays] = createState(withinWorkDays())
 
 function msUntilNextBoundary(): number {
     const { workStart, workEnd } = Config.harvest
@@ -50,12 +58,31 @@ if (Config.harvest.workStart && Config.harvest.workEnd) {
     arm()
 }
 
-// Harvest timer on the panel (lib/harvest). Visible while a timer runs,
-// or idle inside work hours (harvest.work_start/work_end). Left-click
-// opens the picker popup below the pill, right-click stops a running
-// timer / resumes the last one. While screen sharing the entry details
-// are masked: elapsed and the pause button hide too — viewers only see
-// a blinking icon, never that a timer runs (.harvest.sharing styling).
+// day-of-week window: one re-check at each local midnight. Only armed
+// when the user limits days at all — an every-day config (the default)
+// needs no timer (and the perf gate counts startup timers)
+function msUntilMidnight(): number {
+    const d = new Date()
+    d.setHours(24, 0, 0, 0)
+    return d.getTime() - Date.now() + 1000
+}
+const armMidnight = () =>
+    timeoutAdd("harvest:workDays", GLib.PRIORITY_DEFAULT, msUntilMidnight(), () => {
+        setWorkDays(withinWorkDays())
+        armMidnight()
+        return GLib.SOURCE_REMOVE
+    })
+if (Config.harvest.workDays.length > 0) armMidnight()
+
+// Harvest timer on the panel (lib/harvest). Visible while a timer runs
+// or is paused (any day), idle inside work days × work hours
+// (harvest.work_days / work_start / work_end), or — with
+// collapse_off_days — as a bare icon on off-days (left click still
+// opens the popup). Left-click opens the picker popup below the pill,
+// right-click stops a running timer / resumes the last one. While
+// screen sharing the entry details are masked: elapsed and the pause
+// button hide too — viewers only see a blinking icon, never that a
+// timer runs (.harvest.sharing styling).
 export default function HarvestTimer({
     monitor,
     authoritative = false,
@@ -72,8 +99,18 @@ export default function HarvestTimer({
     const masked = sharing.as(s => s && Config.harvest.hideWhenScreenSharing)
 
     const visible = createComputed(
-        [Harvest.running, Harvest.paused, workHours],
-        (r, p, wh) => r !== null || p !== null || wh,
+        [Harvest.running, Harvest.paused, workHours, workDays],
+        // a running or paused timer always shows, on any day; the idle
+        // widget exists only inside the days × hours window — or, with
+        // collapse_off_days, as a bare icon on off-days
+        (r, p, wh, wd) =>
+            r !== null || p !== null || (wh && (wd || Config.harvest.collapseOffDays)),
+    )
+    // idle + off work_days: the pill keeps only its icon (left click
+    // still opens the popup)
+    const collapsed = createComputed(
+        [Harvest.running, Harvest.paused, workDays],
+        (r, p, wd) => Config.harvest.collapseOffDays && r === null && p === null && !wd,
     )
 
     const label = createComputed(
@@ -142,7 +179,11 @@ export default function HarvestTimer({
                     <image cssClasses={["harvestIcon"]} iconName="harvest-symbolic" />
                     {/* hidden while sharing: viewers must not see a timer
                     is running; sized for 10:23 so it can't shift neighbours */}
-                    <label widthChars={5} label={label} visible={masked.as(m => !m)} />
+                    <label
+                        widthChars={5}
+                        label={label}
+                        visible={createComputed([masked, collapsed], (m, c) => !m && !c)}
+                    />
                 </box>
             </box>
             {/* pause/resume on the panel itself; sibling of the click area so

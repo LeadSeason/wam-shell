@@ -161,6 +161,27 @@ hide_when_screen_sharing = false
     eq(off.harvest.hideWhenScreenSharing, false)
 })
 
+test("config: harvest work_days parses numeric ranges", () => {
+    const wd = (s: string) =>
+        loadConfig(
+            { DESKTOP_SESSION: "hyprland" },
+            `
+[harvest]
+work_days = "${s}"
+`,
+        ).harvest.workDays
+
+    eq(loadConfig({ DESKTOP_SESSION: "hyprland" }).harvest.workDays, [], "default empty")
+    eq(wd("1-5"), [1, 2, 3, 4, 5], "Mon-Fri")
+    eq(wd("5-1"), [0, 1, 5, 6], "wrapping range Fri-Mon")
+    eq(wd("6,0"), [0, 6], "weekend list")
+    eq(wd("1, 2, 4-5"), [1, 2, 4, 5], "mixed singles and range")
+    eq(wd("3"), [3], "single day")
+    eq(wd("mon-fri"), [], "day names rejected, falls back to every day")
+    eq(wd("9"), [], "out of range rejected")
+    eq(loadConfig({ DESKTOP_SESSION: "hyprland" }).harvest.collapseOffDays, false, "collapse default")
+})
+
 test("config: instance cache dir follows XDG_CACHE_HOME and instance name", () => {
     const c = loadConfig(
         { DESKTOP_SESSION: "hyprland" },
