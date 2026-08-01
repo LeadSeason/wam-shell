@@ -9,6 +9,7 @@ import "./metrics.test"
 import "./harvestTimeline.test"
 import "./gcal.test"
 import "./github.test"
+import "./youtube.test"
 import { summary } from "./framework"
 
 summary()
