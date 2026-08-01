@@ -1,4 +1,4 @@
-import { Gtk } from "ags/gtk4"
+import { Gtk, Gdk } from "ags/gtk4"
 import GLib from "gi://GLib?version=2.0"
 import { timeout } from "ags/time"
 import AstalWp from "gi://AstalWp?version=0.1"
@@ -111,9 +111,6 @@ function brightnessWidget() {
     const previous = createBinding(brightness, "previous")
 
     const [visible, setVisible] = createState<boolean>(false)
-    // fractional scroll deltas accumulate across events (touchpads
-    // emit dozens of small ones per flick)
-    let scrollAcc = 0
     let count = 0
     const show = () => {
         setVisible(true)
@@ -140,22 +137,22 @@ function brightnessWidget() {
         >
             <Gtk.EventControllerScroll
                 flags={Gtk.EventControllerScrollFlags.VERTICAL}
-                onScroll={(_s, _dx, dy) => {
+                onScroll={(controller, _dx, dy) => {
                     show()
-                    // delta accumulation, not a fixed step per event:
-                    // touchpads emit dozens of fractional-dy events per
-                    // flick. Measured on the user's touchpad: ~46u per
-                    // micro-adjust, ~260u per swipe, so 0.2%/unit =
-                    // ~10% per micro-adjust, ~half the range per swipe
-                    scrollAcc += dy
-                    const whole = Math.trunc(scrollAcc)
-                    if (whole !== 0) {
-                        scrollAcc -= whole
-                        brightness.screen = Math.min(
-                            1,
-                            Math.max(0.05, brightness.screen + whole * 0.002),
-                        )
-                    }
+                    // step depends on the device: mouse wheels deliver
+                    // one event per notch (WHEEL unit; magnitude varies
+                    // by compositor — ±2 here) → sign-based 2% per notch;
+                    // touchpads stream small smooth deltas (SURFACE unit,
+                    // ~46u per micro-adjust) → 0.1%/unit ≈ 5% per
+                    // micro-adjust. Touchpad keeps its original
+                    // direction; wheel up = brighter
+                    const delta =
+                        controller.get_unit() === Gdk.ScrollUnit.WHEEL
+                            ? dy < 0
+                                ? 0.02
+                                : -0.02
+                            : dy * 0.001
+                    brightness.screen = Math.min(1, Math.max(0.05, brightness.screen + delta))
                     return true
                 }}
             />
