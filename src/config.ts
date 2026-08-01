@@ -379,6 +379,23 @@ function getHarvestConfig() {
         workEnd = ""
     }
 
+    let workDays: number[] = []
+    const workDaysRaw = get("work_days", "")
+    if (typeof workDaysRaw !== "string") {
+        console.error(
+            `Config "harvest.work_days" must be a string like "1-5", got ${JSON.stringify(workDaysRaw)}`,
+        )
+    } else {
+        const parsed = parseWorkDays(workDaysRaw)
+        if (parsed === null) {
+            console.error(
+                `Config "harvest.work_days" has an invalid range, got "${workDaysRaw}" (expected e.g. "1-5" or "6,0"; 0=Sunday); treating as every day`,
+            )
+        } else {
+            workDays = parsed
+        }
+    }
+
     return {
         enabled: get("enabled", false),
         // section-only lookup, NOT the usual top-level fallback: the
@@ -388,9 +405,32 @@ function getHarvestConfig() {
         recents,
         workStart,
         workEnd,
+        workDays,
+        // off work_days, shrink to a bare icon instead of hiding
+        collapseOffDays: get("collapse_off_days", false),
         // while screen sharing, mask entry details on the panel
         hideWhenScreenSharing: get("hide_when_screen_sharing", true),
     }
+}
+
+// "1-5" / "5-1" / "6,0" -> weekday numbers matching Date.getDay()
+// (0=Sunday); ranges walk forward modulo the week, so they may wrap
+// ("5-1" = Fri,Sat,Sun,Mon). null = malformed
+function parseWorkDays(raw: string): number[] | null {
+    if (raw.trim() === "") return []
+    const out = new Set<number>()
+    for (const part of raw.split(",")) {
+        const m = part.trim().match(/^(\d)(?:-(\d))?$/)
+        if (!m) return null
+        const a = Number(m[1])
+        const b = m[2] !== undefined ? Number(m[2]) : a
+        if (a > 6 || b > 6) return null
+        for (let d = a; ; d = (d + 1) % 7) {
+            out.add(d)
+            if (d === b) break
+        }
+    }
+    return [...out].sort((x, y) => x - y)
 }
 
 // Google Calendar in the clock popover. Section-only keys: no top-level
