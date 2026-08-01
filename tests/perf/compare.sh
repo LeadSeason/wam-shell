@@ -29,9 +29,12 @@
 #     first-ready read, measured 66..74 across identical runs)
 #   - excluded entirely: qsHeader:batTimeDebounce (physical battery
 #     events, 2..17 creations across identical runs), osd:hide (OSD
-#     triggers come from the live session's WirePlumber/MPRIS), and the
+#     triggers come from the live session's WirePlumber/MPRIS), the
 #     AstalTray_TrayItem:*/Gtk_GestureClick:* signal buckets (they
-#     scale with the live session's real tray items)
+#     scale with the live session's real tray items) and the
+#     AstalBluetooth_Device:* buckets (they scale with whatever
+#     Bluetooth devices are in range during a leg — measured 10→4
+#     connected on identical trees)
 # Everything else must diff to exactly zero. Timing/RSS/HTTP are
 # reported, never gated.
 set -uo pipefail
@@ -164,7 +167,8 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
             | with_entries(.value = .value.alive)),
         signalsByName: (.signals.byName
             | with_entries(select(.key
-                | (startswith("AstalTray_TrayItem:") or startswith("Gtk_GestureClick:"))
+                | (startswith("AstalTray_TrayItem:") or startswith("Gtk_GestureClick:")
+                    or startswith("AstalBluetooth_Device:"))
                 | not))),
         fds: .process.fds,
     };

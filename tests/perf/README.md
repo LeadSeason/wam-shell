@@ -49,8 +49,10 @@ poll-phase jitter on spawn counts (±2 on idle; churn spawn counts are
 not gated at all — refresh coalescing makes them load-dominated, so
 churn gates on leaks only), physical battery events
 (`qsHeader:batTimeDebounce`), OSD triggers from the session's
-WirePlumber/MPRIS (`osd:hide`), and per-tray-item signal buckets that
-scale with whatever tray apps the developer happens to run.
+WirePlumber/MPRIS (`osd:hide`), per-tray-item signal buckets that
+scale with whatever tray apps the developer happens to run, and
+per-Bluetooth-device signal buckets that scale with whatever devices
+are in range during a leg.
 
 Report-only (never gated): time to first frame, RSS, context switches,
 blocking-ms, HTTP counts. Local runs have real desktop noise — an
