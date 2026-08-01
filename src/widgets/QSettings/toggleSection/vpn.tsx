@@ -2,7 +2,7 @@ import { execAsync } from "../../../lib/metrics"
 import { DropdownButton } from "./ToggleButton"
 import vpnStatus, { hasMullvad, refreshVpn } from "../../../lib/vpn"
 
-export function VpnButton() {
+export function VpnButton({ navigate }: { navigate: () => void }) {
     // mullvad CLI required
     if (!hasMullvad) return <></>
     return (
@@ -16,6 +16,7 @@ export function VpnButton() {
                     .then(() => refreshVpn())
                     .catch(e => console.warn(e))
             }}
+            navigate={navigate}
         />
     )
 }

@@ -38,7 +38,7 @@ export function ToggleSection({ onNavigate }: { onNavigate: (pane: string) => vo
                     />
                     <NightLightButton />
                     <DarkStyleButton />
-                    <VpnButton />
+                    <VpnButton navigate={() => onNavigate("vpn")} />
                     <AirplaneModeButton />
                     <SleepTimerButton
                         activeDropdown={activeDropdownIndex}

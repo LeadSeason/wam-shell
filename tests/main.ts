@@ -11,6 +11,7 @@ import "./gcal.test"
 import "./github.test"
 import "./youtube.test"
 import "./sleepTimerState.test"
+import "./vpn.test"
 import { summary } from "./framework"
 
 summary()

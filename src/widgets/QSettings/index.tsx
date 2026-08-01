@@ -20,6 +20,7 @@ import { WifiWidget, WifiSwitch } from "./toggleSection/wifi"
 import { WiredWidget } from "./toggleSection/wired"
 import { BluetoothWidget } from "./toggleSection/bluetooth"
 import { PowerProfilesWidget } from "./toggleSection/powerProfile"
+import { VpnPane } from "./toggleSection/vpnPane"
 
 const registry = CommandRegistry.get_default()
 
@@ -171,9 +172,13 @@ export default function QSettings() {
                         vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
                         hscrollbarPolicy={Gtk.PolicyType.NEVER}
                         propagateNaturalHeight
-                        widthRequest={450}
+                        widthRequest={520}
                     >
                         <stack
+                            // panes size to their own content: without this
+                            // every pane is stretched to the tallest (main),
+                            // leaving dead space under short panes like VPN
+                            vhomogeneous={false}
                             // set the visible child after construction: as a prop it
                             // is applied before the named children exist, which makes
                             // Gtk warn about a missing child
@@ -222,6 +227,10 @@ export default function QSettings() {
                             <box $type="named" name="wired" orientation={Gtk.Orientation.VERTICAL}>
                                 <PaneHeader title="Wired" onBack={() => setPane("main")} />
                                 <WiredWidget pane={pane} name="wired" />
+                            </box>
+                            <box $type="named" name="vpn" orientation={Gtk.Orientation.VERTICAL}>
+                                <PaneHeader title="VPN" onBack={() => setPane("main")} />
+                                <VpnPane pane={pane} name="vpn" />
                             </box>
                             <box
                                 $type="named"

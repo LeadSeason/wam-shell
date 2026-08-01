@@ -296,7 +296,8 @@ window#QSettings {
 
     // the pane header's on/off switch: the theme does all:unset, so
     // Gtk.Switch is invisible without this
-    .wifiSwitch {
+    .wifiSwitch,
+    .vpnPane switch {
         background-color: t.$surface0;
         border: 1px solid t.$surface1;
         border-radius: 999px;
@@ -512,6 +513,118 @@ window#QSettings {
         button {
             margin: 0;
         }
+    }
+
+    // ---- VPN pane (first-class Mullvad support)
+    .vpnStatus {
+        background-color: t.$base;
+        border-radius: s.$radius;
+        padding: 10px 12px;
+
+        .vpnRelay {
+            font-weight: bold;
+        }
+        .dim {
+            font-size: s.$font-small;
+            color: t.$subtext0;
+        }
+        .chip {
+            font-size: s.$font-small;
+            background-color: t.$surface050;
+            border-radius: s.$radius;
+            padding: 1px 6px;
+            color: t.$subtext0;
+        }
+
+        // the big state word, like the Mullvad app's CONNECTED banner
+        .vpnState {
+            font-weight: bold;
+            &.on {
+                color: t.$green;
+            }
+            &.off {
+                color: t.$subtext0;
+            }
+        }
+        .vpnDetail {
+            font-size: s.$font-small;
+            color: t.$subtext0;
+            margin-top: 6px;
+        }
+        .accountLine {
+            margin-top: 6px;
+        }
+    }
+
+    button.vpnAction {
+        margin: 0;
+        padding: 4px 10px;
+        border-radius: s.$radius;
+        background-color: t.$surface050;
+        border: solid 2px t.$accent20;
+
+        &:hover {
+            background-color: t.$accent20;
+        }
+        &:disabled {
+            opacity: 0.35;
+        }
+    }
+
+    button.locRow {
+        background: transparent;
+        border: solid 2px transparent;
+        border-radius: s.$radius;
+        padding: 4px 8px;
+
+        &:hover {
+            background-color: t.$accent20;
+        }
+        &.current label {
+            color: t.$accent;
+            font-weight: bold;
+        }
+    }
+
+    .dim {
+        font-size: s.$font-small;
+        color: t.$subtext0;
+    }
+    .expiring {
+        color: t.$yellow;
+    }
+    .expired {
+        color: t.$red;
+    }
+
+    // clearly an input field, not a label: bordered like harvest's
+    // .input, accent frame on focus
+    .vpnSearch {
+        background-color: t.$base;
+        border: solid 2px t.$accent20;
+        border-radius: s.$radius;
+        padding: 4px 8px;
+
+        &:focus {
+            border-color: t.$accent;
+        }
+    }
+
+    .vpnSectionHeader {
+        font-size: s.$font-small;
+        font-weight: bold;
+        color: t.$subtext0;
+    }
+
+    // the feature toggles as one card so they read as a unit
+    .vpnFeatures {
+        background-color: t.$base;
+        border-radius: s.$radius;
+        padding: 8px 12px;
+    }
+
+    .vpnFeature {
+        padding: 4px 0;
     }
 
 
