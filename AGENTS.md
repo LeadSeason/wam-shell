@@ -54,6 +54,8 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 - Colors come from the active theme (`scss/theme/*.scss`, selected via
   the `theme` config key) — never hardcode hex in widget styles.
 - Shared spacing/radius values live in `scss/conf.scss`.
+- Icons: always prefer symbolic icon names (`-symbolic`) over
+  full-color ones wherever possible.
 
 ## Formatting
 
