@@ -9,6 +9,10 @@ export interface SleepTimerState {
     pausedSeconds: number // frozen remainder while paused
     // set by fire() so a restart still knows the pre-dim level
     dim: { pre: number; to: number } | null
+    // owning shell's PID: the mtime beacon alone cannot tell a crashed
+    // owner from a live one when the restart lands inside the freshness
+    // window — a dead pid means the fresh file is abandoned (0 = unknown)
+    pid: number
 }
 
 export function serialize(state: SleepTimerState): string {
@@ -30,6 +34,7 @@ export function parse(text: string): SleepTimerState | null {
             paused: s.paused === true,
             pausedSeconds: typeof s.pausedSeconds === "number" ? s.pausedSeconds : 0,
             dim,
+            pid: typeof s.pid === "number" ? s.pid : 0,
         }
     } catch {
         return null
@@ -37,7 +42,7 @@ export function parse(text: string): SleepTimerState | null {
 }
 
 export type LoadDecision =
-    | "owned" // a live shell owns the timer (fresh file): do nothing
+    | "owned" // a live shell owns the timer (fresh file, live owner pid): do nothing
     | "live" // deadline in the future: adopt and keep ticking
     | "paused" // frozen remainder: restore paused
     | "expired" // deadline passed while away: notify once, discard
@@ -47,15 +52,18 @@ export type LoadDecision =
 // decide what a starting shell should do with a state file. nowMs =
 // current wall clock; mtimeMs = the file's mtime (its freshness is the
 // owner's liveness beacon); staleMs = how old a file may be before it
-// is considered abandoned
+// is considered abandoned; ownerAlive = the recorded owner pid still
+// belongs to a live shell process — a FRESH file with a DEAD owner is
+// a crash/kill leftover and is adopted, not respected
 export function decide(
     state: SleepTimerState | null,
     nowMs: number,
     mtimeMs: number | null,
     staleMs = 3000,
+    ownerAlive = false,
 ): LoadDecision {
     if (state === null) return "empty"
-    if (mtimeMs !== null && nowMs - mtimeMs < staleMs) return "owned"
+    if (mtimeMs !== null && nowMs - mtimeMs < staleMs && ownerAlive) return "owned"
     if (state.paused) return "paused"
     if (state.deadline !== null) return state.deadline > nowMs ? "live" : "expired"
     if (state.dim) return "dim-only"

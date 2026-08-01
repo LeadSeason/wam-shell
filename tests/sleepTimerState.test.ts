@@ -7,6 +7,7 @@ const base: SleepTimerState = {
     paused: false,
     pausedSeconds: 0,
     dim: null,
+    pid: 1234,
 }
 
 test("sleepTimerState: serialize/parse round-trips", () => {
@@ -25,15 +26,23 @@ test("sleepTimerState: parse rejects malformed input", () => {
     // dim is optional and strictly validated
     eq(parse(serialize({ ...base, dim: null }))!.dim, null)
     eq(parse(JSON.stringify({ ...base, dim: { pre: "x" } }))!.dim, null)
+    // pid is optional and defaults to 0 (unknown owner): missing or
+    // wrong-typed must not reject the file
+    eq(parse(JSON.stringify({ deadline: null }))!.pid, 0)
+    eq(parse(JSON.stringify({ deadline: null, pid: "bash" }))!.pid, 0)
 })
 
 test("sleepTimerState decide: empty and owned", () => {
     const now = 1_000_000
     eq(decide(null, now, now), "empty")
-    // fresh mtime = a live shell owns the timer already
-    eq(decide(base, now, now - 1000), "owned")
-    eq(decide(base, now, now - 2999), "owned")
-    eq(decide(base, now, now - 3000) !== "owned", true)
+    // fresh mtime + a live owner pid = a live shell owns the timer
+    eq(decide(base, now, now - 1000, 3000, true), "owned")
+    eq(decide(base, now, now - 2999, 3000, true), "owned")
+    // fresh mtime but the owner is DEAD (crash/kill or a fast clean
+    // restart inside the beacon window): adopt, don't drop
+    eq(decide(base, now, now - 1000, 3000, false), "live")
+    // stale mtime is adoptable even if the pid looks alive
+    eq(decide(base, now, now - 3000, 3000, true), "live")
 })
 
 test("sleepTimerState decide: live vs expired on the deadline boundary", () => {

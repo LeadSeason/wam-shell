@@ -14,11 +14,14 @@ import { SleepTimerState, serialize, parse, decide } from "./sleepTimerState"
 // The timer survives shell restarts: the owning shell writes its state
 // to $XDG_RUNTIME_DIR/wam-shell/sleep-timer.json on every change and
 // tick — reboots/logouts simply start empty (runtime tmpfs), which is
-// exactly the intended scope. A starting shell claims a stale state
-// file atomically (rename): a FRESH file means another live shell owns
-// the timer, so dev + service shells can't double-fire (dim-to-half
-// twice would be quarter brightness). An expired deadline is never
-// fired retroactively — the user gets one notification instead.
+// exactly the intended scope. A starting shell claims a state file
+// atomically (rename): a FRESH file with a LIVE owner PID means another
+// shell owns the timer, so dev + service shells can't double-fire
+// (dim-to-half twice would be quarter brightness). A crashed or killed
+// owner's file is fresh too, but its PID is dead — the restart claims
+// and adopts instead of dropping the timer (the old mtime-only beacon
+// could not tell the two apart). An expired deadline is never fired
+// retroactively — the user gets one notification instead.
 
 const mpris = AstalMpris.get_default()
 
@@ -39,6 +42,31 @@ let deadline: number | null = null
 // this much, so the paused stretch doesn't count
 let pausedSeconds = 0
 
+// our own PID, recorded in the state file so a starting shell can tell
+// a live owner from a crashed one. /proc/self/stat, not a libc call
+const myPid = (() => {
+    try {
+        const stat = new TextDecoder().decode(GLib.file_get_contents("/proc/self/stat")[1])
+        return Number(stat.split(" ")[0]) || 0
+    } catch {
+        return 0
+    }
+})()
+
+// is the recorded owner still a live shell? only gjs/ags processes
+// count: a recycled PID of an unrelated process must not suppress
+// adoption
+function ownerAlive(pid: number): boolean {
+    if (pid <= 0) return false
+    if (!GLib.file_test(`/proc/${pid}`, GLib.FileTest.EXISTS)) return false
+    try {
+        const cmd = new TextDecoder().decode(GLib.file_get_contents(`/proc/${pid}/cmdline`)[1])
+        return cmd.includes("gjs") || cmd.includes("ags")
+    } catch {
+        return true // exists but unreadable (hidepid): assume alive — never double-fire
+    }
+}
+
 // ------------------------------------------------- state persistence
 
 const stateDir = `${GLib.get_user_runtime_dir()}/wam-shell`
@@ -53,6 +81,7 @@ function currentState(): SleepTimerState {
             preDimLevel !== null && dimmedToLevel !== null
                 ? { pre: preDimLevel, to: dimmedToLevel }
                 : null,
+        pid: myPid,
     }
 }
 
@@ -104,18 +133,24 @@ function notify(summary: string, body: string) {
 }
 
 // adopt (or discard) a state left by a previous shell. Runs at import:
-// a FRESH file means a live shell already owns the timer — hands off.
+// a FRESH file with a LIVE owner PID means a live shell owns the timer
+// — hands off. A crashed owner's file is fresh too, but its dead PID
+// marks it abandoned, so the restart claims and adopts it.
 function loadState() {
     const file = Gio.File.new_for_path(statePath)
     let mtimeMs: number
+    let state: SleepTimerState | null = null
     try {
         const info = file.query_info("time::modified", Gio.FileQueryInfoFlags.NONE, null)
         mtimeMs = info.get_attribute_uint64("time::modified") * 1000
+        const contents = GLib.file_get_contents(statePath)[1]
+        state = parse(new TextDecoder().decode(contents))
     } catch {
         return // no file at all
     }
     const nowMs = Date.now()
-    if (nowMs - mtimeMs < 3000) return // a live shell owns the timer
+    if (decide(state, nowMs, mtimeMs, 3000, state !== null && ownerAlive(state.pid)) === "owned")
+        return // a live shell owns the timer
     // atomic claim: only one starting shell can win the rename
     const claimedPath = `${statePath}.claimed`
     try {
@@ -123,12 +158,8 @@ function loadState() {
     } catch {
         return // already claimed elsewhere
     }
-    let state: SleepTimerState | null = null
-    try {
-        const contents = GLib.file_get_contents(claimedPath)[1]
-        state = parse(new TextDecoder().decode(contents))
-    } catch {}
-    switch (decide(state, nowMs, null)) {
+    const decision = decide(state, nowMs, null)
+    switch (decision) {
         case "empty":
             // malformed or contentless: drop the claim and move on
             try {
@@ -167,6 +198,7 @@ function loadState() {
     }
     // adopted: we are the owner now — leave the claim file behind by
     // writing state under the original path
+    console.log(`sleepTimer: adopted "${decision}" state from a previous shell`)
     writeState()
 }
 
