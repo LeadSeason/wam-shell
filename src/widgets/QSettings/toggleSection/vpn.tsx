@@ -1,6 +1,5 @@
-import { execAsync } from "../../../lib/metrics"
 import { DropdownButton } from "./ToggleButton"
-import vpnStatus, { hasMullvad, refreshVpn } from "../../../lib/vpn"
+import vpnStatus, { connect, disconnect, hasMullvad } from "../../../lib/vpn"
 
 export function VpnButton({ navigate }: { navigate: () => void }) {
     // mullvad CLI required
@@ -9,12 +8,16 @@ export function VpnButton({ navigate }: { navigate: () => void }) {
         <DropdownButton
             icon={"network-vpn-symbolic"}
             label={"VPN"}
-            subtitle={vpnStatus.as(s => (s.connected ? s.relay : "Off"))}
+            // state word while in flux ("Connecting…" is not "Off")
+            subtitle={vpnStatus.as(s =>
+                s.connected ? s.relay : s.state === "Disconnected" ? "Off" : `${s.state}…`,
+            )}
             isActive={vpnStatus.as(s => s.connected)}
             activate={() => {
-                execAsync(["mullvad", vpnStatus.get().connected ? "disconnect" : "connect"])
-                    .then(() => refreshVpn())
-                    .catch(e => console.warn(e))
+                // anything but fully disconnected → disconnect: this is
+                // also the only way to abort a "Connecting" attempt
+                if (vpnStatus.get().state === "Disconnected") connect()
+                else disconnect()
             }}
             navigate={navigate}
         />

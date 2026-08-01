@@ -4,6 +4,7 @@ import { Accessor, For, createComputed, createState } from "gnim"
 import vpnStatus, {
     accountInfo,
     busy,
+    disconnect,
     ensureLocations,
     featureStates,
     hasMullvad,
@@ -156,6 +157,16 @@ export function VpnPane({ pane, name }: { pane: Accessor<string>; name: string }
             </box>
 
             <box spacing={6}>
+                {/* the escape hatch the pane lacked: aborts an in-flight
+                attempt too, so it shows whenever not fully disconnected */}
+                <button
+                    cssClasses={["vpnAction"]}
+                    visible={vpnStatus.as(s => s.state !== "Disconnected")}
+                    sensitive={busy.as(b => !b)}
+                    onClicked={() => disconnect()}
+                >
+                    <label label={"Disconnect"} />
+                </button>
                 <button
                     cssClasses={["vpnAction"]}
                     sensitive={busy.as(b => !b)}
