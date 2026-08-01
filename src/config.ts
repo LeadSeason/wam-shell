@@ -249,6 +249,8 @@ function getMediaConfig() {
         // while screen sharing, hide the quick-settings player entirely
         // (title/artist/cover are visible to viewers otherwise)
         hideWhenScreenSharing: get("hide_when_screen_sharing", false),
+        // treat browsers' scrubbed private-session titles as no track
+        hidePrivateSessions: get("hide_private_sessions", true),
     }
 }
 
