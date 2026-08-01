@@ -8,7 +8,9 @@ import CommandRegistry from "../../../lib/requestHandler"
 import {
     activePlayer,
     eligiblePlayers,
+    lengthState,
     playPauseExclusive,
+    positionState,
     scrollActivePlayer,
 } from "../../../lib/mpris"
 import { createIconResolver } from "../../../lib/appIcon"
@@ -26,8 +28,10 @@ function MediaWidget({
     resolveIcon: (name: string | null | undefined) => string | null
 }) {
     const status = createBinding(player, "playbackStatus")
-    const position = createBinding(player, "position")
-    const length = createBinding(player, "length")
+    // client-side position clock (shared with the QS seeker): firefox
+    // reports Position as 0 forever, so the raw property never moves
+    const position = positionState(player)
+    const trackLength = lengthState(player)
 
     const label = createComputed(
         [createBinding(player, "title"), createBinding(player, "artist")],
@@ -119,16 +123,16 @@ function MediaWidget({
                 cssClasses={["mediaProgress"]}
                 heightRequest={2}
                 $={self => {
-                    const unsub = position.subscribe(() => self.queue_draw())
+                    const unsub = position.accessor.subscribe(() => self.queue_draw())
                     onCleanup(unsub)
                     self.set_draw_func((area, cr: any, w: number, h: number) => {
                         const c = area.get_color()
                         cr.setSourceRGBA(c.red, c.green, c.blue, 0.25)
                         cr.rectangle(0, 0, w, h)
                         cr.fill()
-                        const len = length.get()
+                        const len = trackLength.get()
                         if (len > 0) {
-                            const frac = Math.min(1, Math.max(0, position.get() / len))
+                            const frac = Math.min(1, Math.max(0, position.accessor.get() / len))
                             cr.setSourceRGBA(c.red, c.green, c.blue, 0.95)
                             cr.rectangle(0, 0, w * frac, h)
                             cr.fill()
