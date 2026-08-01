@@ -395,6 +395,15 @@ export function setAutoConnect(on: boolean) {
     })
 }
 
+export function connect() {
+    runCmd(["connect"], () => refreshVpn())
+}
+
+// also aborts an in-flight attempt ("Connecting" state)
+export function disconnect() {
+    runCmd(["disconnect"], () => refreshVpn())
+}
+
 export function reconnect() {
     runCmd(["disconnect"], () => {
         runCmd(["connect"], () => refreshVpn())
