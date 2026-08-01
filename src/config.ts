@@ -246,6 +246,9 @@ function getMediaConfig() {
         enabled: get("enabled", false),
         showControls: get("show_controls", true),
         maxWidth,
+        // while screen sharing, hide the quick-settings player entirely
+        // (title/artist/cover are visible to viewers otherwise)
+        hideWhenScreenSharing: get("hide_when_screen_sharing", false),
     }
 }
 

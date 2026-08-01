@@ -18,6 +18,8 @@ import {
     raisePlayer,
     scrollActivePlayer,
 } from "../../lib/mpris"
+import { sharing, enable as enableShareWatch } from "../../lib/screenShare"
+import Config from "../../config"
 
 function MediaButton({
     iconName,
@@ -279,12 +281,22 @@ function Player({ player }: { player: AstalMpris.Player }) {
 }
 
 export function MediaSection() {
+    // detection runs only once something actually hides on it (same
+    // contract as the harvest pill: config off => no pw-dump monitor)
+    if (Config.media.hideWhenScreenSharing) enableShareWatch()
+
+    // "streaming mode": while screen sharing, hide the player entirely —
+    // an open quick settings would leak title/artist/cover to viewers
+    const visiblePlayer = createComputed([activePlayer, sharing], (p, s) =>
+        s && Config.media.hideWhenScreenSharing ? null : p,
+    )
+
     // stable slot: the With mounts the card late (first player), which
     // would otherwise append it at the end of the pane instead of
     // keeping the top position
     return (
         <box orientation={Gtk.Orientation.VERTICAL}>
-            <With value={activePlayer}>
+            <With value={visiblePlayer}>
                 {p =>
                     p && (
                         <box cssClasses={["QSSection"]} orientation={Gtk.Orientation.VERTICAL}>

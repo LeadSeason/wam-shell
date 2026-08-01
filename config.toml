@@ -166,10 +166,16 @@
 #           layout. default false. [[panel]] lists always render it
 # show_controls - show prev/play/next buttons on the panel. default true
 # max_width - maximum characters of the track label. default 20
+# hide_when_screen_sharing - "streaming mode": while screen sharing,
+#           hide the quick-settings player entirely (title, artist and
+#           cover would otherwise be visible to viewers). starts the
+#           screen-share monitor (pw-dump) even without the harvest
+#           mask. default false
 # [media]
 # enabled = false
 # show_controls = true
 # max_width = 20
+# hide_when_screen_sharing = false
 
 # [harvest] - Harvest time tracking (getharvest.com): running timer on
 #             the panel + a picker popup (start/stop/resume/notes/new
