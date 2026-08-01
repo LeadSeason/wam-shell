@@ -142,6 +142,11 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 
 ## Commits
 
+- NEVER merge or create-and-merge a PR without the user's explicit
+  instruction. "Implement", "fix", "do the task" mean: implement, run
+  the gates, push the branch, open the PR — then STOP and wait. Only
+  an explicit approval ("merge", "lgtm", "ship it") authorizes the
+  merge. Passing gates are never a substitute for the user's sign-off.
 - One logical change per commit; split unrelated changes into separate
   commits when asked.
 - Always sync before merging: `git fetch origin`, then merge
