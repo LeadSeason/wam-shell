@@ -13,6 +13,9 @@
 #   - notifications.daemon = "system" in the fixture, plus a preflight
 #     that refuses to run when org.freedesktop.Notifications has no
 #     owner (the measured instance must never become the daemon)
+#   - WAM_SHELL_NO_MPRIS=1 pins MPRIS players absent: the seek-scale
+#     connection count and the position timer otherwise flap with
+#     whatever is playing on the developer's session (#58)
 #   - cleanup is trapped and only ever runs `ags quit -i wam-shell-perf`
 set -uo pipefail
 
@@ -77,6 +80,7 @@ start_shell() {
     XDG_CONFIG_HOME="$LEG/config" \
     XDG_CACHE_HOME="$LEG/cache" \
     WAM_SHELL_METRICS=1 \
+    WAM_SHELL_NO_MPRIS=1 \
     WAM_SHELL_DIR="$ROOT" \
     timeout 300 ags run app.tsx > "$LEG/shell.log" 2>&1 &
     SHELL_PID=$!

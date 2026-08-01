@@ -64,6 +64,11 @@ incoming notification, a track change triggering a cover download.
   per-leg tmp `XDG_CONFIG_HOME` — the developer's real config can't
   leak in.
 - `XDG_CACHE_HOME` is a fresh per-leg tmp dir (style.css et al.).
+- `WAM_SHELL_NO_MPRIS=1` pins MPRIS players absent in the measured
+  instance (`lib/mpris.ts` returns an empty list): the seek-scale
+  connection count and the `mpris:position` timer otherwise flap with
+  whatever is playing on the developer's session (#58), which produced
+  false REGRESSION verdicts on media-free diffs.
 - The run refuses to start when `org.freedesktop.Notifications` has no
   owner on the session bus: the measured instance must never become
   the developer's notification daemon.
