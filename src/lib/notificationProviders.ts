@@ -17,20 +17,34 @@ export interface ProviderItem {
     summary: string
     body: string // secondary line ("" hides it)
     iconName: string // row icon (usually the provider's)
+    // optional thumbnail (YouTube): a local file the card renders in
+    // the image slot; absent = the icon shows instead
+    imagePath?: string
     url: string // opened by activate()
-    dismiss(): void // remove from the center (provider-specific meaning)
+    hide(): void // session-scoped: out of the center, no service-side call
+    dismiss(): void // "mark done" — the provider's done semantics
     activate(): void // primary click: open + whatever "read" means here
 }
 
 export interface Provider {
     name: string // registry key and filter value ("github")
     iconName: string // the header filter icon
+    displayName?: string // for sign-in buttons ("YouTube"); defaults to name
     // the registry only holds active providers (enabled + credentials);
     // the center checks nothing else
     items: Accessor<ProviderItem[]>
     // stale-while-revalidate when the center opens; providers age-gate
     refresh(): void
     dispose(): void
+    // a sync problem to surface in the center's empty state ("quota
+    // exceeded, retrying in 2h"), null when healthy. Shown instead of
+    // the misleading "No notifications"
+    status?: Accessor<string | null>
+    // providers behind an interactive sign-in (YouTube): the center
+    // offers the button when the provider's filter is selected and
+    // signInVisible is true (typically "no accounts yet")
+    signIn?(): void
+    signInVisible?: Accessor<boolean>
 }
 
 // plain array: providers register at module scope (their init may not

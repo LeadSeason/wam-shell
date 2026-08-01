@@ -12,9 +12,11 @@
   config).
 - External services merge into the center through the provider registry
   (`src/lib/notificationProviders.ts`): one lib module per service
-  (`src/lib/github.ts` is the first, `[github]` + `github.env`), a
-  filter icon per provider in the center's header. New providers
-  (YouTube, ProtonMail) need no center changes.
+  (`src/lib/github.ts`, `src/lib/youtube.ts`), a filter icon per
+  provider in the center's header. New providers (ProtonMail) need no
+  center changes. Google providers share the OAuth stack in
+  `src/lib/googleAuth.ts` (embedded desktop client, per-account tokens,
+  `google.env`/env override).
 - The clock popover is a Google Calendar (`src/lib/gcal.ts`,
   `[calendar]`): OAuth installed-app flow over loopback (the project
   ships a desktop client; `google.env`/env vars override it), one

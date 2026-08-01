@@ -115,6 +115,7 @@ export default function PopupRow({ entry }: { entry: PopupEntry }) {
                             removePopup(entry.key)
                             entry.item!.activate()
                         }}
+                        onHide={() => removePopup(entry.key)}
                     />
                 )}
                 <Gtk.DrawingArea

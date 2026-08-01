@@ -121,7 +121,7 @@ export default function Tray({
                                 [
                                     gap !== null ? `margin-right: ${gap}px;` : "",
                                     pill
-                                        ? `min-width: ${iconSize + 22}px; min-height: ${iconSize + 22}px;`
+                                        ? `min-width: ${iconSize + 12}px; min-height: ${iconSize + 12}px;`
                                         : "",
                                 ]
                                     .filter(Boolean)

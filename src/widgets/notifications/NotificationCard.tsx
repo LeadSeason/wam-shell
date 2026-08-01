@@ -108,7 +108,8 @@ export default function NotificationCard({
                     else onActivate?.()
                 }}
             />
-            {/* middle click anywhere dismisses */}
+            {/* right or middle click anywhere dismisses */}
+            <Gtk.GestureClick button={3} onReleased={onDismiss} />
             <Gtk.GestureClick button={2} onReleased={onDismiss} />
             <box spacing={6}>
                 <image iconName={icon} pixelSize={16} valign={Gtk.Align.CENTER} />

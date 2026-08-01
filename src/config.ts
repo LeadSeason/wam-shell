@@ -444,7 +444,28 @@ function getGitHubConfig() {
     return {
         enabled: g["enabled"] ?? false,
         pollMinutes,
-        popups: g["popups"] ?? true,
+    }
+}
+
+// YouTube notifications in the notification center. Section-only keys:
+// no top-level fallbacks exist for these names and none should leak in
+function getYouTubeConfig() {
+    const y = configData.youtube ?? {}
+
+    let pollMinutes = y["poll_minutes"] ?? 60
+    if (typeof pollMinutes !== "number" || pollMinutes <= 0) {
+        console.error(
+            `Config "youtube.poll_minutes" must be a positive number, got "${pollMinutes}"`,
+        )
+        pollMinutes = 60
+    }
+    // floor: a config typo must not burn the YouTube API quota (each
+    // poll costs ~1 unit per subscription; see config.toml)
+    if (pollMinutes < 15) pollMinutes = 15
+
+    return {
+        enabled: y["enabled"] ?? false,
+        pollMinutes,
     }
 }
 
@@ -485,9 +506,20 @@ function getNotificationsConfig() {
         .filter((a: any) => typeof a === "string" && a !== "")
         .map((a: string) => a.toLowerCase())
 
+    let popupProviders = get("popup_providers", [])
+    if (!Array.isArray(popupProviders) || popupProviders.some((x: any) => typeof x !== "string")) {
+        console.error(
+            `Config "notifications.popup_providers" must be a list of provider names, got "${JSON.stringify(popupProviders)}"`,
+        )
+        popupProviders = []
+    }
+
     return {
         // transient banners for incoming notifications
         popups: get("popups", true),
+        // provider names ("github", "youtube", ...) whose items may
+        // also raise transient banners. opt-in: empty = center only
+        popupProviders,
         // ms before a popup auto-hides (critical stays until dismissed,
         // low urgency drains in half the time)
         popupTimeout,
@@ -695,6 +727,7 @@ export default class Config {
     static harvest = getHarvestConfig()
     static calendar = getCalendarConfig()
     static github = getGitHubConfig()
+    static youtube = getYouTubeConfig()
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`
 

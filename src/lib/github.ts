@@ -200,6 +200,10 @@ function request(method: string, path: string, cb: (r: Reply) => void, ifModifie
     })
 }
 
+// whether github threads may raise transient banners: the unified
+// opt-in list in [notifications]
+const popupsEnabled = () => Config.notifications.popupProviders.includes("github")
+
 // ---------------------------------------------------------------- state
 
 const [items, setItems] = createState<ProviderItem[]>([])
@@ -214,9 +218,18 @@ let pollTimer = 0
 // baseline and never banners
 let baselineDone = false
 
-function attachActions(data: Omit<ProviderItem, "dismiss" | "activate">): ProviderItem {
+// locally hidden threads (right-click "dismiss"): session-only, no
+// service call — filtered out of every poll so they don't reappear
+// before the shell restarts
+const hiddenIds = new Set<string>()
+
+function attachActions(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">): ProviderItem {
     return {
         ...data,
+        hide: () => {
+            hiddenIds.add(data.id)
+            setItems(items.get().filter(i => i.id !== data.id))
+        },
         dismiss: () => mutate(data, "DELETE"),
         activate: () => {
             Gio.AppInfo.launch_default_for_uri_async(data.url, null, null, (_s, res) => {
@@ -234,7 +247,7 @@ function attachActions(data: Omit<ProviderItem, "dismiss" | "activate">): Provid
 // mark done (DELETE) or read (PATCH); both leave the unread inbox, so a
 // successful mutation removes the item locally instead of waiting for
 // the next poll. Server-side idempotent: a double click is harmless
-function mutate(data: Omit<ProviderItem, "dismiss" | "activate">, method: string) {
+function mutate(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">, method: string) {
     const threadId = data.id.slice("github:".length)
     request(method, `/notifications/threads/${threadId}`, r => {
         if (r.ok) setItems(items.get().filter(i => i.id !== data.id))
@@ -246,7 +259,7 @@ function applyThreads(rawList: any[]) {
     const mapped: ProviderItem[] = []
     for (const raw of rawList) {
         const data = threadData(raw)
-        if (data) mapped.push(attachActions(data))
+        if (data && !hiddenIds.has(data.id)) mapped.push(attachActions(data))
     }
     // newest first, same as the center's desktop list
     mapped.sort((a, b) => b.time - a.time)
@@ -258,12 +271,15 @@ function applyThreads(rawList: any[]) {
         baselineDone = true
         return
     }
-    if (!Config.github.popups) return
+    if (!popupsEnabled()) return
     for (const id of newArrivals(prev, mapped)) {
         const item = mapped.find(i => i.id === id)
         if (item) addProviderPopup(item)
     }
 }
+
+// surfaced in the center's empty state while unhealthy
+const [status, setStatus] = createState<string | null>(null)
 
 function fetchPage(page: number, acc: any[]) {
     request(
@@ -274,6 +290,7 @@ function fetchPage(page: number, acc: any[]) {
             if (r.status === 304) return // unchanged; keep current items
             if (r.status === 401) {
                 authFailed = true
+                setStatus("GitHub token rejected — check ~/.config/wam-shell/github.env")
                 if (pollTimer) {
                     sourceRemove(pollTimer)
                     pollTimer = 0
@@ -283,7 +300,11 @@ function fetchPage(page: number, acc: any[]) {
                 )
                 return
             }
-            if (!r.ok || !Array.isArray(r.json)) return // keep stale items
+            if (!r.ok || !Array.isArray(r.json)) {
+                setStatus("Couldn't sync GitHub — retrying next poll")
+                return // keep stale items
+            }
+            setStatus(null)
             if (r.lastModified) lastModified = r.lastModified
             const merged = acc.concat(r.json)
             // GitHub paginates at 50; a full page means there may be more
@@ -330,9 +351,11 @@ if (active) {
     registerProvider({
         name: "github",
         iconName: "github-symbolic",
+        displayName: "GitHub",
         items,
         refresh,
         dispose,
+        status,
     } satisfies Provider)
 }
 

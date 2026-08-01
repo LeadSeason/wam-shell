@@ -4,7 +4,7 @@ import Graphene from "gi://Graphene?version=1.0"
 import AstalNotifd from "gi://AstalNotifd?version=0.1"
 import app from "ags/gtk4/app"
 import { For, createComputed, createRoot, createState } from "gnim"
-import notifd, { dnd, persistent, toggleDnd } from "../../lib/notifd"
+import notifd, { count, dnd, persistent, toggleDnd } from "../../lib/notifd"
 import { createBinding } from "gnim"
 import CommandRegistry from "../../lib/requestHandler"
 import { timeoutAdd, sourceRemove } from "../../lib/metrics"
@@ -38,7 +38,10 @@ function show() {
 }
 
 function hide() {
+    // the next open starts with an empty search: reset the state AND
+    // the entry's text (they're separate — one doesn't follow the other)
     setQuery("")
+    searchEntry?.set_text("")
     rev!.revealChild = false
     if (hideSource !== null) sourceRemove(hideSource)
     hideSource = timeoutAdd("notifCenter:hide", GLib.PRIORITY_DEFAULT, 200, () => {
@@ -76,6 +79,8 @@ const [query, setQuery] = createState("")
 // provider integrations (GitHub & co.): their items merge into the
 // list; a header icon per provider filters to just its items
 const [providerFilter, setProviderFilter] = createState<string | null>(null)
+// special filter value: only the local daemon's notifications
+const LOCAL_FILTER = "local"
 
 interface Row {
     key: string
@@ -98,8 +103,9 @@ function buildMerged() {
             const pFilter = vals[vals.length - 2] as string | null
             const q = vals[vals.length - 1] as string
             const rows: Row[] = []
-            // a provider filter replaces the view entirely with its items
-            if (!pFilter) {
+            // a filter replaces the view entirely: a provider's own
+            // items, or just the local daemon's for the local filter
+            if (!pFilter || pFilter === LOCAL_FILTER) {
                 for (const n of desktop) {
                     rows.push({ key: `desktop:${n.id}`, time: n.time, desktop: n, item: null })
                 }
@@ -107,7 +113,16 @@ function buildMerged() {
             providers.forEach((p, i) => {
                 if (pFilter && p.name !== pFilter) return
                 for (const item of vals[1 + i] as ProviderItem[]) {
-                    rows.push({ key: item.id, time: item.time, desktop: null, item })
+                    rows.push({
+                        // the thumb path is part of the key: gnim's For
+                        // reuses rows by key, so a thumbnail landing
+                        // after the row was built must change the key
+                        // to get a rebuild with the image
+                        key: `provider:${item.id}:${item.imagePath ?? ""}`,
+                        time: item.time,
+                        desktop: null,
+                        item,
+                    })
                 }
             })
             const needle = q.trim().toLowerCase()
@@ -125,6 +140,58 @@ function buildMerged() {
 }
 let merged: ReturnType<typeof buildMerged>
 
+// providers behind an interactive sign-in (YouTube): when their filter
+// is selected and they have no accounts yet, the empty state offers
+// the sign-in button. Static fallback accessor for providers without
+// one — deps are evaluated at window build, when the registry is final
+const [FALSE] = createState(false)
+
+function buildSignInTarget() {
+    return createComputed(
+        [providerFilter, ...providers.map(p => p.signInVisible ?? FALSE)],
+        (filter, ...visibles) => {
+            if (!filter) return null
+            const i = providers.findIndex(p => p.name === filter)
+            if (i < 0) return null
+            const p = providers[i]
+            return p.signIn && visibles[i] ? p : null
+        },
+    )
+}
+let signInTarget: ReturnType<typeof buildSignInTarget>
+
+// the clear-all button's enabled state: a source must be picked AND
+// hold items. Deps are evaluated at window build (registry final)
+function buildClearable() {
+    return createComputed(
+        [providerFilter, count, ...providers.map(p => p.items)],
+        (f, localCount, ...itemLists) => {
+            if (!f) return false
+            if (f === LOCAL_FILTER) return localCount > 0
+            const i = providers.findIndex(p => p.name === f)
+            return i >= 0 && ((itemLists[i] as ProviderItem[] | undefined)?.length ?? 0) > 0
+        },
+    )
+}
+let clearable: ReturnType<typeof buildClearable>
+
+// the picked provider's sync problem ("quota exceeded"), null when
+// healthy — replaces the misleading "No notifications" in the empty
+// state. Static fallback accessor for providers without status
+const [NULL_STR] = createState<string | null>(null)
+
+function buildProviderStatus() {
+    return createComputed(
+        [providerFilter, ...providers.map(p => p.status ?? NULL_STR)],
+        (filter, ...statuses) => {
+            if (!filter) return null
+            const i = providers.findIndex(p => p.name === filter)
+            return i >= 0 ? (statuses[i] as string | null) : null
+        },
+    )
+}
+let providerStatus: ReturnType<typeof buildProviderStatus>
+
 function onKey(_e: Gtk.EventControllerKey, keyValue: number) {
     if (keyValue === Gdk.KEY_Escape) hide()
 }
@@ -140,6 +207,9 @@ function ensureWindow() {
     const { TOP, BOTTOM, LEFT, RIGHT } = Astal.WindowAnchor
     createRoot(() => {
         merged = buildMerged()
+        signInTarget = buildSignInTarget()
+        clearable = buildClearable()
+        providerStatus = buildProviderStatus()
         app.add_window(
             (
                 <window
@@ -175,7 +245,7 @@ function ensureWindow() {
                                 }}
                                 cssClasses={["notifications"]}
                                 orientation={Gtk.Orientation.VERTICAL}
-                                widthRequest={380}
+                                widthRequest={440}
                                 marginTop={30}
                                 marginEnd={12}
                             >
@@ -189,11 +259,76 @@ function ensureWindow() {
                                         hexpand
                                         onChanged={self => setQuery(self.text)}
                                     />
-                                    {/* provider filter icons (GitHub &
-                                    co.): click to show only that
-                                    provider's items, again to go back.
-                                    Static by window-build time — plain
-                                    map, no reactivity needed */}
+                                    <button
+                                        tooltipText="Do not disturb"
+                                        onClicked={() => toggleDnd()}
+                                    >
+                                        <image
+                                            iconName={dnd.as(v =>
+                                                v
+                                                    ? "notifications-disabled-symbolic"
+                                                    : "preferences-system-notifications-symbolic",
+                                            )}
+                                        />
+                                    </button>
+                                    {/* clears only the active filter's
+                                    items (local: the daemon's; a
+                                    provider: its items' own dismiss) —
+                                    always visible, enabled only when
+                                    the picked source holds items */}
+                                    <button
+                                        sensitive={clearable}
+                                        tooltipText={providerFilter.as(f =>
+                                            f === LOCAL_FILTER
+                                                ? "Clear all local notifications"
+                                                : f
+                                                  ? `Clear all ${f} notifications`
+                                                  : "Pick a filter to clear",
+                                        )}
+                                        onClicked={() => {
+                                            const f = providerFilter.get()
+                                            if (f === LOCAL_FILTER) {
+                                                for (const n of [...notifications.get()])
+                                                    n.dismiss()
+                                            } else if (f) {
+                                                const p = providers.find(x => x.name === f)
+                                                for (const item of [...(p?.items.get() ?? [])])
+                                                    item.dismiss()
+                                            }
+                                        }}
+                                    >
+                                        <image iconName="user-trash-symbolic" />
+                                    </button>
+                                </box>
+                                {/* local + provider filter icons on
+                                their own row: click to show only that
+                                source, again to go back. Static by
+                                window-build time — plain map, no
+                                reactivity needed */}
+                                <box cssClasses={["filtersRow"]} spacing={6}>
+                                    <button
+                                        cssClasses={providerFilter.as(f => [
+                                            "provider",
+                                            ...(f === LOCAL_FILTER ? ["active"] : []),
+                                        ])}
+                                        tooltipText={"Show only local notifications"}
+                                        onClicked={() =>
+                                            setProviderFilter(
+                                                providerFilter.get() === LOCAL_FILTER
+                                                    ? null
+                                                    : LOCAL_FILTER,
+                                            )
+                                        }
+                                    >
+                                        <box spacing={4}>
+                                            <image iconName="computer-symbolic" />
+                                            {/* pending count, hidden at 0 */}
+                                            <label
+                                                cssClasses={["count"]}
+                                                label={count.as(n => (n > 0 ? String(n) : ""))}
+                                            />
+                                        </box>
+                                    </button>
                                     {providers.map(p => (
                                         <button
                                             cssClasses={providerFilter.as(f => [
@@ -207,44 +342,56 @@ function ensureWindow() {
                                                 )
                                             }
                                         >
-                                            <image iconName={p.iconName} />
+                                            <box spacing={4}>
+                                                <image iconName={p.iconName} />
+                                                <label
+                                                    cssClasses={["count"]}
+                                                    label={p.items.as(l =>
+                                                        l.length > 0 ? String(l.length) : "",
+                                                    )}
+                                                />
+                                            </box>
                                         </button>
                                     ))}
-                                    <button
-                                        tooltipText="Do not disturb"
-                                        onClicked={() => toggleDnd()}
-                                    >
-                                        <image
-                                            iconName={dnd.as(v =>
-                                                v
-                                                    ? "notifications-disabled-symbolic"
-                                                    : "preferences-system-notifications-symbolic",
-                                            )}
-                                        />
-                                    </button>
-                                    {/* desktop notifications only:
-                                    provider items are dismissed
-                                    individually so a reflex clear can't
-                                    wipe an external inbox */}
-                                    <button
-                                        tooltipText="Clear all"
-                                        onClicked={() => {
-                                            for (const n of [...notifications.get()]) n.dismiss()
-                                        }}
-                                    >
-                                        <image iconName="user-trash-symbolic" />
-                                    </button>
                                 </box>
                                 <Gtk.Separator />
                                 <box
                                     cssClasses={["empty"]}
                                     visible={merged.as(l => l.length === 0)}
                                 >
+                                    {/* a failing provider explains
+                                    itself instead of pretending the
+                                    inbox is empty */}
                                     <label
+                                        cssClasses={["status"]}
+                                        visible={providerStatus.as(s => s !== null)}
+                                        label={providerStatus.as(s => s ?? "")}
+                                        hexpand
+                                        xalign={0}
+                                        maxWidthChars={40}
+                                        wrap
+                                    />
+                                    <label
+                                        visible={createComputed(
+                                            [providerStatus, signInTarget],
+                                            (s, t) => s === null && t === null,
+                                        )}
                                         label={query.as(q =>
                                             q.trim() === "" ? "No notifications" : "No matches",
                                         )}
                                     />
+                                    <button
+                                        cssClasses={["providerSignin"]}
+                                        visible={signInTarget.as(t => t !== null)}
+                                        onClicked={() => signInTarget.get()?.signIn?.()}
+                                    >
+                                        <label
+                                            label={signInTarget.as(
+                                                t =>
+                                                    `Sign in to ${t?.displayName ?? t?.name ?? ""}`,
+                                            )}
+                                        />
+                                    </button>
                                 </box>
                                 <Gtk.ScrolledWindow
                                     vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
