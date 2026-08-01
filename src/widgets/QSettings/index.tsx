@@ -197,8 +197,7 @@ export default function QSettings() {
                                 <Gtk.Separator />
                                 {toggleSection.widget}
                                 {Config.quicksettings.showStats && <StatsSection />}
-                                <MediaSection />
-                                {!Config.tray.onPanel && <Gtk.Separator />}
+                                {/* tray always above the player */}
                                 {!Config.tray.onPanel && (
                                     <Tray
                                         filter={item => !isPinned(item)}
@@ -207,6 +206,8 @@ export default function QSettings() {
                                         spacing={2}
                                     />
                                 )}
+                                {!Config.tray.onPanel && <Gtk.Separator />}
+                                <MediaSection />
                             </box>
                             <box $type="named" name="wifi" orientation={Gtk.Orientation.VERTICAL}>
                                 <PaneHeader
