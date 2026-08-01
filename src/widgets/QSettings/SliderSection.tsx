@@ -1,5 +1,6 @@
 import AstalWp from "gi://AstalWp?version=0.1"
 import Gtk from "gi://Gtk?version=4.0"
+import Gdk from "gi://Gdk?version=4.0"
 import Pango from "gi://Pango?version=1.0"
 import { execAsync } from "../../lib/metrics"
 import Config from "../../config"
@@ -174,7 +175,6 @@ function BrightnessSlider() {
 
     const screen = createBinding(brightness, "screen")
 
-    let scrollAcc = 0
     const previous = createBinding(brightness, "previous")
     return (
         <box
@@ -215,21 +215,20 @@ function BrightnessSlider() {
             >
                 <Gtk.EventControllerScroll
                     flags={Gtk.EventControllerScrollFlags.VERTICAL}
-                    onScroll={(_s, _dx, dy) => {
-                        // accumulate deltas and step 1% per 5 units:
-                        // device-independent speed (touchpads emit many
-                        // small deltas, wheels few big ones)
-                        scrollAcc += dy
-                        const steps = Math.trunc(scrollAcc / 5)
-                        if (steps !== 0) {
-                            scrollAcc -= steps * 5
-                            // setDimLevel exits outdoor mode, so scrolling
-                            // always lands on the bar
-                            brightness.screen = Math.min(
-                                1,
-                                Math.max(0.05, brightness.screen - steps / 100),
-                            )
-                        }
+                    onScroll={(controller, _dx, dy) => {
+                        // step depends on the device: mouse wheels deliver
+                        // one event per notch (WHEEL unit; magnitude varies
+                        // by compositor — ±2 here) → sign-based 2% per
+                        // notch; touchpads stream small smooth deltas
+                        // (SURFACE unit) → 0.1%/unit. setDimLevel exits
+                        // outdoor mode, so scrolling always lands on the bar
+                        const delta =
+                            controller.get_unit() === Gdk.ScrollUnit.WHEEL
+                                ? dy < 0
+                                    ? 0.02
+                                    : -0.02
+                                : -dy * 0.001
+                        brightness.screen = Math.min(1, Math.max(0.05, brightness.screen + delta))
                         return true
                     }}
                 />
