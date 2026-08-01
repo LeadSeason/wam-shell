@@ -1,4 +1,4 @@
-import { Accessor, createBinding, createState } from "gnim"
+import { Accessor, createBinding, createState, onCleanup, With } from "gnim"
 import { execAsync } from "../../../lib/metrics"
 import { DropdownButton } from "./ToggleButton"
 import AstalNetwork from "gi://AstalNetwork?version=0.1"
@@ -37,10 +37,23 @@ function stateLabel(wired: AstalNetwork.Wired, state: AstalNetwork.DeviceState):
 }
 
 export function WiredButton({ navigate }: { navigate: () => void }) {
-    const wired = AstalNetwork.get_default().wired
-    // no ethernet device on this machine (or link down at startup)
-    if (!wired) return <></>
+    // Network.wired goes null when the ethernet device is removed
+    // (USB-C dongles): rebind so the toggle drops out of the grid
+    // instead of staying frozen at its last state
+    return (
+        <With value={createBinding(AstalNetwork.get_default(), "wired")}>
+            {wired => wired && <WiredToggleButton wired={wired} navigate={navigate} />}
+        </With>
+    )
+}
 
+function WiredToggleButton({
+    wired,
+    navigate,
+}: {
+    wired: AstalNetwork.Wired
+    navigate: () => void
+}) {
     const subtitle = createBinding(wired, "state").as(s => stateLabel(wired, s))
 
     return (
@@ -64,9 +77,24 @@ interface wiredDetails {
 }
 
 export function WiredWidget({ pane, name }: { pane: Accessor<string>; name: string }) {
-    const wired = AstalNetwork.get_default().wired
-    if (!wired) return <></>
+    // same rebind as the toggle: a removed device empties the pane
+    // (the header stays) instead of showing stale details
+    return (
+        <With value={createBinding(AstalNetwork.get_default(), "wired")}>
+            {wired => wired && <WiredPane wired={wired} pane={pane} name={name} />}
+        </With>
+    )
+}
 
+function WiredPane({
+    wired,
+    pane,
+    name,
+}: {
+    wired: AstalNetwork.Wired
+    pane: Accessor<string>
+    name: string
+}) {
     const [details, setDetails] = createState<wiredDetails>({
         iface: "",
         ipv4: "",
@@ -94,13 +122,21 @@ export function WiredWidget({ pane, name }: { pane: Accessor<string>; name: stri
                     ipv6: get("IP6.ADDRESS[1]"),
                 })
             })
+            // races with NM dropping the device (dongle pulled mid-exec)
             .catch(e => console.warn("wired details failed:", e))
     }
 
-    pane.subscribe(() => {
-        if (pane.get() === name) refresh()
+    // the widget remounts on device removal/swap: drop the old
+    // subscriptions or they stack on the long-lived pane accessor
+    const disposers = [
+        pane.subscribe(() => {
+            if (pane.get() === name) refresh()
+        }),
+        createBinding(wired, "state").subscribe(refresh),
+    ]
+    onCleanup(() => {
+        for (const d of disposers) d()
     })
-    createBinding(wired, "state").subscribe(refresh)
     refresh()
 
     const state = createBinding(wired, "state")

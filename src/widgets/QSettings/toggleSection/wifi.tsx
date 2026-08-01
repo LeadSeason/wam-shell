@@ -1,4 +1,4 @@
-import { Accessor, createBinding, createComputed, createState, For, With } from "gnim"
+import { Accessor, createBinding, createComputed, createState, For, onCleanup, With } from "gnim"
 import { DropdownButton, OverlayIcon, bandBadgeOf } from "./ToggleButton"
 import AstalNetwork from "gi://AstalNetwork?version=0.1"
 import NM from "gi://NM?version=1.0"
@@ -41,10 +41,17 @@ interface wifiPaneProps {
 }
 
 export function WifiButton({ navigate }: { navigate: () => void }) {
-    const wifi = AstalNetwork.get_default().wifi
-    // no wifi device on this machine
-    if (!wifi) return <></>
+    // Network.wifi goes null when the adapter is removed (USB wifi):
+    // rebind so the toggle drops out of the grid instead of freezing
+    // at its last state
+    return (
+        <With value={createBinding(AstalNetwork.get_default(), "wifi")}>
+            {wifi => wifi && <WifiToggleButton wifi={wifi} navigate={navigate} />}
+        </With>
+    )
+}
 
+function WifiToggleButton({ wifi, navigate }: { wifi: AstalNetwork.Wifi; navigate: () => void }) {
     const subtitle = createComputed(
         [createBinding(wifi, "enabled"), createBinding(wifi, "ssid")],
         (enabled, ssid) => (enabled ? ssid || "On" : "Off"),
@@ -99,15 +106,20 @@ function channelOf(freq: number): number {
 
 /** the on/off switch that sits in the wifi pane's header row */
 export function WifiSwitch() {
-    const wifi = AstalNetwork.get_default().wifi
-    if (!wifi) return <></>
+    // rebind like the toggle: the switch must not drive a dead adapter
     return (
-        <Gtk.Switch
-            cssClasses={["wifiSwitch"]}
-            valign={Gtk.Align.CENTER}
-            active={createBinding(wifi, "enabled")}
-            onNotifyActive={self => wifi.set_enabled(self.active)}
-        />
+        <With value={createBinding(AstalNetwork.get_default(), "wifi")}>
+            {wifi =>
+                wifi && (
+                    <Gtk.Switch
+                        cssClasses={["wifiSwitch"]}
+                        valign={Gtk.Align.CENTER}
+                        active={createBinding(wifi, "enabled")}
+                        onNotifyActive={self => wifi.set_enabled(self.active)}
+                    />
+                )
+            }
+        </With>
     )
 }
 
@@ -194,15 +206,30 @@ function ConnectedSection({ wifi }: { wifi: AstalNetwork.Wifi }) {
 }
 
 export function WifiWidget({ pane, name }: wifiPaneProps) {
-    const wifi = AstalNetwork.get_default().wifi
-    if (!wifi) return <></>
+    // same rebind as the toggle: a removed adapter empties the pane
+    // (the header stays) instead of showing stale details
+    return (
+        <With value={createBinding(AstalNetwork.get_default(), "wifi")}>
+            {wifi => wifi && <WifiPane wifi={wifi} pane={pane} name={name} />}
+        </With>
+    )
+}
 
+function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPaneProps) {
     // scan whenever this pane becomes visible — same pulse feedback as
     // the rescan button so the refresh is visible
-    // (subscribe callbacks receive no value, read it)
-    pane.subscribe(() => {
-        if (pane.get() === name) rescan()
-        else setPrompt(null) // drop a stale prompt when leaving the pane
+    // (subscribe callbacks receive no value, read it).
+    // the widget remounts on adapter removal/swap: drop the old
+    // subscription or it stacks on the long-lived pane accessor
+    const disposers = [
+        pane.subscribe(() => {
+            if (pane.get() === name) rescan()
+            else setPrompt(null) // drop a stale prompt when leaving the pane
+        }),
+    ]
+    onCleanup(() => {
+        for (const d of disposers) d()
+        stopSpin()
     })
 
     // rescan pulse feedback: the button disables and the icon spins.
