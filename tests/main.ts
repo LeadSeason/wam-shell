@@ -10,6 +10,7 @@ import "./harvestTimeline.test"
 import "./gcal.test"
 import "./github.test"
 import "./youtube.test"
+import "./sleepTimerState.test"
 import { summary } from "./framework"
 
 summary()
