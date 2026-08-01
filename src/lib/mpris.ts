@@ -36,12 +36,14 @@ export const players = rawPlayers.as(list => {
     })
 })
 
-/** a player with a track loaded: a non-empty title, or at least a
- *  non-stopped playback state (VLC reports no title for untagged
- *  files). stopped title-less players are zombie browser tabs keeping
- *  their MPRIS instance alive after playback ended */
+/** browsers scrub private-session metadata instead of hiding it: the
+ *  track title arrives as an anonymized "<X> is playing media"
+ *  placeholder — chromium sends "A site is playing media", firefox
+ *  "Firefox is playing media" (english locale strings). treat it as
+ *  no track at all — private windows must not surface in the UI */
 const isEligible = (p: AstalMpris.Player) =>
-    p.title !== "" || p.playbackStatus !== AstalMpris.PlaybackStatus.STOPPED
+    (p.title !== "" || p.playbackStatus !== AstalMpris.PlaybackStatus.STOPPED) &&
+    !(Config.media.hidePrivateSessions && p.title.endsWith(" is playing media"))
 
 /** eligible players for display (segment strip, switcher, tooltips).
  *  eligibility also changes with per-player title/status, which the
