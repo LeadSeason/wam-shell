@@ -271,15 +271,35 @@
 #                when opened (at most once a minute). re-polls are
 #                conditional (If-Modified-Since) and rate-limit free.
 #                clamped to >= 1. default 5
-# popups - show a transient banner for brand-new GitHub threads (the
-#          first sync after startup is a baseline and stays quiet).
-#          respects do-not-disturb; banners expire on their own — the
-#          item stays in the center either way. only shown when our
-#          notification daemon is used. default true
 # [github]
 # enabled = false
 # poll_minutes = 5
-# popups = true
+
+# [youtube] - YouTube notifications in the notification center: new
+#             uploads from your subscriptions (the YouTube home feed)
+#             merge into the center's list with thumbnails, and a
+#             YouTube icon in the header filters to just them. clicking
+#             an item opens the video; dismissing hides it locally
+#             (YouTube has no read/done API). Note: comments/replies
+#             are not available via any API.
+# Auth: the same Google OAuth client as [calendar] — zero setup. one
+#       browser consent per Google account (the center's YouTube filter
+#       shows a "Sign in to YouTube" button until then). First-time
+#       maintainer setup (already done for this project): enable
+#       "YouTube Data API v3" and add the youtube.readonly scope on the
+#       OAuth consent screen. Tokens live in
+#       ~/.config/wam-shell/youtube-tokens.json.
+#
+# enabled - master toggle. default false
+# poll_minutes - minutes between syncs. each sync fetches the uploads
+#                playlist of every subscribed channel (~1 quota unit
+#                per subscription: the default 10k/day fits ~275
+#                subscriptions hourly). the provider raises the
+#                effective interval when your subscription count would
+#                exceed the quota. clamped to >= 15. default 60
+# [youtube]
+# enabled = false
+# poll_minutes = 60
 # ════════════════════════════════════════════════════════════════════
 # Quick settings popup
 # ════════════════════════════════════════════════════════════════════
@@ -372,6 +392,12 @@
 #                  hint (e.g. wam-shell's own bluetooth
 #                  connect/disconnect) are always excluded, regardless
 #                  of this list. default []
+# popup_providers - list of provider names ("github", "youtube", ...)
+#                  whose items may also raise transient banners,
+#                  alongside the center. empty (default) = provider
+#                  notifications live in the center only. banners
+#                  respect do-not-disturb; the first sync after startup
+#                  is a silent baseline
 # [notifications]
 # daemon = "auto"
 # popups = true
@@ -379,6 +405,7 @@
 # position = "topRight"
 # popup_width = 460
 # transient_apps = ["Spotify"]
+# popup_providers = []
 
 # ════════════════════════════════════════════════════════════════════
 # On-screen display

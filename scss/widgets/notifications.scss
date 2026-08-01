@@ -33,11 +33,12 @@
             color: t.$subtext0;
         }
     }
-    // Arabic fallback fonts render optically smaller than the Latin Nerd
-    // Font at the same size — bump the body back to full size and raise
-    // its contrast
+    // Arabic in the shell's mono Nerd Font is unreadable and renders
+    // optically smaller: give RTL bodies a proper Arabic UI face,
+    // slightly larger with raised contrast
     &.rtl .body {
-        font-size: 1em;
+        font-family: "Noto Kufi Arabic", "DejaVu Sans", sans-serif;
+        font-size: 1.05em;
         color: t.$subtext1;
     }
 
@@ -45,12 +46,24 @@
     .time {
         font-size: s.$font-small;
         color: t.$subtext0;
+        // same slot height as the dismiss button it swaps with on
+        // hover — the header (and card) must not jiggle
+        min-height: 20px;
+    }
+
+    button.dismiss {
+        // strip the theme's built-in button minimum (~24px): the slot
+        // must match the timestamp's 20px floor or the card jiggles
+        // when hover swaps them
+        min-height: 0;
+        min-width: 0;
+        padding: 0;
     }
     .summary {
         font-weight: bold;
     }
     .body {
-        font-size: s.$font-small;
+        font-size: 1em;
         color: t.$subtext0;
     }
     .image {
@@ -60,10 +73,6 @@
     // hidden until the card is hovered (swaps with the timestamp via the
     // card's motion controller — CSS :hover is unreliable on layer-shell
     // surfaces)
-    .dismiss {
-        padding: 0 4px;
-    }
-
     button {
         border-radius: s.$radius;
         border: solid 2px transparent;
@@ -88,8 +97,8 @@ window.Notifications {
         padding: 8px;
     }
 
-    .header {
-        padding: 0 4px 4px;
+    .header,
+    .filtersRow {
         button {
             border-radius: s.$radius;
             border: solid 2px transparent;
@@ -107,6 +116,24 @@ window.Notifications {
                 background-color: t.$accent40;
                 border: solid 2px t.$accent40;
             }
+            // pending-count badge next to the icon
+            .count {
+                font-size: s.$font-small;
+                color: t.$subtext0;
+            }
+        }
+    }
+
+    .header {
+        padding: 0 4px 4px;
+    }
+
+    .filtersRow {
+        padding: 0 4px 2px;
+
+        // bigger click targets for the filter icons
+        button {
+            padding: 4px 10px;
         }
     }
 
@@ -128,6 +155,24 @@ window.Notifications {
         padding: 24px;
         label {
             color: t.$subtext0;
+        }
+        // a provider explaining its sync problem (quota, outage)
+        label.status {
+            color: t.$yellow;
+            font-style: italic;
+        }
+        // provider sign-in offer (e.g. YouTube) replacing the label
+        button.providerSignin {
+            border-radius: s.$radius;
+            padding: 6px 14px;
+            background-color: t.$surface050;
+            border: solid 2px t.$accent20;
+            label {
+                color: t.$text;
+            }
+            &:hover {
+                background-color: t.$accent20;
+            }
         }
     }
 
