@@ -111,6 +111,9 @@ function brightnessWidget() {
     const previous = createBinding(brightness, "previous")
 
     const [visible, setVisible] = createState<boolean>(false)
+    // fractional scroll deltas accumulate across events (touchpads
+    // emit dozens of small ones per flick)
+    let scrollAcc = 0
     let count = 0
     const show = () => {
         setVisible(true)
@@ -139,9 +142,20 @@ function brightnessWidget() {
                 flags={Gtk.EventControllerScrollFlags.VERTICAL}
                 onScroll={(_s, _dx, dy) => {
                     show()
-                    // fixed step per notch, same as the volume widgets
-                    const step = dy < 0 ? 0.05 : -0.05
-                    brightness.screen = Math.min(1, Math.max(0.05, brightness.screen + step))
+                    // delta accumulation, not a fixed step per event:
+                    // touchpads emit dozens of fractional-dy events per
+                    // flick. Measured on the user's touchpad: ~46u per
+                    // micro-adjust, ~260u per swipe, so 0.2%/unit =
+                    // ~10% per micro-adjust, ~half the range per swipe
+                    scrollAcc += dy
+                    const whole = Math.trunc(scrollAcc)
+                    if (whole !== 0) {
+                        scrollAcc -= whole
+                        brightness.screen = Math.min(
+                            1,
+                            Math.max(0.05, brightness.screen + whole * 0.002),
+                        )
+                    }
                     return true
                 }}
             />
