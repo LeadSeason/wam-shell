@@ -13,6 +13,12 @@ import { downloadCover } from "./coverArt"
 
 const mpris = AstalMpris.get_default()
 
+// perf harness (tests/perf/run.sh sets WAM_SHELL_NO_MPRIS=1): hide the
+// live session's players so media counters (seek-scale connections,
+// position timers) measure the code, not whatever happens to be
+// playing on the developer's session (#58)
+const hidePlayers = GLib.getenv("WAM_SHELL_NO_MPRIS") === "1"
+
 const rawPlayers = createBinding(mpris, "players")
 
 // one process can own several MPRIS names when multiple bridges are
@@ -20,6 +26,7 @@ const rawPlayers = createBinding(mpris, "players")
 // and bare "mpv"): each name shows up as its own player. collapse
 // duplicates reporting the same identity and track
 export const players = rawPlayers.as(list => {
+    if (hidePlayers) return []
     const seen = new Set<string>()
     return list.filter(p => {
         const key = `${p.identity}\n${p.title}`
