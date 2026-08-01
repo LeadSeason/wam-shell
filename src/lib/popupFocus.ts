@@ -19,8 +19,19 @@ import type { Gtk } from "ags/gtk4"
 // keyboard focus, and the capture (grim) happens right after the picker
 // exits. Hiding then would make the popups uncapturable, so focus loss
 // is ignored while a picker layer surface is open, plus a grace tail.
+//
+// Perf harness (tests/perf/run.sh sets WAM_SHELL_NO_FOCUS_WATCH=1):
+// the watcher is disabled — the measured instance shares the live
+// session, and its focus bounces would churn hide timers in the
+// metrics (#25)
 export function hideOnFocusLoss(win: Gtk.Window, hide: () => void) {
+    // GLib.getenv at call time: the function runs per popup at window
+    // construction, always after the process env is fixed
+    if (GLib.getenv("WAM_SHELL_NO_FOCUS_WATCH") === "1") return
     let wasActive = false
+    // one settle timer at a time per window: a focus storm (the perf
+    // harness shares the live session) must not stack one per bounce
+    let lossTimer = 0
     connect(win, "notify::is-active", (_w: Gtk.Window) => {
         if (win.is_active) {
             wasActive = true
@@ -32,11 +43,12 @@ export function hideOnFocusLoss(win: Gtk.Window, hide: () => void) {
             hookHyprland()
             return
         }
-        if (!wasActive) return
-        timeoutAdd("popupFocus:loss", GLib.PRIORITY_DEFAULT, 150, () => {
+        if (!wasActive || lossTimer) return
+        lossTimer = timeoutAdd("popupFocus:loss", GLib.PRIORITY_DEFAULT, 150, () => {
             // picker active: keep re-checking instead of hiding; once it
             // closes and the grace lapses, the normal logic applies
             if (screenshotInProgress()) return GLib.SOURCE_CONTINUE
+            lossTimer = 0
             if (!app.windows.some(w => w.is_active)) {
                 wasActive = false
                 hide()

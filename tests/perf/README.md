@@ -69,6 +69,10 @@ incoming notification, a track change triggering a cover download.
   connection count and the `mpris:position` timer otherwise flap with
   whatever is playing on the developer's session (#58), which produced
   false REGRESSION verdicts on media-free diffs.
+- `WAM_SHELL_NO_FOCUS_WATCH=1` disables the focus-loss popup watcher
+  (`lib/popupFocus.ts`) in the measured instance: focus bounces from
+  the live session would otherwise churn popup hide timers wildly past
+  any tolerance (#25).
 - The run refuses to start when `org.freedesktop.Notifications` has no
   owner on the session bus: the measured instance must never become
   the developer's notification daemon.
