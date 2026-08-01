@@ -186,7 +186,7 @@ export default function QSettings() {
                                         filter={item => !isPinned(item)}
                                         iconSize={Config.tray.popupIconSize}
                                         pill
-                                        spacing={8}
+                                        spacing={2}
                                     />
                                 )}
                             </box>
