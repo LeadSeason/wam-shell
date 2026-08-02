@@ -249,7 +249,8 @@ Shows / hides the scratchpad tool on request.
                         $={ref => (searchEntry = ref)}
                         onNotifyText={({ text }) => search(text)}
                         onActivate={() => {
-                            openApp(list.get()[0])
+                            const first = list.get()[0]
+                            if (first) openApp(first)
                         }}
                         placeholderText="Start typing to search"
                         primaryIconName={"system-search-symbolic"}
