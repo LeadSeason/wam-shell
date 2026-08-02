@@ -75,7 +75,7 @@ function StatTile({
             spacing={2}
             visible={visible}
         >
-            <image iconName={icon} pixelSize={16} halign={Gtk.Align.START} />
+            <image iconName={icon} pixelSize={20} halign={Gtk.Align.START} />
             <label
                 cssClasses={["statTileValue"]}
                 label={big}
