@@ -1,5 +1,5 @@
 import { Accessor, createBinding, createComputed, createState, For, onCleanup, With } from "gnim"
-import { PaneEmpty } from "../PaneEmpty"
+import { PaneEmpty } from "../../PaneEmpty"
 import { DropdownButton, OverlayIcon, bandBadgeOf } from "./ToggleButton"
 import AstalNetwork from "gi://AstalNetwork?version=0.1"
 import NM from "gi://NM?version=1.0"

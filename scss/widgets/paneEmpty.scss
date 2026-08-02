@@ -1,0 +1,42 @@
+@use "active-theme" as t;
+@use "../conf.scss" as s;
+
+// centered empty state for panels with nothing to show (quick
+// settings panes, the notification center): keeps the shell's
+// consistent size from feeling empty
+.paneEmpty {
+    margin: 20px 0;
+}
+.paneEmptyIcon {
+    background-color: t.$surface0;
+    border-radius: s.$radius;
+    padding: 10px;
+    color: t.$subtext0;
+}
+.paneEmptyTitle {
+    font-weight: bold;
+}
+.paneEmptyHint {
+    font-size: s.$font-small;
+    color: t.$subtext0;
+}
+// a provider explaining its sync problem (quota, outage) in the
+// notification center's empty state
+.paneEmptyTitle.status {
+    color: t.$yellow;
+    font-style: italic;
+    font-weight: normal;
+}
+// provider sign-in offer (e.g. YouTube) inside the empty state
+button.providerSignin {
+    border-radius: s.$radius;
+    padding: 6px 14px;
+    background-color: t.$surface050;
+    border: solid 2px t.$accent20;
+    label {
+        color: t.$text;
+    }
+    &:hover {
+        background-color: t.$accent20;
+    }
+}

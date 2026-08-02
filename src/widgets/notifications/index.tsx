@@ -13,6 +13,7 @@ import { providers } from "../../lib/notificationProviders"
 import type { ProviderItem } from "../../lib/notificationProviders"
 import NotificationCard from "./NotificationCard"
 import ProviderCard from "./ProviderCard"
+import { PaneEmpty } from "../PaneEmpty"
 
 const registry = CommandRegistry.get_default()
 
@@ -355,70 +356,107 @@ function ensureWindow() {
                                     ))}
                                 </box>
                                 <Gtk.Separator />
-                                <box
-                                    cssClasses={["empty"]}
-                                    visible={merged.as(l => l.length === 0)}
-                                >
-                                    {/* a failing provider explains
-                                    itself instead of pretending the
-                                    inbox is empty */}
-                                    <label
-                                        cssClasses={["status"]}
-                                        visible={providerStatus.as(s => s !== null)}
-                                        label={providerStatus.as(s => s ?? "")}
-                                        hexpand
-                                        xalign={0}
-                                        maxWidthChars={40}
-                                        wrap
-                                    />
-                                    <label
-                                        visible={createComputed(
-                                            [providerStatus, signInTarget],
-                                            (s, t) => s === null && t === null,
-                                        )}
-                                        label={query.as(q =>
-                                            q.trim() === "" ? "No notifications" : "No matches",
-                                        )}
-                                    />
-                                    <button
-                                        cssClasses={["providerSignin"]}
-                                        visible={signInTarget.as(t => t !== null)}
-                                        onClicked={() => signInTarget.get()?.signIn?.()}
-                                    >
-                                        <label
-                                            label={signInTarget.as(
-                                                t =>
-                                                    `Sign in to ${t?.displayName ?? t?.name ?? ""}`,
+                                {/* fixed-height body: switching between
+                                an empty source and a full one must not
+                                resize the card. Empty sources fill the
+                                middle with a centered state instead */}
+                                <box orientation={Gtk.Orientation.VERTICAL} heightRequest={640}>
+                                    <box visible={merged.as(l => l.length === 0)} vexpand>
+                                        {/* a failing provider explains
+                                        itself instead of pretending the
+                                        inbox is empty */}
+                                        <box visible={providerStatus.as(s => s !== null)} vexpand>
+                                            <PaneEmpty
+                                                icon="dialog-warning-symbolic"
+                                                title={providerStatus.as(s => s ?? "")}
+                                                hint=""
+                                                titleClasses={["status"]}
+                                            />
+                                        </box>
+                                        {/* interactive sign-in offer
+                                        (YouTube) when the picked
+                                        provider has no accounts yet */}
+                                        <box
+                                            visible={createComputed(
+                                                [providerStatus, signInTarget],
+                                                (s, t) => s === null && t !== null,
                                             )}
-                                        />
-                                    </button>
-                                </box>
-                                <Gtk.ScrolledWindow
-                                    vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
-                                    hscrollbarPolicy={Gtk.PolicyType.NEVER}
-                                    propagateNaturalHeight
-                                    maxContentHeight={640}
-                                    visible={merged.as(l => l.length > 0)}
-                                >
-                                    <box
-                                        cssClasses={["list"]}
-                                        orientation={Gtk.Orientation.VERTICAL}
-                                        spacing={8}
-                                    >
-                                        <For each={merged} id={r => r.key}>
-                                            {r =>
-                                                r.desktop ? (
-                                                    <NotificationCard
-                                                        n={r.desktop}
-                                                        onDismiss={() => r.desktop!.dismiss()}
-                                                    />
-                                                ) : (
-                                                    <ProviderCard item={r.item!} />
-                                                )
-                                            }
-                                        </For>
+                                            vexpand
+                                        >
+                                            <PaneEmpty
+                                                icon={signInTarget.as(
+                                                    t => t?.iconName ?? "mail-inbox-symbolic",
+                                                )}
+                                                title="No notifications"
+                                                hint=""
+                                                child={
+                                                    <button
+                                                        cssClasses={["providerSignin"]}
+                                                        halign={Gtk.Align.CENTER}
+                                                        onClicked={() =>
+                                                            signInTarget.get()?.signIn?.()
+                                                        }
+                                                    >
+                                                        <label
+                                                            label={signInTarget.as(
+                                                                t =>
+                                                                    `Sign in to ${t?.displayName ?? t?.name ?? ""}`,
+                                                            )}
+                                                        />
+                                                    </button>
+                                                }
+                                            />
+                                        </box>
+                                        {/* plain empty inbox, or no
+                                        matches for the search */}
+                                        <box
+                                            visible={createComputed(
+                                                [providerStatus, signInTarget],
+                                                (s, t) => s === null && t === null,
+                                            )}
+                                            vexpand
+                                        >
+                                            <PaneEmpty
+                                                icon={query.as(q =>
+                                                    q.trim() === ""
+                                                        ? "mail-inbox-symbolic"
+                                                        : "system-search-symbolic",
+                                                )}
+                                                title={query.as(q =>
+                                                    q.trim() === ""
+                                                        ? "No notifications"
+                                                        : "No matches",
+                                                )}
+                                                hint=""
+                                            />
+                                        </box>
                                     </box>
-                                </Gtk.ScrolledWindow>
+                                    <Gtk.ScrolledWindow
+                                        vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                                        hscrollbarPolicy={Gtk.PolicyType.NEVER}
+                                        vexpand
+                                        visible={merged.as(l => l.length > 0)}
+                                    >
+                                        <box
+                                            cssClasses={["list"]}
+                                            orientation={Gtk.Orientation.VERTICAL}
+                                            spacing={8}
+                                        >
+                                            <For each={merged} id={r => r.key}>
+                                                {r =>
+                                                    r.desktop ? (
+                                                        <NotificationCard
+                                                            n={r.desktop}
+                                                            onDismiss={() => r.desktop!.dismiss()}
+                                                        />
+                                                    ) : (
+                                                        <ProviderCard item={r.item!} />
+                                                    )
+                                                }
+                                            </For>
+                                        </box>
+                                    </Gtk.ScrolledWindow>
+                                </box>
                             </box>
                         </revealer>
                     </box>

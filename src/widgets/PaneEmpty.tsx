@@ -1,19 +1,27 @@
 import { Gtk } from "ags/gtk4"
 import { Accessor } from "gnim"
 
-// Centered empty state for panes with nothing to show. The quick
-// settings shell keeps one consistent size across panes, so an empty
-// pane shows this in the middle instead of shrinking to nothing.
+// Centered empty state for panels with nothing to show (quick
+// settings panes, the notification center). The shell keeps one
+// consistent size, so an empty panel shows this in the middle instead
+// of shrinking to nothing. `child` slots below the hint (e.g. a
+// sign-in button).
 export function PaneEmpty({
     icon,
     title,
     hint,
     onClick,
+    child,
+    titleClasses = [],
 }: {
-    icon: string
+    icon: string | Accessor<string>
     title: string | Accessor<string>
     hint: string | Accessor<string>
     onClick?: () => void
+    child?: Gtk.Widget
+    // extra classes on the title label (e.g. "status" for a provider's
+    // sync-error styling)
+    titleClasses?: string[]
 }) {
     return (
         <box
@@ -31,7 +39,11 @@ export function PaneEmpty({
             <box cssClasses={["paneEmptyIcon"]} halign={Gtk.Align.CENTER}>
                 <image iconName={icon} pixelSize={22} />
             </box>
-            <label cssClasses={["paneEmptyTitle"]} label={title} halign={Gtk.Align.CENTER} />
+            <label
+                cssClasses={["paneEmptyTitle", ...titleClasses]}
+                label={title}
+                halign={Gtk.Align.CENTER}
+            />
             {/* hidden while empty: a blank hint must not take a line */}
             {typeof hint === "string" ? (
                 hint !== "" && (
@@ -45,6 +57,7 @@ export function PaneEmpty({
                     visible={hint.as(h => h !== "")}
                 />
             )}
+            {child}
         </box>
     )
 }
