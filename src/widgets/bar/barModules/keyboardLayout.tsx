@@ -35,9 +35,12 @@ function LayoutDropdown({ source }: { source: LayoutSource }) {
             >
                 <box orientation={Gtk.Orientation.VERTICAL}>
                     {/* names arrive async after startup; a static snapshot
-                    stays empty for the shell's lifetime */}
-                    <For each={names}>
-                        {(n, i) => (
+                    stays empty for the shell's lifetime. Iterate indices
+                    (unique, so gnim's value-keying can't drop rows):
+                    duplicate layout descriptions — e.g. us,us with
+                    different variants — would otherwise lose a row */}
+                    <For each={names.as(ns => ns.map((_, i) => i))}>
+                        {(k, i) => (
                             <button
                                 cssClasses={createComputed([activeIndex, i], (a, idx) =>
                                     a === idx ? ["active"] : [],
@@ -54,7 +57,13 @@ function LayoutDropdown({ source }: { source: LayoutSource }) {
                                             (ls, idx) => flag(ls[idx] ?? "") || "  ",
                                         )}
                                     />
-                                    <label label={n} xalign={0} />
+                                    <label
+                                        label={createComputed(
+                                            [names, i],
+                                            (ns, idx) => ns[idx] ?? "",
+                                        )}
+                                        xalign={0}
+                                    />
                                 </box>
                             </button>
                         )}
