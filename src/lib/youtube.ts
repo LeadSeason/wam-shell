@@ -480,8 +480,9 @@ function effectivePollMinutes(): number {
     const channels = [...channelsByAccount.values()].reduce((n, c) => n + c.length, 0)
     if (channels === 0) return Config.youtube.pollMinutes
     // each sweep costs ~1 unit per channel; keep the daily total under
-    // the quota headroom
-    const floor = Math.ceil((channels * 96) / QUOTA_PER_DAY)
+    // the quota headroom: polls/day = 1440/minutes, so
+    // minutes >= channels * 1440 / QUOTA_PER_DAY
+    const floor = Math.ceil((channels * 1440) / QUOTA_PER_DAY)
     // consecutive total failures (quota day, outage): back off instead
     // of hammering — 1h, 2h, 4h, capped at 8h
     const backoff = Math.min(Config.youtube.pollMinutes * 2 ** failStreak, 8 * 60)
