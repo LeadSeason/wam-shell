@@ -443,20 +443,21 @@ window#QSettings {
         }
     }
 
-    // empty state while the radio is off
-    .wifiEmpty {
+    // centered empty state for panes with nothing to show: keeps the
+    // shell's consistent size from feeling empty
+    .paneEmpty {
         margin: 20px 0;
     }
-    .wifiEmptyIcon {
+    .paneEmptyIcon {
         background-color: t.$surface0;
         border-radius: s.$radius;
         padding: 10px;
         color: t.$subtext0;
     }
-    .wifiEmptyTitle {
+    .paneEmptyTitle {
         font-weight: bold;
     }
-    .wifiEmptyHint {
+    .paneEmptyHint {
         font-size: s.$font-small;
         color: t.$subtext0;
     }

@@ -1,4 +1,5 @@
 import { Accessor, createBinding, createComputed, createState, For, onCleanup, With } from "gnim"
+import { PaneEmpty } from "../PaneEmpty"
 import { DropdownButton } from "./ToggleButton"
 import AstalBluetooth from "gi://AstalBluetooth?version=0.1"
 import Gio from "gi://Gio?version=2.0"
@@ -677,15 +678,17 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                 orientation={Gtk.Orientation.VERTICAL}
                 visible={pairingRequest.as(r => r === null)}
             >
-                <box cssName={"button"} spacing={5} visible={powered.as(p => !p)}>
-                    <Gtk.GestureClick
-                        button={1}
-                        onPressed={() => {
+                <box visible={powered.as(p => !p)}>
+                    {/* fills the middle instead of a bare row: the pane
+                    keeps the shell's consistent size */}
+                    <PaneEmpty
+                        icon="bluetooth-disabled-symbolic"
+                        title={"Bluetooth is off"}
+                        hint={"Click to turn on"}
+                        onClick={() => {
                             adapter.powered = true
                         }}
                     />
-                    <image iconName="bluetooth-disabled-symbolic" />
-                    <label label={"Bluetooth is off — Turn on"} hexpand xalign={0} />
                 </box>
                 <box orientation={Gtk.Orientation.VERTICAL} visible={powered}>
                     {/* each section in its own container: For re-appends its
@@ -720,22 +723,16 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                             </button>
                         </box>
                         <For each={available}>{device => <DeviceRow device={device} />}</For>
-                        <box
-                            cssName={"button"}
-                            spacing={8}
-                            visible={available.as(l => l.length === 0)}
-                        >
-                            <Gtk.GestureClick button={1} onPressed={rescan} />
-                            {/* real spinner while scanning: the loading icon
-                        renders as an ugly "•••" glyph */}
-                            <Gtk.Spinner $={self => self.start()} visible={scanning} />
-                            <image iconName="bluetooth-symbolic" visible={scanning.as(s => !s)} />
-                            <label
-                                label={scanning.as(d =>
-                                    d ? "Scanning…" : "No devices found — scan again",
-                                )}
-                                hexpand
-                                xalign={0}
+                        {/* centered empty state (click = scan again).
+                        While a scan is in flight say so: "No devices
+                        found" would be a verdict the scan hasn't
+                        reached yet */}
+                        <box visible={available.as(l => l.length === 0)}>
+                            <PaneEmpty
+                                icon="bluetooth-symbolic"
+                                title={scanning.as(s => (s ? "Scanning…" : "No devices found"))}
+                                hint={scanning.as(s => (s ? "" : "Click to scan again"))}
+                                onClick={rescan}
                             />
                         </box>
                     </box>
