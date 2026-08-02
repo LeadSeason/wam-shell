@@ -339,13 +339,17 @@ function fetchAll(
 ) {
     request("GET", path, null, r => {
         // one bounded retry on throttle: a 429 would otherwise silently
-        // abandon the whole slow fetch
+        // abandon the whole slow fetch. The source is tracked so
+        // dispose() can cancel a pending retry instead of firing a
+        // fetch on a torn-down module
         if (r.status === 429 && !retried) {
-            timeoutAddSeconds(
+            if (fetchRetrySource) sourceRemove(fetchRetrySource)
+            fetchRetrySource = timeoutAddSeconds(
                 "harvest:fetchRetry",
                 GLib.PRIORITY_DEFAULT,
                 Math.max(r.retryAfter, 1),
                 () => {
+                    fetchRetrySource = 0
                     fetchAll(path, key, acc, cb, true)
                     return GLib.SOURCE_REMOVE
                 },
@@ -368,6 +372,8 @@ function fetchAll(
 let fastTimer = 0
 let slowTimer = 0
 let baselineTimer = 0
+// pending 429 retry (fetchAll): tracked so dispose() can cancel it
+let fetchRetrySource = 0
 let tickerSource = 0
 let authStrikes = 0
 let backoffLevel = 0
@@ -1177,6 +1183,10 @@ export function dispose() {
     if (baselineTimer) {
         sourceRemove(baselineTimer)
         baselineTimer = 0
+    }
+    if (fetchRetrySource) {
+        sourceRemove(fetchRetrySource)
+        fetchRetrySource = 0
     }
     if (rolloverTimer) {
         sourceRemove(rolloverTimer)
