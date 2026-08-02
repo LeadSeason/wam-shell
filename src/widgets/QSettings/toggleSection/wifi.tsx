@@ -583,7 +583,11 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
         }
 
         return (
-            <box cssClasses={["wifiPrompt"]} orientation={Gtk.Orientation.VERTICAL} spacing={10}>
+            <box
+                cssClasses={["wifiPrompt", "paneCard"]}
+                orientation={Gtk.Orientation.VERTICAL}
+                spacing={10}
+            >
                 <label
                     cssClasses={["title"]}
                     label={p.ap ? `Connect to ${p.ssid}` : "Join hidden network"}
@@ -685,13 +689,15 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                     >
                         <For each={sortedAps}>{ap => <ApRow ap={ap} />}</For>
                     </box>
-                    <box cssName={"button"} spacing={5}>
-                        <Gtk.GestureClick
-                            button={1}
-                            onPressed={() => setPrompt({ ssid: "", ap: null })}
-                        />
-                        <image iconName="list-add-symbolic" />
-                        <label label={"Join hidden network…"} hexpand xalign={0} />
+                    <box cssClasses={["paneCard"]}>
+                        <box cssName={"button"} cssClasses={["paneRow"]} spacing={5}>
+                            <Gtk.GestureClick
+                                button={1}
+                                onPressed={() => setPrompt({ ssid: "", ap: null })}
+                            />
+                            <image iconName="list-add-symbolic" />
+                            <label label={"Join hidden network…"} hexpand xalign={0} />
+                        </box>
                     </box>
                 </box>
             </box>

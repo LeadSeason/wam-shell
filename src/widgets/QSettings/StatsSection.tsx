@@ -90,7 +90,7 @@ function StatRow({
 export function StatsSection() {
     return (
         <box
-            cssClasses={["QSSection", "statsSection"]}
+            cssClasses={["paneCard", "statsSection"]}
             orientation={Gtk.Orientation.VERTICAL}
             spacing={8}
         >

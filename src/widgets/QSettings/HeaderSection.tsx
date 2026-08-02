@@ -227,7 +227,7 @@ export function HeaderSection() {
         )
 
     return (
-        <box cssClasses={["QSHeader", "QSSection"]}>
+        <box cssClasses={["QSHeader", "paneCard"]}>
             {Config.quicksettings.showAvatar && <Avatar />}
             <box
                 orientation={Gtk.Orientation.VERTICAL}

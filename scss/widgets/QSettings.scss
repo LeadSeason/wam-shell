@@ -92,7 +92,7 @@ window#QSettings {
     }
 
     .QSHeader {
-        background-color: t.$base;
+        // card background/radius/padding come from .paneCard
         // avatar: circle-cropped inside its frame; the ring color comes
         // from the css `color` (cairo picks it up)
         .batteryRing {
@@ -136,7 +136,8 @@ window#QSettings {
     }
 
     // device dropdown lists inside the slider section
-    .QSSection revealer button {
+    .QSSection revealer button,
+    .paneCard revealer button {
         margin: 3px 0;
     }
 

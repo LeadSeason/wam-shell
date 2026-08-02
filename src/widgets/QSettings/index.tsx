@@ -191,11 +191,17 @@ export default function QSettings() {
                             transitionType={Gtk.StackTransitionType.SLIDE_LEFT_RIGHT}
                             transitionDuration={200}
                         >
-                            <box $type="named" name="main" orientation={Gtk.Orientation.VERTICAL}>
+                            <box
+                                $type="named"
+                                name="main"
+                                orientation={Gtk.Orientation.VERTICAL}
+                                // uniform rhythm: 8px between the cards
+                                // (sections are cards now — no separators)
+                                spacing={8}
+                            >
                                 {/* header (battery, power, …) only on the main pane */}
                                 <HeaderSection />
                                 <SliderSection />
-                                <Gtk.Separator />
                                 {toggleSection.widget}
                                 {Config.quicksettings.showStats && <StatsSection />}
                                 {/* tray always above the player */}
@@ -207,7 +213,6 @@ export default function QSettings() {
                                         spacing={2}
                                     />
                                 )}
-                                {!Config.tray.onPanel && <Gtk.Separator />}
                                 <MediaSection />
                             </box>
                             <box $type="named" name="wifi" orientation={Gtk.Orientation.VERTICAL}>
