@@ -262,6 +262,12 @@ window#QSettings {
         font-size: s.$font-small;
         color: t.$subtext0;
     }
+    // real <button> widgets styled as card rows (sleep timer presets,
+    // the custom-start chip): the global button margin breaks the
+    // card's rhythm
+    button.paneRow {
+        margin: 0;
+    }
 
     .toggleTitle {
         font-weight: bold;
