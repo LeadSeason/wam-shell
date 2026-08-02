@@ -478,10 +478,10 @@ function adoptRunning(entry: Entry | null) {
     if (prev?.id !== entry?.id) refreshDayTotal()
 }
 
-// timeline order for the popup: ascending by start time; entries
-// without a start (manual) slot in at their booking time (created_at,
-// NOT updated_at — a notes edit must not reshuffle the timeline).
-// Ties break by created_at, then id, so the order is deterministic
+// timeline order for the popup: newest first, like Harvest's own day
+// view (running entry on top). Entries without a start (manual) slot
+// in at their booking time (created_at, NOT updated_at — a notes edit
+// must not reshuffle the timeline). Ties break by created_at, then id
 export function dayTimeline(entries: Entry[]): Entry[] {
     const ms = (s: string) => {
         const t = Date.parse(s)
@@ -493,7 +493,7 @@ export function dayTimeline(entries: Entry[]): Entry[] {
         return ms(e.createdAt) || ms(e.updatedAt)
     }
     return [...entries].sort(
-        (a, b) => key(a) - key(b) || ms(a.createdAt) - ms(b.createdAt) || a.id - b.id,
+        (a, b) => key(b) - key(a) || ms(b.createdAt) - ms(a.createdAt) || b.id - a.id,
     )
 }
 

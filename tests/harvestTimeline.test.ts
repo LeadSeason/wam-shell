@@ -21,7 +21,7 @@ const entry = (over: Partial<Entry>): Entry => ({
     ...over,
 })
 
-test("dayTimeline: timed entries sort by start time ascending", () => {
+test("dayTimeline: timed entries sort by start time descending (Harvest order)", () => {
     const rows = dayTimeline([
         entry({ id: 1, startedTime: "11:00" }),
         entry({ id: 2, startedTime: "8:30" }),
@@ -29,7 +29,7 @@ test("dayTimeline: timed entries sort by start time ascending", () => {
     ])
     eq(
         rows.map(e => e.id),
-        [2, 1, 3],
+        [3, 1, 2],
     )
 })
 
@@ -40,7 +40,7 @@ test("dayTimeline: timerStartedAt wins over startedTime", () => {
     ])
     eq(
         rows.map(e => e.id),
-        [2, 1],
+        [1, 2],
     )
 })
 
@@ -57,7 +57,7 @@ test("dayTimeline: manual entries (no start) slot in by createdAt", () => {
     ])
     eq(
         rows.map(e => e.id),
-        [2, 1, 3],
+        [3, 1, 2],
     )
 })
 
@@ -68,7 +68,7 @@ test("dayTimeline: identical start times tie-break deterministically", () => {
     ])
     eq(
         rows.map(e => e.id),
-        [4, 9],
+        [9, 4],
     )
 })
 
@@ -79,9 +79,9 @@ test("dayTimeline: running entries stay in the timeline", () => {
     ])
     eq(
         rows.map(e => e.id),
-        [2, 1],
+        [1, 2],
     )
-    eq(rows[1].isRunning, true)
+    eq(rows[0].isRunning, true)
 })
 
 test("startTimeLabel: 24h and 12h clocks, manual entries", () => {
