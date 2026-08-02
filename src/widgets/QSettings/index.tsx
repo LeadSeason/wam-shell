@@ -260,7 +260,7 @@ export default function QSettings() {
                                 orientation={Gtk.Orientation.VERTICAL}
                             >
                                 <PaneHeader title="Power Mode" onBack={() => setPane("main")} />
-                                <PowerProfilesWidget />
+                                <PowerProfilesWidget pane={pane} name="powerprofiles" />
                             </box>
                         </stack>
                     </Gtk.ScrolledWindow>
