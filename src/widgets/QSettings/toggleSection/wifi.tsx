@@ -1,4 +1,5 @@
 import { Accessor, createBinding, createComputed, createState, For, onCleanup, With } from "gnim"
+import { PaneEmpty } from "../PaneEmpty"
 import { DropdownButton, OverlayIcon, bandBadgeOf } from "./ToggleButton"
 import AstalNetwork from "gi://AstalNetwork?version=0.1"
 import NM from "gi://NM?version=1.0"
@@ -633,27 +634,14 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
             <box orientation={Gtk.Orientation.VERTICAL} visible={prompt.as(p => p === null)}>
                 <ConnectedSection wifi={wifi} />
                 <Gtk.Separator visible={createBinding(wifi, "enabled")} />
-                {/* empty state while the radio is off */}
-                <box
-                    orientation={Gtk.Orientation.VERTICAL}
-                    cssClasses={["wifiEmpty"]}
-                    visible={createBinding(wifi, "enabled").as(e => !e)}
-                    valign={Gtk.Align.CENTER}
-                    vexpand
-                    spacing={6}
-                >
-                    <box cssClasses={["wifiEmptyIcon"]} halign={Gtk.Align.CENTER}>
-                        <image iconName="network-wireless-disabled-symbolic" pixelSize={22} />
-                    </box>
-                    <label
-                        cssClasses={["wifiEmptyTitle"]}
-                        label={"Wi-Fi is off"}
-                        halign={Gtk.Align.CENTER}
-                    />
-                    <label
-                        cssClasses={["wifiEmptyHint"]}
-                        label={"Flip the switch above to turn it on"}
-                        halign={Gtk.Align.CENTER}
+                {/* empty states: radio off, and radio on with no
+                networks in range — the pane keeps the shell's size and
+                fills the middle instead of shrinking */}
+                <box visible={createBinding(wifi, "enabled").as(e => !e)}>
+                    <PaneEmpty
+                        icon="network-wireless-disabled-symbolic"
+                        title={"Wi-Fi is off"}
+                        hint={"Flip the switch above to turn it on"}
                     />
                 </box>
                 <box
@@ -674,6 +662,15 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                                 css={spin.as(deg => (deg ? `transform: rotate(${deg}deg);` : ""))}
                             />
                         </button>
+                    </box>
+                    {/* radio on with no networks in range: fill the
+                    middle instead of shrinking the pane */}
+                    <box visible={sortedAps.as(aps => aps.length === 0)}>
+                        <PaneEmpty
+                            icon="network-wireless-symbolic"
+                            title={"No networks found"}
+                            hint={"Try rescanning in a moment"}
+                        />
                     </box>
                     {/* For in its own container: it re-appends children at
                     the parent's end on every update, which would float

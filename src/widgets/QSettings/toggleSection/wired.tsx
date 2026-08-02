@@ -1,4 +1,5 @@
 import { Accessor, createBinding, createState, onCleanup, With } from "gnim"
+import { PaneEmpty } from "../PaneEmpty"
 import { execAsync } from "../../../lib/metrics"
 import { DropdownButton } from "./ToggleButton"
 import AstalNetwork from "gi://AstalNetwork?version=0.1"
@@ -77,11 +78,21 @@ interface wiredDetails {
 }
 
 export function WiredWidget({ pane, name }: { pane: Accessor<string>; name: string }) {
-    // same rebind as the toggle: a removed device empties the pane
-    // (the header stays) instead of showing stale details
+    // same rebind as the toggle: a removed device shows a centered
+    // empty state (the header stays) instead of stale details
     return (
         <With value={createBinding(AstalNetwork.get_default(), "wired")}>
-            {wired => wired && <WiredPane wired={wired} pane={pane} name={name} />}
+            {wired =>
+                wired ? (
+                    <WiredPane wired={wired} pane={pane} name={name} />
+                ) : (
+                    <PaneEmpty
+                        icon="network-wired-symbolic"
+                        title={"No wired device"}
+                        hint={"Connect a cable or adapter"}
+                    />
+                )
+            }
         </With>
     )
 }

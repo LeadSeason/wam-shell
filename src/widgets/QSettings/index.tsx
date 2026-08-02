@@ -175,10 +175,11 @@ export default function QSettings() {
                         widthRequest={520}
                     >
                         <stack
-                            // panes size to their own content: without this
-                            // every pane is stretched to the tallest (main),
-                            // leaving dead space under short panes like VPN
-                            vhomogeneous={false}
+                            // one consistent shell size: panes match the
+                            // tallest instead of shrinking to fit their
+                            // content. Panes with nothing to show fill the
+                            // space with a centered empty state (.paneEmpty)
+                            vhomogeneous
                             // set the visible child after construction: as a prop it
                             // is applied before the named children exist, which makes
                             // Gtk warn about a missing child
