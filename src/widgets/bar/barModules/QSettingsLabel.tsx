@@ -322,7 +322,7 @@ function ButtonLabel() {
                 </With>
             )}
             {brightnessWidget()}
-            {powerProfile()}
+            {Config.quicksettings.powerProfileOnPanel && powerProfile()}
             {vpnIndicator()}
             {bat.isPresent && <Battery />}
             {Config.pendingUpdates && <Updates />}

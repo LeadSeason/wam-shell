@@ -394,6 +394,8 @@
 #                  percentages) on the panel. default false
 # stats_interval - milliseconds between stat updates. lower = smoother
 #                  graphs, higher cpu cost. default 1000
+# power_profile_on_panel - show the active power profile icon in the
+#                          bar's quicksettings label. default true
 # show_avatar - show the avatar in the popup header. default true
 # avatar - absolute path to the avatar image. square crop recommended,
 #          ~96x96px (resize with scripts/prepare-avatar.sh). empty
@@ -409,6 +411,7 @@
 # show_stats = false
 # stats_on_panel = false
 # stats_interval = 1000
+# power_profile_on_panel = true
 # show_avatar = true
 # avatar = ""
 # battery_full_at = 100

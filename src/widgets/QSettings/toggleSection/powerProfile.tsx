@@ -26,18 +26,49 @@ export function PowerProfilesButton({ navigate }: { navigate: () => void }) {
     )
 }
 
+// pretty names + one-line descriptions for the daemon's raw profile
+// ids; unknown ids fall back to a capitalized form with no description
+const PROFILE_INFO: Record<string, { name: string; desc: string }> = {
+    performance: {
+        name: "Performance",
+        desc: "Full speed, higher power draw",
+    },
+    balanced: {
+        name: "Balanced",
+        desc: "Everyday performance and efficiency",
+    },
+    "power-saver": {
+        name: "Power Saver",
+        desc: "Prioritizes battery life over speed",
+    },
+}
+
+function profileInfo(id: string): { name: string; desc: string } {
+    return (
+        PROFILE_INFO[id] ?? {
+            name: id.charAt(0).toUpperCase() + id.slice(1).replaceAll("-", " "),
+            desc: "",
+        }
+    )
+}
+
 export function PowerProfilesWidget() {
     const powerProfiles = AstalPowerProfiles.get_default()
     const profiles = powerProfiles.get_profiles()
 
     return (
-        <box orientation={Gtk.Orientation.VERTICAL}>
+        <box orientation={Gtk.Orientation.VERTICAL} cssClasses={["powerProfiles"]} spacing={2}>
             {profiles.map(profile => {
-                const activeCss = createBinding(powerProfiles, "activeProfile").as(active =>
-                    active === profile.profile ? ["active"] : [""],
+                const active = createBinding(powerProfiles, "activeProfile").as(
+                    a => a === profile.profile,
                 )
+                const info = profileInfo(profile.profile)
                 return (
-                    <box cssName={"button"} cssClasses={activeCss}>
+                    <box
+                        cssName={"button"}
+                        cssClasses={active.as(a => ["powerProfileRow", ...(a ? ["active"] : [])])}
+                        spacing={10}
+                    >
                         <Gtk.GestureClick
                             button={1}
                             onPressed={() => {
@@ -46,7 +77,25 @@ export function PowerProfilesWidget() {
                                 )
                             }}
                         />
-                        <label label={profile.profile} hexpand xalign={0} />
+                        <image
+                            iconName={`power-profile-${profile.profile}-symbolic`}
+                            pixelSize={16}
+                            valign={Gtk.Align.CENTER}
+                        />
+                        <box orientation={Gtk.Orientation.VERTICAL} hexpand spacing={1}>
+                            <label cssClasses={["powerProfileName"]} label={info.name} xalign={0} />
+                            <label
+                                cssClasses={["powerProfileDesc"]}
+                                label={info.desc}
+                                xalign={0}
+                                visible={info.desc !== ""}
+                            />
+                        </box>
+                        <image
+                            iconName={"object-select-symbolic"}
+                            valign={Gtk.Align.CENTER}
+                            visible={active}
+                        />
                     </box>
                 )
             })}
