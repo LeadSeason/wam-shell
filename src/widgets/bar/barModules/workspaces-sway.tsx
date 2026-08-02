@@ -2,7 +2,7 @@ import Gdk from "gi://Gdk?version=4.0"
 import Sway, { Node } from "../../../lib/sway"
 import Config from "../../../config"
 import { createIconResolver } from "../../../lib/appIcon"
-import { Accessor, For, With, createBinding, createComputed } from "gnim"
+import { Accessor, For, With, createBinding, createComputed, onCleanup } from "gnim"
 import { Gtk } from "ags/gtk4"
 import GObject from "ags/gobject"
 
@@ -84,6 +84,15 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
     const sway = Sway.get_default()
     // IPC dead (stale socket, sway not running): show nothing
     if (!sway.ok) return <></>
+
+    // the cached boxes are widgets of THIS bar's tree: when the bar is
+    // destroyed (monitor hotplug) they die with it, so this instance's
+    // entries must be pruned — reusing them in the next bar inserts
+    // destroyed widgets
+    const cacheKeys = new Set<number>()
+    onCleanup(() => {
+        for (const id of cacheKeys) wsIconCache.delete(id)
+    })
 
     // connector can be null at construction (monitor still initializing):
     // make it a computed dep so the list recomputes when it arrives
@@ -172,6 +181,7 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
                             />
                         ) as Gtk.Box
                         wsIconCache.set(workspace.id, { key, box })
+                        cacheKeys.add(workspace.id)
                         return box
                     })
                     return (
