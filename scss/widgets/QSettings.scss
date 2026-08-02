@@ -406,12 +406,15 @@ window#QSettings {
         margin: 4px;
     }
 
-    // bluetooth pane
-    .btSection {
-        font-size: s.$font-small;
+    // section dividers inside panes ("Paired", "Available",
+    // "Connected network", "Networks", "Features"): full-size bold
+    // text with a rule underneath
+    .paneSection {
         font-weight: bold;
-        color: t.$subtext0;
-        margin: 4px 0 0 4px;
+        color: t.$text;
+        margin: 10px 0 0 4px;
+        padding-bottom: 4px;
+        border-bottom: solid 1px color.mix(t.$surface0, transparent, 40%);
     }
 
     .btDevice {
@@ -640,12 +643,6 @@ window#QSettings {
     }
     .expired {
         color: t.$red;
-    }
-
-    .vpnSectionHeader {
-        font-size: s.$font-small;
-        font-weight: bold;
-        color: t.$subtext0;
     }
 
     // the feature toggles as one card so they read as a unit

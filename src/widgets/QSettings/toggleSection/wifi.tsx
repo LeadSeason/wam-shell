@@ -155,7 +155,7 @@ function ConnectedSection({ wifi }: { wifi: AstalNetwork.Wifi }) {
     return (
         // hidden entirely when wifi is off — the header switch says it
         <box orientation={Gtk.Orientation.VERTICAL} visible={enabled}>
-            <label label={"Connected network"} cssClasses={["btSection"]} xalign={0} />
+            <label label={"Connected network"} cssClasses={["paneSection"]} xalign={0} hexpand />
             <box orientation={Gtk.Orientation.VERTICAL} visible={connected}>
                 <box cssClasses={["wifiConnected"]} spacing={10}>
                     <OverlayIcon
@@ -657,7 +657,7 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                     visible={createBinding(wifi, "enabled")}
                 >
                     <box>
-                        <label label={"Networks"} cssClasses={["btSection"]} xalign={0} hexpand />
+                        <label label={"Networks"} cssClasses={["paneSection"]} xalign={0} hexpand />
                         <button
                             cssClasses={["rescan"]}
                             tooltipText={"Scan again"}

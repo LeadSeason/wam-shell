@@ -719,7 +719,7 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                         orientation={Gtk.Orientation.VERTICAL}
                         visible={paired.as(l => l.length > 0)}
                     >
-                        <label label={"Paired"} cssClasses={["btSection"]} xalign={0} />
+                        <label label={"Paired"} cssClasses={["paneSection"]} xalign={0} hexpand />
                         <box
                             orientation={Gtk.Orientation.VERTICAL}
                             cssClasses={["paneCard"]}
@@ -732,7 +732,7 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                         <box>
                             <label
                                 label={"Available"}
-                                cssClasses={["btSection"]}
+                                cssClasses={["paneSection"]}
                                 xalign={0}
                                 hexpand
                             />

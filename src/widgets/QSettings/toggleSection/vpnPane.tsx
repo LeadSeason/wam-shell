@@ -265,7 +265,7 @@ export function VpnPane({ pane, name }: { pane: Accessor<string>; name: string }
             </revealer>
 
             {/* tunnel feature toggles, as a card so they read as one unit */}
-            <label cssClasses={["vpnSectionHeader"]} xalign={0} label={"Features"} />
+            <label cssClasses={["paneSection"]} xalign={0} label={"Features"} hexpand />
             <box cssClasses={["vpnFeatures"]} orientation={Gtk.Orientation.VERTICAL} spacing={4}>
                 <FeatureRow
                     label={"Quantum Resistance"}
