@@ -198,6 +198,8 @@ function getQSettingsConfig() {
         showStats: get("show_stats", false),
         statsOnPanel: get("stats_on_panel", false),
         statsInterval,
+        // the power profile icon in the bar's quicksettings label
+        powerProfileOnPanel: get("power_profile_on_panel", true),
         // header avatar: absolute path to an image; empty = the login
         // avatar from AccountsService, else the OS icon. Type-guarded:
         // a non-string (avatar = 5) would crash GLib.file_test at
