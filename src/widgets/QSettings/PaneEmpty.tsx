@@ -1,4 +1,5 @@
 import { Gtk } from "ags/gtk4"
+import { Accessor } from "gnim"
 
 // Centered empty state for panes with nothing to show. The quick
 // settings shell keeps one consistent size across panes, so an empty
@@ -10,8 +11,8 @@ export function PaneEmpty({
     onClick,
 }: {
     icon: string
-    title: string
-    hint: string
+    title: string | Accessor<string>
+    hint: string | Accessor<string>
     onClick?: () => void
 }) {
     return (
@@ -31,7 +32,19 @@ export function PaneEmpty({
                 <image iconName={icon} pixelSize={22} />
             </box>
             <label cssClasses={["paneEmptyTitle"]} label={title} halign={Gtk.Align.CENTER} />
-            <label cssClasses={["paneEmptyHint"]} label={hint} halign={Gtk.Align.CENTER} />
+            {/* hidden while empty: a blank hint must not take a line */}
+            {typeof hint === "string" ? (
+                hint !== "" && (
+                    <label cssClasses={["paneEmptyHint"]} label={hint} halign={Gtk.Align.CENTER} />
+                )
+            ) : (
+                <label
+                    cssClasses={["paneEmptyHint"]}
+                    label={hint}
+                    halign={Gtk.Align.CENTER}
+                    visible={hint.as(h => h !== "")}
+                />
+            )}
         </box>
     )
 }

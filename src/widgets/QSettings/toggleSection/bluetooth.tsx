@@ -723,13 +723,15 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                             </button>
                         </box>
                         <For each={available}>{device => <DeviceRow device={device} />}</For>
-                        {/* centered empty state (click = scan again);
-                        scanning feedback lives in the header's spinner */}
+                        {/* centered empty state (click = scan again).
+                        While a scan is in flight say so: "No devices
+                        found" would be a verdict the scan hasn't
+                        reached yet */}
                         <box visible={available.as(l => l.length === 0)}>
                             <PaneEmpty
                                 icon="bluetooth-symbolic"
-                                title={"No devices found"}
-                                hint={"Click to scan again"}
+                                title={scanning.as(s => (s ? "Scanning…" : "No devices found"))}
+                                hint={scanning.as(s => (s ? "" : "Click to scan again"))}
                                 onClick={rescan}
                             />
                         </box>

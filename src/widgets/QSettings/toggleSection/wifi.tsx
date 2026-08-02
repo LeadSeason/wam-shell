@@ -664,12 +664,14 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                         </button>
                     </box>
                     {/* radio on with no networks in range: fill the
-                    middle instead of shrinking the pane */}
+                    middle instead of shrinking the pane. While a scan
+                    is in flight say so — "No networks found" would be
+                    a verdict the scan hasn't reached yet */}
                     <box visible={sortedAps.as(aps => aps.length === 0)}>
                         <PaneEmpty
                             icon="network-wireless-symbolic"
-                            title={"No networks found"}
-                            hint={"Try rescanning in a moment"}
+                            title={rescanning.as(r => (r ? "Scanning…" : "No networks found"))}
+                            hint={rescanning.as(r => (r ? "" : "Try rescanning in a moment"))}
                         />
                     </box>
                     {/* For in its own container: it re-appends children at
