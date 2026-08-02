@@ -212,6 +212,16 @@ function fireReminder(item: ProviderItem) {
     addProviderPopup(item)
 }
 
+// a task the user dealt with (completed/hidden) must not pop its
+// armed reminder afterwards
+function cancelReminder(id: string) {
+    const t = reminderTimers.get(id)
+    if (t) {
+        sourceRemove(t.src)
+        reminderTimers.delete(id)
+    }
+}
+
 function scheduleReminders(mapped: ProviderItem[]) {
     const present = new Set(mapped.map(i => i.id))
     for (const [id, t] of reminderTimers) {
@@ -255,6 +265,7 @@ function attachActions(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">
         ...data,
         hide: () => {
             hiddenIds.add(data.id)
+            cancelReminder(data.id)
             setItems(items.get().filter(i => i.id !== data.id))
         },
         dismiss: () => complete(data),
@@ -276,8 +287,10 @@ function attachActions(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">
 function complete(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">) {
     const taskId = data.id.slice("todoist:".length)
     request("POST", `/tasks/${taskId}/close`, r => {
-        if (r.ok) setItems(items.get().filter(i => i.id !== data.id))
-        else console.warn(`Todoist: task close failed (status ${r.status})`)
+        if (r.ok) {
+            cancelReminder(data.id)
+            setItems(items.get().filter(i => i.id !== data.id))
+        } else console.warn(`Todoist: task close failed (status ${r.status})`)
     })
 }
 
