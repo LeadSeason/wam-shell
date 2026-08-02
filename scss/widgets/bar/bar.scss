@@ -42,7 +42,8 @@ window.Bar {
     // per-widget spacing: override margins on the widget's class, e.g.
     // .sysStats { margin-right: 12px; }
     // classes: .osIcon, workspaces, clock button, .sysStats, .sleepTimer, .trayItem,
-    // .QSettings, .keyboardLayout, .swayNC, .media, .harvest, .brightness
+    // .QSettings, .keyboardLayout, .swayNC, .media, .harvest, .brightness,
+    // .windowTitle
 
     clock button,
     .osIcon,
