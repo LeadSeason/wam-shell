@@ -750,7 +750,9 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                             />
                         </box>
                     </box>
-                    <box cssClasses={["paneCard"]}>
+                    {/* anchored to the pane's bottom: the lists above
+                    grow/shrink, this stays put */}
+                    <box cssClasses={["paneCard"]} valign={Gtk.Align.END} vexpand>
                         <box
                             cssName={"button"}
                             spacing={5}
