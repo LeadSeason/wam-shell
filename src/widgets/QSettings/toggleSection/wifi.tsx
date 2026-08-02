@@ -458,7 +458,7 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
             <box orientation={Gtk.Orientation.VERTICAL}>
                 <box
                     cssName={"button"}
-                    cssClasses={active.as(a => (a ? ["wifiAp", "active"] : ["wifiAp"]))}
+                    cssClasses={active.as(a => ["wifiAp", "paneRow", ...(a ? ["active"] : [])])}
                     // dim rows blocked while another network connects
                     css={connectingBssid.as(b =>
                         b !== null && b !== ap.bssid ? "opacity: 0.45;" : "",
@@ -475,6 +475,7 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                         />
                         <box orientation={Gtk.Orientation.VERTICAL} hexpand>
                             <label
+                                cssClasses={["paneRowName"]}
                                 label={ap.ssid}
                                 xalign={0}
                                 maxWidthChars={24}
@@ -677,7 +678,11 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                     {/* For in its own container: it re-appends children at
                     the parent's end on every update, which would float
                     the join row above the networks */}
-                    <box orientation={Gtk.Orientation.VERTICAL}>
+                    <box
+                        orientation={Gtk.Orientation.VERTICAL}
+                        cssClasses={["paneCard"]}
+                        spacing={2}
+                    >
                         <For each={sortedAps}>{ap => <ApRow ap={ap} />}</For>
                     </box>
                     <box cssName={"button"} spacing={5}>

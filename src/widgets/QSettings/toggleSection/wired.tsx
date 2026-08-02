@@ -155,44 +155,51 @@ function WiredPane({
 
     return (
         <box cssClasses={["wiredPane"]} orientation={Gtk.Orientation.VERTICAL}>
-            <box
-                cssName={"button"}
-                spacing={5}
-                cssClasses={activated.as(a => (a ? ["active"] : [""]))}
-            >
-                <Gtk.GestureClick button={1} onPressed={() => wiredToggle(wired)} />
-                <image iconName={createBinding(wired, "iconName")} />
-                <label label={state.as(s => stateLabel(wired, s))} hexpand xalign={0} />
-                <label
-                    cssClasses={["status"]}
-                    label={activated.as(a => (a ? "Disconnect" : "Connect"))}
-                />
-            </box>
-            <box cssClasses={["wifiDetails"]} orientation={Gtk.Orientation.VERTICAL}>
-                {(
-                    [
-                        ["Interface", details.as(d => d.iface || "—")],
+            <box cssClasses={["paneCard"]} orientation={Gtk.Orientation.VERTICAL} spacing={2}>
+                <box
+                    cssName={"button"}
+                    spacing={5}
+                    cssClasses={activated.as(a => ["paneRow", ...(a ? ["active"] : [])])}
+                >
+                    <Gtk.GestureClick button={1} onPressed={() => wiredToggle(wired)} />
+                    <image iconName={createBinding(wired, "iconName")} />
+                    <label
+                        cssClasses={["paneRowName"]}
+                        label={state.as(s => stateLabel(wired, s))}
+                        hexpand
+                        xalign={0}
+                    />
+                    <label
+                        cssClasses={["status"]}
+                        label={activated.as(a => (a ? "Disconnect" : "Connect"))}
+                    />
+                </box>
+                <box cssClasses={["wifiDetails"]} orientation={Gtk.Orientation.VERTICAL}>
+                    {(
                         [
-                            "Speed",
-                            createBinding(wired, "speed").as(s => (s > 0 ? `${s} Mb/s` : "—")),
-                        ],
-                        ["IPv4", details.as(d => d.ipv4 || "—")],
-                        ["Gateway", details.as(d => d.gateway || "—")],
-                        ["DNS", details.as(d => d.dns || "—")],
-                        ["IPv6", details.as(d => d.ipv6 || "—")],
-                    ] as [string, any][]
-                ).map(([key, value]) => (
-                    <box>
-                        <label cssClasses={["key"]} label={key} xalign={0} hexpand />
-                        <label
-                            cssClasses={["value"]}
-                            label={value}
-                            xalign={1}
-                            maxWidthChars={24}
-                            ellipsize={Pango.EllipsizeMode.END}
-                        />
-                    </box>
-                ))}
+                            ["Interface", details.as(d => d.iface || "—")],
+                            [
+                                "Speed",
+                                createBinding(wired, "speed").as(s => (s > 0 ? `${s} Mb/s` : "—")),
+                            ],
+                            ["IPv4", details.as(d => d.ipv4 || "—")],
+                            ["Gateway", details.as(d => d.gateway || "—")],
+                            ["DNS", details.as(d => d.dns || "—")],
+                            ["IPv6", details.as(d => d.ipv6 || "—")],
+                        ] as [string, any][]
+                    ).map(([key, value]) => (
+                        <box>
+                            <label cssClasses={["key"]} label={key} xalign={0} hexpand />
+                            <label
+                                cssClasses={["value"]}
+                                label={value}
+                                xalign={1}
+                                maxWidthChars={24}
+                                ellipsize={Pango.EllipsizeMode.END}
+                            />
+                        </box>
+                    ))}
+                </box>
             </box>
         </box>
     )

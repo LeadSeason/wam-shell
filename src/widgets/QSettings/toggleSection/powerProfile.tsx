@@ -57,7 +57,7 @@ export function PowerProfilesWidget() {
     const profiles = powerProfiles.get_profiles()
 
     return (
-        <box orientation={Gtk.Orientation.VERTICAL} cssClasses={["powerProfiles"]} spacing={2}>
+        <box orientation={Gtk.Orientation.VERTICAL} cssClasses={["paneCard"]} spacing={2}>
             {profiles.map(profile => {
                 const active = createBinding(powerProfiles, "activeProfile").as(
                     a => a === profile.profile,
@@ -66,7 +66,7 @@ export function PowerProfilesWidget() {
                 return (
                     <box
                         cssName={"button"}
-                        cssClasses={active.as(a => ["powerProfileRow", ...(a ? ["active"] : [])])}
+                        cssClasses={active.as(a => ["paneRow", ...(a ? ["active"] : [])])}
                         spacing={10}
                     >
                         <Gtk.GestureClick
@@ -83,9 +83,9 @@ export function PowerProfilesWidget() {
                             valign={Gtk.Align.CENTER}
                         />
                         <box orientation={Gtk.Orientation.VERTICAL} hexpand spacing={1}>
-                            <label cssClasses={["powerProfileName"]} label={info.name} xalign={0} />
+                            <label cssClasses={["paneRowName"]} label={info.name} xalign={0} />
                             <label
-                                cssClasses={["powerProfileDesc"]}
+                                cssClasses={["paneRowDesc"]}
                                 label={info.desc}
                                 xalign={0}
                                 visible={info.desc !== ""}

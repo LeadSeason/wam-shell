@@ -544,7 +544,7 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                 <box
                     cssName={"button"}
                     cssClasses={createBinding(device, "connected").as(c =>
-                        c ? ["btDevice", "active"] : ["btDevice"],
+                        c ? ["btDevice", "paneRow", "active"] : ["btDevice", "paneRow"],
                     )}
                     spacing={5}
                     tooltipText={createComputed(
@@ -567,6 +567,7 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                         />
                         <box orientation={Gtk.Orientation.VERTICAL} hexpand>
                             <label
+                                cssClasses={["paneRowName"]}
                                 label={createBinding(device, "alias").as(a => a || device.name)}
                                 xalign={0}
                             />
@@ -699,7 +700,13 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                         visible={paired.as(l => l.length > 0)}
                     >
                         <label label={"Paired"} cssClasses={["btSection"]} xalign={0} />
-                        <For each={paired}>{device => <DeviceRow device={device} />}</For>
+                        <box
+                            orientation={Gtk.Orientation.VERTICAL}
+                            cssClasses={["paneCard"]}
+                            spacing={2}
+                        >
+                            <For each={paired}>{device => <DeviceRow device={device} />}</For>
+                        </box>
                     </box>
                     <box orientation={Gtk.Orientation.VERTICAL}>
                         <box>
@@ -722,7 +729,14 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                                 />
                             </button>
                         </box>
-                        <For each={available}>{device => <DeviceRow device={device} />}</For>
+                        <box
+                            orientation={Gtk.Orientation.VERTICAL}
+                            cssClasses={["paneCard"]}
+                            spacing={2}
+                            visible={available.as(l => l.length > 0)}
+                        >
+                            <For each={available}>{device => <DeviceRow device={device} />}</For>
+                        </box>
                         {/* centered empty state (click = scan again).
                         While a scan is in flight say so: "No devices
                         found" would be a verdict the scan hasn't
@@ -736,25 +750,27 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                             />
                         </box>
                     </box>
-                    <box
-                        cssName={"button"}
-                        spacing={5}
-                        cssClasses={createBinding(adapter, "discoverable").as(d =>
-                            d ? ["active"] : [""],
-                        )}
-                    >
-                        <Gtk.GestureClick
-                            button={1}
-                            onPressed={() => {
-                                adapter.discoverable = !adapter.discoverable
-                            }}
-                        />
-                        <label label={"Visible to other devices"} hexpand xalign={0} />
-                        <image
-                            iconName={createBinding(adapter, "discoverable").as(d =>
-                                d ? "object-select-symbolic" : "window-close-symbolic",
+                    <box cssClasses={["paneCard"]}>
+                        <box
+                            cssName={"button"}
+                            spacing={5}
+                            cssClasses={createBinding(adapter, "discoverable").as(d =>
+                                d ? ["paneRow", "active"] : ["paneRow"],
                             )}
-                        />
+                        >
+                            <Gtk.GestureClick
+                                button={1}
+                                onPressed={() => {
+                                    adapter.discoverable = !adapter.discoverable
+                                }}
+                            />
+                            <label label={"Visible to other devices"} hexpand xalign={0} />
+                            <image
+                                iconName={createBinding(adapter, "discoverable").as(d =>
+                                    d ? "object-select-symbolic" : "window-close-symbolic",
+                                )}
+                            />
+                        </box>
                     </box>
                 </box>
             </box>
