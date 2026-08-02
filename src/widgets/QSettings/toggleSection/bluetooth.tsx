@@ -204,9 +204,17 @@ interface btPaneProps {
 }
 
 export function BluetoothButton({ navigate }: { navigate: () => void }) {
-    // no bluetooth adapter on this machine
-    if (!bluetooth.adapter) return <></>
+    // the adapter can appear after shell start (rfkill unblock, bluez
+    // restart, hotplug) — rebind on it instead of bailing once at
+    // construction (same pattern as the wifi/wired toggles)
+    return (
+        <With value={createBinding(bluetooth, "adapter")}>
+            {adapter => (adapter ? <BluetoothButtonBody navigate={navigate} /> : <></>)}
+        </With>
+    )
+}
 
+function BluetoothButtonBody({ navigate }: { navigate: () => void }) {
     // battery only re-evaluates when the device list or power changes;
     // good enough for a subtitle
     const subtitle = createComputed(
@@ -274,8 +282,17 @@ function deviceType(icon: string): string {
 }
 
 export function BluetoothWidget({ pane, name }: btPaneProps) {
-    const adapter = bluetooth.adapter
-    if (!adapter) return <></>
+    // same hotplug rebind as the button above
+    return (
+        <With value={createBinding(bluetooth, "adapter")}>
+            {adapter => (adapter ? <BluetoothWidgetBody pane={pane} name={name} /> : <></>)}
+        </With>
+    )
+}
+
+function BluetoothWidgetBody({ pane, name }: btPaneProps) {
+    // non-null: the wrapper only mounts this body with an adapter
+    const adapter = bluetooth.adapter!
 
     // brief pulse so a rescan click gives visible feedback (discovery is
     // already running while the pane is open, so adapter.discovering
