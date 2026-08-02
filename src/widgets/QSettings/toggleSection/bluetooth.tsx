@@ -1,4 +1,4 @@
-import { Accessor, createBinding, createComputed, createState, For, With } from "gnim"
+import { Accessor, createBinding, createComputed, createState, For, onCleanup, With } from "gnim"
 import { DropdownButton } from "./ToggleButton"
 import AstalBluetooth from "gi://AstalBluetooth?version=0.1"
 import Gio from "gi://Gio?version=2.0"
@@ -25,7 +25,9 @@ function ProfileSelector({ wpDev }: { wpDev: AstalWp.Device }) {
     // until activeProfileId catches up (5s safety timeout)
     const [pendingProfile, setPendingProfile] = createState<number | null>(null)
     let pendingToken = 0
-    createBinding(wpDev, "activeProfileId").subscribe(() => setPendingProfile(null))
+    // the selector unmounts on every device disconnect/forget — without
+    // this, each unmount leaks a notify handler on the wp Device
+    onCleanup(createBinding(wpDev, "activeProfileId").subscribe(() => setPendingProfile(null)))
 
     const profiles = createComputed(
         [createBinding(wpDev, "profiles"), createBinding(wpDev, "activeProfileId"), pendingProfile],
