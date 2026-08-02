@@ -2,7 +2,7 @@ import { Astal, Gtk, Gdk } from "ags/gtk4"
 import GLib from "gi://GLib?version=2.0"
 import Pango from "gi://Pango?version=1.0"
 import app from "ags/gtk4/app"
-import { createBinding, With } from "gnim"
+import { createBinding, With, onCleanup } from "gnim"
 import AstalHyprland from "gi://AstalHyprland"
 import Config from "../../config"
 import Sway from "../../lib/sway"
@@ -66,8 +66,17 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
             })
         }
     }
-    visible.subscribe(update)
-    if (typeof isFocused !== "boolean") isFocused.subscribe(update)
+    // released when the OSD window is destroyed (monitor hotplug):
+    // otherwise the dead window keeps getting present()/hide() calls
+    const disposers = [visible.subscribe(update)]
+    if (typeof isFocused !== "boolean") disposers.push(isFocused.subscribe(update))
+    onCleanup(() => {
+        for (const d of disposers) d()
+        if (hideSource !== null) {
+            sourceRemove(hideSource)
+            hideSource = null
+        }
+    })
 
     return (
         <window
