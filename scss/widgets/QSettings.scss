@@ -300,9 +300,14 @@ window#QSettings {
         }
     }
 
-    .active {
-        background-color: color.mix(t.$accent, transparent, 55%);
-        border: solid 2px color.mix(t.$accent, transparent, 50%);
+    // no accent block on active rows: state reads from the row's own
+    // text/icons; the name gets just an accent cue
+    .paneRow.active .paneRowName {
+        color: t.$accent;
+    }
+    // same cue for the default device in the sliders' dropdowns
+    .paneCard revealer button.active label {
+        color: t.$accent;
     }
 
     // wifi band section headers in the wifi pane
