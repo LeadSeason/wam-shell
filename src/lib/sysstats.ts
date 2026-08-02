@@ -206,18 +206,39 @@ export function dispose() {
     stopPoll = null
 }
 
-// createPoll is lazy until subscribed; keep it alive while stats are on
-// (panel lists are authoritative: a "stats" entry in any [[panel]]
-// renders the widget regardless of the legacy toggles)
-let stopPoll: (() => void) | null = null
-if (
-    Config.quicksettings.showStats ||
+// createPoll is lazy until subscribed. Two kinds of consumers: the bar
+// (stats_on_panel or a "stats" [[panel]] entry) needs stats around the
+// clock; the quick settings power pane only while it is visible — its
+// widget drives setActive, and a 1 Hz poll + nvidia-smi child no
+// longer run 24/7 for a pane that is open a few seconds at a time
+const barWantsStats =
     Config.quicksettings.statsOnPanel ||
     Config.panels.some(p => [...p.left, ...p.center, ...p.right].includes("stats"))
-) {
-    stopPoll = poll.subscribe(() => {})
-    if (hasNvidia) startGpuStream()
+
+let stopPoll: (() => void) | null = null
+let qsActive = false
+
+function syncEngines() {
+    const want = barWantsStats || qsActive
+    if (want && !stopPoll) {
+        stopPoll = poll.subscribe(() => {})
+        if (hasNvidia) startGpuStream()
+    }
+    if (!want && stopPoll) {
+        stopPoll()
+        stopPoll = null
+        gpuProc?.force_exit()
+        gpuProc = null
+    }
 }
+
+// the power pane's stats tiles are on screen (or left it)
+export function setActive(on: boolean) {
+    qsActive = on
+    syncEngines()
+}
+
+if (barWantsStats) syncEngines()
 
 export function formatRate(bytesPerSec: number): string {
     if (bytesPerSec >= 1024 * 1024) return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`

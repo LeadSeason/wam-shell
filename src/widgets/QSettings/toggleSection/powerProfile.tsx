@@ -1,4 +1,4 @@
-import { Accessor, createBinding, createComputed, onCleanup } from "gnim"
+import { Accessor, With, createBinding, createComputed, onCleanup } from "gnim"
 import { execAsync } from "../../../lib/metrics"
 import GLib from "gi://GLib?version=2.0"
 import Pango from "gi://Pango?version=1.0"
@@ -6,7 +6,9 @@ import { DropdownButton } from "./ToggleButton"
 import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1"
 import AstalBattery from "gi://AstalBattery?version=0.1"
 import { Gtk } from "ags/gtk4"
+import Config from "../../../config"
 import * as Power from "../../../lib/powerDetails"
+import * as Sys from "../../../lib/sysstats"
 
 const hasPowerprofilesctl = GLib.find_program_in_path("powerprofilesctl") !== null
 
@@ -55,6 +57,42 @@ function profileInfo(id: string): { name: string; desc: string } {
     )
 }
 
+function StatTile({
+    big,
+    sub,
+    visible = true,
+}: {
+    big: string | Accessor<string>
+    sub: string | Accessor<string>
+    visible?: boolean | Accessor<boolean>
+}) {
+    return (
+        <box
+            orientation={Gtk.Orientation.VERTICAL}
+            cssClasses={["statTile"]}
+            spacing={2}
+            visible={visible}
+        >
+            <label
+                cssClasses={["statTileValue"]}
+                label={big}
+                xalign={0}
+                maxWidthChars={16}
+                ellipsize={Pango.EllipsizeMode.END}
+            />
+            <label
+                cssClasses={["statTileSub"]}
+                label={sub}
+                xalign={0}
+                maxWidthChars={24}
+                ellipsize={Pango.EllipsizeMode.END}
+            />
+        </box>
+    )
+}
+
+// big-number tiles: power details and (moved from the main pane) the
+// performance stats, in one 2-column grid
 function PowerDetails() {
     const bat = AstalBattery.get_default()
 
@@ -65,74 +103,102 @@ function PowerDetails() {
         return h > 0 ? `~${h} h ${m} min` : `~${m} min`
     }
 
-    function row(key: string, value: any, visible: any = true) {
-        return (
-            <box visible={visible}>
-                <label cssClasses={["key"]} label={key} xalign={0} hexpand />
-                <label
-                    cssClasses={["value"]}
-                    label={value}
-                    xalign={1}
-                    maxWidthChars={30}
-                    ellipsize={Pango.EllipsizeMode.END}
-                />
-            </box>
-        )
-    }
+    const watts = createBinding(bat, "energyRate")
+    const freqPct = createComputed([Power.freqAvgMhz, Power.freqCapMhz], (avg, cap) =>
+        cap > 0 ? avg / cap : 1,
+    )
 
     return (
-        <box orientation={Gtk.Orientation.VERTICAL} spacing={2}>
-            <label cssClasses={["paneSection"]} label={"Power details"} xalign={0} hexpand />
-            <box cssClasses={["paneCard", "wifiDetails"]} orientation={Gtk.Orientation.VERTICAL}>
-                {row(
-                    "Battery",
-                    createBinding(bat, "energyRate").as(r =>
-                        r < 0 ? `+${Math.abs(r).toFixed(1)} W (charging)` : `${r.toFixed(1)} W`,
-                    ),
-                    bat.isPresent,
+        <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
+            {/* the profile's knobs, live: flips as the profile changes */}
+            <label
+                cssClasses={["paneRowDesc"]}
+                xalign={0}
+                visible={createComputed(
+                    [Power.governor, Power.epp],
+                    (g, e) => g !== "" || e !== "",
                 )}
-                {row(
-                    "Time left",
-                    createComputed(
+                label={createComputed([Power.governor, Power.epp], (g, e) =>
+                    [`Governor ${g || "—"}`, `EPP ${e || "—"}`].join("  ·  "),
+                )}
+            />
+            <Gtk.FlowBox
+                maxChildrenPerLine={2}
+                homogeneous
+                selectionMode={Gtk.SelectionMode.NONE}
+                columnSpacing={8}
+                rowSpacing={8}
+            >
+                <StatTile
+                    big={watts.as(r =>
+                        r < 0 ? `+${Math.abs(r).toFixed(1)} W` : `${r.toFixed(1)} W`,
+                    )}
+                    sub={watts.as(r => (r < 0 ? "charging" : "discharging"))}
+                    visible={bat.isPresent}
+                />
+                <StatTile
+                    big={createComputed(
                         [
                             createBinding(bat, "timeToEmpty"),
                             createBinding(bat, "timeToFull"),
                             createBinding(bat, "charging"),
                         ],
                         (toEmpty, toFull, charging) => span(Number(charging ? toFull : toEmpty)),
-                    ),
-                    bat.isPresent,
-                )}
-                {row(
-                    "CPU frequency",
-                    createComputed([Power.freqAvgMhz, Power.freqCapMhz], (avg, cap) =>
-                        cap > 0
-                            ? `${(avg / 1000).toFixed(1)} of ${(cap / 1000).toFixed(1)} GHz (${Math.round((avg / cap) * 100)}%)`
-                            : `${(avg / 1000).toFixed(1)} GHz`,
-                    ),
-                    Power.hasFreq,
-                )}
-                {row(
-                    "Governor",
-                    Power.governor.as(g => g || "—"),
-                    Power.hasFreq,
-                )}
-                {row(
-                    "Energy preference",
-                    Power.epp.as(e => e || "—"),
-                    Power.hasFreq,
-                )}
-                {row(
-                    "CPU temperature",
-                    Power.tempC.as(t => `${t} °C`),
-                    Power.hasTemp,
-                )}
-                {row(
-                    "Fan",
-                    Power.fanRpm.as(r => `${r} RPM`),
-                    Power.hasFan,
-                )}
-            </box>
+                    )}
+                    sub={createBinding(bat, "charging").as(c =>
+                        c ? "until full" : "at current draw",
+                    )}
+                    visible={bat.isPresent}
+                />
+                <StatTile
+                    big={Power.freqAvgMhz.as(m => `${(m / 1000).toFixed(1)} GHz`)}
+                    sub={createComputed([freqPct, Power.freqCapMhz], (pct, cap) => {
+                        const of =
+                            cap > 0
+                                ? `${Math.round(pct * 100)}% of ${(cap / 1000).toFixed(1)} GHz`
+                                : ""
+                        return pct < 0.95 && of ? `${of} · capped` : of
+                    })}
+                    visible={Power.hasFreq}
+                />
+                <StatTile
+                    big={createComputed([Power.tempC, Power.fanRpm], (t, r) =>
+                        Power.hasTemp ? `${t} °C` : `${r} RPM`,
+                    )}
+                    sub={createComputed([Power.tempC, Power.fanRpm], (t, r) =>
+                        Power.hasTemp && Power.hasFan ? `${r} RPM` : Power.hasFan ? "fan" : "",
+                    )}
+                    visible={Power.hasTemp || Power.hasFan}
+                />
+                {/* moved stats (gated by show_stats) */}
+                <StatTile
+                    big={Sys.cpu.as(c => `${c}%`)}
+                    sub={Sys.loadAvg.as(l => `load ${l.toFixed(2)}`)}
+                    visible={Config.quicksettings.showStats}
+                />
+                <StatTile
+                    big={Sys.ram.as(r => `${r}%`)}
+                    sub={Sys.ramSize.as(([used, total]) => `${used}/${total} GB`)}
+                    visible={Config.quicksettings.showStats}
+                />
+                <StatTile
+                    big={Sys.netDown.as(d => `↓ ${Sys.formatRate(d)}`)}
+                    sub={Sys.netUp.as(u => `↑ ${Sys.formatRate(u)}`)}
+                    visible={Config.quicksettings.showStats}
+                />
+                <With value={Sys.gpu.as(g => g !== null && Config.quicksettings.showStats)}>
+                    {present =>
+                        present && (
+                            <StatTile
+                                big={Sys.gpu.as(g => `${g}%`)}
+                                sub={createComputed([Sys.gpuTemp, Sys.vram], (t, [used, total]) => {
+                                    return `${t}°C · ${used}/${total} MiB`
+                                })}
+                            />
+                        )
+                    }
+                </With>
+            </Gtk.FlowBox>
         </box>
     )
 }
@@ -141,8 +207,13 @@ export function PowerProfilesWidget({ pane, name }: { pane: Accessor<string>; na
     const powerProfiles = AstalPowerProfiles.get_default()
     const profiles = powerProfiles.get_profiles()
 
-    // the details poll runs only while this pane is on screen
-    const unsub = pane.subscribe(() => Power.setActive(pane.get() === name))
+    // the details poll and the stats poll run only while this pane is
+    // on screen
+    const unsub = pane.subscribe(() => {
+        const on = pane.get() === name
+        Power.setActive(on)
+        Sys.setActive(on)
+    })
     onCleanup(unsub)
 
     return (

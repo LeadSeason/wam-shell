@@ -15,7 +15,6 @@ import { ToggleSection } from "./toggleSection"
 import { HeaderSection } from "./HeaderSection"
 import { SliderSection } from "./SliderSection"
 import { MediaSection, setQsVisible } from "./MediaSection"
-import { StatsSection } from "./StatsSection"
 import { WifiWidget, WifiSwitch } from "./toggleSection/wifi"
 import { WiredWidget, WiredSwitch } from "./toggleSection/wired"
 import { BluetoothWidget, BtSwitch } from "./toggleSection/bluetooth"
@@ -206,7 +205,6 @@ export default function QSettings() {
                                 <HeaderSection />
                                 <SliderSection />
                                 {toggleSection.widget}
-                                {Config.quicksettings.showStats && <StatsSection />}
                                 {/* tray always above the player */}
                                 {!Config.tray.onPanel && (
                                     <Tray
