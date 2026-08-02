@@ -34,9 +34,11 @@ function PaneHeader({
     trailing?: Gtk.Widget
 }) {
     return (
-        <box cssName="button" spacing={5}>
+        <box cssClasses={["paneHeader"]} spacing={5}>
             {/* the gesture covers only the back icon + title — a click
-            on a trailing widget (the wifi switch) must not navigate */}
+            on a trailing widget (the pane's switch) must not navigate.
+            GTK4 propagates :hover to ancestors, so the whole line gets
+            the button look including under the trailing widget */}
             <box spacing={5} hexpand>
                 <Gtk.GestureClick button={1} onPressed={onBack} />
                 <image iconName="go-previous-symbolic" />
