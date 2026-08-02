@@ -12,16 +12,15 @@ import { SleepTimerState, serialize, parse, decide } from "./sleepTimerState"
 // sleep timer dropdown).
 //
 // The timer survives shell restarts: the owning shell writes its state
-// to $XDG_RUNTIME_DIR/wam-shell/sleep-timer.json on every change and
-// tick — reboots/logouts simply start empty (runtime tmpfs), which is
+// to $XDG_RUNTIME_DIR/wam-shell/sleep-timer.json on every state change
+// — reboots/logouts simply start empty (runtime tmpfs), which is
 // exactly the intended scope. A starting shell claims a state file
-// atomically (rename): a FRESH file with a LIVE owner PID means another
-// shell owns the timer, so dev + service shells can't double-fire
-// (dim-to-half twice would be quarter brightness). A crashed or killed
-// owner's file is fresh too, but its PID is dead — the restart claims
-// and adopts instead of dropping the timer (the old mtime-only beacon
-// could not tell the two apart). An expired deadline is never fired
-// retroactively — the user gets one notification instead.
+// atomically (rename): a LIVE owner PID means another shell owns the
+// timer, so dev + service shells can't double-fire (dim-to-half twice
+// would be quarter brightness). A crashed or killed owner's PID is
+// dead — the restart claims and adopts instead of dropping the timer.
+// An expired deadline is never fired retroactively — the user gets one
+// notification instead.
 
 const mpris = AstalMpris.get_default()
 
@@ -85,7 +84,9 @@ function currentState(): SleepTimerState {
     }
 }
 
-// every tick, so the mtime stays fresh as the owner's liveness beacon
+// written on every state change; the countdown tick alone does not
+// write — the deadline is wall-clock, so nothing in the file changes
+// while ticking
 function writeState() {
     try {
         GLib.mkdir_with_parents(stateDir, 0o700)
@@ -133,24 +134,20 @@ function notify(summary: string, body: string) {
 }
 
 // adopt (or discard) a state left by a previous shell. Runs at import:
-// a FRESH file with a LIVE owner PID means a live shell owns the timer
-// — hands off. A crashed owner's file is fresh too, but its dead PID
-// marks it abandoned, so the restart claims and adopts it.
+// a LIVE owner PID means a live shell owns the timer — hands off. A
+// crashed owner's dead PID marks the file abandoned, so the restart
+// claims and adopts it.
 function loadState() {
     const file = Gio.File.new_for_path(statePath)
-    let mtimeMs: number
     let state: SleepTimerState | null = null
     try {
-        const info = file.query_info("time::modified", Gio.FileQueryInfoFlags.NONE, null)
-        mtimeMs = info.get_attribute_uint64("time::modified") * 1000
         const contents = GLib.file_get_contents(statePath)[1]
         state = parse(new TextDecoder().decode(contents))
     } catch {
         return // no file at all
     }
     const nowMs = Date.now()
-    if (decide(state, nowMs, mtimeMs, 3000, state !== null && ownerAlive(state.pid)) === "owned")
-        return // a live shell owns the timer
+    if (decide(state, nowMs, state !== null && ownerAlive(state.pid)) === "owned") return // a live shell owns the timer
     // atomic claim: only one starting shell can win the rename
     const claimedPath = `${statePath}.claimed`
     try {
@@ -158,7 +155,7 @@ function loadState() {
     } catch {
         return // already claimed elsewhere
     }
-    const decision = decide(state, nowMs, null)
+    const decision = decide(state, nowMs)
     switch (decision) {
         case "empty":
             // malformed or contentless: drop the claim and move on
@@ -194,7 +191,7 @@ function loadState() {
             dimmedToLevel = state!.dim!.to
             break
         default:
-            return // "owned" is impossible past the freshness check
+            return // "owned" is impossible past the owner-pid check
     }
     // adopted: we are the owner now — leave the claim file behind by
     // writing state under the original path
@@ -222,7 +219,6 @@ function arm() {
             return GLib.SOURCE_REMOVE
         }
         tickRemaining()
-        writeState() // keep the liveness beacon fresh
         return GLib.SOURCE_CONTINUE
     })
 }
