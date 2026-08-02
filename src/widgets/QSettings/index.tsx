@@ -17,10 +17,10 @@ import { SliderSection } from "./SliderSection"
 import { MediaSection, setQsVisible } from "./MediaSection"
 import { StatsSection } from "./StatsSection"
 import { WifiWidget, WifiSwitch } from "./toggleSection/wifi"
-import { WiredWidget } from "./toggleSection/wired"
-import { BluetoothWidget } from "./toggleSection/bluetooth"
+import { WiredWidget, WiredSwitch } from "./toggleSection/wired"
+import { BluetoothWidget, BtSwitch } from "./toggleSection/bluetooth"
 import { PowerProfilesWidget } from "./toggleSection/powerProfile"
-import { VpnPane } from "./toggleSection/vpnPane"
+import { VpnPane, VpnSwitch } from "./toggleSection/vpnPane"
 
 const registry = CommandRegistry.get_default()
 
@@ -228,15 +228,27 @@ export default function QSettings() {
                                 name="bluetooth"
                                 orientation={Gtk.Orientation.VERTICAL}
                             >
-                                <PaneHeader title="Bluetooth" onBack={() => setPane("main")} />
+                                <PaneHeader
+                                    title="Bluetooth"
+                                    onBack={() => setPane("main")}
+                                    trailing={<BtSwitch />}
+                                />
                                 <BluetoothWidget pane={pane} name="bluetooth" />
                             </box>
                             <box $type="named" name="wired" orientation={Gtk.Orientation.VERTICAL}>
-                                <PaneHeader title="Wired" onBack={() => setPane("main")} />
+                                <PaneHeader
+                                    title="Wired"
+                                    onBack={() => setPane("main")}
+                                    trailing={<WiredSwitch />}
+                                />
                                 <WiredWidget pane={pane} name="wired" />
                             </box>
                             <box $type="named" name="vpn" orientation={Gtk.Orientation.VERTICAL}>
-                                <PaneHeader title="VPN" onBack={() => setPane("main")} />
+                                <PaneHeader
+                                    title="VPN"
+                                    onBack={() => setPane("main")}
+                                    trailing={<VpnSwitch />}
+                                />
                                 <VpnPane pane={pane} name="vpn" />
                             </box>
                             <box

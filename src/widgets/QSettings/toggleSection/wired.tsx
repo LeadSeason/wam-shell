@@ -97,6 +97,27 @@ export function WiredWidget({ pane, name }: { pane: Accessor<string>; name: stri
     )
 }
 
+/** the connect/disconnect switch in the wired pane's header row */
+export function WiredSwitch() {
+    return (
+        <With value={createBinding(AstalNetwork.get_default(), "wired")}>
+            {wired =>
+                wired && (
+                    <Gtk.Switch
+                        cssClasses={["paneSwitch"]}
+                        valign={Gtk.Align.CENTER}
+                        active={createBinding(wired, "state").as(s => s === DS.ACTIVATED)}
+                        onNotifyActive={self => {
+                            // idempotent: binding syncs must not toggle
+                            if (self.active !== (wired.state === DS.ACTIVATED)) wiredToggle(wired)
+                        }}
+                    />
+                )
+            }
+        </With>
+    )
+}
+
 function WiredPane({
     wired,
     pane,

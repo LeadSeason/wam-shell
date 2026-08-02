@@ -324,7 +324,7 @@ window#QSettings {
 
     // the pane header's on/off switch: the theme does all:unset, so
     // Gtk.Switch is invisible without this
-    .wifiSwitch,
+    .paneSwitch,
     .vpnPane switch {
         background-color: t.$surface0;
         border: 1px solid t.$surface1;

@@ -113,7 +113,7 @@ export function WifiSwitch() {
             {wifi =>
                 wifi && (
                     <Gtk.Switch
-                        cssClasses={["wifiSwitch"]}
+                        cssClasses={["paneSwitch"]}
                         valign={Gtk.Align.CENTER}
                         active={createBinding(wifi, "enabled")}
                         onNotifyActive={self => wifi.set_enabled(self.active)}

@@ -5,6 +5,7 @@ import { qsVisible } from "../MediaSection"
 import vpnStatus, {
     accountInfo,
     busy,
+    connect,
     disconnect,
     ensureLocations,
     featureStates,
@@ -56,6 +57,27 @@ function FeatureRow({
                 }}
             />
         </box>
+    )
+}
+
+/** the connect/disconnect switch in the VPN pane's header row */
+export function VpnSwitch() {
+    if (!hasMullvad) return <></>
+    return (
+        <Gtk.Switch
+            cssClasses={["paneSwitch"]}
+            valign={Gtk.Align.CENTER}
+            active={vpnStatus.as(s => s.connected)}
+            onNotifyActive={self => {
+                // idempotent: binding syncs must not toggle
+                if (self.active === vpnStatus.get().connected) return
+                // same semantics as the quick settings toggle: anything
+                // but fully disconnected → disconnect (also the only way
+                // to abort a connecting attempt)
+                if (vpnStatus.get().state === "Disconnected") connect()
+                else disconnect()
+            }}
+        />
     )
 }
 

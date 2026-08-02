@@ -293,6 +293,26 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
     )
 }
 
+/** the on/off switch in the bluetooth pane's header row */
+export function BtSwitch() {
+    return (
+        <With value={createBinding(bluetooth, "adapter")}>
+            {adapter =>
+                adapter && (
+                    <Gtk.Switch
+                        cssClasses={["paneSwitch"]}
+                        valign={Gtk.Align.CENTER}
+                        active={createBinding(adapter, "powered")}
+                        onNotifyActive={self => {
+                            if (self.active !== adapter.powered) adapter.powered = self.active
+                        }}
+                    />
+                )
+            }
+        </With>
+    )
+}
+
 function BluetoothWidgetBody({ pane, name }: btPaneProps) {
     // non-null: the wrapper only mounts this body with an adapter
     const adapter = bluetooth.adapter!
