@@ -111,24 +111,6 @@ function PowerDetails() {
 
     return (
         <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-            {/* the profile's kernel knobs, live: flips as the profile
-            changes (labeled so it can't read as a column heading) */}
-            <box
-                spacing={4}
-                visible={createComputed(
-                    [Power.governor, Power.epp],
-                    (g, e) => g !== "" || e !== "",
-                )}
-            >
-                <image iconName="cpu-symbolic" pixelSize={12} valign={Gtk.Align.CENTER} />
-                <label
-                    cssClasses={["paneRowDesc"]}
-                    xalign={0}
-                    label={createComputed([Power.governor, Power.epp], (g, e) =>
-                        [`Governor: ${g || "—"}`, `Energy preference: ${e || "—"}`].join("  ·  "),
-                    )}
-                />
-            </box>
             <Gtk.FlowBox
                 maxChildrenPerLine={2}
                 homogeneous
@@ -275,6 +257,26 @@ export function PowerProfilesWidget({ pane, name }: { pane: Accessor<string>; na
                         </box>
                     )
                 })}
+                {/* footer: the active profile's kernel knobs, live */}
+                <box
+                    cssClasses={["powerKernelState"]}
+                    spacing={4}
+                    visible={createComputed(
+                        [Power.governor, Power.epp],
+                        (g, e) => g !== "" || e !== "",
+                    )}
+                >
+                    <image iconName="cpu-symbolic" pixelSize={12} valign={Gtk.Align.CENTER} />
+                    <label
+                        cssClasses={["paneRowDesc"]}
+                        xalign={0}
+                        label={createComputed([Power.governor, Power.epp], (g, e) =>
+                            [`Governor: ${g || "—"}`, `Energy preference: ${e || "—"}`].join(
+                                "  ·  ",
+                            ),
+                        )}
+                    />
+                </box>
             </box>
             <PowerDetails />
         </box>
