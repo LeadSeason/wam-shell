@@ -236,9 +236,24 @@ function socketConnect(host: string, port: number): Promise<Gio.SocketConnection
     })
 }
 
-function readLineRaw(input: Gio.DataInputStream): Promise<string> {
+// a hung bridge (accepts the TCP connection, never answers) must not
+// wedge the provider: without a read timeout the fetch promise never
+// settles and pollInFlight stays true forever. One cancellable per
+// session, cancelled by a watchdog.
+const IO_TIMEOUT_SEC = 30
+
+function ioWatchdog() {
+    const cancellable = new Gio.Cancellable()
+    const src = timeoutAddSeconds("protonmail:io", GLib.PRIORITY_DEFAULT, IO_TIMEOUT_SEC, () => {
+        cancellable.cancel()
+        return GLib.SOURCE_REMOVE
+    })
+    return { cancellable, done: () => sourceRemove(src) }
+}
+
+function readLineRaw(input: Gio.DataInputStream, cancellable: Gio.Cancellable): Promise<string> {
     return new Promise((resolve, reject) => {
-        input.read_line_async(GLib.PRIORITY_DEFAULT, null, (_s, res) => {
+        input.read_line_async(GLib.PRIORITY_DEFAULT, cancellable, (_s, res) => {
             try {
                 const [bytes] = input.read_line_finish(res)
                 if (!bytes) {
@@ -253,12 +268,16 @@ function readLineRaw(input: Gio.DataInputStream): Promise<string> {
     })
 }
 
-function readBytes(input: Gio.DataInputStream, n: number): Promise<string> {
+function readBytes(
+    input: Gio.DataInputStream,
+    n: number,
+    cancellable: Gio.Cancellable,
+): Promise<string> {
     return new Promise((resolve, reject) => {
         const chunks: string[] = []
         let left = n
         const step = () => {
-            input.read_bytes_async(left, GLib.PRIORITY_DEFAULT, null, (_s, res) => {
+            input.read_bytes_async(left, GLib.PRIORITY_DEFAULT, cancellable, (_s, res) => {
                 try {
                     const bytes = input.read_bytes_finish(res)
                     const size = bytes?.get_size() ?? 0
@@ -282,24 +301,32 @@ function readBytes(input: Gio.DataInputStream, n: number): Promise<string> {
 // responses for one command: lines until the tagged reply, flattening
 // {n} literals inline so the parser sees one continuous text.
 // tag "" = server greeting: a single line
-async function readChunk(input: Gio.DataInputStream, tag: string): Promise<string> {
+async function readChunk(
+    input: Gio.DataInputStream,
+    tag: string,
+    cancellable: Gio.Cancellable,
+): Promise<string> {
     let buf = ""
     for (;;) {
-        const line = await readLineRaw(input)
+        const line = await readLineRaw(input, cancellable)
         buf += line + "\r\n"
         if (tag === "") return buf
         if (line.startsWith(tag + " ")) return buf
         const m = line.match(/\{(\d+)\}$/)
-        if (m) buf += await readBytes(input, Number(m[1]))
+        if (m) buf += await readBytes(input, Number(m[1]), cancellable)
     }
 }
 
-function writeAll(output: Gio.OutputStream, text: string): Promise<void> {
+function writeAll(
+    output: Gio.OutputStream,
+    text: string,
+    cancellable: Gio.Cancellable,
+): Promise<void> {
     return new Promise((resolve, reject) => {
         output.write_all_async(
             new TextEncoder().encode(text),
             GLib.PRIORITY_DEFAULT,
-            null,
+            cancellable,
             (_s, res) => {
                 try {
                     output.write_all_finish(res)
@@ -317,9 +344,10 @@ async function cmd(
     conn: Gio.SocketConnection,
     tag: string,
     text: string,
+    cancellable: Gio.Cancellable,
 ): Promise<string> {
-    await writeAll(conn.get_output_stream(), `${tag} ${text}\r\n`)
-    return readChunk(input, tag)
+    await writeAll(conn.get_output_stream(), `${tag} ${text}\r\n`, cancellable)
+    return readChunk(input, tag, cancellable)
 }
 
 // IMAP strings are quoted with \ escapes
@@ -328,28 +356,37 @@ const quote = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
 // one full poll on a fresh connection; throws on any failure
 async function fetchUnread(): Promise<Envelope[]> {
     const conn = await socketConnect(Config.protonmail.host, Config.protonmail.port)
+    const wd = ioWatchdog()
     try {
         const input = Gio.DataInputStream.new(conn.get_input_stream())
-        await readChunk(input, "") // server greeting
+        await readChunk(input, "", wd.cancellable) // server greeting
         const login = await cmd(
             input,
             conn,
             "a1",
             `LOGIN "${quote(creds!.user)}" "${quote(creds!.password)}"`,
+            wd.cancellable,
         )
         if (!/^a1 OK/im.test(login)) throw Object.assign(new Error("auth"), { auth: true })
         // SEARCH needs a selected mailbox: EXAMINE (read-only select)
-        await cmd(input, conn, "a2", "EXAMINE INBOX")
-        const search = await cmd(input, conn, "a3", "UID SEARCH UNSEEN")
+        await cmd(input, conn, "a2", "EXAMINE INBOX", wd.cancellable)
+        const search = await cmd(input, conn, "a3", "UID SEARCH UNSEEN", wd.cancellable)
         const ids = parseSearchIds(search).slice(-MAX_ITEMS)
         let envs: Envelope[] = []
         if (ids.length > 0) {
-            const fetch = await cmd(input, conn, "a4", `UID FETCH ${ids.join(",")} (ENVELOPE)`)
+            const fetch = await cmd(
+                input,
+                conn,
+                "a4",
+                `UID FETCH ${ids.join(",")} (ENVELOPE)`,
+                wd.cancellable,
+            )
             envs = parseFetchEnvelopes(fetch)
         }
-        await cmd(input, conn, "a5", "LOGOUT").catch(() => {})
+        await cmd(input, conn, "a5", "LOGOUT", wd.cancellable).catch(() => {})
         return envs
     } finally {
+        wd.done()
         conn.close(null)
     }
 }
@@ -357,16 +394,24 @@ async function fetchUnread(): Promise<Envelope[]> {
 // mark one mail seen; best-effort, errors are the caller's log
 async function storeSeen(uid: number) {
     const conn = await socketConnect(Config.protonmail.host, Config.protonmail.port)
+    const wd = ioWatchdog()
     try {
         const input = Gio.DataInputStream.new(conn.get_input_stream())
-        await readChunk(input, "")
-        await cmd(input, conn, "a1", `LOGIN "${quote(creds!.user)}" "${quote(creds!.password)}"`)
+        await readChunk(input, "", wd.cancellable)
+        await cmd(
+            input,
+            conn,
+            "a1",
+            `LOGIN "${quote(creds!.user)}" "${quote(creds!.password)}"`,
+            wd.cancellable,
+        )
         // read-write select: STORE changes flags
-        await cmd(input, conn, "a2", "SELECT INBOX")
-        const r = await cmd(input, conn, "a3", `UID STORE ${uid} +FLAGS (\\Seen)`)
-        await cmd(input, conn, "a4", "LOGOUT").catch(() => {})
+        await cmd(input, conn, "a2", "SELECT INBOX", wd.cancellable)
+        const r = await cmd(input, conn, "a3", `UID STORE ${uid} +FLAGS (\\Seen)`, wd.cancellable)
+        await cmd(input, conn, "a4", "LOGOUT", wd.cancellable).catch(() => {})
         return /^a3 OK/im.test(r)
     } finally {
+        wd.done()
         conn.close(null)
     }
 }
