@@ -241,25 +241,25 @@ window#QSettings {
             }
         }
     }
-    // power mode pane: selectable profile rows in one card
-    // (classes: .powerProfiles, .powerProfileRow, .powerProfileName,
-    // .powerProfileDesc; the active row reuses the global .active)
-    .powerProfiles {
+    // shared pane list design (introduced by the power mode pane):
+    // a card of selectable rows — 16px icon, bold name, dim
+    // description, trailing widget. Used by every quick settings pane
+    // (classes: .paneCard, .paneRow, .paneRowName, .paneRowDesc)
+    .paneCard {
         background-color: t.$base;
         border-radius: s.$radius;
         padding: 6px 12px;
-
-        .powerProfileRow {
-            padding: 6px 8px;
-            border-radius: s.$radius;
-        }
-        .powerProfileName {
-            font-weight: bold;
-        }
-        .powerProfileDesc {
-            font-size: s.$font-small;
-            color: t.$subtext0;
-        }
+    }
+    .paneRow {
+        padding: 6px 8px;
+        border-radius: s.$radius;
+    }
+    .paneRowName {
+        font-weight: bold;
+    }
+    .paneRowDesc {
+        font-size: s.$font-small;
+        color: t.$subtext0;
     }
 
     .toggleTitle {
