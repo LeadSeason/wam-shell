@@ -241,6 +241,27 @@ window#QSettings {
             }
         }
     }
+    // power mode pane: selectable profile rows in one card
+    // (classes: .powerProfiles, .powerProfileRow, .powerProfileName,
+    // .powerProfileDesc; the active row reuses the global .active)
+    .powerProfiles {
+        background-color: t.$base;
+        border-radius: s.$radius;
+        padding: 6px 12px;
+
+        .powerProfileRow {
+            padding: 6px 8px;
+            border-radius: s.$radius;
+        }
+        .powerProfileName {
+            font-weight: bold;
+        }
+        .powerProfileDesc {
+            font-size: s.$font-small;
+            color: t.$subtext0;
+        }
+    }
+
     .toggleTitle {
         font-weight: bold;
     }
