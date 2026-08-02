@@ -1,9 +1,9 @@
-import { createBinding, createState, For, With } from "gnim"
+import { createBinding, createState, For, With, onCleanup } from "gnim"
 import { Gdk, Gtk } from "ags/gtk4"
 import app from "ags/gtk4/app"
 import AstalTray from "gi://AstalTray"
 import Config from "../../config"
-import { connect } from "../../lib/metrics"
+import { connect, disconnect } from "../../lib/metrics"
 
 export default function Tray({
     filter,
@@ -28,36 +28,44 @@ export default function Tray({
     const iconTheme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default()!)
     const pathOwners = new Map<string, Set<string>>() // path -> item ids
 
-    connect(registry, "item-added", (_: AstalTray.Tray, item_id: string) => {
-        const t = registry.get_item(item_id)
+    // disconnected when this instance is destroyed (the bar mount dies
+    // with its monitor on hotplug): gnim only auto-disposes JSX-prop
+    // bindings, not manual connects
+    const registryHandlers = [
+        connect(registry, "item-added", (_: AstalTray.Tray, item_id: string) => {
+            const t = registry.get_item(item_id)
 
-        const path = t.iconThemePath
-        if (path) {
-            let owners = pathOwners.get(path)
-            if (!owners) {
-                owners = new Set()
-                pathOwners.set(path, owners)
-                iconTheme.add_search_path(path)
+            const path = t.iconThemePath
+            if (path) {
+                let owners = pathOwners.get(path)
+                if (!owners) {
+                    owners = new Set()
+                    pathOwners.set(path, owners)
+                    iconTheme.add_search_path(path)
+                }
+                owners.add(item_id)
             }
-            owners.add(item_id)
-        }
 
-        setTrayItems(items => {
-            if (items.find(item => item.get_item_id() === item_id)) {
-                return items
+            setTrayItems(items => {
+                if (items.find(item => item.get_item_id() === item_id)) {
+                    return items
+                }
+                return [...items, t]
+            })
+        }),
+
+        connect(registry, "item-removed", (_: AstalTray.Tray, item_id: string) => {
+            // drop this item's claim on any path it owned; entries whose
+            // last owner left are pruned so the map tracks live items only
+            for (const [path, owners] of pathOwners) {
+                if (owners.delete(item_id) && owners.size === 0) pathOwners.delete(path)
             }
-            return [...items, t]
-        })
-    })
-
-    connect(registry, "item-removed", (_: AstalTray.Tray, item_id: string) => {
-        // drop this item's claim on any path it owned; entries whose
-        // last owner left are pruned so the map tracks live items only
-        for (const [path, owners] of pathOwners) {
-            if (owners.delete(item_id) && owners.size === 0) pathOwners.delete(path)
-        }
-        // Filter on item.get_item_id() NOT item.get_id().
-        setTrayItems(items => items.filter(item => item.get_item_id() !== item_id))
+            // Filter on item.get_item_id() NOT item.get_id().
+            setTrayItems(items => items.filter(item => item.get_item_id() !== item_id))
+        }),
+    ]
+    onCleanup(() => {
+        for (const id of registryHandlers) disconnect(registry, id)
     })
 
     // TODO: Icons served as raw pixmaps may still not show up.
