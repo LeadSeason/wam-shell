@@ -649,7 +649,15 @@ function AssignmentEditor({
 // reassignment; editing never starts a timer); resuming is explicit via
 // the play button. The running entry is highlighted and inert (its
 // notes live in the card above).
-function TimelineRow({ entry }: { entry: Harvest.Entry }) {
+function TimelineRow({
+    entry,
+    startToday = false,
+}: {
+    entry: Harvest.Entry
+    // past-day row: the play button starts the same project+task as a
+    // NEW entry today instead of restarting the old one on its old date
+    startToday?: boolean
+}) {
     const esc = (s: string) => GLib.markup_escape_text(s, -1)
     const time = Harvest.startTimeLabel(entry)
     const isPaused = Harvest.paused.as(p => p?.id === entry.id)
@@ -757,8 +765,16 @@ function TimelineRow({ entry }: { entry: Harvest.Entry }) {
                         (h, c) => !entry.isRunning && h && !c,
                     )}
                     sensitive={Harvest.busy.as(b => !b)}
-                    tooltipText={"Resume"}
-                    onClicked={() => Harvest.resumeEntry(entry)}
+                    tooltipText={startToday ? "Start today" : "Resume"}
+                    onClicked={() =>
+                        startToday
+                            ? Harvest.startTimer(
+                                  entry.projectId,
+                                  entry.taskId,
+                                  entry.notes || undefined,
+                              )
+                            : Harvest.resumeEntry(entry)
+                    }
                 >
                     <image iconName="media-playback-start-symbolic" />
                 </button>
@@ -860,24 +876,68 @@ function TimelineRow({ entry }: { entry: Harvest.Entry }) {
     )
 }
 
-// the entire day as a timeline, ascending by start time (lib sorts)
+// the entire day as a timeline, ascending by start time (lib sorts).
+// The header browses days: past days come from dayEntries (fetched per
+// selection), today from the live todayEntries
 function Timeline() {
+    // 0 = today, -1 = yesterday, …
+    const [dayIdx, setDayIdx] = createState(0)
+    const unsub = dayIdx.subscribe(i => {
+        if (i !== 0) Harvest.fetchDayOffset(i)
+    })
+    onCleanup(unsub)
+
+    const entries = createComputed(
+        [Harvest.todayEntries, Harvest.dayEntries, dayIdx],
+        (today, past, i) => (i === 0 ? today : past),
+    )
+
+    const dayLabel = (i: number): string => {
+        if (i === 0) return "Today"
+        if (i === -1) return "Yesterday"
+        const d = GLib.DateTime.new_now_local().add_days(i)!
+        return d.format("%a, %d.%m.%Y") ?? ""
+    }
+
     return (
-        <box
-            orientation={Gtk.Orientation.VERTICAL}
-            spacing={6}
-            visible={Harvest.todayEntries.as(r => r.length > 0)}
-        >
-            <label cssClasses={["section"]} label={"Today"} xalign={0} />
+        <box orientation={Gtk.Orientation.VERTICAL} spacing={6}>
+            <box cssClasses={["section"]} spacing={4}>
+                <button
+                    cssClasses={["dayNav"]}
+                    tooltipText={"Previous day"}
+                    onClicked={() => setDayIdx(dayIdx.get() - 1)}
+                >
+                    <image iconName="go-previous-symbolic" />
+                </button>
+                <label label={dayIdx.as(dayLabel)} xalign={0} hexpand />
+                <button
+                    cssClasses={["dayNav"]}
+                    tooltipText={"Next day"}
+                    // never past today
+                    sensitive={dayIdx.as(i => i < 0)}
+                    onClicked={() => setDayIdx(Math.min(0, dayIdx.get() + 1))}
+                >
+                    <image iconName="go-next-symbolic" />
+                </button>
+            </box>
+            <label
+                cssClasses={["dim"]}
+                xalign={0}
+                visible={entries.as(e => e.length === 0)}
+                label={"No entries"}
+            />
             <Gtk.ScrolledWindow
                 vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
                 hscrollbarPolicy={Gtk.PolicyType.NEVER}
                 propagateNaturalHeight
                 maxContentHeight={300}
+                visible={entries.as(e => e.length > 0)}
             >
                 <box orientation={Gtk.Orientation.VERTICAL} spacing={6}>
-                    <For each={Harvest.todayEntries}>
-                        {(e: Harvest.Entry) => <TimelineRow entry={e} />}
+                    <For each={entries}>
+                        {(e: Harvest.Entry) => (
+                            <TimelineRow entry={e} startToday={dayIdx.get() !== 0} />
+                        )}
                     </For>
                 </box>
             </Gtk.ScrolledWindow>
