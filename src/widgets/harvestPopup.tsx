@@ -666,16 +666,18 @@ function TimelineRow({
     const isPaused = Harvest.paused.as(p => p?.id === entry.id)
 
     const [expanded, setExpanded] = createState(false)
-    // separate dirty tracking: notes text and project/task selection.
-    // One Save commits both in a single PATCH (updateEntry)
+    // separate dirty tracking: notes text, hours and project/task
+    // selection. One Save commits notes + assignment in a single PATCH
+    // (updateEntry), hours via setHours (both modes)
     const [notesDirty, setNotesDirty] = createState(false)
+    const [hoursDirty, setHoursDirty] = createState(false)
     const [projectSel, setProjectSel] = createState(entry.projectId)
     const [taskSel, setTaskSel] = createState(entry.taskId)
     const assignDirty = createComputed(
         [projectSel, taskSel],
         (p, t) => p !== entry.projectId || t !== entry.taskId,
     )
-    const dirty = createComputed([notesDirty, assignDirty], (n, a) => n || a)
+    const dirty = createComputed([notesDirty, hoursDirty, assignDirty], (n, h, a) => n || h || a)
     // two-step delete: trash swaps into confirm/cancel in place
     const [confirming, setConfirming] = createState(false)
     // row action buttons (resume/delete) hide until the row is hovered —
@@ -687,8 +689,23 @@ function TimelineRow({
     // and a With keyed on `expanded` itself would vanish mid-collapse
     const [editorBuilt, setEditorBuilt] = createState(false)
     let notesBuffer: Gtk.TextBuffer | null = null
+    let hoursEntry: Gtk.Entry | null = null
+    const serverHours = () => Harvest.formatElapsed(entry.hours * 3600)
 
     const save = () => {
+        const hoursText = hoursEntry?.get_text()
+        if (hoursText !== undefined && hoursText !== serverHours()) {
+            const hours = parseDuration(hoursText)
+            // 0/empty/garbage is not a valid duration: snap back to the
+            // server value (same contract as the paused hours editor)
+            if (hours === null || hours <= 0) {
+                hoursEntry?.set_text(serverHours())
+                setHoursDirty(false)
+            }
+            // keep dirty when the update couldn't be attempted (busy,
+            // running)
+            else if (Harvest.setHours(entry, hours)) setHoursDirty(false)
+        }
         const fields: { notes?: string; projectId?: number; taskId?: number } = {}
         const text = notesBuffer?.text
         if (text !== undefined && text !== entry.notes) fields.notes = text
@@ -842,6 +859,26 @@ function TimelineRow({
                             ) : null
                         }
                     </With>
+                    {/* accrued-time editor, same dirty contract as the
+                    notes field (no focus-out commit). Insensitive while
+                    running: setHours only applies to stopped entries */}
+                    <box spacing={6} valign={Gtk.Align.CENTER}>
+                        <label cssClasses={["dim"]} label={"Hours:"} />
+                        <Gtk.Entry
+                            $={self => {
+                                hoursEntry = self
+                                self.set_text(serverHours())
+                            }}
+                            cssClasses={["pausedEdit"]}
+                            hexpand
+                            tooltipText={"Edit hours (e.g. 1.5 or 1:30)"}
+                            sensitive={!entry.isRunning}
+                            onChanged={() =>
+                                setHoursDirty(hoursEntry?.get_text() !== serverHours())
+                            }
+                            onActivate={save}
+                        />
+                    </box>
                     <box spacing={6} valign={Gtk.Align.START}>
                         {/* multi-line like the header's notes field: three
                         rows tall, grows to six, then scrolls. No Enter
