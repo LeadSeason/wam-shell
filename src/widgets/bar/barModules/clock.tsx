@@ -4,6 +4,7 @@ import GLib from "gi://GLib?version=2.0"
 import Pango from "gi://Pango?version=1.0"
 import { For, createComputed, createState } from "gnim"
 import * as Gcal from "../../../lib/gcal"
+import Config from "../../../config"
 import { connect } from "../../../lib/metrics"
 
 // one shared poll for every bar (one per monitor previously): the date
@@ -129,6 +130,7 @@ function CalendarPopover() {
                 </button>
             </box>
             <box homogeneous>
+                {Config.calendar.weekNumbers && <label cssClasses={["calWeek"]} label="" />}
                 {WEEKDAYS.map(w => (
                     <label cssClasses={["weekday"]} label={w} />
                 ))}
@@ -136,6 +138,20 @@ function CalendarPopover() {
             <For each={grid}>
                 {(week: GridCell[]) => (
                     <box homogeneous>
+                        {Config.calendar.weekNumbers && (
+                            <label
+                                cssClasses={["calWeek"]}
+                                valign={Gtk.Align.CENTER}
+                                label={String(
+                                    Gcal.isoWeekNumber(
+                                        (() => {
+                                            const [y, m, d] = week[0].key.split("-").map(Number)
+                                            return new Date(y, m - 1, d)
+                                        })(),
+                                    ),
+                                )}
+                            />
+                        )}
                         {/* plain map: cells are static within the week row
                         the outer For rebuilds */}
                         {week.map(day => (

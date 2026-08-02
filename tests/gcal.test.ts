@@ -7,6 +7,7 @@ import {
     agendaGroups,
     monthGrid,
     isVisible,
+    isoWeekNumber,
 } from "../src/lib/gcal"
 
 // local ms for readability: d(31, 10) = the 31st of this month at 10:00
@@ -224,4 +225,21 @@ test("gcal isVisible: config names, account-scoped names, overrides", () => {
     // session override wins over config in both directions
     eq(isVisible(cal, { c1: true }, ["Birthdays"]), true)
     eq(isVisible(cal, { c1: false }, []), false)
+})
+
+test("gcal isoWeekNumber: ISO-8601 week numbers", () => {
+    const d = (y: number, m0: number, day: number) => new Date(y, m0, day)
+    // 2026-01-01 is a Thursday: ISO week 1 of 2026
+    eq(isoWeekNumber(d(2026, 0, 1)), 1)
+    // 2025-12-29 (Mon) belongs to ISO week 1 of 2026
+    eq(isoWeekNumber(d(2025, 11, 29)), 1)
+    // 2025-01-01 (Wed) is ISO week 1 of 2025
+    eq(isoWeekNumber(d(2025, 0, 1)), 1)
+    // 2024-12-30 (Mon) is ISO week 1 of 2025; the day before is week 52 of 2024
+    eq(isoWeekNumber(d(2024, 11, 30)), 1)
+    eq(isoWeekNumber(d(2024, 11, 29)), 52)
+    // a mid-year sanity check: 2026-08-03 (Mon) is week 32
+    eq(isoWeekNumber(d(2026, 7, 3)), 32)
+    // 2021-01-01 (Fri) is week 53 of 2020
+    eq(isoWeekNumber(d(2021, 0, 1)), 53)
 })
