@@ -1,4 +1,5 @@
 import GObject, { register, getter } from "ags/gobject"
+import Gio from "gi://Gio?version=2.0"
 import { monitorFile, readFileAsync } from "ags/file"
 import Config from "../config"
 
@@ -16,6 +17,7 @@ export default class ArchUpdates extends GObject.Object {
     // camelCase is fine: registration kebabifies the getter name, so the
     // property is "updates-num" and notify works
     #updatesNum: number = 0
+    #monitor: Gio.FileMonitor | null = null
 
     @getter(String)
     get updates(): string {
@@ -61,8 +63,14 @@ export default class ArchUpdates extends GObject.Object {
 
         updatesFileUpdate(updatesFile)
 
-        monitorFile(updatesFile, async f => {
+        this.#monitor = monitorFile(updatesFile, async f => {
             updatesFileUpdate(f)
         })
+    }
+
+    // convention for lib modules with long-lived sources (see AGENTS.md)
+    dispose() {
+        this.#monitor?.cancel()
+        this.#monitor = null
     }
 }

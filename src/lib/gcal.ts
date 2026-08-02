@@ -368,7 +368,7 @@ let syncInFlight = false
 // one account's slice of the merge: ALL its calendars' events in the
 // window (visibility filtering happens at render time so picker
 // toggles apply instantly), tagged with the account email. cb(null) =
-// fetch failed (the merge degrades to the other accounts)
+// fetch failed (the merge keeps the account's previous events)
 function syncAccount(
     account: GoogleAccount,
     range: string,
@@ -427,8 +427,23 @@ export function sync(focus?: { y: number; m: number }) {
     let pending = signedIn.length
     for (const account of signedIn) {
         syncAccount(account, range, (list, cals) => {
-            if (list) merged.push(...list)
-            allCals.push(...cals)
+            if (list) {
+                merged.push(...list)
+                allCals.push(...cals)
+            } else {
+                // transient failure: keep the account's previous events
+                // (clamped to the window) and calendars instead of
+                // blanking it until the next successful sync — same
+                // keep-stale policy as the github/todoist providers
+                merged.push(
+                    ...events
+                        .get()
+                        .filter(
+                            e => e.account === account.email && e.endMs >= from && e.startMs <= to,
+                        ),
+                )
+                allCals.push(...calendars.get().filter(c => c.account === account.email))
+            }
             if (--pending > 0) return
             merged.sort((a, b) => a.startMs - b.startMs)
             loadedFrom = from

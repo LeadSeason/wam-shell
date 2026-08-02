@@ -1,11 +1,11 @@
 import { Accessor, createState } from "gnim"
 import Gdk from "gi://Gdk?version=4.0"
-import { execAsync, connect } from "./metrics"
+import { execAsync, connect, disconnect } from "./metrics"
 import { createPoll } from "ags/time"
 import { readFile } from "ags/file"
 import AstalHyprland from "gi://AstalHyprland"
 import Config from "../config"
-import { watchSwayInputs } from "./swayInput"
+import { watchSwayInputs, unwatchSwayInputs } from "./swayInput"
 
 // Shared keyboard layout source. The bar dropdown and the OSD both
 // consume it; it runs when either exists, independent of panel config.
@@ -68,6 +68,10 @@ export const [lockKeyState, setLockKeyState] = createState<{ caps: boolean; num:
 )
 
 let lockSourceStarted = false
+// tracked so dispose() can disconnect (metrics disconnect needs the
+// object the handler id belongs to)
+let lockKb: Gdk.Device | null = null
+let lockHandlerIds: number[] = []
 
 // connect once; the seat's keyboard device lives for the whole session
 export function ensureLockSource(): void {
@@ -80,8 +84,11 @@ export function ensureLockSource(): void {
     }
     const read = () => setLockKeyState({ caps: kb.capsLockState, num: kb.numLockState })
     read() // the signals only fire on change, so seed the initial state
-    connect(kb, "notify::caps-lock-state", read)
-    connect(kb, "notify::num-lock-state", read)
+    lockKb = kb
+    lockHandlerIds = [
+        connect(kb, "notify::caps-lock-state", read),
+        connect(kb, "notify::num-lock-state", read),
+    ]
 }
 
 function hyprlandSource(): LayoutSource {
@@ -117,7 +124,8 @@ function hyprlandSource(): LayoutSource {
     refresh()
     // the keyboard-layout signal covers layout switches; lock keys come
     // from GDK (ensureLockSource), so no recurring hyprctl poll is needed
-    connect(hyprland, "keyboard-layout", refresh)
+    hyprlandObj = hyprland
+    hyprlandLayoutHandler = connect(hyprland, "keyboard-layout", refresh)
 
     return {
         layouts,
@@ -187,7 +195,8 @@ function swaySource(msgCmd: string): LayoutSource {
                 return ""
             }
         })
-        poll.subscribe(() => {
+        // unsubscribing stops the poll's timer (its only subscriber)
+        swayPollUnsub = poll.subscribe(() => {
             try {
                 const raw = poll.get()
                 if (raw) applyInputs(JSON.parse(raw))
@@ -227,6 +236,12 @@ function swaySource(msgCmd: string): LayoutSource {
 }
 
 let source: LayoutSource | null = null
+// tracked for dispose(): the hyprland signal handler and the sway
+// poll fallback's unsubscribe (the IPC stream is torn down in
+// swayInput's unwatchSwayInputs)
+let hyprlandObj: AstalHyprland.Hyprland | null = null
+let hyprlandLayoutHandler = 0
+let swayPollUnsub: (() => void) | null = null
 
 // create the source for the running session, once
 export function ensureLayoutSource(): LayoutSource | null {
@@ -235,4 +250,24 @@ export function ensureLayoutSource(): LayoutSource | null {
     if (ds === "hyprland") source = hyprlandSource()
     else if (ds === "sway" || ds === "i3") source = swaySource(ds === "i3" ? "i3-msg" : "swaymsg")
     return source
+}
+
+// convention for lib modules with long-lived sources, even though the
+// shell never calls it today: one place that tears everything down
+export function dispose() {
+    if (lockKb) {
+        for (const id of lockHandlerIds) disconnect(lockKb, id)
+        lockKb = null
+        lockHandlerIds = []
+    }
+    lockSourceStarted = false
+    if (hyprlandObj && hyprlandLayoutHandler) {
+        disconnect(hyprlandObj, hyprlandLayoutHandler)
+        hyprlandObj = null
+        hyprlandLayoutHandler = 0
+    }
+    swayPollUnsub?.()
+    swayPollUnsub = null
+    unwatchSwayInputs()
+    source = null
 }
