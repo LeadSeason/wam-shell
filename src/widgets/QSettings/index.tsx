@@ -33,21 +33,13 @@ function PaneHeader({
     onBack: () => void
     trailing?: Gtk.Widget
 }) {
-    // :hover does NOT propagate to the parent when the pointer is over
-    // the trailing switch, so CSS alone can't light the whole line —
-    // track the pointer over the row and drive a class instead
-    const [hovered, setHovered] = createState(false)
     return (
-        <box cssClasses={hovered.as(h => ["paneHeader", ...(h ? ["hover"] : [])])} spacing={5}>
-            <Gtk.EventControllerMotion
-                onEnter={() => setHovered(true)}
-                onLeave={() => setHovered(false)}
-            />
-            {/* the gesture box must NOT hexpand: stretched across the
-            row it swallows clicks meant for the trailing switch (the
-            back "button" extended under the toggle). The spacer pushes
+        <box cssClasses={["paneHeader"]} spacing={5}>
+            {/* back is its own small button (hover covers only icon +
+            title, never the trailing switch): the gesture box must not
+            hexpand, or it swallows switch clicks; the spacer pushes
             the switch right and takes no gesture */}
-            <box spacing={5}>
+            <box cssClasses={["paneHeaderBack"]} spacing={5}>
                 <Gtk.GestureClick button={1} onPressed={onBack} />
                 <image iconName="go-previous-symbolic" />
                 <label label={title} xalign={0} />
