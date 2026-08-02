@@ -268,10 +268,13 @@
 #                account; "email:Name" hides it only in that account.
 #                the popover's Calendars pane toggles visibility at
 #                runtime (session-only, overrides this). default []
+# week_numbers - show ISO-8601 week numbers down the month grid's left
+#                edge. default true
 # [calendar]
 # enabled = false
 # poll_minutes = 15
 # hidden_calendars = []
+# week_numbers = true
 
 # [github] - GitHub notifications inside the notification center: your
 #            unread GitHub inbox merges into the center's list, and a

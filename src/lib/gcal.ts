@@ -280,6 +280,18 @@ export function monthGrid(year: number, month0: number): GridDay[][] {
     return weeks
 }
 
+// ISO-8601 week number of a local date: week 1 contains the year's
+// first Thursday (both the grid rows and this count are Monday-first)
+export function isoWeekNumber(d: Date): number {
+    const date = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+    const day = (date.getDay() + 6) % 7 // Mon=0..Sun=6
+    date.setDate(date.getDate() - day + 3) // Thursday of this week
+    const firstThursday = new Date(date.getFullYear(), 0, 4)
+    const firstDay = (firstThursday.getDay() + 6) % 7
+    firstThursday.setDate(firstThursday.getDate() - firstDay + 3)
+    return 1 + Math.round((date.getTime() - firstThursday.getTime()) / (7 * 86_400_000))
+}
+
 // "Today" / "Tomorrow" / "Tue, 05.08.2026" for a day key
 export function dayLabel(day: string, today: string): string {
     if (day === today) return "Today"

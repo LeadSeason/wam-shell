@@ -265,6 +265,14 @@ window.Bar {
                 color: t.$subtext0;
             }
 
+            // ISO week numbers down the grid's left edge
+            .calWeek {
+                font-size: s.$font-small;
+                color: t.$subtext0;
+                opacity: 0.6;
+                min-width: 34px;
+            }
+
             button.calDay {
                 min-width: 34px;
                 min-height: 34px;
