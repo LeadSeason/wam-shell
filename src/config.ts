@@ -492,6 +492,39 @@ function getGitHubConfig() {
     }
 }
 
+// Todoist tasks (due today/overdue) in the notification center.
+// Section-only keys: no top-level fallbacks exist for these names and
+// none should leak in
+function getTodoistConfig() {
+    const t = configData.todoist ?? {}
+
+    let pollMinutes = t["poll_minutes"] ?? 5
+    if (typeof pollMinutes !== "number" || pollMinutes <= 0) {
+        console.error(
+            `Config "todoist.poll_minutes" must be a positive number, got "${pollMinutes}"`,
+        )
+        pollMinutes = 5
+    }
+    // floor: a config typo must not burn the Todoist API rate limit
+    if (pollMinutes < 1) pollMinutes = 1
+
+    let remindBefore = t["remind_before_minutes"] ?? 5
+    if (typeof remindBefore !== "number" || remindBefore < 0) {
+        console.error(
+            `Config "todoist.remind_before_minutes" must be a number >= 0, got "${remindBefore}"`,
+        )
+        remindBefore = 5
+    }
+
+    return {
+        enabled: t["enabled"] ?? false,
+        pollMinutes,
+        // proactive banners before a scheduled (timed) task is due
+        reminders: t["reminders"] ?? true,
+        remindBeforeMinutes: remindBefore,
+    }
+}
+
 // YouTube notifications in the notification center. Section-only keys:
 // no top-level fallbacks exist for these names and none should leak in
 function getYouTubeConfig() {
@@ -773,6 +806,7 @@ export default class Config {
     static calendar = getCalendarConfig()
     static github = getGitHubConfig()
     static youtube = getYouTubeConfig()
+    static todoist = getTodoistConfig()
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`
 
