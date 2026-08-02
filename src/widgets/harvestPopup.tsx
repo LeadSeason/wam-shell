@@ -882,7 +882,9 @@ function TimelineRow({
 function Timeline() {
     // 0 = today, -1 = yesterday, …
     const [dayIdx, setDayIdx] = createState(0)
-    const unsub = dayIdx.subscribe(i => {
+    // gnim subscribe callbacks receive no value — read the state
+    const unsub = dayIdx.subscribe(() => {
+        const i = dayIdx.get()
         if (i !== 0) Harvest.fetchDayOffset(i)
     })
     onCleanup(unsub)
@@ -909,7 +911,7 @@ function Timeline() {
                 >
                     <image iconName="go-previous-symbolic" />
                 </button>
-                <label label={dayIdx.as(dayLabel)} xalign={0} hexpand />
+                <label label={dayIdx.as(dayLabel)} xalign={0.5} hexpand />
                 <button
                     cssClasses={["dayNav"]}
                     tooltipText={"Next day"}
