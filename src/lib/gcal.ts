@@ -183,11 +183,17 @@ export function eventDays(startMs: number, endMs: number, allDay: boolean): stri
     const days: string[] = []
     // end is exclusive for both kinds: the last covered instant is end-1ms
     const last = new Date(endMs - 1)
-    let cur = new Date(startMs)
-    cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate())
+    const start = new Date(startMs)
     const stop = localMidnight(last.getFullYear(), last.getMonth(), last.getDate())
-    for (let t = cur.getTime(); t <= stop && days.length < 62; t += 86_400_000) {
-        days.push(dayKey(t))
+    // step by local calendar day, not absolute 24h: across the
+    // fall-back transition (a 25-hour day) midnight+86400s is still the
+    // same local day, which duplicated the key and dropped the last one
+    for (
+        let d = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+        d.getTime() <= stop && days.length < 62;
+        d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
+    ) {
+        days.push(dayKey(d.getTime()))
     }
     return days
 }
