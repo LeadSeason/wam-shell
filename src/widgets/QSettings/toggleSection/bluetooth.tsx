@@ -1,4 +1,4 @@
-import { Accessor, createBinding, createComputed, createState, For, With } from "gnim"
+import { Accessor, createBinding, createComputed, createState, For, onCleanup, With } from "gnim"
 import { DropdownButton } from "./ToggleButton"
 import AstalBluetooth from "gi://AstalBluetooth?version=0.1"
 import Gio from "gi://Gio?version=2.0"
@@ -25,7 +25,9 @@ function ProfileSelector({ wpDev }: { wpDev: AstalWp.Device }) {
     // until activeProfileId catches up (5s safety timeout)
     const [pendingProfile, setPendingProfile] = createState<number | null>(null)
     let pendingToken = 0
-    createBinding(wpDev, "activeProfileId").subscribe(() => setPendingProfile(null))
+    // the selector unmounts on every device disconnect/forget — without
+    // this, each unmount leaks a notify handler on the wp Device
+    onCleanup(createBinding(wpDev, "activeProfileId").subscribe(() => setPendingProfile(null)))
 
     const profiles = createComputed(
         [createBinding(wpDev, "profiles"), createBinding(wpDev, "activeProfileId"), pendingProfile],
@@ -204,9 +206,17 @@ interface btPaneProps {
 }
 
 export function BluetoothButton({ navigate }: { navigate: () => void }) {
-    // no bluetooth adapter on this machine
-    if (!bluetooth.adapter) return <></>
+    // the adapter can appear after shell start (rfkill unblock, bluez
+    // restart, hotplug) — rebind on it instead of bailing once at
+    // construction (same pattern as the wifi/wired toggles)
+    return (
+        <With value={createBinding(bluetooth, "adapter")}>
+            {adapter => (adapter ? <BluetoothButtonBody navigate={navigate} /> : <></>)}
+        </With>
+    )
+}
 
+function BluetoothButtonBody({ navigate }: { navigate: () => void }) {
     // battery only re-evaluates when the device list or power changes;
     // good enough for a subtitle
     const subtitle = createComputed(
@@ -274,8 +284,17 @@ function deviceType(icon: string): string {
 }
 
 export function BluetoothWidget({ pane, name }: btPaneProps) {
-    const adapter = bluetooth.adapter
-    if (!adapter) return <></>
+    // same hotplug rebind as the button above
+    return (
+        <With value={createBinding(bluetooth, "adapter")}>
+            {adapter => (adapter ? <BluetoothWidgetBody pane={pane} name={name} /> : <></>)}
+        </With>
+    )
+}
+
+function BluetoothWidgetBody({ pane, name }: btPaneProps) {
+    // non-null: the wrapper only mounts this body with an adapter
+    const adapter = bluetooth.adapter!
 
     // brief pulse so a rescan click gives visible feedback (discovery is
     // already running while the pane is open, so adapter.discovering

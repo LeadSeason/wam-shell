@@ -1,6 +1,7 @@
 import { Gtk } from "ags/gtk4"
 import Pango from "gi://Pango?version=1.0"
 import { Accessor, For, createComputed, createState } from "gnim"
+import { qsVisible } from "../MediaSection"
 import vpnStatus, {
     accountInfo,
     busy,
@@ -72,6 +73,15 @@ export function VpnPane({ pane, name }: { pane: Accessor<string>; name: string }
 
     const [pickerOpen, setPickerOpen] = createState(false)
     const [query, setQuery] = createState("")
+
+    // closed popup = collapsed picker next open, like the toggle
+    // section's reset on hide
+    qsVisible.subscribe(v => {
+        if (!v) {
+            setPickerOpen(false)
+            setQuery("")
+        }
+    })
     const filtered = createComputed([locations, query], (locs, q) =>
         locs.filter(l => !q || `${l.country} ${l.city}`.toLowerCase().includes(q.toLowerCase())),
     )

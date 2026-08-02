@@ -13,7 +13,9 @@ const base: SleepTimerState = {
 test("sleepTimerState: serialize/parse round-trips", () => {
     eq(parse(serialize(base)), base)
     eq(
-        parse(serialize({ ...base, paused: true, pausedSeconds: 420, dim: { pre: 0.7, to: 0.35 } })),
+        parse(
+            serialize({ ...base, paused: true, pausedSeconds: 420, dim: { pre: 0.7, to: 0.35 } }),
+        ),
         { ...base, paused: true, pausedSeconds: 420, dim: { pre: 0.7, to: 0.35 } },
     )
 })
@@ -34,39 +36,36 @@ test("sleepTimerState: parse rejects malformed input", () => {
 
 test("sleepTimerState decide: empty and owned", () => {
     const now = 1_000_000
-    eq(decide(null, now, now), "empty")
-    // fresh mtime + a live owner pid = a live shell owns the timer
-    eq(decide(base, now, now - 1000, 3000, true), "owned")
-    eq(decide(base, now, now - 2999, 3000, true), "owned")
-    // fresh mtime but the owner is DEAD (crash/kill or a fast clean
-    // restart inside the beacon window): adopt, don't drop
-    eq(decide(base, now, now - 1000, 3000, false), "live")
-    // stale mtime is adoptable even if the pid looks alive
-    eq(decide(base, now, now - 3000, 3000, true), "live")
+    eq(decide(null, now), "empty")
+    // a live owner pid = a live shell owns the timer, however old the
+    // file is (the owner writes on state change only, not per tick)
+    eq(decide(base, now, true), "owned")
+    // a DEAD owner (crash/kill or a clean restart): adopt, don't drop
+    eq(decide(base, now, false), "live")
 })
 
 test("sleepTimerState decide: live vs expired on the deadline boundary", () => {
     const now = 1_000_000
-    const stale = now - 10_000
-    eq(decide({ ...base, deadline: now + 1 }, now, stale), "live")
-    eq(decide({ ...base, deadline: now }, now, stale), "expired")
-    eq(decide({ ...base, deadline: now - 1 }, now, stale), "expired")
+    eq(decide({ ...base, deadline: now + 1 }, now), "live")
+    eq(decide({ ...base, deadline: now }, now), "expired")
+    eq(decide({ ...base, deadline: now - 1 }, now), "expired")
 })
 
 test("sleepTimerState decide: paused beats the deadline check", () => {
     const now = 1_000_000
-    const stale = now - 10_000
     // paused with a past deadline is still a frozen restore, not an expiry
-    eq(decide({ ...base, deadline: now - 500, paused: true, pausedSeconds: 30 }, now, stale), "paused")
+    eq(decide({ ...base, deadline: now - 500, paused: true, pausedSeconds: 30 }, now), "paused")
 })
 
 test("sleepTimerState decide: dim-only after a pre-restart fire", () => {
     const now = 1_000_000
-    const stale = now - 10_000
     eq(
-        decide({ deadline: null, paused: false, pausedSeconds: 0, dim: { pre: 0.7, to: 0.35 } }, now, stale),
+        decide(
+            { deadline: null, paused: false, pausedSeconds: 0, dim: { pre: 0.7, to: 0.35 } },
+            now,
+        ),
         "dim-only",
     )
     // no deadline and no dim is nothing
-    eq(decide({ deadline: null, paused: false, pausedSeconds: 0, dim: null }, now, stale), "empty")
+    eq(decide({ deadline: null, paused: false, pausedSeconds: 0, dim: null }, now), "empty")
 })

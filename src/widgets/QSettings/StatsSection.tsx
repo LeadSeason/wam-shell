@@ -103,7 +103,9 @@ export function StatsSection() {
             <StatRow
                 name="RAM"
                 className="statRam"
-                value={ramSize.as(([used, total]) => `${ram.get()}%  ${used}/${total} GB`)}
+                value={createComputed([ram, ramSize], (r, [used, total]) => {
+                    return `${r}%  ${used}/${total} GB`
+                })}
                 hist={ramHist}
             />
             {/* gate on null-ness only: With re-executes on every value
