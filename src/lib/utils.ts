@@ -40,13 +40,21 @@ export function rtlAlign(s: string): string {
  * Body text for useMarkup labels. The notification spec allows markup,
  * but plenty of apps send raw text with & or < in it — that fails Pango
  * parsing and renders an empty label. Keep valid markup, escape the
- * rest.
+ * rest. One mending step first: Pango has no <a> support ("Unknown
+ * tag 'a'"), and web notifications wrap links in anchors — strip the
+ * tags, keep the link text, and retry.
  */
 export function safeMarkup(s: string): string {
     try {
         Pango.parse_markup(s, -1, "\x00")
         return s
     } catch {
-        return GLib.markup_escape_text(s, -1)
+        try {
+            const noAnchors = s.replace(/<a\s[^>]*>/g, "").replaceAll("</a>", "")
+            Pango.parse_markup(noAnchors, -1, "\x00")
+            return noAnchors
+        } catch {
+            return GLib.markup_escape_text(s, -1)
+        }
     }
 }
