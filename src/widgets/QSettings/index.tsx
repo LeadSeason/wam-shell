@@ -43,13 +43,16 @@ function PaneHeader({
                 onEnter={() => setHovered(true)}
                 onLeave={() => setHovered(false)}
             />
-            {/* the gesture covers only the back icon + title — a click
-            on a trailing widget (the pane's switch) must not navigate */}
-            <box spacing={5} hexpand>
+            {/* the gesture box must NOT hexpand: stretched across the
+            row it swallows clicks meant for the trailing switch (the
+            back "button" extended under the toggle). The spacer pushes
+            the switch right and takes no gesture */}
+            <box spacing={5}>
                 <Gtk.GestureClick button={1} onPressed={onBack} />
                 <image iconName="go-previous-symbolic" />
-                <label label={title} hexpand xalign={0} />
+                <label label={title} xalign={0} />
             </box>
+            <box hexpand />
             {trailing}
         </box>
     )
