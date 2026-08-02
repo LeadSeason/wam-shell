@@ -113,7 +113,7 @@ export function WifiSwitch() {
             {wifi =>
                 wifi && (
                     <Gtk.Switch
-                        cssClasses={["wifiSwitch"]}
+                        cssClasses={["paneSwitch"]}
                         valign={Gtk.Align.CENTER}
                         active={createBinding(wifi, "enabled")}
                         onNotifyActive={self => wifi.set_enabled(self.active)}
@@ -155,7 +155,7 @@ function ConnectedSection({ wifi }: { wifi: AstalNetwork.Wifi }) {
     return (
         // hidden entirely when wifi is off — the header switch says it
         <box orientation={Gtk.Orientation.VERTICAL} visible={enabled}>
-            <label label={"Connected network"} cssClasses={["btSection"]} xalign={0} />
+            <label label={"Connected network"} cssClasses={["paneSection"]} xalign={0} hexpand />
             <box orientation={Gtk.Orientation.VERTICAL} visible={connected}>
                 <box cssClasses={["wifiConnected"]} spacing={10}>
                     <OverlayIcon
@@ -531,10 +531,11 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                         <box visible={isKnown} spacing={5} cssClasses={["wifiDetailAction"]}>
                             <Gtk.GestureClick button={1} onPressed={toggleAutoconnect} />
                             <label label={"Auto-connect"} hexpand xalign={0} />
-                            <image
-                                iconName={autoconnect.as(a =>
-                                    a === true ? "object-select-symbolic" : "window-close-symbolic",
-                                )}
+                            <Gtk.CheckButton
+                                cssClasses={["paneCheckbox"]}
+                                valign={Gtk.Align.CENTER}
+                                sensitive={false}
+                                active={autoconnect.as(a => a === true)}
                             />
                         </box>
                         <box
@@ -583,7 +584,11 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
         }
 
         return (
-            <box cssClasses={["wifiPrompt"]} orientation={Gtk.Orientation.VERTICAL} spacing={10}>
+            <box
+                cssClasses={["wifiPrompt", "paneCard"]}
+                orientation={Gtk.Orientation.VERTICAL}
+                spacing={10}
+            >
                 <label
                     cssClasses={["title"]}
                     label={p.ap ? `Connect to ${p.ssid}` : "Join hidden network"}
@@ -594,6 +599,7 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                         $={self => {
                             ssidEntry = self
                         }}
+                        cssClasses={["textInput"]}
                         placeholderText={"Network name (SSID)"}
                         onActivate={submit}
                     />
@@ -603,6 +609,7 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                         entry = self
                         self.grab_focus()
                     }}
+                    cssClasses={["textInput"]}
                     placeholderText={"Password (empty for open)"}
                     visibility={false}
                     inputPurpose={Gtk.InputPurpose.PASSWORD}
@@ -650,7 +657,7 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                     visible={createBinding(wifi, "enabled")}
                 >
                     <box>
-                        <label label={"Networks"} cssClasses={["btSection"]} xalign={0} hexpand />
+                        <label label={"Networks"} cssClasses={["paneSection"]} xalign={0} hexpand />
                         <button
                             cssClasses={["rescan"]}
                             tooltipText={"Scan again"}
@@ -685,13 +692,17 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                     >
                         <For each={sortedAps}>{ap => <ApRow ap={ap} />}</For>
                     </box>
-                    <box cssName={"button"} spacing={5}>
-                        <Gtk.GestureClick
-                            button={1}
-                            onPressed={() => setPrompt({ ssid: "", ap: null })}
-                        />
-                        <image iconName="list-add-symbolic" />
-                        <label label={"Join hidden network…"} hexpand xalign={0} />
+                    {/* anchored to the pane's bottom, like the
+                    bluetooth pane's discoverable toggle */}
+                    <box cssClasses={["paneCard"]} valign={Gtk.Align.END} vexpand>
+                        <box cssName={"button"} cssClasses={["paneRow"]} spacing={5}>
+                            <Gtk.GestureClick
+                                button={1}
+                                onPressed={() => setPrompt({ ssid: "", ap: null })}
+                            />
+                            <image iconName="list-add-symbolic" />
+                            <label label={"Join hidden network…"} hexpand xalign={0} />
+                        </box>
                     </box>
                 </box>
             </box>

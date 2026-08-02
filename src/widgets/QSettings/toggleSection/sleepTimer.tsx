@@ -67,14 +67,14 @@ export function SleepTimerWidget({
     return (
         <revealer revealChild={revealChild.as(s => s === index)}>
             <box
-                cssClasses={["sleepTimer"]}
+                cssClasses={["sleepTimer", "paneCard"]}
                 orientation={Gtk.Orientation.VERTICAL}
                 spacing={6}
                 marginTop={4}
             >
                 <box spacing={6} homogeneous>
                     {PRESETS.map(minutes => (
-                        <button onClicked={() => startSleepTimer(minutes)}>
+                        <button cssClasses={["paneRow"]} onClicked={() => startSleepTimer(minutes)}>
                             <label label={`${minutes}m`} />
                         </button>
                     ))}
@@ -84,16 +84,16 @@ export function SleepTimerWidget({
                         $={self => {
                             entry = self
                         }}
+                        cssClasses={["textInput"]}
                         placeholderText={"minutes"}
                         inputPurpose={Gtk.InputPurpose.DIGITS}
                         hexpand
                         onActivate={startCustom}
                     />
-                    <button cssClasses={["confirm"]} onClicked={startCustom}>
+                    <button cssClasses={["confirm", "paneRow"]} onClicked={startCustom}>
                         <label label={"Start"} />
                     </button>
                 </box>
-                <Gtk.Separator />
             </box>
         </revealer>
     )

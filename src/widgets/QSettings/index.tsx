@@ -17,10 +17,10 @@ import { SliderSection } from "./SliderSection"
 import { MediaSection, setQsVisible } from "./MediaSection"
 import { StatsSection } from "./StatsSection"
 import { WifiWidget, WifiSwitch } from "./toggleSection/wifi"
-import { WiredWidget } from "./toggleSection/wired"
-import { BluetoothWidget } from "./toggleSection/bluetooth"
+import { WiredWidget, WiredSwitch } from "./toggleSection/wired"
+import { BluetoothWidget, BtSwitch } from "./toggleSection/bluetooth"
 import { PowerProfilesWidget } from "./toggleSection/powerProfile"
-import { VpnPane } from "./toggleSection/vpnPane"
+import { VpnPane, VpnSwitch } from "./toggleSection/vpnPane"
 
 const registry = CommandRegistry.get_default()
 
@@ -34,14 +34,17 @@ function PaneHeader({
     trailing?: Gtk.Widget
 }) {
     return (
-        <box cssName="button" spacing={5}>
-            {/* the gesture covers only the back icon + title — a click
-            on a trailing widget (the wifi switch) must not navigate */}
-            <box spacing={5} hexpand>
+        <box cssClasses={["paneHeader"]} spacing={5}>
+            {/* back is its own small button (hover covers only icon +
+            title, never the trailing switch): the gesture box must not
+            hexpand, or it swallows switch clicks; the spacer pushes
+            the switch right and takes no gesture */}
+            <box cssClasses={["paneHeaderBack"]} spacing={5}>
                 <Gtk.GestureClick button={1} onPressed={onBack} />
                 <image iconName="go-previous-symbolic" />
-                <label label={title} hexpand xalign={0} />
+                <label label={title} xalign={0} />
             </box>
+            <box hexpand />
             {trailing}
         </box>
     )
@@ -191,11 +194,17 @@ export default function QSettings() {
                             transitionType={Gtk.StackTransitionType.SLIDE_LEFT_RIGHT}
                             transitionDuration={200}
                         >
-                            <box $type="named" name="main" orientation={Gtk.Orientation.VERTICAL}>
+                            <box
+                                $type="named"
+                                name="main"
+                                orientation={Gtk.Orientation.VERTICAL}
+                                // uniform rhythm: 8px between the cards
+                                // (sections are cards now — no separators)
+                                spacing={8}
+                            >
                                 {/* header (battery, power, …) only on the main pane */}
                                 <HeaderSection />
                                 <SliderSection />
-                                <Gtk.Separator />
                                 {toggleSection.widget}
                                 {Config.quicksettings.showStats && <StatsSection />}
                                 {/* tray always above the player */}
@@ -207,7 +216,6 @@ export default function QSettings() {
                                         spacing={2}
                                     />
                                 )}
-                                {!Config.tray.onPanel && <Gtk.Separator />}
                                 <MediaSection />
                             </box>
                             <box $type="named" name="wifi" orientation={Gtk.Orientation.VERTICAL}>
@@ -223,15 +231,27 @@ export default function QSettings() {
                                 name="bluetooth"
                                 orientation={Gtk.Orientation.VERTICAL}
                             >
-                                <PaneHeader title="Bluetooth" onBack={() => setPane("main")} />
+                                <PaneHeader
+                                    title="Bluetooth"
+                                    onBack={() => setPane("main")}
+                                    trailing={<BtSwitch />}
+                                />
                                 <BluetoothWidget pane={pane} name="bluetooth" />
                             </box>
                             <box $type="named" name="wired" orientation={Gtk.Orientation.VERTICAL}>
-                                <PaneHeader title="Wired" onBack={() => setPane("main")} />
+                                <PaneHeader
+                                    title="Wired"
+                                    onBack={() => setPane("main")}
+                                    trailing={<WiredSwitch />}
+                                />
                                 <WiredWidget pane={pane} name="wired" />
                             </box>
                             <box $type="named" name="vpn" orientation={Gtk.Orientation.VERTICAL}>
-                                <PaneHeader title="VPN" onBack={() => setPane("main")} />
+                                <PaneHeader
+                                    title="VPN"
+                                    onBack={() => setPane("main")}
+                                    trailing={<VpnSwitch />}
+                                />
                                 <VpnPane pane={pane} name="vpn" />
                             </box>
                             <box

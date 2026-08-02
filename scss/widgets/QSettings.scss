@@ -92,7 +92,7 @@ window#QSettings {
     }
 
     .QSHeader {
-        background-color: t.$base;
+        // card background/radius/padding come from .paneCard
         // avatar: circle-cropped inside its frame; the ring color comes
         // from the css `color` (cairo picks it up)
         .batteryRing {
@@ -136,7 +136,8 @@ window#QSettings {
     }
 
     // device dropdown lists inside the slider section
-    .QSSection revealer button {
+    .QSSection revealer button,
+    .paneCard revealer button {
         margin: 3px 0;
     }
 
@@ -261,6 +262,12 @@ window#QSettings {
         font-size: s.$font-small;
         color: t.$subtext0;
     }
+    // real <button> widgets styled as card rows (sleep timer presets,
+    // the custom-start chip): the global button margin breaks the
+    // card's rhythm
+    button.paneRow {
+        margin: 0;
+    }
 
     .toggleTitle {
         font-weight: bold;
@@ -293,9 +300,14 @@ window#QSettings {
         }
     }
 
-    .active {
-        background-color: color.mix(t.$accent, transparent, 55%);
-        border: solid 2px color.mix(t.$accent, transparent, 50%);
+    // no accent block on active rows: state reads from the row's own
+    // text/icons; the name gets just an accent cue
+    .paneRow.active .paneRowName {
+        color: t.$accent;
+    }
+    // same cue for the default device in the sliders' dropdowns
+    .paneCard revealer button.active label {
+        color: t.$accent;
     }
 
     // wifi band section headers in the wifi pane
@@ -315,9 +327,53 @@ window#QSettings {
         }
     }
 
+    // pane header: the back part (icon + title) is its own small
+    // button — hover covers ONLY it, never the row or the pane's
+    // switch. Bold title with a rule under the whole row, matching
+    // the .paneSection dividers
+    .paneHeader {
+        margin: s.$padding-small s.$padding;
+        padding: 2px 0 6px;
+        border-bottom: solid 1px color.mix(t.$surface0, transparent, 40%);
+    }
+    .paneHeaderBack {
+        font-weight: bold;
+        border-radius: s.$radius;
+        padding: 4px 8px;
+        border: solid 2px transparent;
+
+        &:hover {
+            background-color: t.$accent20;
+            border: solid 2px t.$accent20;
+        }
+        &:active {
+            background-color: t.$accent20;
+            border: solid 2px t.$accent30;
+        }
+    }
+
+    // checkbox indicator for card-row toggles (display-only; the row's
+    // gesture does the toggling)
+    .paneCheckbox {
+        check {
+            min-width: 16px;
+            min-height: 16px;
+            border-radius: 4px;
+            border: 2px solid t.$surface1;
+            background-color: t.$surface0;
+            color: transparent;
+        }
+        &:checked check {
+            background-color: t.$accent;
+            border-color: t.$accent;
+            color: t.$base;
+            -gtk-icon-source: -gtk-icontheme("object-select-symbolic");
+        }
+    }
+
     // the pane header's on/off switch: the theme does all:unset, so
     // Gtk.Switch is invisible without this
-    .wifiSwitch,
+    .paneSwitch,
     .vpnPane switch {
         background-color: t.$surface0;
         border: 1px solid t.$surface1;
@@ -358,12 +414,15 @@ window#QSettings {
         margin: 4px;
     }
 
-    // bluetooth pane
-    .btSection {
-        font-size: s.$font-small;
+    // section dividers inside panes ("Paired", "Available",
+    // "Connected network", "Networks", "Features"): full-size bold
+    // text with a rule underneath
+    .paneSection {
         font-weight: bold;
-        color: t.$subtext0;
-        margin: 4px 0 0 4px;
+        color: t.$text;
+        margin: 10px 0 0 4px;
+        padding-bottom: 4px;
+        border-bottom: solid 1px color.mix(t.$surface0, transparent, 40%);
     }
 
     .btDevice {
@@ -430,12 +489,6 @@ window#QSettings {
 
         .title {
             font-weight: bold;
-        }
-
-        entry {
-            background-color: t.$base;
-            border-radius: s.$radius;
-            padding: 6px 8px;
         }
 
         button.confirm {
@@ -598,25 +651,6 @@ window#QSettings {
     }
     .expired {
         color: t.$red;
-    }
-
-    // clearly an input field, not a label: bordered like harvest's
-    // .input, accent frame on focus
-    .vpnSearch {
-        background-color: t.$base;
-        border: solid 2px t.$accent20;
-        border-radius: s.$radius;
-        padding: 4px 8px;
-
-        &:focus {
-            border-color: t.$accent;
-        }
-    }
-
-    .vpnSectionHeader {
-        font-size: s.$font-small;
-        font-weight: bold;
-        color: t.$subtext0;
     }
 
     // the feature toggles as one card so they read as a unit

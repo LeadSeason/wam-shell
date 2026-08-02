@@ -19,11 +19,7 @@ window#Scratchpad {
     }
 
     entry {
-        background-color: t.$surface040;
-        border: 2px solid transparent;
-        border-radius: 6px;
-        padding: 0.5rem;
-
+        // surface/border/focus come from the global .textInput
         text {
             color: t.$text;
             placeholder  {

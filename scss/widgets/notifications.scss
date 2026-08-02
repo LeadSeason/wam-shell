@@ -137,20 +137,6 @@ window.Notifications {
         }
     }
 
-    .filter {
-        background: t.$base;
-        border-radius: s.$radius;
-        border: solid 2px transparent;
-        padding: 2px 8px;
-        caret-color: t.$accent;
-        &:focus {
-            border-color: t.$accent40;
-        }
-        > placeholder {
-            color: t.$subtext0;
-        }
-    }
-
     .list {
         padding-top: 8px;
     }

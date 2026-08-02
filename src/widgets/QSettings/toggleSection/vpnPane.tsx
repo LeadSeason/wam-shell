@@ -5,6 +5,7 @@ import { qsVisible } from "../MediaSection"
 import vpnStatus, {
     accountInfo,
     busy,
+    connect,
     disconnect,
     ensureLocations,
     featureStates,
@@ -56,6 +57,27 @@ function FeatureRow({
                 }}
             />
         </box>
+    )
+}
+
+/** the connect/disconnect switch in the VPN pane's header row */
+export function VpnSwitch() {
+    if (!hasMullvad) return <></>
+    return (
+        <Gtk.Switch
+            cssClasses={["paneSwitch"]}
+            valign={Gtk.Align.CENTER}
+            active={vpnStatus.as(s => s.connected)}
+            onNotifyActive={self => {
+                // idempotent: binding syncs must not toggle
+                if (self.active === vpnStatus.get().connected) return
+                // same semantics as the quick settings toggle: anything
+                // but fully disconnected → disconnect (also the only way
+                // to abort a connecting attempt)
+                if (vpnStatus.get().state === "Disconnected") connect()
+                else disconnect()
+            }}
+        />
     )
 }
 
@@ -205,7 +227,7 @@ export function VpnPane({ pane, name }: { pane: Accessor<string>; name: string }
             <revealer revealChild={pickerOpen}>
                 <box orientation={Gtk.Orientation.VERTICAL} spacing={6}>
                     <Gtk.Entry
-                        cssClasses={["vpnSearch"]}
+                        cssClasses={["textInput"]}
                         placeholderText={"Search locations…"}
                         onChanged={self => setQuery(self.text)}
                     />
@@ -243,7 +265,7 @@ export function VpnPane({ pane, name }: { pane: Accessor<string>; name: string }
             </revealer>
 
             {/* tunnel feature toggles, as a card so they read as one unit */}
-            <label cssClasses={["vpnSectionHeader"]} xalign={0} label={"Features"} />
+            <label cssClasses={["paneSection"]} xalign={0} label={"Features"} hexpand />
             <box cssClasses={["vpnFeatures"]} orientation={Gtk.Orientation.VERTICAL} spacing={4}>
                 <FeatureRow
                     label={"Quantum Resistance"}

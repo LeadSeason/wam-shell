@@ -247,6 +247,7 @@ Shows / hides the scratchpad tool on request.
                     <label class="title" label="Scratchpad" />
                     <entry
                         $={ref => (searchEntry = ref)}
+                        cssClasses={["textInput"]}
                         onNotifyText={({ text }) => search(text)}
                         onActivate={() => {
                             const first = list.get()[0]

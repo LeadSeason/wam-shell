@@ -273,7 +273,7 @@ export function SliderSection() {
     // wireplumber absent or audio not connected: brightness still works
     if (!wp || !wp.audio)
         return (
-            <box cssClasses={["QSSection"]} orientation={Gtk.Orientation.VERTICAL}>
+            <box cssClasses={["paneCard"]} orientation={Gtk.Orientation.VERTICAL}>
                 <BrightnessSlider />
             </box>
         )
@@ -291,7 +291,7 @@ export function SliderSection() {
     const microphones = createBinding(audio, "microphones").as(m => m ?? [])
 
     return (
-        <box cssClasses={["QSSection"]} orientation={Gtk.Orientation.VERTICAL}>
+        <box cssClasses={["paneCard"]} orientation={Gtk.Orientation.VERTICAL}>
             <With value={createBinding(wp, "defaultSpeaker")}>
                 {speaker =>
                     speaker && (

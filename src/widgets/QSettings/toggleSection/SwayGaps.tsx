@@ -50,7 +50,7 @@ export function SwayGapsWidget({
     const swayGaps = SwayGaps.get_default()
     return (
         <revealer revealChild={revealChild.as(s => s === index)}>
-            <box marginTop={4} spacing={4}>
+            <box cssClasses={["paneCard"]} marginTop={4} spacing={4}>
                 <box>
                     <label
                         widthChars={3}
@@ -67,7 +67,6 @@ export function SwayGapsWidget({
                         value={createBinding(swayGaps, "gap_size")}
                     />
                 </box>
-                <Gtk.Separator />
             </box>
         </revealer>
     )

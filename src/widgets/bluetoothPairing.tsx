@@ -45,7 +45,7 @@ export function PromptContent({ req }: { req: PairingRequest }) {
                         entry = self
                         self.grab_focus()
                     }}
-                    cssClasses={["pinEntry"]}
+                    cssClasses={["pinEntry", "textInput"]}
                     placeholderText={req.kind === "pin" ? "PIN" : "123456"}
                     maxLength={req.kind === "pin" ? 16 : 6}
                     inputPurpose={Gtk.InputPurpose.DIGITS}
