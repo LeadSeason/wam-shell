@@ -326,6 +326,34 @@
 # reminders = true
 # remind_before_minutes = 5
 
+# [protonmail] - ProtonMail unread mail in the notification center, via
+#             ProtonMail Bridge's local IMAP: the unread INBOX merges
+#             into the center's list (newest first, sender + subject),
+#             and a ProtonMail icon in the header filters to just them.
+#             clicking an item opens webmail; dismissing marks the mail
+#             SEEN on the bridge
+# Requires: protonmail-bridge installed, running, and signed in (the
+#       bridge app shows the IMAP username and bridge password under
+#       Mailbox details). Put them in ~/.config/wam-shell/protonmail.env
+#       (chmod 600), NOT in this file:
+#         PROTONMAIL_IMAP_USER=...
+#         PROTONMAIL_IMAP_PASSWORD=...
+#       The same names as real environment variables also work and win
+#       over the file. Without credentials the provider stays off, even
+#       when enabled.
+#
+# enabled - master toggle (requires the credentials above). default false
+# poll_minutes - minutes between syncs. the center also refreshes when
+#                opened (at most once a minute). clamped to >= 1.
+#                default 2
+# host - bridge IMAP host. default "127.0.0.1"
+# port - bridge IMAP port. default 1143
+# [protonmail]
+# enabled = false
+# poll_minutes = 2
+# host = "127.0.0.1"
+# port = 1143
+
 # [youtube] - YouTube notifications in the notification center: new
 #             uploads from your subscriptions (the YouTube home feed)
 #             merge into the center's list with thumbnails, and a
