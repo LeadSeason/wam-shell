@@ -47,6 +47,23 @@ test("gcal eventDays: zero-length event covers its start day", () => {
     eq(eventDays(d(31, 10), d(31, 10), false), ["2026-07-31"])
 })
 
+test("gcal eventDays: no duplicate/missing days across a DST transition", () => {
+    // spans the EU fall-back (2026-10-25): stepping absolute 24h lands
+    // at 23:00 on the same local day there — a duplicate key, and the
+    // last day dropped. Zones without a transition in the span pass
+    // trivially
+    const start = new Date(2026, 9, 23, 12).getTime()
+    const end = new Date(2026, 9, 28, 12).getTime()
+    eq(eventDays(start, end, false), [
+        "2026-10-23",
+        "2026-10-24",
+        "2026-10-25",
+        "2026-10-26",
+        "2026-10-27",
+        "2026-10-28",
+    ])
+})
+
 test("gcal mapGoogleEvent: cancelled events are dropped", () => {
     eq(mapGoogleEvent("me@example.com", "c", "Cal", "#fff", { status: "cancelled" }), null)
 })
