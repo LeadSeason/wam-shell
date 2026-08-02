@@ -732,6 +732,7 @@ const PANEL_WIDGETS = [
     "media",
     "sleeptimer",
     "harvest",
+    "windowtitle",
 ]
 
 function getPanelsConfig(): PanelConfig[] {

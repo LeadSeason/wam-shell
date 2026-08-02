@@ -94,7 +94,10 @@
 #         in scss (e.g. class = "laptop" -> window.Bar.laptop). optional
 # left/center/right - widget lists. available widgets:
 #                osicon, workspaces, clock, stats, tray, quicksettings,
-#                language, notifications, media, sleeptimer, harvest
+#                language, notifications, media, sleeptimer, harvest,
+#                windowtitle
+#                windowtitle shows the focused window's app icon and
+#                title (hyprland, sway and i3).
 #                The lists are authoritative: a listed widget always
 #                renders, regardless of global toggles like
 #                stats_on_panel or workspaces.enabled (those only apply

@@ -18,6 +18,7 @@ import QSettingsLabel from "./barModules/QSettingsLabel"
 import Media from "./barModules/media"
 import SleepTimer from "./barModules/sleepTimer"
 import HarvestTimer from "./barModules/harvest"
+import WindowTitle from "./barModules/windowTitle"
 
 function trayWidgetFor(gdkMonitor: Gdk.Monitor) {
     if (Config.tray.onPanel) {
@@ -65,6 +66,8 @@ function moduleFor(name: string, gdkMonitor: Gdk.Monitor) {
             return <SleepTimer />
         case "harvest":
             return <HarvestTimer monitor={gdkMonitor} authoritative />
+        case "windowtitle":
+            return <WindowTitle monitor={gdkMonitor} />
         default:
             return null
     }
