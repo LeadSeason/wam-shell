@@ -322,6 +322,25 @@ window#QSettings {
         }
     }
 
+    // checkbox indicator for card-row toggles (display-only; the row's
+    // gesture does the toggling)
+    .paneCheckbox {
+        check {
+            min-width: 16px;
+            min-height: 16px;
+            border-radius: 4px;
+            border: 2px solid t.$surface1;
+            background-color: t.$surface0;
+            color: transparent;
+        }
+        &:checked check {
+            background-color: t.$accent;
+            border-color: t.$accent;
+            color: t.$base;
+            -gtk-icon-source: -gtk-icontheme("object-select-symbolic");
+        }
+    }
+
     // the pane header's on/off switch: the theme does all:unset, so
     // Gtk.Switch is invisible without this
     .paneSwitch,

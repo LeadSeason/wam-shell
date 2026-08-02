@@ -531,10 +531,11 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                         <box visible={isKnown} spacing={5} cssClasses={["wifiDetailAction"]}>
                             <Gtk.GestureClick button={1} onPressed={toggleAutoconnect} />
                             <label label={"Auto-connect"} hexpand xalign={0} />
-                            <image
-                                iconName={autoconnect.as(a =>
-                                    a === true ? "object-select-symbolic" : "window-close-symbolic",
-                                )}
+                            <Gtk.CheckButton
+                                cssClasses={["paneCheckbox"]}
+                                valign={Gtk.Align.CENTER}
+                                sensitive={false}
+                                active={autoconnect.as(a => a === true)}
                             />
                         </box>
                         <box

@@ -787,10 +787,13 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                                 }}
                             />
                             <label label={"Visible to other devices"} hexpand xalign={0} />
-                            <image
-                                iconName={createBinding(adapter, "discoverable").as(d =>
-                                    d ? "object-select-symbolic" : "window-close-symbolic",
-                                )}
+                            {/* display-only checkbox: the row's gesture
+                            toggles; keeps it single-action */}
+                            <Gtk.CheckButton
+                                cssClasses={["paneCheckbox"]}
+                                valign={Gtk.Align.CENTER}
+                                sensitive={false}
+                                active={createBinding(adapter, "discoverable")}
                             />
                         </box>
                     </box>
