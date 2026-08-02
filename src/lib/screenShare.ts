@@ -49,29 +49,36 @@ function scheduleEvaluate() {
 }
 
 let started = false
+// set by dispose(): force_exit makes the monitor's pending read finish
+// with EOF, which fires the onExit callback — that fail-closed path
+// must not run for a kill we ordered ourselves
+let disposed = false
 
 // started by the consumer (the Harvest panel pill): detection only runs
 // when something actually masks on it
 export function enable() {
     if (started) return
     started = true
+    disposed = false
     // stderr silenced: pw-dump prints protocol noise during portal
     // churn (resource races), which would otherwise flood the shell log
     monitor = streamLines(
         ["pw-dump", "-m"],
         () => scheduleEvaluate(),
         () => {
+            if (disposed) return
             // the monitor died: we can't know — fail closed
             setSharing(true)
         },
         true,
     )
-    if (!monitor) setSharing(true) // fail closed
+    if (!monitor && !disposed) setSharing(true) // fail closed
 }
 
 // convention for lib modules with long-lived sources, even though the
 // shell never calls it today: one place that tears everything down
 export function dispose() {
+    disposed = true
     if (debounce) {
         sourceRemove(debounce)
         debounce = 0

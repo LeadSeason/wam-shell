@@ -122,6 +122,9 @@ daemon = "bogus"
 [workspaces]
 position = "up"
 
+[quicksettings]
+avatar = 5
+
 [[panel]]
 position = "middle"
 left = ["osicon", "bogus-widget", "clock"]
@@ -136,6 +139,7 @@ left = ["osicon", "bogus-widget", "clock"]
     eq(c.notifications.popupTimeout, 5000, "notifications.popupTimeout")
     eq(c.notifications.daemon, "auto", "notifications.daemon")
     eq(c.workspaces.position, "left", "workspaces.position")
+    eq(c.quicksettings.avatar, "", "quicksettings.avatar non-string falls back")
     eq(c.panels.length, 1, "panels.length")
     eq(c.panels[0].position, "top", "panels[0].position")
     eq(c.panels[0].left, ["osicon", "clock"], "panels[0].left filters unknown widgets")
@@ -179,7 +183,11 @@ work_days = "${s}"
     eq(wd("3"), [3], "single day")
     eq(wd("mon-fri"), [], "day names rejected, falls back to every day")
     eq(wd("9"), [], "out of range rejected")
-    eq(loadConfig({ DESKTOP_SESSION: "hyprland" }).harvest.collapseOffDays, false, "collapse default")
+    eq(
+        loadConfig({ DESKTOP_SESSION: "hyprland" }).harvest.collapseOffDays,
+        false,
+        "collapse default",
+    )
 })
 
 test("config: instance cache dir follows XDG_CACHE_HOME and instance name", () => {
