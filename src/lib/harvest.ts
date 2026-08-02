@@ -164,6 +164,22 @@ function localDay(offsetDays = 0): string {
     return day.format("%Y-%m-%d")!
 }
 
+// ------------------------------------------------- past-day browser
+
+// entries of an arbitrary past day, for the popup's day browser.
+// Today is served live by todayEntries, so only other days are fetched
+const [dayEntries, setDayEntries] = createState<Entry[]>([])
+export { dayEntries }
+
+// 0 = today, -1 = yesterday, …: fetch that day into dayEntries
+export function fetchDayOffset(offsetDays: number) {
+    if (!active || offsetDays === 0) return
+    const day = localDay(offsetDays)
+    fetchAll(`/time_entries?from=${day}&to=${day}`, "time_entries", [], (items, _r) => {
+        if (items) setDayEntries(dayTimeline(items.map(mapEntry)))
+    })
+}
+
 // start of the running segment in ms, tolerating both account modes
 function startMs(e: Entry): number | null {
     if (e.timerStartedAt) {
