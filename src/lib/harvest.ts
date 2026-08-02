@@ -37,6 +37,7 @@ export interface Entry {
     startedTime: string | null // "3:00pm" or "15:00"
     isRunning: boolean
     notes: string
+    createdAt: string
     updatedAt: string
     projectId: number
     projectName: string
@@ -232,6 +233,7 @@ function mapEntry(e: any): Entry {
         startedTime: e.started_time ?? null,
         isRunning: !!e.is_running,
         notes: e.notes ?? "",
+        createdAt: e.created_at ?? "",
         updatedAt: e.updated_at ?? "",
         projectId: e.project?.id ?? 0,
         projectName: e.project?.name ?? "",
@@ -477,15 +479,22 @@ function adoptRunning(entry: Entry | null) {
 }
 
 // timeline order for the popup: ascending by start time; entries
-// without a start (manual) slot in by updatedAt
+// without a start (manual) slot in at their booking time (created_at,
+// NOT updated_at — a notes edit must not reshuffle the timeline).
+// Ties break by created_at, then id, so the order is deterministic
 export function dayTimeline(entries: Entry[]): Entry[] {
+    const ms = (s: string) => {
+        const t = Date.parse(s)
+        return Number.isNaN(t) ? 0 : t
+    }
     const key = (e: Entry): number => {
         const start = startMs(e)
         if (start !== null) return start
-        const updated = Date.parse(e.updatedAt)
-        return Number.isNaN(updated) ? 0 : updated
+        return ms(e.createdAt) || ms(e.updatedAt)
     }
-    return [...entries].sort((a, b) => key(a) - key(b))
+    return [...entries].sort(
+        (a, b) => key(a) - key(b) || ms(a.createdAt) - ms(b.createdAt) || a.id - b.id,
+    )
 }
 
 // "HH:MM" (24h) for a timeline row, "" for manual entries with no start

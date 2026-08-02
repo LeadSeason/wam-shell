@@ -11,6 +11,7 @@ const entry = (over: Partial<Entry>): Entry => ({
     startedTime: null,
     isRunning: false,
     notes: "",
+    createdAt: "2026-07-30T09:00:00Z",
     updatedAt: "2026-07-30T09:00:00Z",
     projectId: 1,
     projectName: "P",
@@ -43,15 +44,31 @@ test("dayTimeline: timerStartedAt wins over startedTime", () => {
     )
 })
 
-test("dayTimeline: manual entries (no start) slot in by updatedAt", () => {
+test("dayTimeline: manual entries (no start) slot in by createdAt", () => {
     const rows = dayTimeline([
         entry({ id: 1, startedTime: "14:00" }),
-        entry({ id: 2, updatedAt: "2026-07-30T10:30:00Z" }),
-        entry({ id: 3, updatedAt: "2026-07-30T16:00:00Z" }),
+        entry({
+            id: 2,
+            createdAt: "2026-07-30T10:30:00Z",
+            // a later edit must not move the row
+            updatedAt: "2026-07-30T18:00:00Z",
+        }),
+        entry({ id: 3, createdAt: "2026-07-30T16:00:00Z" }),
     ])
     eq(
         rows.map(e => e.id),
         [2, 1, 3],
+    )
+})
+
+test("dayTimeline: identical start times tie-break deterministically", () => {
+    const rows = dayTimeline([
+        entry({ id: 9, startedTime: "14:00", createdAt: "2026-07-30T14:00:30Z" }),
+        entry({ id: 4, startedTime: "14:00", createdAt: "2026-07-30T14:00:10Z" }),
+    ])
+    eq(
+        rows.map(e => e.id),
+        [4, 9],
     )
 })
 
