@@ -200,17 +200,22 @@ export function dispose() {
     }
     gpuProc?.force_exit()
     gpuProc = null
+    // unsubscribing the keep-alive drops the count to zero, which
+    // clears createPoll's interval (ags/lib/time.ts)
+    stopPoll?.()
+    stopPoll = null
 }
 
 // createPoll is lazy until subscribed; keep it alive while stats are on
 // (panel lists are authoritative: a "stats" entry in any [[panel]]
 // renders the widget regardless of the legacy toggles)
+let stopPoll: (() => void) | null = null
 if (
     Config.quicksettings.showStats ||
     Config.quicksettings.statsOnPanel ||
     Config.panels.some(p => [...p.left, ...p.center, ...p.right].includes("stats"))
 ) {
-    poll.subscribe(() => {})
+    stopPoll = poll.subscribe(() => {})
     if (hasNvidia) startGpuStream()
 }
 
