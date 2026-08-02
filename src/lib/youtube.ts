@@ -4,7 +4,7 @@ import Soup from "gi://Soup?version=3.0"
 import { createState } from "gnim"
 import Config from "../config"
 import { isFile } from "./utils"
-import { timeoutAddSeconds, sourceRemove, trackHttp } from "./metrics"
+import { timeoutAdd, timeoutAddSeconds, sourceRemove, trackHttp } from "./metrics"
 import { Provider, ProviderItem, registerProvider } from "./notificationProviders"
 import { GoogleAccount, Reply, createGoogleAuth, googleRequest } from "./googleAuth"
 import { addProviderPopup } from "./notifd"
@@ -399,15 +399,23 @@ function attachActions(
 // fetch thumbnails for the items that made the list. imagePath points
 // at the cache file only once it exists, so the card never tries to
 // render a partial download
+let thumbFlush = 0
 function fetchDisplayedThumbs() {
     for (const item of items.get()) {
         const info = thumbInfo.get(item.id)
         if (!info || item.imagePath) continue
         fetchThumb(info.videoId, info.imageUrl, () => {
-            if (isFile(thumbPath(info.videoId))) {
-                item.imagePath = thumbPath(info.videoId)
+            if (!isFile(thumbPath(info.videoId))) return
+            item.imagePath = thumbPath(info.videoId)
+            // one state write per burst, not per completed download:
+            // every write re-runs the center's merged list over all
+            // providers (up to ~50 recomputes for a fresh sweep)
+            if (thumbFlush) return
+            thumbFlush = timeoutAdd("youtube:thumbFlush", GLib.PRIORITY_DEFAULT, 150, () => {
+                thumbFlush = 0
                 setItems([...items.get()])
-            }
+                return GLib.SOURCE_REMOVE
+            })
         })
     }
 }
@@ -578,6 +586,10 @@ export function dispose() {
     if (pollTimer) {
         sourceRemove(pollTimer)
         pollTimer = 0
+    }
+    if (thumbFlush) {
+        sourceRemove(thumbFlush)
+        thumbFlush = 0
     }
     auth.dispose()
 }
