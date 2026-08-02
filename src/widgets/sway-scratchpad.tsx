@@ -25,20 +25,16 @@ export default function Scratchpad() {
     // This is a big assumption but haven't had any issues with it. (Just yet)
     // apps is the nodes in sway scratchpad, constantly being updated on every change.
     // list is has the apps show in the scratchpad window list, updated when opened or something is searched.
-    const [apps, setApps] = createState(
+    // ?? []: with a dead IPC the tree has no scratchpad node and the
+    // find chain yields undefined, which <For> cannot iterate
+    const scratchpadNodes = () =>
         sway.tree.find(i => i.name === "__i3")?.nodes.find(i => i.name === "__i3_scratch")
-            ?.floating_nodes as Node[],
-    )
-    const [list, setList] = createState(
-        sway.tree.find(i => i.name === "__i3")?.nodes.find(i => i.name === "__i3_scratch")
-            ?.floating_nodes as Node[],
-    )
+            ?.floating_nodes ?? []
+    const [apps, setApps] = createState(scratchpadNodes())
+    const [list, setList] = createState(scratchpadNodes())
 
     createBinding(sway, "tree").subscribe(() => {
-        setApps(
-            sway.tree.find(i => i.name === "__i3")?.nodes.find(i => i.name === "__i3_scratch")
-                ?.floating_nodes as Node[],
-        )
+        setApps(scratchpadNodes())
     })
 
     function search(text: string) {
