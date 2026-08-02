@@ -652,11 +652,14 @@ function AssignmentEditor({
 function TimelineRow({
     entry,
     startToday = false,
+    onStarted,
 }: {
     entry: Harvest.Entry
     // past-day row: the play button starts the same project+task as a
     // NEW entry today instead of restarting the old one on its old date
     startToday?: boolean
+    // fired after a start-today, so the browser can jump back to today
+    onStarted?: () => void
 }) {
     const esc = (s: string) => GLib.markup_escape_text(s, -1)
     const time = Harvest.startTimeLabel(entry)
@@ -766,15 +769,18 @@ function TimelineRow({
                     )}
                     sensitive={Harvest.busy.as(b => !b)}
                     tooltipText={startToday ? "Start today" : "Resume"}
-                    onClicked={() =>
-                        startToday
-                            ? Harvest.startTimer(
-                                  entry.projectId,
-                                  entry.taskId,
-                                  entry.notes || undefined,
-                              )
-                            : Harvest.resumeEntry(entry)
-                    }
+                    onClicked={() => {
+                        if (startToday) {
+                            Harvest.startTimer(
+                                entry.projectId,
+                                entry.taskId,
+                                entry.notes || undefined,
+                            )
+                            onStarted?.()
+                        } else {
+                            Harvest.resumeEntry(entry)
+                        }
+                    }}
                 >
                     <image iconName="media-playback-start-symbolic" />
                 </button>
@@ -938,7 +944,11 @@ function Timeline() {
                 <box orientation={Gtk.Orientation.VERTICAL} spacing={6}>
                     <For each={entries}>
                         {(e: Harvest.Entry) => (
-                            <TimelineRow entry={e} startToday={dayIdx.get() !== 0} />
+                            <TimelineRow
+                                entry={e}
+                                startToday={dayIdx.get() !== 0}
+                                onStarted={() => setDayIdx(0)}
+                            />
                         )}
                     </For>
                 </box>
