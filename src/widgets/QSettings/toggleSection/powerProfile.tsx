@@ -69,27 +69,25 @@ function StatTile({
     visible?: boolean | Accessor<boolean>
 }) {
     return (
-        <box
-            orientation={Gtk.Orientation.VERTICAL}
-            cssClasses={["statTile"]}
-            spacing={2}
-            visible={visible}
-        >
-            <image iconName={icon} pixelSize={20} halign={Gtk.Align.START} />
-            <label
-                cssClasses={["statTileValue"]}
-                label={big}
-                xalign={0}
-                maxWidthChars={16}
-                ellipsize={Pango.EllipsizeMode.END}
-            />
-            <label
-                cssClasses={["statTileSub"]}
-                label={sub}
-                xalign={0}
-                maxWidthChars={24}
-                ellipsize={Pango.EllipsizeMode.END}
-            />
+        <box cssClasses={["statTile"]} spacing={10} visible={visible}>
+            <image iconName={icon} pixelSize={20} valign={Gtk.Align.CENTER} />
+            <box hexpand />
+            <box orientation={Gtk.Orientation.VERTICAL} spacing={2} valign={Gtk.Align.CENTER}>
+                <label
+                    cssClasses={["statTileValue"]}
+                    label={big}
+                    xalign={1}
+                    maxWidthChars={16}
+                    ellipsize={Pango.EllipsizeMode.END}
+                />
+                <label
+                    cssClasses={["statTileSub"]}
+                    label={sub}
+                    xalign={1}
+                    maxWidthChars={24}
+                    ellipsize={Pango.EllipsizeMode.END}
+                />
+            </box>
         </box>
     )
 }
