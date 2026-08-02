@@ -691,7 +691,9 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                     >
                         <For each={sortedAps}>{ap => <ApRow ap={ap} />}</For>
                     </box>
-                    <box cssClasses={["paneCard"]}>
+                    {/* anchored to the pane's bottom, like the
+                    bluetooth pane's discoverable toggle */}
+                    <box cssClasses={["paneCard"]} valign={Gtk.Align.END} vexpand>
                         <box cssName={"button"} cssClasses={["paneRow"]} spacing={5}>
                             <Gtk.GestureClick
                                 button={1}
