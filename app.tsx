@@ -75,6 +75,21 @@ function main() {
     app.add_window(BluetoothPairing() as Gtk.Window)
     startBluetoothAgent()
 
+    // connector can be null (headless/nested backends): synthetic
+    // per-object fallback ids so two such monitors can't key-collide
+    const fallbackIds = new WeakMap<Gdk.Monitor, number>()
+    let nextFallbackId = 0
+    const monitorKey = (m: Gdk.Monitor): string => {
+        const connector = m.get_connector()
+        if (connector) return connector
+        let id = fallbackIds.get(m)
+        if (id === undefined) {
+            id = nextFallbackId++
+            fallbackIds.set(m, id)
+        }
+        return `monitor${id}`
+    }
+
     const bars =
         Config.panels.length === 0 ? (
             // legacy mode: one bar per monitor, filtered by bar_monitors
@@ -97,8 +112,11 @@ function main() {
                     ),
                 )}
                 // key by config index: two panels with the same position and
-                // no class would otherwise collide and silently drop a bar
-                id={({ monitor, i }) => `${monitor.get_connector()}/${i}`}
+                // no class would otherwise collide and silently drop a bar.
+                // get_connector() can be null (headless/nested backends):
+                // two such monitors would produce the same "null/i" key —
+                // fall back to a per-object synthetic id
+                id={({ monitor, i }) => `${monitorKey(monitor)}/${i}`}
                 cleanup={win => (win as Gtk.Window).destroy()}
             >
                 {({ monitor, panel }) => <Bar gdkMonitor={monitor} panel={panel} />}
@@ -121,8 +139,14 @@ function main() {
 }
 
 if (!GLib.file_test(Config.instanceCacheDir, GLib.FileTest.IS_DIR)) {
-    GLib.mkdir_with_parents(Config.instanceCacheDir, 0o755)
-    console.log("Created dir:", Config.instanceCacheDir)
+    // exists as a regular file, or the parent is unwritable: modules
+    // that need the dir log their own failures — don't kill startup
+    try {
+        GLib.mkdir_with_parents(Config.instanceCacheDir, 0o755)
+        console.log("Created dir:", Config.instanceCacheDir)
+    } catch (e) {
+        console.error("Failed to create cache dir:", e)
+    }
 }
 
 // a style failure (missing sass, unreadable theme) must not take the
