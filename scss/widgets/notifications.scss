@@ -151,31 +151,6 @@ window.Notifications {
         }
     }
 
-    .empty {
-        padding: 24px;
-        label {
-            color: t.$subtext0;
-        }
-        // a provider explaining its sync problem (quota, outage)
-        label.status {
-            color: t.$yellow;
-            font-style: italic;
-        }
-        // provider sign-in offer (e.g. YouTube) replacing the label
-        button.providerSignin {
-            border-radius: s.$radius;
-            padding: 6px 14px;
-            background-color: t.$surface050;
-            border: solid 2px t.$accent20;
-            label {
-                color: t.$text;
-            }
-            &:hover {
-                background-color: t.$accent20;
-            }
-        }
-    }
-
     .list {
         padding-top: 8px;
     }

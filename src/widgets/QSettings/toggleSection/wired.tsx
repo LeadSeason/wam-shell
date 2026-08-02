@@ -1,5 +1,5 @@
 import { Accessor, createBinding, createState, onCleanup, With } from "gnim"
-import { PaneEmpty } from "../PaneEmpty"
+import { PaneEmpty } from "../../PaneEmpty"
 import { execAsync } from "../../../lib/metrics"
 import { DropdownButton } from "./ToggleButton"
 import AstalNetwork from "gi://AstalNetwork?version=0.1"

@@ -443,25 +443,6 @@ window#QSettings {
         }
     }
 
-    // centered empty state for panes with nothing to show: keeps the
-    // shell's consistent size from feeling empty
-    .paneEmpty {
-        margin: 20px 0;
-    }
-    .paneEmptyIcon {
-        background-color: t.$surface0;
-        border-radius: s.$radius;
-        padding: 10px;
-        color: t.$subtext0;
-    }
-    .paneEmptyTitle {
-        font-weight: bold;
-    }
-    .paneEmptyHint {
-        font-size: s.$font-small;
-        color: t.$subtext0;
-    }
-
     // fixed-width action slots keep the lock/details cluster aligned
     // across rows (a hidden icon keeps its slot). the details chevron
     // only fades in on row hover — the slot keeps its width, so no

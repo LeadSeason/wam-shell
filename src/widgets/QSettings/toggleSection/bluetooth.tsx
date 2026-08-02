@@ -1,5 +1,5 @@
 import { Accessor, createBinding, createComputed, createState, For, onCleanup, With } from "gnim"
-import { PaneEmpty } from "../PaneEmpty"
+import { PaneEmpty } from "../../PaneEmpty"
 import { DropdownButton } from "./ToggleButton"
 import AstalBluetooth from "gi://AstalBluetooth?version=0.1"
 import Gio from "gi://Gio?version=2.0"
