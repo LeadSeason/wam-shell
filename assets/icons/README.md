@@ -19,3 +19,7 @@ mimetypes, places, emblems; non-standard ones like Adwaita's
 
 `harvest-symbolic.svg` is an exception: an original drawing (the
 Harvest "H" mark), not an Adwaita copy.
+
+`todoist-symbolic.svg` is the Todoist brand mark from
+[simpleicons.org](https://simpleicons.org) (CC0-1.0), bundled for the
+same fallback reason.
