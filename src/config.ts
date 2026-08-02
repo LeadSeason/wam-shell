@@ -199,8 +199,17 @@ function getQSettingsConfig() {
         statsOnPanel: get("stats_on_panel", false),
         statsInterval,
         // header avatar: absolute path to an image; empty = the login
-        // avatar from AccountsService, else the OS icon
-        avatar: get("avatar", ""),
+        // avatar from AccountsService, else the OS icon. Type-guarded:
+        // a non-string (avatar = 5) would crash GLib.file_test at
+        // startup
+        avatar: (() => {
+            const avatar = get("avatar", "")
+            if (typeof avatar !== "string") {
+                console.error(`Config "avatar" cannot be typeof ${typeof avatar}, must be string`)
+                return ""
+            }
+            return avatar
+        })(),
         showAvatar: get("show_avatar", true),
         // charge cap in percent: the header ring treats this as full.
         // explicit config wins; otherwise auto-detect from sysfs
