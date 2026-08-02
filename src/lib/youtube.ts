@@ -4,7 +4,7 @@ import Soup from "gi://Soup?version=3.0"
 import { createState } from "gnim"
 import Config from "../config"
 import { isFile } from "./utils"
-import { timeoutAddSeconds, sourceRemove, trackHttp } from "./metrics"
+import { timeoutAdd, timeoutAddSeconds, sourceRemove, trackHttp } from "./metrics"
 import { Provider, ProviderItem, registerProvider } from "./notificationProviders"
 import { GoogleAccount, Reply, createGoogleAuth, googleRequest } from "./googleAuth"
 import { addProviderPopup } from "./notifd"
@@ -399,15 +399,23 @@ function attachActions(
 // fetch thumbnails for the items that made the list. imagePath points
 // at the cache file only once it exists, so the card never tries to
 // render a partial download
+let thumbFlush = 0
 function fetchDisplayedThumbs() {
     for (const item of items.get()) {
         const info = thumbInfo.get(item.id)
         if (!info || item.imagePath) continue
         fetchThumb(info.videoId, info.imageUrl, () => {
-            if (isFile(thumbPath(info.videoId))) {
-                item.imagePath = thumbPath(info.videoId)
+            if (!isFile(thumbPath(info.videoId))) return
+            item.imagePath = thumbPath(info.videoId)
+            // one state write per burst, not per completed download:
+            // every write re-runs the center's merged list over all
+            // providers (up to ~50 recomputes for a fresh sweep)
+            if (thumbFlush) return
+            thumbFlush = timeoutAdd("youtube:thumbFlush", GLib.PRIORITY_DEFAULT, 150, () => {
+                thumbFlush = 0
                 setItems([...items.get()])
-            }
+                return GLib.SOURCE_REMOVE
+            })
         })
     }
 }
@@ -480,8 +488,9 @@ function effectivePollMinutes(): number {
     const channels = [...channelsByAccount.values()].reduce((n, c) => n + c.length, 0)
     if (channels === 0) return Config.youtube.pollMinutes
     // each sweep costs ~1 unit per channel; keep the daily total under
-    // the quota headroom
-    const floor = Math.ceil((channels * 96) / QUOTA_PER_DAY)
+    // the quota headroom: polls/day = 1440/minutes, so
+    // minutes >= channels * 1440 / QUOTA_PER_DAY
+    const floor = Math.ceil((channels * 1440) / QUOTA_PER_DAY)
     // consecutive total failures (quota day, outage): back off instead
     // of hammering — 1h, 2h, 4h, capped at 8h
     const backoff = Math.min(Config.youtube.pollMinutes * 2 ** failStreak, 8 * 60)
@@ -507,7 +516,13 @@ function scheduleNext() {
 export function poll() {
     if (!active || pollInFlight) return
     const accounts = auth.getAccounts()
-    if (accounts.length === 0) return
+    if (accounts.length === 0) {
+        // keep the chain alive when signed out: the timer is one-shot
+        // and only re-arms here, so returning without scheduling kills
+        // polling for good — signing in would never resume it
+        scheduleNext()
+        return
+    }
     pollInFlight = true
     lastPollAttempt = Date.now()
     const startSweep = () => {
@@ -578,6 +593,10 @@ export function dispose() {
     if (pollTimer) {
         sourceRemove(pollTimer)
         pollTimer = 0
+    }
+    if (thumbFlush) {
+        sourceRemove(thumbFlush)
+        thumbFlush = 0
     }
     auth.dispose()
 }

@@ -196,41 +196,54 @@ export function raisePlayer(player: AstalMpris.Player) {
 // subscriptions keep dead players alive (browsers spawn one per tab).
 type PlayerHook = (p: AstalMpris.Player) => (() => void) | void
 const playerHooks = new Set<PlayerHook>()
-const hookedPlayers = new Map<AstalMpris.Player, (() => void)[]>()
+// releases are tagged with their hook so a single hook can unregister
+// (and dispose can run all of them)
+const hookedPlayers = new Map<AstalMpris.Player, { hook: PlayerHook; release: () => void }[]>()
 
 function syncPlayers() {
     const list = players.get()
-    for (const [p, unsubs] of hookedPlayers) {
+    for (const [p, entries] of hookedPlayers) {
         if (!list.includes(p)) {
-            for (const u of unsubs) u()
+            for (const e of entries) e.release()
             hookedPlayers.delete(p)
         }
     }
     for (const p of list) {
         if (hookedPlayers.has(p)) continue
-        const unsubs: (() => void)[] = []
+        const entries: { hook: PlayerHook; release: () => void }[] = []
         for (const hook of playerHooks) {
             const release = hook(p)
-            if (release) unsubs.push(release)
+            if (release) entries.push({ hook, release })
         }
-        hookedPlayers.set(p, unsubs)
+        hookedPlayers.set(p, entries)
     }
     bumpElig()
 }
-players.subscribe(syncPlayers)
+const unsubSyncPlayers = players.subscribe(syncPlayers)
 // gnim subscribe does not fire on subscription: hook the players that
 // already exist at shell start, or their status/title changes never
 // reach pick() and the exclusive-playback hook
 syncPlayers()
 
 /** run `hook` for every current and future player; the fn it returns
- *  runs when that player quits */
-export function hookPlayers(hook: PlayerHook) {
+ *  runs when that player quits. returns an unregister fn: drops the
+ *  hook and releases it from every currently hooked player */
+export function hookPlayers(hook: PlayerHook): () => void {
     playerHooks.add(hook)
     // backfill players already hooked by earlier registrations
-    for (const [p, unsubs] of hookedPlayers) {
+    for (const [p, entries] of hookedPlayers) {
         const release = hook(p)
-        if (release) unsubs.push(release)
+        if (release) entries.push({ hook, release })
+    }
+    return () => {
+        playerHooks.delete(hook)
+        for (const entries of hookedPlayers.values()) {
+            for (let i = entries.length - 1; i >= 0; i--) {
+                if (entries[i].hook !== hook) continue
+                entries[i].release()
+                entries.splice(i, 1)
+            }
+        }
     }
 }
 
@@ -265,7 +278,7 @@ function pick() {
 // the player that most recently entered PLAYING state
 let lastPlaying: AstalMpris.Player | null = null
 
-players.subscribe(pick)
+const unsubPick = players.subscribe(pick)
 hookPlayers(p => {
     const status = createBinding(p, "playbackStatus").subscribe(() => {
         bumpElig()
@@ -294,6 +307,18 @@ hookPlayers(p => {
     }
 })
 pick()
+
+// convention for lib modules with long-lived sources, even though the
+// shell never calls it today: one place that tears everything down
+export function dispose() {
+    unsubSyncPlayers()
+    unsubPick()
+    for (const [p, entries] of hookedPlayers) {
+        for (const e of entries) e.release()
+        hookedPlayers.delete(p)
+    }
+    playerHooks.clear()
+}
 
 // GTK css can only load local files; remote (http) cover art is
 // downloaded once into the cache dir and the local copy is used

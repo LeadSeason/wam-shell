@@ -1,7 +1,7 @@
 import GObject, { getter, register } from "ags/gobject"
 import GLib from "gi://GLib?version=2.0"
 import i3ipc from "gi://i3ipc"
-import { timeoutAdd } from "./metrics"
+import { timeoutAdd, sourceRemove } from "./metrics"
 
 @register({ GTypeName: "Sway" })
 export default class Sway extends GObject.Object {
@@ -22,6 +22,12 @@ export default class Sway extends GObject.Object {
     #tree: Node = { nodes: [] } as unknown as Node
     // false when the IPC socket is dead (stale I3SOCK, sway not running)
     ok = false
+    // i3ipc's on() returns the connection (no handler id) and offers no
+    // off(), so dispose() can't unregister: the handlers stay connected
+    // and no-op behind this flag, and a pending coalesced fetch is
+    // cancelled
+    #disposed = false
+    #fetchSource = 0
 
     @getter(Array)
     get wss() {
@@ -74,12 +80,12 @@ export default class Sway extends GObject.Object {
         // round-trips each. Coalesce bursts: one trailing fetch 50ms
         // after the last event reads the current state once.
         const pending = new Set<"ws" | "win" | "out">()
-        let fetchSource = 0
         const scheduleFetch = (kind: "ws" | "win" | "out") => {
+            if (this.#disposed) return
             pending.add(kind)
-            if (fetchSource) return
-            fetchSource = timeoutAdd("sway:fetchCoalesce", GLib.PRIORITY_DEFAULT, 50, () => {
-                fetchSource = 0
+            if (this.#fetchSource) return
+            this.#fetchSource = timeoutAdd("sway:fetchCoalesce", GLib.PRIORITY_DEFAULT, 50, () => {
+                this.#fetchSource = 0
                 const kinds = new Set(pending)
                 pending.clear()
                 const conn = this.#i3conn
@@ -111,6 +117,15 @@ export default class Sway extends GObject.Object {
         // window open/close/move/focus: refresh the tree so workspace
         // icons and hide_empty stay current
         this.#i3conn.on("window", () => scheduleFetch("win"))
+    }
+
+    // convention for lib modules with long-lived sources (see AGENTS.md)
+    dispose() {
+        this.#disposed = true
+        if (this.#fetchSource) {
+            sourceRemove(this.#fetchSource)
+            this.#fetchSource = 0
+        }
     }
 }
 

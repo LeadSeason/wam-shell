@@ -34,6 +34,11 @@ let hideSource: number | null = null
 // swallow trigger events fired at startup (initial binding values)
 const graceUntil = Date.now() + 1500
 
+// every long-lived subscription below lands here so dispose() can tear
+// the module down in one place (convention for lib modules with
+// long-lived sources, see AGENTS.md)
+const disposers: (() => void)[] = []
+
 type OsdKind = "volume" | "microphone" | "brightness" | "layout" | "lockKeys" | "media"
 
 function show(c: Omit<OsdContent, "kind">, kind: OsdKind) {
@@ -57,16 +62,22 @@ function hookEndpoint(kind: "volume" | "microphone") {
             ? "microphone-sensitivity-muted-symbolic"
             : "audio-volume-muted-symbolic"
     let hooked: AstalWp.Endpoint | null = null
-    let disposers: (() => void)[] = []
+    let epDisposers: (() => void)[] = []
+    // release the current endpoint's subscriptions (on re-hook and at
+    // module teardown)
+    const release = () => {
+        for (const d of epDisposers) d()
+        epDisposers = []
+        hooked = null
+    }
     const hook = (ep: AstalWp.Endpoint | null) => {
         if (ep === hooked) return
         // unsubscribe the old endpoint, its changes aren't the default's
         // (also when the default device disappears entirely: ep = null)
-        for (const d of disposers) d()
-        disposers = []
+        release()
         hooked = ep
         if (!ep) return
-        disposers.push(
+        epDisposers.push(
             createBinding(ep, "volume").subscribe(() => {
                 show(
                     {
@@ -79,7 +90,7 @@ function hookEndpoint(kind: "volume" | "microphone") {
                 )
             }),
         )
-        disposers.push(
+        epDisposers.push(
             createBinding(ep, "mute").subscribe(() => {
                 show(
                     {
@@ -93,77 +104,89 @@ function hookEndpoint(kind: "volume" | "microphone") {
             }),
         )
     }
-    return hook
+    return { hook, release }
 }
 
 const wp = AstalWp.get_default()
 if (wp) {
     const { audio } = wp
-    const hookSpeaker = hookEndpoint("volume")
-    createBinding(audio, "defaultSpeaker").subscribe(() => {
-        hookSpeaker(audio.defaultSpeaker)
-    })
-    hookSpeaker(audio.defaultSpeaker)
+    const speaker = hookEndpoint("volume")
+    disposers.push(
+        createBinding(audio, "defaultSpeaker").subscribe(() => {
+            speaker.hook(audio.defaultSpeaker)
+        }),
+        speaker.release,
+    )
+    speaker.hook(audio.defaultSpeaker)
 
-    const hookMic = hookEndpoint("microphone")
-    createBinding(audio, "defaultMicrophone").subscribe(() => {
-        hookMic(audio.defaultMicrophone)
-    })
-    hookMic(audio.defaultMicrophone)
+    const mic = hookEndpoint("microphone")
+    disposers.push(
+        createBinding(audio, "defaultMicrophone").subscribe(() => {
+            mic.hook(audio.defaultMicrophone)
+        }),
+        mic.release,
+    )
+    mic.hook(audio.defaultMicrophone)
 }
 
 // brightness (covers slider, scroll and external keybinds via the
 // hyprsunset watcher)
 const brightness = Brightness.get_default()
-createBinding(brightness, "screen").subscribe(() => {
-    const outdoor = hyprsunset.outdoor.get()
-    show(
-        {
-            icon: "display-brightness-symbolic",
-            value: outdoor ? 1 : brightness.screen,
-            label: outdoor ? `${OUTDOOR_GAMMA}%` : `${Math.round(brightness.screen * 100)}%`,
-            over: outdoor,
-        },
-        "brightness",
-    )
-})
+disposers.push(
+    createBinding(brightness, "screen").subscribe(() => {
+        const outdoor = hyprsunset.outdoor.get()
+        show(
+            {
+                icon: "display-brightness-symbolic",
+                value: outdoor ? 1 : brightness.screen,
+                label: outdoor ? `${OUTDOOR_GAMMA}%` : `${Math.round(brightness.screen * 100)}%`,
+                over: outdoor,
+            },
+            "brightness",
+        )
+    }),
+)
 
 // media (mpris): show the track when it changes. The bar is the
 // position at show time, the icon the cover art when already cached.
-hookPlayers(p => {
-    let lastTitle = p.title
-    return createBinding(p, "title").subscribe(() => {
-        if (!p.title || p.title === lastTitle) return
-        lastTitle = p.title
-        show(
-            {
-                icon: coverFile(p.coverArt) || "audio-x-generic-symbolic",
-                value: p.length > 0 ? Math.min(1, Math.max(0, p.position / p.length)) : null,
-                label: `${p.title}${p.artist ? ` — ${p.artist}` : ""}`,
-                over: false,
-            },
-            "media",
-        )
-    })
-})
+disposers.push(
+    hookPlayers(p => {
+        let lastTitle = p.title
+        return createBinding(p, "title").subscribe(() => {
+            if (!p.title || p.title === lastTitle) return
+            lastTitle = p.title
+            show(
+                {
+                    icon: coverFile(p.coverArt) || "audio-x-generic-symbolic",
+                    value: p.length > 0 ? Math.min(1, Math.max(0, p.position / p.length)) : null,
+                    label: `${p.title}${p.artist ? ` — ${p.artist}` : ""}`,
+                    over: false,
+                },
+                "media",
+            )
+        })
+    }),
+)
 
 // keyboard layout switches (hyprland, sway, i3). The source is shared
 // with the bar widget but does not depend on it being on any panel.
 if (Config.osd.enabled && Config.osd.layout) {
     ensureLayoutSource()
-    layoutOsdText.subscribe(() => {
-        const text = layoutOsdText.get()
-        if (!text) return
-        show(
-            {
-                icon: "", // flag only, no icon
-                value: null, // no bar, just the flag + name
-                label: text,
-                over: false,
-            },
-            "layout",
-        )
-    })
+    disposers.push(
+        layoutOsdText.subscribe(() => {
+            const text = layoutOsdText.get()
+            if (!text) return
+            show(
+                {
+                    icon: "", // flag only, no icon
+                    value: null, // no bar, just the flag + name
+                    label: text,
+                    over: false,
+                },
+                "layout",
+            )
+        }),
+    )
 }
 
 // the layer close/resize animation replays the OSD's last frame as a
@@ -188,35 +211,48 @@ if (Config.osd.enabled && Config.osd.lockKeys) {
     // seed from the initial device read, or the first real toggle would
     // only fill prev and its banner would be swallowed
     let prev = lockKeyState.get()
-    lockKeyState.subscribe(() => {
-        const cur = lockKeyState.get()
-        if (!cur) return
-        if (prev && (cur.caps !== prev.caps || cur.num !== prev.num)) {
-            // two independent checks: a tick where both flip must
-            // not drop the num-lock banner behind the caps one
-            if (cur.caps !== prev.caps) {
-                show(
-                    {
-                        icon: cur.caps ? "changes-prevent-symbolic" : "changes-allow-symbolic",
-                        value: null,
-                        label: "Caps Lock",
-                        over: cur.caps, // tints the icon
-                    },
-                    "lockKeys",
-                )
+    disposers.push(
+        lockKeyState.subscribe(() => {
+            const cur = lockKeyState.get()
+            if (!cur) return
+            if (prev && (cur.caps !== prev.caps || cur.num !== prev.num)) {
+                // two independent checks: a tick where both flip must
+                // not drop the num-lock banner behind the caps one
+                if (cur.caps !== prev.caps) {
+                    show(
+                        {
+                            icon: cur.caps ? "changes-prevent-symbolic" : "changes-allow-symbolic",
+                            value: null,
+                            label: "Caps Lock",
+                            over: cur.caps, // tints the icon
+                        },
+                        "lockKeys",
+                    )
+                }
+                if (cur.num !== prev.num) {
+                    show(
+                        {
+                            icon: "input-keyboard-symbolic",
+                            value: null,
+                            label: `Num Lock ${cur.num ? "on" : "off"}`,
+                            over: false,
+                        },
+                        "lockKeys",
+                    )
+                }
             }
-            if (cur.num !== prev.num) {
-                show(
-                    {
-                        icon: "input-keyboard-symbolic",
-                        value: null,
-                        label: `Num Lock ${cur.num ? "on" : "off"}`,
-                        over: false,
-                    },
-                    "lockKeys",
-                )
-            }
-        }
-        prev = cur
-    })
+            prev = cur
+        }),
+    )
+}
+
+// convention for lib modules with long-lived sources, even though the
+// shell never calls it today: one place that tears everything down
+export function dispose() {
+    if (hideSource !== null) {
+        sourceRemove(hideSource)
+        hideSource = null
+    }
+    for (const d of disposers) d()
+    disposers.length = 0
 }
