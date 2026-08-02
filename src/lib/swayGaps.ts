@@ -73,8 +73,16 @@ export default class SwayGaps extends GObject.Object {
         if (!this.#sway.ok) return
         let size = this.#gapState ? this.#gapSize : 0
         if (size != this.#lastAppliedValue || force) {
-            this.#sway.message(`gaps inner all set ${size}; gaps outer all set ${size}`)
-            this.#lastAppliedValue = size
+            try {
+                this.#sway.message(`gaps inner all set ${size}; gaps outer all set ${size}`)
+                this.#lastAppliedValue = size
+            } catch (e) {
+                // sway.ok is latched at construction: a compositor
+                // restart leaves a dead IPC socket and message() throws
+                // through the setter. lastAppliedValue stays stale so a
+                // later apply retries
+                console.warn("swayGaps: could not apply gaps:", e)
+            }
         }
     }
 
