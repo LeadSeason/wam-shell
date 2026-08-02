@@ -435,21 +435,26 @@ let baselineDone = false
 const hiddenIds = new Set<string>()
 
 function attachActions(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">): ProviderItem {
+    // opening the mail (click) means it's read, same as "mark done":
+    // flag it seen on the bridge and drop it from the list. Removal
+    // waits for the STORE to land — a failed flag would re-add it as
+    // UNSEEN on the next poll
+    const markRead = () => {
+        const uid = Number(data.id.slice("protonmail:".length))
+        storeSeen(uid)
+            .then(ok => {
+                if (ok) setItems(items.get().filter(i => i.id !== data.id))
+                else console.warn("ProtonMail: mark-seen failed")
+            })
+            .catch(e => console.warn("ProtonMail: mark-seen failed:", e))
+    }
     return {
         ...data,
         hide: () => {
             hiddenIds.add(data.id)
             setItems(items.get().filter(i => i.id !== data.id))
         },
-        dismiss: () => {
-            const uid = Number(data.id.slice("protonmail:".length))
-            storeSeen(uid)
-                .then(ok => {
-                    if (ok) setItems(items.get().filter(i => i.id !== data.id))
-                    else console.warn("ProtonMail: mark-seen failed")
-                })
-                .catch(e => console.warn("ProtonMail: mark-seen failed:", e))
-        },
+        dismiss: markRead,
         activate: () => {
             Gio.AppInfo.launch_default_for_uri_async(data.url, null, null, (_s, res) => {
                 try {
@@ -458,6 +463,7 @@ function attachActions(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">
                     console.warn("ProtonMail: could not open webmail:", e)
                 }
             })
+            markRead()
         },
     }
 }
