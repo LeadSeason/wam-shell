@@ -7,6 +7,7 @@ import Fuse from "fuse.js"
 import { timeout } from "ags/time"
 import Config from "../config"
 import CommandRegistry from "../lib/requestHandler"
+import { hideOnFocusLoss } from "../lib/popupFocus"
 
 const { TOP, BOTTOM, LEFT, RIGHT } = Astal.WindowAnchor
 
