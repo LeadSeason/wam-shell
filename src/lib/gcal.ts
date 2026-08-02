@@ -183,11 +183,17 @@ export function eventDays(startMs: number, endMs: number, allDay: boolean): stri
     const days: string[] = []
     // end is exclusive for both kinds: the last covered instant is end-1ms
     const last = new Date(endMs - 1)
-    let cur = new Date(startMs)
-    cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate())
+    const start = new Date(startMs)
     const stop = localMidnight(last.getFullYear(), last.getMonth(), last.getDate())
-    for (let t = cur.getTime(); t <= stop && days.length < 62; t += 86_400_000) {
-        days.push(dayKey(t))
+    // step by local calendar day, not absolute 24h: across the
+    // fall-back transition (a 25-hour day) midnight+86400s is still the
+    // same local day, which duplicated the key and dropped the last one
+    for (
+        let d = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+        d.getTime() <= stop && days.length < 62;
+        d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
+    ) {
+        days.push(dayKey(d.getTime()))
     }
     return days
 }
@@ -362,7 +368,7 @@ let syncInFlight = false
 // one account's slice of the merge: ALL its calendars' events in the
 // window (visibility filtering happens at render time so picker
 // toggles apply instantly), tagged with the account email. cb(null) =
-// fetch failed (the merge degrades to the other accounts)
+// fetch failed (the merge keeps the account's previous events)
 function syncAccount(
     account: GoogleAccount,
     range: string,
@@ -421,8 +427,23 @@ export function sync(focus?: { y: number; m: number }) {
     let pending = signedIn.length
     for (const account of signedIn) {
         syncAccount(account, range, (list, cals) => {
-            if (list) merged.push(...list)
-            allCals.push(...cals)
+            if (list) {
+                merged.push(...list)
+                allCals.push(...cals)
+            } else {
+                // transient failure: keep the account's previous events
+                // (clamped to the window) and calendars instead of
+                // blanking it until the next successful sync — same
+                // keep-stale policy as the github/todoist providers
+                merged.push(
+                    ...events
+                        .get()
+                        .filter(
+                            e => e.account === account.email && e.endMs >= from && e.startMs <= to,
+                        ),
+                )
+                allCals.push(...calendars.get().filter(c => c.account === account.email))
+            }
             if (--pending > 0) return
             merged.sort((a, b) => a.startMs - b.startMs)
             loadedFrom = from
