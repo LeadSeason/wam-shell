@@ -323,22 +323,18 @@ window#QSettings {
     }
 
     // pane header (back row + the pane's switch): the ENTIRE line is
-    // one button look on hover, the trailing widget integrated — GTK4
-    // sets :hover on ancestors too, so this also triggers over the
-    // switch
+    // one button look on hover. Driven by the .hover class from a
+    // motion controller — :hover does not propagate from the trailing
+    // switch to the row
     .paneHeader {
         border-radius: s.$radius;
         margin: s.$padding-small s.$padding;
         padding: 6px 8px;
         border: solid 2px transparent;
 
-        &:hover {
+        &.hover {
             background-color: t.$accent20;
             border: solid 2px t.$accent20;
-        }
-        &:active {
-            background-color: t.$accent20;
-            border: solid 2px t.$accent30;
         }
     }
 
