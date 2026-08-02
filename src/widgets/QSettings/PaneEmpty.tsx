@@ -20,6 +20,10 @@ export function PaneEmpty({
             cssClasses={["paneEmpty"]}
             valign={Gtk.Align.CENTER}
             vexpand
+            // fill the pane's width too: the children center themselves
+            // (halign CENTER), so the whole cluster sits in the middle
+            // instead of hugging the left edge
+            hexpand
             spacing={6}
         >
             {onClick && <Gtk.GestureClick button={1} onPressed={onClick} />}
