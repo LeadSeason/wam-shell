@@ -58,10 +58,12 @@ function profileInfo(id: string): { name: string; desc: string } {
 }
 
 function StatTile({
+    icon,
     big,
     sub,
     visible = true,
 }: {
+    icon: string
     big: string | Accessor<string>
     sub: string | Accessor<string>
     visible?: boolean | Accessor<boolean>
@@ -73,6 +75,7 @@ function StatTile({
             spacing={2}
             visible={visible}
         >
+            <image iconName={icon} pixelSize={16} halign={Gtk.Align.START} />
             <label
                 cssClasses={["statTileValue"]}
                 label={big}
@@ -110,18 +113,24 @@ function PowerDetails() {
 
     return (
         <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-            {/* the profile's knobs, live: flips as the profile changes */}
-            <label
-                cssClasses={["paneRowDesc"]}
-                xalign={0}
+            {/* the profile's kernel knobs, live: flips as the profile
+            changes (labeled so it can't read as a column heading) */}
+            <box
+                spacing={4}
                 visible={createComputed(
                     [Power.governor, Power.epp],
                     (g, e) => g !== "" || e !== "",
                 )}
-                label={createComputed([Power.governor, Power.epp], (g, e) =>
-                    [`Governor ${g || "—"}`, `EPP ${e || "—"}`].join("  ·  "),
-                )}
-            />
+            >
+                <image iconName="cpu-symbolic" pixelSize={12} valign={Gtk.Align.CENTER} />
+                <label
+                    cssClasses={["paneRowDesc"]}
+                    xalign={0}
+                    label={createComputed([Power.governor, Power.epp], (g, e) =>
+                        [`Governor: ${g || "—"}`, `Energy preference: ${e || "—"}`].join("  ·  "),
+                    )}
+                />
+            </box>
             <Gtk.FlowBox
                 maxChildrenPerLine={2}
                 homogeneous
@@ -130,6 +139,7 @@ function PowerDetails() {
                 rowSpacing={8}
             >
                 <StatTile
+                    icon="battery-symbolic"
                     big={watts.as(r =>
                         r < 0 ? `+${Math.abs(r).toFixed(1)} W` : `${r.toFixed(1)} W`,
                     )}
@@ -137,6 +147,7 @@ function PowerDetails() {
                     visible={bat.isPresent}
                 />
                 <StatTile
+                    icon="alarm-symbolic"
                     big={createComputed(
                         [
                             createBinding(bat, "timeToEmpty"),
@@ -151,6 +162,7 @@ function PowerDetails() {
                     visible={bat.isPresent}
                 />
                 <StatTile
+                    icon="cpu-symbolic"
                     big={Power.freqAvgMhz.as(m => `${(m / 1000).toFixed(1)} GHz`)}
                     sub={createComputed([freqPct, Power.freqCapMhz], (pct, cap) => {
                         const of =
@@ -162,6 +174,7 @@ function PowerDetails() {
                     visible={Power.hasFreq}
                 />
                 <StatTile
+                    icon="freon-temperature-symbolic"
                     big={createComputed([Power.tempC, Power.fanRpm], (t, r) =>
                         Power.hasTemp ? `${t} °C` : `${r} RPM`,
                     )}
@@ -172,16 +185,19 @@ function PowerDetails() {
                 />
                 {/* moved stats (gated by show_stats) */}
                 <StatTile
+                    icon="speedometer-symbolic"
                     big={Sys.cpu.as(c => `${c}%`)}
                     sub={Sys.loadAvg.as(l => `load ${l.toFixed(2)}`)}
                     visible={Config.quicksettings.showStats}
                 />
                 <StatTile
+                    icon="memory-symbolic"
                     big={Sys.ram.as(r => `${r}%`)}
                     sub={Sys.ramSize.as(([used, total]) => `${used}/${total} GB`)}
                     visible={Config.quicksettings.showStats}
                 />
                 <StatTile
+                    icon="network-transmit-receive-symbolic"
                     big={Sys.netDown.as(d => `↓ ${Sys.formatRate(d)}`)}
                     sub={Sys.netUp.as(u => `↑ ${Sys.formatRate(u)}`)}
                     visible={Config.quicksettings.showStats}
@@ -190,6 +206,7 @@ function PowerDetails() {
                     {present =>
                         present && (
                             <StatTile
+                                icon="freon-gpu-temperature-symbolic"
                                 big={Sys.gpu.as(g => `${g}%`)}
                                 sub={createComputed([Sys.gpuTemp, Sys.vram], (t, [used, total]) => {
                                     return `${t}°C · ${used}/${total} MiB`
