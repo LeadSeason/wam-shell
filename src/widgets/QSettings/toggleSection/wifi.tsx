@@ -598,6 +598,7 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                         $={self => {
                             ssidEntry = self
                         }}
+                        cssClasses={["textInput"]}
                         placeholderText={"Network name (SSID)"}
                         onActivate={submit}
                     />
@@ -607,6 +608,7 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                         entry = self
                         self.grab_focus()
                     }}
+                    cssClasses={["textInput"]}
                     placeholderText={"Password (empty for open)"}
                     visibility={false}
                     inputPurpose={Gtk.InputPurpose.PASSWORD}

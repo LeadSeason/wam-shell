@@ -439,12 +439,6 @@ window#QSettings {
             font-weight: bold;
         }
 
-        entry {
-            background-color: t.$base;
-            border-radius: s.$radius;
-            padding: 6px 8px;
-        }
-
         button.confirm {
             background-color: color.mix(t.$accent, transparent, 55%);
             &:hover {
@@ -605,19 +599,6 @@ window#QSettings {
     }
     .expired {
         color: t.$red;
-    }
-
-    // clearly an input field, not a label: bordered like harvest's
-    // .input, accent frame on focus
-    .vpnSearch {
-        background-color: t.$base;
-        border: solid 2px t.$accent20;
-        border-radius: s.$radius;
-        padding: 4px 8px;
-
-        &:focus {
-            border-color: t.$accent;
-        }
     }
 
     .vpnSectionHeader {

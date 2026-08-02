@@ -205,7 +205,7 @@ export function VpnPane({ pane, name }: { pane: Accessor<string>; name: string }
             <revealer revealChild={pickerOpen}>
                 <box orientation={Gtk.Orientation.VERTICAL} spacing={6}>
                     <Gtk.Entry
-                        cssClasses={["vpnSearch"]}
+                        cssClasses={["textInput"]}
                         placeholderText={"Search locations…"}
                         onChanged={self => setQuery(self.text)}
                     />

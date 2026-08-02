@@ -84,6 +84,7 @@ export function SleepTimerWidget({
                         $={self => {
                             entry = self
                         }}
+                        cssClasses={["textInput"]}
                         placeholderText={"minutes"}
                         inputPurpose={Gtk.InputPurpose.DIGITS}
                         hexpand

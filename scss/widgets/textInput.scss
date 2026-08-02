@@ -1,0 +1,23 @@
+@use "active-theme" as t;
+@use "../conf.scss" as s;
+
+// uniform text input for the whole shell: a clear boundary so entries
+// never read as plain labels (surface bg + border on card/crust
+// backgrounds, accent frame on focus)
+.textInput {
+    background-color: t.$surface0;
+    border: solid 2px t.$surface1;
+    border-radius: s.$radius;
+    padding: 4px 8px;
+    caret-color: t.$accent;
+
+    &:focus {
+        border-color: t.$accent;
+    }
+    &:disabled {
+        opacity: 0.5;
+    }
+    > placeholder {
+        color: t.$subtext0;
+    }
+}

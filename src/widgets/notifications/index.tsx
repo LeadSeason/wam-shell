@@ -255,7 +255,7 @@ function ensureWindow() {
                                         $={self => {
                                             searchEntry = self
                                         }}
-                                        cssClasses={["filter"]}
+                                        cssClasses={["filter", "textInput"]}
                                         placeholderText="Filter by app…"
                                         hexpand
                                         onChanged={self => setQuery(self.text)}
