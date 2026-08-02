@@ -7,6 +7,7 @@ import Config from "../../config"
 import Brightness from "../../lib/brightness"
 import hyprsunset, { setOutdoorEnabled, OUTDOOR_GAMMA } from "../../lib/hyprsunset"
 import { Accessor, For, Setter, With, createBinding, createComputed, createState } from "gnim"
+import { qsVisible } from "./MediaSection"
 
 interface VolSliderProps {
     maxValue?: number
@@ -279,6 +280,12 @@ export function SliderSection() {
     const { audio } = wp
 
     const [expanded, setExpanded] = createState(0)
+
+    // closed popup = collapsed dropdowns next open, like the toggle
+    // section's reset on hide
+    qsVisible.subscribe(v => {
+        if (!v) setExpanded(0)
+    })
 
     const speakers = createBinding(audio, "speakers").as(s => s ?? [])
     const microphones = createBinding(audio, "microphones").as(m => m ?? [])
