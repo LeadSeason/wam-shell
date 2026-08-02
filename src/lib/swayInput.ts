@@ -15,6 +15,11 @@ const EVENT_INPUT = 0x80000015
 
 const MAX_RETRIES = 5
 let started = false
+// bumped by unwatchSwayInputs: async callbacks scheduled before the
+// teardown no-op afterwards
+let generation = 0
+let activeConn: Gio.SocketConnection | null = null
+let retrySource = 0
 
 interface Handlers {
     // reply to the seed request: the full GET_INPUTS array
@@ -47,15 +52,33 @@ export function watchSwayInputs(handlers: Handlers) {
     connect(path, handlers, 0)
 }
 
+// teardown half of watchSwayInputs (convention for lib modules with
+// long-lived sources, see AGENTS.md): close the stream and stop any
+// pending reconnect; in-flight callbacks no-op via the generation bump
+export function unwatchSwayInputs() {
+    if (!started) return
+    started = false
+    generation++
+    if (retrySource) {
+        GLib.source_remove(retrySource)
+        retrySource = 0
+    }
+    activeConn?.close(null)
+    activeConn = null
+}
+
 function connect(path: string, handlers: Handlers, attempt: number) {
+    const gen = generation
     const client = new Gio.SocketClient()
     client.connect_async(Gio.UnixSocketAddress.new(path), null, (_c, res) => {
+        if (gen !== generation) return
         let conn: Gio.SocketConnection
         try {
             conn = client.connect_finish(res)
         } catch {
             return retry(path, handlers, attempt)
         }
+        activeConn = conn
         const out = conn.get_output_stream()
         const send = (type: number, payload: string, next: () => void) => {
             out.write_bytes_async(frame(type, payload), GLib.PRIORITY_DEFAULT, null, (_o, wres) => {
@@ -76,11 +99,13 @@ function connect(path: string, handlers: Handlers, attempt: number) {
 }
 
 function retry(path: string, handlers: Handlers, attempt: number) {
+    if (!started) return
     if (attempt + 1 >= MAX_RETRIES) {
         handlers.onUnavailable()
         return
     }
-    GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
+    retrySource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
+        retrySource = 0
         connect(path, handlers, attempt + 1)
         return GLib.SOURCE_REMOVE
     })
