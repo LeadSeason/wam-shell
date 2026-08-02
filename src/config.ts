@@ -525,6 +525,38 @@ function getTodoistConfig() {
     }
 }
 
+// ProtonMail unread mail in the notification center, via ProtonMail
+// Bridge's local IMAP. Section-only keys: no top-level fallbacks exist
+// for these names and none should leak in
+function getProtonmailConfig() {
+    const p = configData.protonmail ?? {}
+
+    let pollMinutes = p["poll_minutes"] ?? 2
+    if (typeof pollMinutes !== "number" || pollMinutes <= 0) {
+        console.error(
+            `Config "protonmail.poll_minutes" must be a positive number, got "${pollMinutes}"`,
+        )
+        pollMinutes = 2
+    }
+    // floor: a config typo must not hammer the bridge
+    if (pollMinutes < 1) pollMinutes = 1
+
+    let port = p["port"] ?? 1143
+    if (typeof port !== "number" || port <= 0) {
+        console.error(`Config "protonmail.port" must be a positive number, got "${port}"`)
+        port = 1143
+    }
+
+    const host = typeof p["host"] === "string" && p["host"] !== "" ? p["host"] : "127.0.0.1"
+
+    return {
+        enabled: p["enabled"] ?? false,
+        pollMinutes,
+        host,
+        port,
+    }
+}
+
 // YouTube notifications in the notification center. Section-only keys:
 // no top-level fallbacks exist for these names and none should leak in
 function getYouTubeConfig() {
@@ -807,6 +839,7 @@ export default class Config {
     static github = getGitHubConfig()
     static youtube = getYouTubeConfig()
     static todoist = getTodoistConfig()
+    static protonmail = getProtonmailConfig()
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
     static cacheFile = `${this.instanceCacheDir}/cache.json`
 
