@@ -25,7 +25,8 @@ Harvest "H" mark), not an Adwaita copy.
 same fallback reason.
 
 `cpu-symbolic.svg`, `memory-symbolic.svg`, `sensors-fan-symbolic.svg`,
-`freon-temperature-symbolic.svg` and `freon-gpu-temperature-symbolic.svg`
+`freon-temperature-symbolic.svg` and `freon-gpu-temperature-symbolic.svg`,
+`hourglass-symbolic.svg`
 are from the [Papirus icon theme](https://github.com/PapirusDevelopmentTeam/papirus-icon-theme)
 (GPL-3.0), bundled for the power pane's stat tiles.
 

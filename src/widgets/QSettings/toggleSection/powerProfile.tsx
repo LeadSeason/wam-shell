@@ -127,17 +127,30 @@ function PowerDetails() {
                     visible={bat.isPresent}
                 />
                 <StatTile
-                    icon="alarm-symbolic"
+                    icon="hourglass-symbolic"
                     big={createComputed(
                         [
                             createBinding(bat, "timeToEmpty"),
                             createBinding(bat, "timeToFull"),
                             createBinding(bat, "charging"),
+                            createBinding(bat, "percentage"),
                         ],
-                        (toEmpty, toFull, charging) => span(Number(charging ? toFull : toEmpty)),
+                        (toEmpty, toFull, charging, pct) => {
+                            // at the charge limit UPower's times are
+                            // junk (0 min) — same check as the header
+                            if (pct * 100 >= Config.quicksettings.batteryFullAt - 2)
+                                return "Charge limit"
+                            return span(Number(charging ? toFull : toEmpty))
+                        },
                     )}
-                    sub={createBinding(bat, "charging").as(c =>
-                        c ? "until full" : "at current draw",
+                    sub={createComputed(
+                        [createBinding(bat, "charging"), createBinding(bat, "percentage")],
+                        (c, pct) =>
+                            pct * 100 >= Config.quicksettings.batteryFullAt - 2
+                                ? ""
+                                : c
+                                  ? "until full"
+                                  : "at current draw",
                     )}
                     visible={bat.isPresent}
                 />
