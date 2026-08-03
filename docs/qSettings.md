@@ -23,11 +23,12 @@ It closes on ESC, on click-away, and on the panel button (it's a toggle).
   Mode, Peripherals) or expand an inline dropdown (Sway Gaps, Sleep
   Timer). The Peripherals pane has one slider per device; staged
   devices (asusctl) also get one-tap Off/Low/Med/High buttons.
-  Backends, all optional and zero-cost when absent: writable
-  `/sys/class/leds` backlights, asusctl, ddcutil (external monitors
-  over DDC/CI, re-read on pane open) and OpenRGB (RGB gear; the CLI
-  can't read brightness, so the level is what was last set, 100%
-  until then).
+  Backends, all optional and zero-cost when absent: kernel LED
+  backlights via AstalBrightness (writes go through systemd-logind, so
+  root-owned LEDs work without udev rules), asusctl, ddcutil (external
+  monitors over DDC/CI, re-read on pane open) and OpenRGB (RGB gear;
+  the CLI can't read brightness, so the level is what was last set,
+  100% until then).
 - **Stats section** (optional, `quicksettings.show_stats`): cpu/ram/gpu/
   network graphs; the same stats can go on the panel
   (`quicksettings.stats_on_panel`).

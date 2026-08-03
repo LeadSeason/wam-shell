@@ -62,14 +62,9 @@ function DeviceRow({ d }: { d: BrightnessDevice }) {
                 <label cssClasses={["paneRowName"]} label={d.label} xalign={0} hexpand />
                 <label cssClasses={["paneRowDesc"]} label={externalChange.as(() => levelText(d))} />
             </box>
-            <slider
-                hexpand
-                min={0}
-                max={1}
-                value={externalChange.as(() => d.level())}
-                onChangeValue={({ value }) => d.set(value)}
-            />
-            {stages && (
+            {/* staged devices (asusctl Off/Low/Med/High) get buttons
+            only — a slider implies finer steps than exist */}
+            {stages ? (
                 <box spacing={6} homogeneous cssClasses={["stageButtons"]}>
                     {stages.map((s, i) => (
                         <button
@@ -86,6 +81,14 @@ function DeviceRow({ d }: { d: BrightnessDevice }) {
                         </button>
                     ))}
                 </box>
+            ) : (
+                <slider
+                    hexpand
+                    min={0}
+                    max={1}
+                    value={externalChange.as(() => d.level())}
+                    onChangeValue={({ value }) => d.set(value)}
+                />
             )}
         </box>
     )
@@ -112,7 +115,7 @@ export function PeripheralBrightnessWidget({
                         icon={"input-keyboard-symbolic"}
                         title={"No brightness devices"}
                         hint={
-                            "Writable /sys/class/leds backlights, asusctl, ddcutil and OpenRGB devices show up here"
+                            "Keyboard backlights, asusctl, ddcutil and OpenRGB devices show up here"
                         }
                     />
                 ) : (

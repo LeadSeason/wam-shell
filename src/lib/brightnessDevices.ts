@@ -1,29 +1,27 @@
 import GLib from "gi://GLib?version=2.0"
-import Gio from "gi://Gio?version=2.0"
+import AstalBrightness from "gi://AstalBrightness"
 import { createState } from "gnim"
-import { monitorFile } from "ags/file"
-import { execAsync, exec } from "./metrics"
+import { execAsync, exec, connect, disconnect } from "./metrics"
 import { parseDdcDetect, parseDdcGetvcp, parseOpenRgbList } from "./brightnessParsers"
 
 // Peripheral brightness (keyboard backlights and friends) beyond the
 // screen. Backends:
 //
-//   - /sys/class/leds/* (generic kernel LED class): used when the
-//     brightness file is really writable by us (open-append probe —
-//     a blind `test -w` lies on some setups). Lock-key indicator LEDs
-//     (capslock & co.) are not brightness devices and never listed.
-//   - asusctl (ASUS): the sysfs LED is root-owned on ASUS machines,
-//     but asusd owns it and offers `asusctl leds get/set` (stages
-//     off/low/med/high). Watching the sysfs file still catches
-//     external `asusctl leds next/prev` for the OSD.
+//   - AstalBrightness `leds` (kernel LED class): enumeration and
+//     writes go through AstalBrightness, which writes via
+//     systemd-logind — root-owned LEDs (e.g. tpacpi::kbd_backlight)
+//     work without a udev rule. We filter the raw list: lock-key
+//     indicators (capslock & co.) and platform status LEDs
+//     (thinklight, micmute, …) are not brightness devices.
+//   - asusctl (ASUS): asusd owns the LED and offers staged
+//     `asusctl leds get/set` (off/low/med/high). AstalBrightness's
+//     own watch on the sysfs LED still catches external
+//     `asusctl leds next/prev` for the OSD.
 //   - ddcutil (DDC/CI): external-monitor brightness via VCP feature
 //     0x10. Nothing to watch — levels are cached and re-read on
 //     `refreshExternal()` (pane open).
 //   - OpenRGB: RGB peripherals. No brightness readback over the CLI,
 //     so the level is what we last set (100% until then).
-//
-// Detected-but-unmanaged devices are logged (with the reason) instead
-// of being silently dropped — not shown in the GUI.
 
 export interface BrightnessDevice {
     id: string
@@ -43,23 +41,18 @@ export interface BrightnessDevice {
     max?: number
 }
 
-interface UnsupportedDevice {
-    id: string
-    reason: string
-}
-
 const [devices, setDevices] = createState<BrightnessDevice[]>([])
 export { devices }
 
-// the merged list: asus+sysfs are discovered synchronously at import;
+// the merged list: asus+LEDs are discovered synchronously at import;
 // the async backends (ddcutil, OpenRGB) publish when their probes land
 let localDevices: BrightnessDevice[] = []
 let ddcDevices: BrightnessDevice[] = []
 let rgbDevices: BrightnessDevice[] = []
 const publish = () => setDevices([...localDevices, ...ddcDevices, ...rgbDevices])
 
-// sysfs LED names already managed by us (asusctl or writable sysfs):
-// OpenRGB exposes the same LEDs and must not duplicate them
+// LED names already managed by us (asusctl or listed): OpenRGB
+// exposes the same LEDs and must not duplicate them
 const managedLeds: string[] = []
 
 // bumped whenever any device's level changed outside us (file watch):
@@ -67,7 +60,7 @@ const managedLeds: string[] = []
 const [externalChange, bumpExternalChange] = createState<{ id: string; level: number } | null>(null)
 export { externalChange }
 
-// sysfs writes report in bursts; identical consecutive levels are not news
+// identical consecutive levels are not news
 const lastExternal = new Map<string, number>()
 function reportExternal(id: string, level: number) {
     if (lastExternal.get(id) === level) return
@@ -81,28 +74,8 @@ const LOCK_LED = /^(input\d+::)?(capslock|numlock|scrolllock|compose|kana)$/
 // only real backlight-type LEDs count as brightness devices: platform
 // indicator LEDs (thinklight, micmute, phy0-led, power, lid_logo_dot,
 // thinkvantage, …) are status lights, not "peripheral brightness", and
-// listing them as unsupported was a wall of noise on ThinkPads
+// listing them was a wall of noise on ThinkPads
 const BACKLIGHT_LED = /kbd|keyboard|backlight|illum|aura/i
-
-const readInt = (path: string): number | null => {
-    try {
-        const v = Number(new TextDecoder().decode(GLib.file_get_contents(path)[1]).trim())
-        return Number.isNaN(v) ? null : v
-    } catch {
-        return null
-    }
-}
-
-// opening for append proves writability without changing a byte
-function writable(path: string): boolean {
-    try {
-        const stream = Gio.File.new_for_path(path).append_to(Gio.FileCreateFlags.NONE, null)
-        stream.close(null)
-        return true
-    } catch {
-        return false
-    }
-}
 
 const prettify = (name: string) =>
     name
@@ -125,8 +98,8 @@ function discoverAsusctl(): {
         return ASUS_STAGES.includes(m?.[1] as any) ? (m![1] as (typeof ASUS_STAGES)[number]) : null
     }
     let stage: (typeof ASUS_STAGES)[number] | null = null
-    // async on the watch path: a sync exec inside a file-monitor
-    // callback stalls the UI for a fork+asusd round-trip per change
+    // async on the watch path: a sync exec inside a notify callback
+    // stalls the UI for a fork+asusd round-trip per change
     const refresh = (done?: () => void) => {
         execAsync(["asusctl", "leds", "get"])
             .then(out => {
@@ -161,95 +134,60 @@ function discoverAsusctl(): {
     return { device, refresh }
 }
 
-// ------------------------------------------------------------- sysfs
+// ---------------------------------------------------- AstalBrightness
 
-function describeSysfsLed(dir: Gio.File): {
-    name: string
-    bpath: string
-    max: number
-    ok: boolean
-} | null {
-    const path = dir.get_path()!
-    const name = dir.get_basename()
-    if (LOCK_LED.test(name) || !BACKLIGHT_LED.test(name)) return null
-    const max = readInt(`${path}/max_brightness`)
-    if (!max || max <= 0) return null
-    return { name, bpath: `${path}/brightness`, max, ok: writable(`${path}/brightness`) }
-}
+const ab = AstalBrightness.get_default()
 
-// ---------------------------------------------------------- discovery
+// notify::brightness connections on the currently enumerated LEDs;
+// torn down and rebuilt on hotplug
+const ledHandlers: Array<[{ disconnect(id: number): void }, number]> = []
 
-const monitors: Gio.FileMonitor[] = []
-
-function refresh() {
-    const found: BrightnessDevice[] = []
-    const unsupportedList: UnsupportedDevice[] = []
+function refreshLocal() {
+    for (const [obj, id] of ledHandlers) disconnect(obj, id)
+    ledHandlers.length = 0
     managedLeds.length = 0
 
     const asus = discoverAsusctl()
+    const found: BrightnessDevice[] = []
     if (asus) found.push(asus.device)
 
-    try {
-        const base = Gio.File.new_for_path("/sys/class/leds")
-        const en = base.enumerate_children("standard::name", Gio.FileQueryInfoFlags.NONE, null)
-        let info: Gio.FileInfo | null
-        while ((info = en.next_file(null)) !== null) {
-            const child = base.get_child(info.get_name())
-            const led = describeSysfsLed(child)
-            if (!led) continue
-            const asusManaged = asus !== null && /asus/i.test(led.name)
+    for (const led of ab?.leds.devices ?? []) {
+        const name = led.name
+        if (LOCK_LED.test(name) || !BACKLIGHT_LED.test(name)) continue
+        if (led.maxBrightness <= 0) continue
 
-            if (led.ok && !asusManaged && !found.some(d => d.label === prettify(led.name))) {
-                managedLeds.push(led.name)
-                found.push({
-                    id: led.name,
-                    label: prettify(led.name),
-                    max: led.max,
-                    level: () => (readInt(led.bpath) ?? 0) / led.max,
-                    set: (l: number) => {
-                        try {
-                            GLib.file_set_contents(led.bpath, String(Math.round(l * led.max)))
-                        } catch (e) {
-                            console.warn(`brightness: write ${led.bpath}:`, e)
-                        }
-                    },
-                })
-            } else if (!led.ok && !asusManaged) {
-                unsupportedList.push({
-                    id: led.name,
-                    reason: "not writable (root-owned; needs a udev rule)",
-                })
-            } else if (asusManaged) {
-                managedLeds.push(led.name)
-            }
-
-            // every led gets a watch (readable suffices): asusctl
-            // next/prev and other tools' sysfs writes both land here
-            try {
-                monitors.push(
-                    monitorFile(led.bpath, () => {
-                        if (asusManaged) {
-                            // async refresh; report after the new stage lands
-                            asus.refresh(() => reportExternal(asus.device.id, asus.device.level()))
-                        } else {
-                            const d = found.find(x => x.id === led.name)
-                            if (d) reportExternal(d.id, d.level())
-                        }
-                    }),
-                )
-            } catch {}
+        // asusctl owns the ASUS LED (staged control); AstalBrightness's
+        // watch on it still catches external `asusctl leds next/prev`
+        if (asus !== null && /asus/i.test(name)) {
+            managedLeds.push(name)
+            ledHandlers.push([
+                led,
+                connect(led, "notify::brightness", () =>
+                    asus.refresh(() => reportExternal(asus.device.id, asus.device.level())),
+                ),
+            ])
+            continue
         }
-        en.close(null)
-    } catch (e) {
-        console.warn("brightness: enumerate /sys/class/leds:", e)
+
+        managedLeds.push(name)
+        if (found.some(d => d.label === prettify(name))) continue
+        found.push({
+            id: name,
+            label: prettify(name),
+            max: led.maxBrightness,
+            level: () => led.brightness,
+            set: (l: number) => {
+                led.brightness = Math.min(1, Math.max(0, l))
+            },
+        })
+        ledHandlers.push([
+            led,
+            connect(led, "notify::brightness", () => reportExternal(name, led.brightness)),
+        ])
     }
 
     localDevices = found
     publish()
-    if (unsupportedList.length > 0)
-        console.info(
-            `brightness: unsupported devices: ${unsupportedList.map(x => `${x.id} (${x.reason})`).join(", ")}`,
-        )
 }
 
 // ---------------------------------------------------------- ddcutil
@@ -327,7 +265,7 @@ async function discoverDdc() {
     ddcDevices = found
     publish()
     // levels changed since the last read (monitor OSD buttons): same
-    // report path as the sysfs watches (open sliders + OSD)
+    // report path as the LED watches (open sliders + OSD)
     for (const d of found) {
         const prev = previous.get(d.id)
         if (prev !== undefined && prev !== d.level()) reportExternal(d.id, d.level())
@@ -399,12 +337,23 @@ async function discoverOpenRgb() {
     publish()
 }
 
-refresh()
+refreshLocal()
 discoverDdc()
 discoverOpenRgb()
 
+// hotplug: rebuild the LED list when the kernel adds/removes LEDs.
+// Stored separately from ledHandlers so a rebuild doesn't tear down
+// the hotplug wiring itself
+const listHandlers: Array<[{ disconnect(id: number): void }, number]> = []
+if (ab) {
+    listHandlers.push([ab.leds, connect(ab.leds, "device-appeared", () => refreshLocal())])
+    listHandlers.push([ab.leds, connect(ab.leds, "device-removed", () => refreshLocal())])
+}
+
 // convention for lib modules with long-lived sources (see AGENTS.md)
 export function dispose() {
-    for (const m of monitors) m.cancel()
-    monitors.length = 0
+    for (const [obj, id] of ledHandlers) disconnect(obj, id)
+    ledHandlers.length = 0
+    for (const [obj, id] of listHandlers) disconnect(obj, id)
+    listHandlers.length = 0
 }
