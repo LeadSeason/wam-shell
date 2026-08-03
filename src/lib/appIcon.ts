@@ -1,6 +1,7 @@
 import GioUnix from "gi://GioUnix?version=2.0"
 import Gtk from "gi://Gtk?version=4.0"
 import AstalApps from "gi://AstalApps"
+import { connect } from "./metrics"
 
 // WM class names often don't match icon names (e.g. class "brave-browser"
 // -> Icon=brave-desktop, class "code" -> Icon=vscode). Resolve icons through
@@ -23,6 +24,9 @@ export function createIconResolver(theme: Gtk.IconTheme) {
 function buildIconResolver(theme: Gtk.IconTheme) {
     const cache = new Map<string, string | null>()
     const apps = new AstalApps.Apps()
+    // resolved names bake in has_icon() results: a runtime icon-theme
+    // switch must rebuild instead of serving stale/missing icons
+    connect(theme, "changed", () => cache.clear())
 
     // startup wm class -> icon name, from the app database
     const wmClassMap = new Map<string, string>()

@@ -26,14 +26,29 @@ export { sharing }
 
 let debounce = 0
 let monitor: Gio.Subprocess | null = null
+// one evaluation in flight at a time: a slow pw-dump (big graphs) must
+// not complete after a newer one and land a stale sharing state
+let evaluating = false
+let evaluateAgain = false
 
 async function evaluate() {
+    if (evaluating) {
+        evaluateAgain = true
+        return
+    }
+    evaluating = true
     try {
         const out = await execAsync(["pw-dump"])
         const matches = out.match(/"media\.class": "Stream\/Input\/Video"/g)
         setSharing((matches?.length ?? 0) > 0)
     } catch {
         setSharing(true) // fail closed
+    } finally {
+        evaluating = false
+        if (evaluateAgain) {
+            evaluateAgain = false
+            evaluate()
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
+import { timeoutAddSeconds, sourceRemove } from "./metrics"
 
 // Raw sway IPC input-event subscription (sway-ipc(7)): the i3ipc
 // binding doesn't expose "input" events, so the layout source speaks
@@ -60,7 +61,7 @@ export function unwatchSwayInputs() {
     started = false
     generation++
     if (retrySource) {
-        GLib.source_remove(retrySource)
+        sourceRemove(retrySource)
         retrySource = 0
     }
     activeConn?.close(null)
@@ -111,7 +112,7 @@ function retry(path: string, handlers: Handlers, attempt: number) {
     // several failure paths can land here near-simultaneously (write
     // error, then the closed read's EOF): one pending reconnect only
     if (retrySource) return
-    retrySource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
+    retrySource = timeoutAddSeconds("swayInput:reconnect", GLib.PRIORITY_DEFAULT, 2, () => {
         retrySource = 0
         connect(path, handlers, attempt + 1)
         return GLib.SOURCE_REMOVE

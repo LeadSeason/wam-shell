@@ -865,7 +865,17 @@ function getPendingUpdateDaemonStatus(): false | string {
 }
 
 export default class Config {
-    static instanceName = configData.instance_name || "wam-shell"
+    // the only top-level key without a type guard: a truthy non-string
+    // (e.g. instance_name = 5) would poison the bus name and paths
+    static instanceName = (() => {
+        const v = configData.instance_name
+        if (v === undefined) return "wam-shell"
+        if (typeof v !== "string" || v === "") {
+            console.error(`Config "instance_name" must be a non-empty string, got "${v}"`)
+            return "wam-shell"
+        }
+        return v
+    })()
 
     static instanceSrcDir = instanceSrcDir
     static osIcon = getOsIcon()

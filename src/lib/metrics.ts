@@ -116,6 +116,18 @@ export const timeoutAddSeconds = ENABLED
     : (_label: string, priority: number, interval: number, fn: () => boolean): number =>
           GLib.timeout_add_seconds(priority, interval, fn)
 
+export const idleAdd = ENABLED
+    ? (label: string, priority: number, fn: () => boolean): number => {
+          let id = 0
+          id = GLib.idle_add(priority, () => {
+              const again = fn()
+              if (!again) timerGone(id)
+              return again
+          })
+          return timerCreated(label, id)
+      }
+    : (_label: string, priority: number, fn: () => boolean): number => GLib.idle_add(priority, fn)
+
 export const sourceRemove: typeof GLib.source_remove = ENABLED
     ? id => {
           timerGone(id)

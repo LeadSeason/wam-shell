@@ -8,6 +8,7 @@ import { For, With, createBinding, createComputed, createRoot, createState } fro
 import CommandRegistry from "../lib/requestHandler"
 import { timeoutAdd, sourceRemove } from "../lib/metrics"
 import { hideOnFocusLoss } from "../lib/popupFocus"
+import { monitorAlive } from "../lib/utils"
 import {
     activePlayer,
     bindSeekScale,
@@ -255,9 +256,10 @@ function show() {
     }
     // mount PopupContent (and its seek poll) before presenting
     setPopupVisible(true)
-    // drop directly below the pill when its position is known
+    // drop directly below the pill when its position is known — but
+    // only if the monitor it was captured on is still plugged in
     const anchor = popupAnchor.get()
-    if (anchor) win!.gdkmonitor = anchor.monitor
+    if (anchor && monitorAlive(anchor.monitor)) win!.gdkmonitor = anchor.monitor
     win!.present()
     rev!.revealChild = true
 }

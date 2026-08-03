@@ -369,10 +369,10 @@ export function startBluetoothAgent() {
         return
     }
     const info = Gio.DBusInterfaceInfo.new_for_xml(AGENT_XML)
-    Gio.DBus.system.register_object(AGENT_PATH, info, onMethodCall, null, null)
+    agentObjectId = Gio.DBus.system.register_object(AGENT_PATH, info, onMethodCall, null, null)
     register()
     // re-register if bluez restarts
-    Gio.DBus.watch_name(
+    watchId = Gio.DBus.watch_name(
         Gio.BusType.SYSTEM,
         "org.bluez",
         Gio.BusNameWatcherFlags.NONE,
@@ -383,4 +383,24 @@ export function startBluetoothAgent() {
             registered = false
         },
     )
+}
+
+// convention for lib modules with long-lived sources (see AGENTS.md)
+let agentObjectId = 0
+let watchId = 0
+
+export function dispose() {
+    if (agentObjectId) {
+        Gio.DBus.system.unregister_object(agentObjectId)
+        agentObjectId = 0
+    }
+    if (watchId) {
+        Gio.Bus.unwatch_name(watchId)
+        watchId = 0
+    }
+    // armed prompt timeouts are 30s-bounded and self-removing; just
+    // stop new ones from being armed
+    armByRespond.clear()
+    registered = false
+    registering = false
 }

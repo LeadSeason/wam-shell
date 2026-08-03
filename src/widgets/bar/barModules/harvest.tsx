@@ -53,7 +53,7 @@ function msUntilNextBoundary(): number {
 
 if (Config.harvest.workStart && Config.harvest.workEnd) {
     const arm = () =>
-        GLib.timeout_add(GLib.PRIORITY_DEFAULT, msUntilNextBoundary(), () => {
+        timeoutAdd("harvest:workHours", GLib.PRIORITY_DEFAULT, msUntilNextBoundary(), () => {
             setWorkHours(withinWorkHours())
             arm()
             return GLib.SOURCE_REMOVE
