@@ -4,7 +4,14 @@ import Graphene from "gi://Graphene?version=1.0"
 import AstalNotifd from "gi://AstalNotifd?version=0.1"
 import app from "ags/gtk4/app"
 import { For, createComputed, createRoot, createState } from "gnim"
-import notifd, { count, dnd, persistent, toggleDnd } from "../../lib/notifd"
+import notifd, {
+    count,
+    dnd,
+    mutedProviders,
+    persistent,
+    toggleDnd,
+    toggleProviderMute,
+} from "../../lib/notifd"
 import { createBinding } from "gnim"
 import CommandRegistry from "../../lib/requestHandler"
 import { timeoutAdd, sourceRemove } from "../../lib/metrics"
@@ -314,7 +321,8 @@ function ensureWindow() {
                                 their own row: click to show only that
                                 source, again to go back. Static by
                                 window-build time — plain map, no
-                                reactivity needed */}
+                                reactivity needed. Right-click a provider
+                                to mute/unmute its banners */}
                                 <box cssClasses={["filtersRow"]} spacing={6}>
                                     <button
                                         cssClasses={providerFilter.as(f => [
@@ -341,23 +349,44 @@ function ensureWindow() {
                                     </button>
                                     {providers.map(p => (
                                         <button
-                                            cssClasses={providerFilter.as(f => [
-                                                "provider",
-                                                ...(f === p.name ? ["active"] : []),
-                                            ])}
-                                            tooltipText={`Show only ${p.name} notifications`}
+                                            cssClasses={createComputed(
+                                                [providerFilter, mutedProviders],
+                                                (f, m) => [
+                                                    "provider",
+                                                    ...(f === p.name ? ["active"] : []),
+                                                    ...(m.includes(p.name) ? ["muted"] : []),
+                                                ],
+                                            )}
+                                            tooltipText={mutedProviders.as(m =>
+                                                m.includes(p.name)
+                                                    ? `Show only ${p.name} notifications (right-click to unmute)`
+                                                    : `Show only ${p.name} notifications (right-click to mute banners)`,
+                                            )}
                                             onClicked={() =>
                                                 setProviderFilter(
                                                     providerFilter.get() === p.name ? null : p.name,
                                                 )
                                             }
                                         >
+                                            <Gtk.GestureClick
+                                                button={3}
+                                                onReleased={() => toggleProviderMute(p.name)}
+                                            />
                                             <box spacing={4}>
                                                 <image iconName={p.iconName} />
                                                 <label
                                                     cssClasses={["count"]}
                                                     label={p.items.as(l =>
                                                         l.length > 0 ? String(l.length) : "",
+                                                    )}
+                                                />
+                                                {/* visible mute marker */}
+                                                <image
+                                                    cssClasses={["mutedBadge"]}
+                                                    iconName="notifications-disabled-symbolic"
+                                                    pixelSize={12}
+                                                    visible={mutedProviders.as(m =>
+                                                        m.includes(p.name),
                                                     )}
                                                 />
                                             </box>

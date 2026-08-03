@@ -116,6 +116,10 @@ window.Notifications {
                 background-color: t.$accent40;
                 border: solid 2px t.$accent40;
             }
+            // muted providers (no banners): extra-dimmed
+            &.muted {
+                opacity: 0.25;
+            }
             // pending-count badge next to the icon
             .count {
                 font-size: s.$font-small;

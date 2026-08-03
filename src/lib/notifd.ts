@@ -63,6 +63,17 @@ export function toggleDnd() {
     notifd.dontDisturb = !notifd.dontDisturb
 }
 
+// Providers muted from the notification center: their items still
+// collect there, but never raise transient banners (the per-provider
+// equivalent of DND). Session-only, toggled from the center's header.
+const [mutedProviders, setMutedProviders] = createState<string[]>([])
+export { mutedProviders }
+
+export function toggleProviderMute(name: string) {
+    const cur = mutedProviders.get()
+    setMutedProviders(cur.includes(name) ? cur.filter(n => n !== name) : [...cur, name])
+}
+
 // --- transient popups -------------------------------------------------
 
 // Popup banner state is the single source of truth for everything about
@@ -196,6 +207,7 @@ function addPopup(entry: PopupEntry, urgency: AstalNotifd.Urgency | null): boole
 // banner expiring is NOT a dismissal: the item stays in the center
 export function addProviderPopup(item: ProviderItem) {
     if (!useOurs) return // no popup windows exist in that case
+    if (mutedProviders.get().includes(item.provider)) return
     addPopup({ key: item.id, desktop: null, item }, null)
 }
 
