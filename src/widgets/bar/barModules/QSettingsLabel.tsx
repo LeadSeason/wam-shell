@@ -359,7 +359,7 @@ export default function QSettings() {
     // don't run in this shell
     const [flashOn, setFlashOn] = createState(false)
     let flashSource = 0
-    alarming.subscribe(() => {
+    const unsub = alarming.subscribe(() => {
         if (alarming.get()) {
             if (flashSource === 0)
                 flashSource = timeoutAdd("bar:alarmFlash", GLib.PRIORITY_DEFAULT, 600, () => {
@@ -372,6 +372,15 @@ export default function QSettings() {
                 flashSource = 0
             }
             setFlashOn(false)
+        }
+    })
+    // the bar mount dies with its monitor on hotplug: the subscription
+    // and any armed flash timer must die with it
+    onCleanup(() => {
+        unsub()
+        if (flashSource !== 0) {
+            sourceRemove(flashSource)
+            flashSource = 0
         }
     })
     return (

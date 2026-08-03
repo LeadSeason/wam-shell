@@ -20,6 +20,7 @@ export function SwayGapsButton({
     setActiveDropdown: setActiveDropdown,
     dropdownIndex: dropdownIndex,
 }: swayGapsProps) {
+    if (!Config.swayGaps) return <></>
     if (Config.desktopSession !== "sway" && Config.desktopSession !== "i3") return <></>
     const swayGaps = SwayGaps.get_default()
 
@@ -46,6 +47,7 @@ export function SwayGapsWidget({
     activeDropdown: revealChild,
     dropdownIndex: index,
 }: SwayGapsWidgetProps) {
+    if (!Config.swayGaps) return <></>
     if (Config.desktopSession !== "sway" && Config.desktopSession !== "i3") return <></>
     const swayGaps = SwayGaps.get_default()
     return (

@@ -34,7 +34,9 @@ export function DarkStyleButton() {
         "org.gnome.desktop.interface",
         true,
     )
-    if (!schema) return <></>
+    // gsettings-desktop-schemas < 42 has no color-scheme key: same
+    // uncatchable abort, same guard
+    if (!schema || !schema.has_key("color-scheme")) return <></>
     const settings = new Gio.Settings({ settings_schema: schema })
     const [active, setActive] = createState(false)
     // Gio.Settings emits "changed" so external changes (other tools,
@@ -64,9 +66,14 @@ export function DarkStyleButton() {
 export function AirplaneModeButton() {
     if (!has("nmcli")) return <></>
     const [active, setActive] = createState(false)
+    // drop reads issued before the latest refresh: an older `radio all`
+    // resolving late must not clobber a newer state (rapid toggles)
+    let refreshSeq = 0
     const refresh = () => {
+        const seq = ++refreshSeq
         execAsync(["nmcli", "radio", "all"])
             .then(v => {
+                if (seq !== refreshSeq) return
                 // first line is the header (WIFI-HW WIFI WWAN-HW WWAN);
                 // airplane mode = software radios (cols 2 and 4) disabled
                 const values = v.trim().split("\n")[1] ?? ""

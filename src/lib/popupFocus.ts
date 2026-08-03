@@ -1,7 +1,7 @@
 import app from "ags/gtk4/app"
 import GLib from "gi://GLib?version=2.0"
 import AstalHyprland from "gi://AstalHyprland"
-import { connect, disconnect, timeoutAdd } from "./metrics"
+import { connect, disconnect, timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
 import type { Gtk } from "ags/gtk4"
 
@@ -14,6 +14,9 @@ import type { Gtk } from "ags/gtk4"
 // every programmatic open. Focus moving between OUR windows is not
 // leaving: settle briefly (the other window's activation lands a tick
 // later), then close only when no shell window holds focus anymore.
+// Windows that lost focus while another shell window was active stay
+// pending: when focus finally leaves every window, all pending popups
+// hide — a stacked popup can no longer be stranded on screen forever.
 //
 // Exception: screenshot region pickers (slurp & co.) deliberately take
 // keyboard focus, and the capture (grim) happens right after the picker
@@ -24,14 +27,40 @@ import type { Gtk } from "ags/gtk4"
 // the watcher is disabled — the measured instance shares the live
 // session, and its focus bounces would churn hide timers in the
 // metrics (#25)
+
+// windows that held focus and lost it, waiting for the shell to lose
+// focus entirely
+const pending = new Set<Gtk.Window>()
+const hideByWindow = new Map<Gtk.Window, () => void>()
+let checkTimer = 0
+
+function checkFocus() {
+    if (checkTimer) return
+    checkTimer = timeoutAdd("popupFocus:loss", GLib.PRIORITY_DEFAULT, 150, () => {
+        checkTimer = 0
+        // picker active: keep re-checking instead of hiding; once it
+        // closes and the grace lapses, the normal logic applies
+        if (screenshotInProgress()) {
+            checkFocus()
+            return GLib.SOURCE_REMOVE
+        }
+        if (!app.windows.some(w => w.is_active)) {
+            for (const win of pending) {
+                pending.delete(win)
+                const hide = hideByWindow.get(win)
+                hideByWindow.delete(win)
+                hide?.()
+            }
+        }
+        return GLib.SOURCE_REMOVE
+    })
+}
+
 export function hideOnFocusLoss(win: Gtk.Window, hide: () => void) {
     // GLib.getenv at call time: the function runs per popup at window
     // construction, always after the process env is fixed
     if (GLib.getenv("WAM_SHELL_NO_FOCUS_WATCH") === "1") return
     let wasActive = false
-    // one settle timer at a time per window: a focus storm (the perf
-    // harness shares the live session) must not stack one per bounce
-    let lossTimer = 0
     connect(win, "notify::is-active", (_w: Gtk.Window) => {
         if (win.is_active) {
             wasActive = true
@@ -43,18 +72,10 @@ export function hideOnFocusLoss(win: Gtk.Window, hide: () => void) {
             hookHyprland()
             return
         }
-        if (!wasActive || lossTimer) return
-        lossTimer = timeoutAdd("popupFocus:loss", GLib.PRIORITY_DEFAULT, 150, () => {
-            // picker active: keep re-checking instead of hiding; once it
-            // closes and the grace lapses, the normal logic applies
-            if (screenshotInProgress()) return GLib.SOURCE_CONTINUE
-            lossTimer = 0
-            if (!app.windows.some(w => w.is_active)) {
-                wasActive = false
-                hide()
-            }
-            return GLib.SOURCE_REMOVE
-        })
+        if (!wasActive) return
+        pending.add(win)
+        hideByWindow.set(win, hide)
+        checkFocus()
     })
 }
 
@@ -103,6 +124,12 @@ export function dispose() {
         disconnect(AstalHyprland.get_default(), hyprHandler)
         hyprHandler = 0
     }
+    if (checkTimer) {
+        sourceRemove(checkTimer)
+        checkTimer = 0
+    }
+    pending.clear()
+    hideByWindow.clear()
     hyprHooked = false
     pickerLayers = 0
     graceUntil = 0
