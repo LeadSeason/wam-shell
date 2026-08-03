@@ -625,14 +625,16 @@ export function init() {
     loadSeen()
     loadChannelsCache()
     GLib.mkdir_with_parents(thumbsDir, 0o755)
+    // registered unconditionally: a user who started signed in, lost
+    // the account mid-session (chain stopped at zero accounts), and
+    // signs back in must resume polling too
+    auth.onAccountAdded(() => {
+        poll()
+        scheduleNext()
+    })
+    // no poll timer while signed out: the hook above starts it
     if (auth.getAccounts().length > 0) {
         poll()
         scheduleNext()
-    } else {
-        // no poll timer while signed out: the first sign-in starts it
-        auth.onAccountAdded(() => {
-            poll()
-            scheduleNext()
-        })
     }
 }
