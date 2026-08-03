@@ -360,6 +360,10 @@ window#QSettings {
     .appMuteBtn.active {
         color: t.$accent;
     }
+    .appStreamVol {
+        font-size: s.$font-small;
+        color: t.$subtext0;
+    }
 
     // wifi band section headers in the wifi pane
     // wifi band badge pill, overlaid bottom-right on signal icons
