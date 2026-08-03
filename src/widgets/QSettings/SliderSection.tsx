@@ -339,8 +339,8 @@ export function SliderSection() {
 
     // closed popup = collapsed dropdowns next open, like the toggle
     // section's reset on hide
-    qsVisible.subscribe(v => {
-        if (!v) setExpanded(0)
+    qsVisible.subscribe(() => {
+        if (!qsVisible.get()) setExpanded(0)
     })
 
     const speakers = createBinding(audio, "speakers").as(s => s ?? [])

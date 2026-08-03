@@ -98,8 +98,8 @@ export function VpnPane({ pane, name }: { pane: Accessor<string>; name: string }
 
     // closed popup = collapsed picker next open, like the toggle
     // section's reset on hide
-    qsVisible.subscribe(v => {
-        if (!v) {
+    qsVisible.subscribe(() => {
+        if (!qsVisible.get()) {
             setPickerOpen(false)
             setQuery("")
         }
