@@ -278,7 +278,7 @@ export default function QSettings() {
                                 name="peripherals"
                                 orientation={Gtk.Orientation.VERTICAL}
                             >
-                                <PaneHeader title="Backlights" onBack={() => setPane("main")} />
+                                <PaneHeader title="Peripherals" onBack={() => setPane("main")} />
                                 <PeripheralBrightnessWidget />
                             </box>
                         </stack>

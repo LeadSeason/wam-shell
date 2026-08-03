@@ -22,7 +22,10 @@ export function PeripheralBrightnessButton({ navigate }: { navigate: () => void 
                         activate={navigate}
                         navigate={navigate}
                         icon={"input-keyboard-symbolic"}
-                        label={devices.as(l => (l.length === 1 ? l[0].label : "Backlights"))}
+                        // short and static on purpose: a long dynamic
+                        // label ("Keyboard backlight") pushed the
+                        // FlowBox to one column
+                        label={"Peripherals"}
                         subtitle={createComputed([devices, externalChange], l =>
                             l.length === 1 ? levelText(l[0]) : `${l.length} devices`,
                         )}

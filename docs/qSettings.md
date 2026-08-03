@@ -17,13 +17,13 @@ It closes on ESC, on click-away, and on the panel button (it's a toggle).
   allows >100% on supported setups).
 - **Toggle section** (`quicksettings` FlowBox): Wi-Fi, Bluetooth, Wired,
   Power Mode, Sway Gaps (sway only), Night Light, Dark Style, VPN
-  (Mullvad), Airplane Mode, Sleep Timer, Backlights (peripheral
+  (Mullvad), Airplane Mode, Sleep Timer, Peripherals (peripheral
   brightness; only when a writable device exists — keyboard backlights
   from `/sys/class/leds` or asusctl). Toggles with a chevron either
-  navigate to a pane (Wi-Fi, Bluetooth, Wired, Power Mode, Backlights)
-  or expand an inline dropdown (Sway Gaps, Sleep Timer). The Backlights
-  pane has one slider per device; staged devices (asusctl) also get
-  one-tap Off/Low/Med/High buttons.
+  navigate to a pane (Wi-Fi, Bluetooth, Wired, Power Mode, Peripherals)
+  or expand an inline dropdown (Sway Gaps, Sleep Timer). The
+  Peripherals pane has one slider per device; staged devices (asusctl)
+  also get one-tap Off/Low/Med/High buttons.
 - **Stats section** (optional, `quicksettings.show_stats`): cpu/ram/gpu/
   network graphs; the same stats can go on the panel
   (`quicksettings.stats_on_panel`).
