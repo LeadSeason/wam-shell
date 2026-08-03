@@ -258,7 +258,19 @@ export default function QSettings() {
                                 orientation={Gtk.Orientation.VERTICAL}
                             >
                                 <PaneHeader title="Power Mode" onBack={() => setPane("main")} />
-                                <PowerProfilesWidget pane={pane} name="powerprofiles" />
+                                {/* the pane outgrew the shell's uniform
+                                height (main): scroll inside the pane
+                                instead of stretching the window and
+                                leaving the main pane with dead space.
+                                No propagateNaturalHeight, so the stack
+                                keeps sizing to main */}
+                                <Gtk.ScrolledWindow
+                                    vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                                    hscrollbarPolicy={Gtk.PolicyType.NEVER}
+                                    vexpand
+                                >
+                                    <PowerProfilesWidget pane={pane} name="powerprofiles" />
+                                </Gtk.ScrolledWindow>
                             </box>
                         </stack>
                     </Gtk.ScrolledWindow>
