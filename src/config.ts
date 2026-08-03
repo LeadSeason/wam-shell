@@ -174,7 +174,18 @@ function getTrayConfig() {
         spacing,
         position: position as "left" | "right",
         alwaysOnPanel,
-        popupIconSize: get("popup_icon_size", 22),
+        // type-guarded like spacing/width: a non-number (popup_icon_size
+        // = "22") reaches Gtk.Image.pixelSize / pill CSS at startup
+        popupIconSize: (() => {
+            const size = get("popup_icon_size", 22)
+            if (typeof size !== "number" || size <= 0) {
+                console.error(
+                    `Config "tray.popup_icon_size" must be a positive number, got "${size}"`,
+                )
+                return 22
+            }
+            return size
+        })(),
     }
 }
 
