@@ -256,6 +256,10 @@ async function discoverDdc() {
                     cur = Math.round(Math.min(1, Math.max(0, l)) * reply.max)
                     pending = cur
                     send()
+                    // the physical write lands seconds later (slow i2c):
+                    // report our own target now so labels, the pill and
+                    // the OSD follow the drag instead of looking dead
+                    reportExternal(`ddc-bus${bus}`, cur / reply.max)
                 },
             })
         } catch (e) {
@@ -330,6 +334,10 @@ async function discoverOpenRgb() {
                 level = Math.min(1, Math.max(0, l))
                 pending = level
                 send()
+                // no readback exists: report our own target so labels,
+                // the pill and the OSD follow the drag (the asus/ddc
+                // watches do the same for their devices)
+                reportExternal(`openrgb-${d.index}`, level)
             },
         })
     }
