@@ -1,6 +1,7 @@
 import { Gtk } from "ags/gtk4"
 import GLib from "gi://GLib?version=2.0"
 import { onCleanup } from "gnim"
+import { idleAdd } from "../../lib/metrics"
 import Config from "../../config"
 import {
     POPUP_SLIDE_IN_MS,
@@ -76,7 +77,7 @@ export default function PopupRow({ entry }: { entry: PopupEntry }) {
                 // slide in after the widget is realized; the row may be
                 // destroyed before the idle runs (instant resolve, burst
                 // past MAX_POPUPS) — guard like the card refs do
-                GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                idleAdd("popupRow:reveal", GLib.PRIORITY_DEFAULT_IDLE, () => {
                     if (rev) rev.revealChild = true
                     return GLib.SOURCE_REMOVE
                 })

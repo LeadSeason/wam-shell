@@ -425,8 +425,17 @@ function syncAccount(
     )
 }
 
+// the last focus requested while a sync was in flight: covered as
+// soon as the in-flight sync completes instead of waiting for the
+// next poll
+let pendingFocus: { y: number; m: number } | null = null
+
 export function sync(focus?: { y: number; m: number }) {
-    if (!active || auth.getAccounts().length === 0 || syncInFlight) return
+    if (!active || auth.getAccounts().length === 0) return
+    if (syncInFlight) {
+        pendingFocus = focus ?? pendingFocus
+        return
+    }
     syncInFlight = true
     lastSyncAttempt = Date.now()
     const now = new Date()
@@ -466,15 +475,23 @@ export function sync(focus?: { y: number; m: number }) {
             // a window is only "loaded" when at least one account
             // actually synced: advancing past a total failure would
             // stop ensureCoverage from retrying the new month until the
-            // next poll (default 15 min)
+            // next poll (default 15 min). The cache gets the same guard:
+            // clamped stale events under old bounds would read as
+            // loaded-but-empty months after a restart
             if (failedAccounts < signedIn.length) {
                 loadedFrom = from
                 loadedTo = to
+                writeCache(merged)
             }
             setEvents(merged)
             setCalendars(allCals)
-            writeCache(merged)
             syncInFlight = false
+            // cover whatever the user navigated to while we were syncing
+            if (pendingFocus) {
+                const f = pendingFocus
+                pendingFocus = null
+                ensureCoverage(f.y, f.m)
+            }
         })
     }
 }

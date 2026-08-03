@@ -99,10 +99,15 @@ function hyprlandSource(): LayoutSource {
     const [variants, setVariants] = createState<string[]>([])
     const [activeIndex, setActiveIndex] = createState(0)
     let mainKb = ""
+    // keyboard-layout can fire in bursts: only the latest issued
+    // refresh may apply (older responses landing later must not win)
+    let refreshSeq = 0
 
     function refresh() {
+        const seq = ++refreshSeq
         execAsync("hyprctl devices -j")
             .then(out => {
+                if (seq !== refreshSeq) return
                 const devices = JSON.parse(out)
                 const kb = devices.keyboards.find((k: any) => k.main) ?? devices.keyboards[0]
                 if (!kb) return

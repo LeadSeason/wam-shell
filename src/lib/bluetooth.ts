@@ -133,10 +133,17 @@ function watchAllDevices() {
     for (const device of bluetooth.devices) watchDevice(device)
 }
 
-connect(bluetooth, "notify::devices", watchAllDevices)
-connect(bluetooth, "notify::adapter", () => {
+const devicesHandler = connect(bluetooth, "notify::devices", watchAllDevices)
+const adapterHandler = connect(bluetooth, "notify::adapter", () => {
     if (bluetooth.adapter) watchAllDevices()
 })
 if (bluetooth.adapter) watchAllDevices()
+
+// convention for lib modules with long-lived sources (see AGENTS.md)
+export function dispose() {
+    disconnect(bluetooth, devicesHandler)
+    disconnect(bluetooth, adapterHandler)
+    for (const address of [...watched.keys()]) unwatchDevice(address)
+}
 
 export default bluetooth

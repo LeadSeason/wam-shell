@@ -1,6 +1,6 @@
 import GObject, { register, getter, setter } from "ags/gobject"
 import GLib from "gi://GLib?version=2.0"
-import { connect, timeoutAdd, sourceRemove } from "./metrics"
+import { connect, disconnect, timeoutAdd, sourceRemove } from "./metrics"
 import { readFile } from "ags/file"
 import AstalBrightness from "gi://AstalBrightness"
 import Config from "../config"
@@ -89,6 +89,10 @@ export default class Brightness extends GObject.Object {
 
         if (this.#useGammaDim) {
             setDimLevel(fraction)
+            // setDimLevel clamps to 0.05: when our target sat below the
+            // clamp, the real gamma wins — show the clamped value, not
+            // the unclamped request
+            this.#screen = hyprsunset.dim.get()
             this.notify("screen")
             return
         }
@@ -120,17 +124,16 @@ export default class Brightness extends GObject.Object {
         const eps = maxBrightness > 0 ? Math.min(0.03, 1.5 / maxBrightness) : 0.02
         let last = this.#screen
         let burstStart = -1
-        let settleSource = 0
-        connect(this, "notify::screen", () => {
+        this.#screenHandler = connect(this, "notify::screen", () => {
             if (Math.abs(this.#screen - last) < eps) return
-            if (settleSource === 0) burstStart = last
-            if (settleSource !== 0) sourceRemove(settleSource)
-            settleSource = timeoutAdd(
+            if (this.#settleSource === 0) burstStart = last
+            if (this.#settleSource !== 0) sourceRemove(this.#settleSource)
+            this.#settleSource = timeoutAdd(
                 "brightness:previousSettle",
                 GLib.PRIORITY_DEFAULT,
                 200,
                 () => {
-                    settleSource = 0
+                    this.#settleSource = 0
                     this.#previous = burstStart
                     last = this.#screen
                     this.notify("previous")
@@ -142,16 +145,39 @@ export default class Brightness extends GObject.Object {
         if (this.#useGammaDim) {
             // gamma-dim path: keep the slider's value in sync with the
             // shared dim state (quick settings, keybinds, the watcher)
-            hyprsunset.dim.subscribe(() => {
+            this.#dimUnsub = hyprsunset.dim.subscribe(() => {
                 this.#screen = hyprsunset.dim.get()
                 this.notify("screen")
             })
         } else if (hasBacklight) {
             // astal monitors sysfs itself
-            connect(abScreen, "notify::brightness", () => {
+            this.#abHandler = connect(abScreen, "notify::brightness", () => {
                 this.#screen = abScreen.brightness
                 this.notify("screen")
             })
+        }
+    }
+
+    // convention for lib modules with long-lived sources (see AGENTS.md)
+    #screenHandler = 0
+    #abHandler = 0
+    #dimUnsub: (() => void) | null = null
+    #settleSource = 0
+
+    dispose() {
+        if (this.#screenHandler) {
+            disconnect(this, this.#screenHandler)
+            this.#screenHandler = 0
+        }
+        if (this.#abHandler) {
+            disconnect(abScreen, this.#abHandler)
+            this.#abHandler = 0
+        }
+        this.#dimUnsub?.()
+        this.#dimUnsub = null
+        if (this.#settleSource !== 0) {
+            sourceRemove(this.#settleSource)
+            this.#settleSource = 0
         }
     }
 }

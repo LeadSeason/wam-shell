@@ -30,10 +30,11 @@ import { init as initYouTube } from "./src/lib/youtube"
 import { init as initTodoist } from "./src/lib/todoist"
 import { init as initProtonmail } from "./src/lib/protonmail"
 import { forceExitStreamedChildren } from "./src/lib/streamLines"
+import { connect } from "./src/lib/metrics"
 
 // long-lived streamed children (mullvad listen, nvidia-smi --loop-ms)
 // must not outlive the shell
-app.connect("shutdown", forceExitStreamedChildren)
+connect(app, "shutdown", forceExitStreamedChildren)
 
 function matchMonitor(wanted: string[], m: Gdk.Monitor): boolean {
     if (wanted.length === 0) return true

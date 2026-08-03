@@ -145,7 +145,10 @@ export function VpnPane({ pane, name }: { pane: Accessor<string>; name: string }
                     xalign={0}
                     maxWidthChars={34}
                     ellipsize={Pango.EllipsizeMode.END}
-                    label={verbose.as(v => v?.location ?? vpnStatus.get().relay ?? "")}
+                    label={createComputed(
+                        [verbose, vpnStatus],
+                        (v, s) => v?.location ?? s.relay ?? "",
+                    )}
                     visible={vpnStatus.as(s => s.connected)}
                 />
                 <label

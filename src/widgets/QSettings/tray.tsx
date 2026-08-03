@@ -31,28 +31,35 @@ export default function Tray({
     // disconnected when this instance is destroyed (the bar mount dies
     // with its monitor on hotplug): gnim only auto-disposes JSX-prop
     // bindings, not manual connects
-    const registryHandlers = [
-        connect(registry, "item-added", (_: AstalTray.Tray, item_id: string) => {
-            const t = registry.get_item(item_id)
-
-            const path = t.iconThemePath
-            if (path) {
-                let owners = pathOwners.get(path)
-                if (!owners) {
-                    owners = new Set()
-                    pathOwners.set(path, owners)
-                    iconTheme.add_search_path(path)
-                }
-                owners.add(item_id)
+    function addItem(t: AstalTray.TrayItem, item_id: string) {
+        const path = t.iconThemePath
+        if (path) {
+            let owners = pathOwners.get(path)
+            if (!owners) {
+                owners = new Set()
+                pathOwners.set(path, owners)
+                iconTheme.add_search_path(path)
             }
+            owners.add(item_id)
+        }
 
-            setTrayItems(items => {
-                if (items.find(item => item.get_item_id() === item_id)) {
-                    return items
-                }
-                return [...items, t]
-            })
-        }),
+        setTrayItems(items => {
+            if (items.find(item => item.get_item_id() === item_id)) {
+                return items
+            }
+            return [...items, t]
+        })
+    }
+
+    // backfill items that registered before this instance connected —
+    // the bar's Tray is recreated on monitor hotplug and would
+    // otherwise come up empty until each app re-registers (never)
+    for (const t of registry.get_items() ?? []) addItem(t, t.get_item_id())
+
+    const registryHandlers = [
+        connect(registry, "item-added", (_: AstalTray.Tray, item_id: string) =>
+            addItem(registry.get_item(item_id), item_id),
+        ),
 
         connect(registry, "item-removed", (_: AstalTray.Tray, item_id: string) => {
             // drop this item's claim on any path it owned; entries whose

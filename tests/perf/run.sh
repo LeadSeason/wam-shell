@@ -53,6 +53,7 @@ trap cleanup EXIT
 [[ -e node_modules/ags && -e node_modules/gnim ]] \
     || die "node_modules/ags or node_modules/gnim missing — run scripts/setup.sh (or pnpm i) first"
 command -v ags >/dev/null || die "ags not found in PATH"
+command -v jq >/dev/null || die "jq not found in PATH"
 
 if ags list 2>/dev/null | grep -qw "$INSTANCE"; then
     die "an instance named $INSTANCE is already running"

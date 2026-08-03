@@ -111,7 +111,9 @@ async function readSinkVolume(): Promise<{ volume: number; mute: boolean } | nul
 async function forceAlarmVolume() {
     if (GLib.find_program_in_path("wpctl") === null) return
     const cur = await readSinkVolume()
-    if (cur === null) return
+    // the alarm may have been stopped while wpctl was out: don't latch
+    // a saved level and force the sink for a session that's over
+    if (cur === null || !alarming.get()) return
     savedAudio = cur
     if (cur.mute) execAsync(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "0"]).catch(() => {})
     const target = Config.sleepTimer.alarmVolume
@@ -170,17 +172,17 @@ function startAlarm() {
 }
 
 export function stopAlarm() {
+    // the pause sweep re-mutes anything still unmuted when it ticks —
+    // it must not outlive the session, whether or not a chime rang
+    if (pauseSweepSource) {
+        sourceRemove(pauseSweepSource)
+        pauseSweepSource = 0
+    }
     if (!alarming.get()) return
     setAlarming(false)
     if (alarmSource) {
         sourceRemove(alarmSource)
         alarmSource = 0
-    }
-    // the pause sweep re-mutes anything still unmuted when it ticks —
-    // the alarm session is over, so it must not run past this point
-    if (pauseSweepSource) {
-        sourceRemove(pauseSweepSource)
-        pauseSweepSource = 0
     }
     restoreAlarmVolume()
     // cut the in-flight chime instead of letting it ring out
@@ -290,6 +292,10 @@ function notify(summary: string, body: string) {
     )
 }
 
+// a live shell owns the timer: this shell must not start/pause one of
+// its own — that would double-fire (dim twice, two chime loops)
+let foreignOwned = false
+
 // adopt (or discard) a state left by a previous shell. Runs at import:
 // a LIVE owner PID means a live shell owns the timer — hands off. A
 // crashed owner's dead PID marks the file abandoned, so the restart
@@ -304,7 +310,10 @@ function loadState() {
         return // no file at all
     }
     const nowMs = Date.now()
-    if (decide(state, nowMs, state !== null && ownerAlive(state.pid)) === "owned") return // a live shell owns the timer
+    if (decide(state, nowMs, state !== null && ownerAlive(state.pid)) === "owned") {
+        foreignOwned = true // a live shell owns the timer
+        return
+    }
     // atomic claim: only one starting shell can win the rename
     const claimedPath = `${statePath}.claimed`
     try {
@@ -549,6 +558,7 @@ function restoreDim() {
 }
 
 export function startSleepTimer(minutes: number) {
+    if (foreignOwned) return // a stale-but-live timer belongs to the other shell instance
     cancelSleepTimer()
     restoreDim()
     stopAlarm()
@@ -570,7 +580,7 @@ export function cancelSleepTimer() {
 }
 
 export function toggleSleepTimerPause() {
-    if (remaining.get() <= 0) return
+    if (foreignOwned || remaining.get() <= 0) return
     if (paused.get()) {
         // re-apply the frozen remainder as a fresh deadline
         deadline = Date.now() + pausedSeconds * 1000

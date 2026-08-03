@@ -3,6 +3,7 @@
  * Description: Mainly for helper functions
  */
 import GLib from "gi://GLib?version=2.0"
+import Gdk from "gi://Gdk?version=4.0"
 import Pango from "gi://Pango?version=1.0"
 
 /**
@@ -14,6 +15,16 @@ export function isFile(path: string): boolean {
     // IS_REGULAR, not EXISTS: a directory at the expected path must not
     // pass (a "config.toml" directory, a cache dir named like a cover…)
     return GLib.file_test(path, GLib.FileTest.IS_REGULAR)
+}
+
+// a captured Gdk.Monitor may be unplugged by the time it's used (popup
+// anchors): only assign it to a window if it's still present
+export function monitorAlive(monitor: Gdk.Monitor): boolean {
+    const monitors = Gdk.Display.get_default()?.get_monitors()
+    if (!monitors) return false
+    const n = monitors.get_n_items()
+    for (let i = 0; i < n; i++) if (monitors.get_item(i) === monitor) return true
+    return false
 }
 
 // AstalBluetooth's batteryPercentage is a FRACTION (0..1, like AstalWp

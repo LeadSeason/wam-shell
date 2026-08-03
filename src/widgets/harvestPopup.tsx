@@ -7,6 +7,7 @@ import { Accessor, For, With, createComputed, createRoot, createState, onCleanup
 import CommandRegistry from "../lib/requestHandler"
 import { timeoutAdd, sourceRemove, connect } from "../lib/metrics"
 import { hideOnFocusLoss } from "../lib/popupFocus"
+import { monitorAlive } from "../lib/utils"
 import * as Harvest from "../lib/harvest"
 import Config from "../config"
 
@@ -66,9 +67,11 @@ function NotesRow() {
     const currentText = () => buffer?.text ?? ""
     const save = () => {
         if (!buffer) return
-        // keep dirty when the update couldn't be attempted (busy), so the
-        // text isn't silently dropped
-        if (Harvest.setNotes(currentText())) setDirty(false)
+        // keep dirty when the update couldn't be attempted (busy) or
+        // the server rejected it — the text isn't silently dropped
+        Harvest.setNotes(currentText(), ok => {
+            if (ok) setDirty(false)
+        })
     }
 
     const unsub = Harvest.running.subscribe(() => {
@@ -458,8 +461,11 @@ function PausedEditor() {
             setDirty(false)
             return
         }
-        // keep dirty when the update couldn't be attempted (busy)
-        if (Harvest.setHours(p, hours)) setDirty(false)
+        // keep dirty when the update couldn't be attempted (busy) or
+        // the server rejected it
+        Harvest.setHours(p, hours, ok => {
+            if (ok) setDirty(false)
+        })
     }
 
     const unsub = Harvest.paused.subscribe(() => {
@@ -703,8 +709,11 @@ function TimelineRow({
                 setHoursDirty(false)
             }
             // keep dirty when the update couldn't be attempted (busy,
-            // running)
-            else if (Harvest.setHours(entry, hours)) setHoursDirty(false)
+            // running) or was rejected
+            else
+                Harvest.setHours(entry, hours, ok => {
+                    if (ok) setHoursDirty(false)
+                })
         }
         const fields: { notes?: string; projectId?: number; taskId?: number } = {}
         const text = notesBuffer?.text
@@ -714,11 +723,13 @@ function TimelineRow({
             fields.taskId = taskSel.get()
         }
         if (Object.keys(fields).length === 0) return
-        // keep dirty when the update couldn't be attempted (busy). On a
-        // successful PATCH the bumped updatedAt rebuilds this row with
-        // fresh state, collapsing the editor — the new values show in
-        // the row itself
-        if (Harvest.updateEntry(entry, fields)) setNotesDirty(false)
+        // keep dirty when the update couldn't be attempted (busy) or was
+        // rejected. On a successful PATCH the bumped updatedAt rebuilds
+        // this row with fresh state, collapsing the editor — the new
+        // values show in the row itself
+        Harvest.updateEntry(entry, fields, ok => {
+            if (ok) setNotesDirty(false)
+        })
     }
 
     const cssClasses = isPaused.as(p => [
@@ -1106,7 +1117,9 @@ function show() {
     // and sync anything that changed since the last tick right now
     Harvest.deltaPoll()
     const anchor = popupAnchor.get()
-    if (anchor) win!.gdkmonitor = anchor.monitor
+    // the monitor the anchor was captured on may be gone (hotplug):
+    // assigning a removed output maps the window into the void
+    if (anchor && monitorAlive(anchor.monitor)) win!.gdkmonitor = anchor.monitor
     win!.present()
     rev!.revealChild = true
 }

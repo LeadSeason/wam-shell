@@ -5,6 +5,7 @@ import i3ipc from "gi://i3ipc?version=1.0"
 import Sway from "./sway"
 import CommandRegistry from "./requestHandler"
 import Cache from "./cache"
+import { timeoutAdd, sourceRemove } from "./metrics"
 
 @register({ GTypeName: "SwayGaps" })
 export default class SwayGaps extends GObject.Object {
@@ -37,6 +38,10 @@ export default class SwayGaps extends GObject.Object {
     // slider drag fires per motion event, but the file only needs the
     // settled value — one write once the changes stop
     #writeSource = 0
+    // the IPC apply gets the same treatment: Sway.message() is a
+    // synchronous blocking round-trip, so 50 motions per drag must not
+    // become 50 blocking calls on the main loop
+    #applySource = 0
     // i3ipc's on() offers no off(): teardown is a guard flag, same as
     // the Sway class solves it
     #disposed = false
@@ -50,13 +55,18 @@ export default class SwayGaps extends GObject.Object {
     set gap_size(size: number) {
         this.#gapSize = Math.floor(size)
         this.notify("gap_size")
-        if (this.#writeSource !== 0) GLib.source_remove(this.#writeSource)
-        this.#writeSource = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+        if (this.#writeSource !== 0) sourceRemove(this.#writeSource)
+        this.#writeSource = timeoutAdd("swayGaps:cacheWrite", GLib.PRIORITY_DEFAULT, 200, () => {
             this.#writeSource = 0
             this.#cache.data = { gapsSize: this.#gapSize }
             return GLib.SOURCE_REMOVE
         })
-        this.#applyGaps()
+        if (this.#applySource !== 0) sourceRemove(this.#applySource)
+        this.#applySource = timeoutAdd("swayGaps:apply", GLib.PRIORITY_DEFAULT, 200, () => {
+            this.#applySource = 0
+            this.#applyGaps()
+            return GLib.SOURCE_REMOVE
+        })
     }
 
     @getter(Boolean)
@@ -97,8 +107,12 @@ export default class SwayGaps extends GObject.Object {
     dispose() {
         this.#disposed = true
         if (this.#writeSource !== 0) {
-            GLib.source_remove(this.#writeSource)
+            sourceRemove(this.#writeSource)
             this.#writeSource = 0
+        }
+        if (this.#applySource !== 0) {
+            sourceRemove(this.#applySource)
+            this.#applySource = 0
         }
     }
 

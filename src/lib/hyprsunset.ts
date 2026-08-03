@@ -1,4 +1,4 @@
-import { exec, execAsync, timeoutAdd } from "./metrics"
+import { exec, execAsync, timeoutAdd, sourceRemove } from "./metrics"
 import { createState } from "gnim"
 import GLib from "gi://GLib?version=2.0"
 import Config from "../config"
@@ -161,11 +161,25 @@ export function refreshHyprsunset() {
         })
 }
 
+let watchSource = 0
 if (Config.desktopSession === "hyprland")
-    timeoutAdd("hyprsunset:watch", GLib.PRIORITY_DEFAULT, 30000, () => {
+    watchSource = timeoutAdd("hyprsunset:watch", GLib.PRIORITY_DEFAULT, 30000, () => {
         refreshHyprsunset()
         return GLib.SOURCE_CONTINUE
     })
+
+// convention for lib modules with long-lived sources (see AGENTS.md)
+export function dispose() {
+    if (watchSource) {
+        sourceRemove(watchSource)
+        watchSource = 0
+    }
+    if (gammaSource !== null) {
+        sourceRemove(gammaSource)
+        gammaSource = null
+        pendingGamma = null
+    }
+}
 
 export function setNightLightEnabled(v: boolean) {
     setNightLight(v)

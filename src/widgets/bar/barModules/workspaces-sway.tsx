@@ -94,10 +94,6 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
         for (const id of cacheKeys) wsIconCache.delete(id)
     })
 
-    // connector can be null at construction (monitor still initializing):
-    // make it a computed dep so the list recomputes when it arrives
-    const displayName = createBinding(monitor, "connector")
-
     const swayWorkspacesList = createComputed(
         [
             createBinding(sway, "wss"),
@@ -121,6 +117,19 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
             })
         },
     )
+
+    // dead workspaces must not accumulate cache entries over the bar's
+    // lifetime: prune whenever the list recomputes
+    const unsubPrune = swayWorkspacesList.subscribe(() => {
+        const current = new Set(swayWorkspacesList.get().map(ws => ws.id))
+        for (const id of [...cacheKeys]) {
+            if (!current.has(id)) {
+                wsIconCache.delete(id)
+                cacheKeys.delete(id)
+            }
+        }
+    })
+    onCleanup(unsubPrune)
 
     return (
         <box cssName={"workspaces"}>
@@ -173,6 +182,11 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
                         if (cached && cached.key === key) return cached.box
                         const box = (
                             <box
+                                cssClasses={createBinding(sway, "wss").as(wss =>
+                                    wss.find(ws => ws.id === workspace.id)?.urgent
+                                        ? ["urgent"]
+                                        : [],
+                                )}
                                 $={self => {
                                     iconNames.forEach(name => {
                                         self.append((<image iconName={name} />) as Gtk.Widget)

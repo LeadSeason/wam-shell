@@ -39,8 +39,15 @@ function applyStatus(connected: boolean, relay: string, state: string) {
 // skip ticks while a previous refresh is still pending: a wedged
 // mullvad daemon would otherwise accumulate one blocked process per tick
 let refreshing = false
+// a refresh requested while one is in flight (e.g. right after the
+// user clicked connect) must still land — the in-flight read started
+// before the action took effect
+let refreshQueued = false
 export async function refreshVpn() {
-    if (refreshing) return
+    if (refreshing) {
+        refreshQueued = true
+        return
+    }
     refreshing = true
     try {
         const out = await execAsync(["mullvad", "status"])
@@ -54,6 +61,10 @@ export async function refreshVpn() {
         // daemon down, leave state as is
     } finally {
         refreshing = false
+        if (refreshQueued) {
+            refreshQueued = false
+            refreshVpn()
+        }
     }
 }
 

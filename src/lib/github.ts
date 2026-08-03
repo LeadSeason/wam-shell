@@ -287,7 +287,12 @@ function fetchPage(page: number, acc: any[]) {
         `/notifications?per_page=50&page=${page}`,
         r => {
             pollInFlight = false
-            if (r.status === 304) return // unchanged; keep current items
+            // unchanged; keep current items, and clear any error from a
+            // previous failed poll
+            if (r.status === 304) {
+                setStatus(null)
+                return
+            }
             if (r.status === 401) {
                 authFailed = true
                 setStatus("GitHub token rejected — check ~/.config/wam-shell/github.env")

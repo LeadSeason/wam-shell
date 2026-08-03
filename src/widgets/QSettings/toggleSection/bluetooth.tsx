@@ -134,10 +134,60 @@ function removeDeviceAsync(device: AstalBluetooth.Device): void {
     )
 }
 
-// the adapter's own object path is not exposed; derive it from any device
-function adapterPath(): string {
-    return `${bluetooth.devices[0]?.adapter ?? "/org/bluez/hci0"}`
+// the adapter's own object path is not exposed; resolve it once from
+// the ObjectManager tree by matching the adapter's address (devices[0]
+// belongs to a random adapter on multi-adapter setups, and an empty
+// device list says nothing)
+let adapterObjectPath = "/org/bluez/hci0"
+let adapterPathResolved = false
+
+function resolveAdapterPath() {
+    if (adapterPathResolved) return
+    adapterPathResolved = true
+    const wanted = bluetooth.adapter?.address?.toUpperCase()
+    if (!wanted) return
+    Gio.DBus.system.call(
+        "org.bluez",
+        "/",
+        "org.freedesktop.DBus.ObjectManager",
+        "GetManagedObjects",
+        null,
+        null,
+        Gio.DBusCallFlags.NONE,
+        -1,
+        null,
+        (_conn, res) => {
+            try {
+                const [objects] = Gio.DBus.system.call_finish(res) as [GLib.Variant]
+                const n = objects.n_children()
+                for (let i = 0; i < n; i++) {
+                    const entry = objects.get_child_value(i)
+                    const path = entry.get_child_value(0).get_string()[0]
+                    const adapter = entry
+                        .get_child_value(1)
+                        .lookup_value("org.bluez.Adapter1", null)
+                    const addr = adapter?.lookup_value("Address", null)?.get_string()[0]
+                    if (addr && addr.toUpperCase() === wanted) {
+                        adapterObjectPath = path
+                        return
+                    }
+                }
+            } catch (e) {
+                console.warn("bluetooth: adapter path lookup failed:", e)
+            }
+        },
+    )
 }
+
+function adapterPath(): string {
+    return adapterObjectPath
+}
+
+// the NotReady retry while the adapter powers on: tracked so the
+// pane's cleanup can cancel it
+let discoveryRetryId = 0
+
+resolveAdapterPath()
 
 // discovery start/stop must also be async: the sync versions block the
 // main loop (observed 25s) when bluez is busy e.g. pairing
@@ -161,10 +211,16 @@ function startDiscoveryAsync(retried = false): void {
                 // the adapter is briefly NotReady while powering on:
                 // retry once, or discovery silently never starts
                 if (!retried && (e as Error).message?.includes("NotReady")) {
-                    timeoutAdd("btPane:discoveryRetry", GLib.PRIORITY_DEFAULT, 500, () => {
-                        startDiscoveryAsync(true)
-                        return GLib.SOURCE_REMOVE
-                    })
+                    discoveryRetryId = timeoutAdd(
+                        "btPane:discoveryRetry",
+                        GLib.PRIORITY_DEFAULT,
+                        500,
+                        () => {
+                            discoveryRetryId = 0
+                            startDiscoveryAsync(true)
+                            return GLib.SOURCE_REMOVE
+                        },
+                    )
                     return
                 }
                 console.warn("bluetooth start discovery failed:", e)
@@ -365,6 +421,12 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
             sourceRemove(listTimer)
             listTimer = 0
         }
+        // a NotReady retry armed while the pane was open must not start
+        // discovery with it closed
+        if (discoveryRetryId) {
+            sourceRemove(discoveryRetryId)
+            discoveryRetryId = 0
+        }
         setBtPaneOpen(false)
         stopDiscoveryAsync()
     })
@@ -548,11 +610,14 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                     connectDevice()
                 })
                 setTimeout(() => {
-                    if (attempt !== pairAttempt) return
+                    // clean up this attempt's handler no matter what: a
+                    // superseded attempt must not leave it armed to
+                    // double-connect on success
                     if (handlerId) {
                         disconnect(device, handlerId)
                         handlerId = 0
                     }
+                    if (attempt !== pairAttempt) return
                     if (pending.get() === "pairing") {
                         fail("Pairing failed", "timed out")
                         dismissPairingPrompt(device.address)
@@ -560,6 +625,10 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                     }
                 }, 30_000)
                 pairDeviceAsync(device).catch(e => {
+                    if (handlerId) {
+                        disconnect(device, handlerId)
+                        handlerId = 0
+                    }
                     fail("Pairing failed", e)
                     // bluez does not reliably cancel the agent prompt when
                     // pairing fails — dismiss it ourselves

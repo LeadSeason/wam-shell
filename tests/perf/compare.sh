@@ -39,6 +39,8 @@
 # reported, never gated.
 set -uo pipefail
 
+command -v jq >/dev/null || { printf 'error: jq not found in PATH\n' >&2; exit 1; }
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WORKTREE="/tmp/wam-perf-base"
 OUT="$(mktemp -d)"

@@ -201,7 +201,13 @@ function startGpuStream() {
         gpuRestartSource = 0
     }
     if (gpuProc) return
-    gpuProc = streamLines(GPU_CMD, handleGpuLine, scheduleGpuRestart)
+    const proc = streamLines(GPU_CMD, handleGpuLine, () => {
+        // only the process we still own may schedule a restart: a stale
+        // exit from an already-replaced process must not wipe the new
+        // handle and spawn a duplicate
+        if (gpuProc === proc) scheduleGpuRestart()
+    })
+    gpuProc = proc
     if (!gpuProc) scheduleGpuRestart()
 }
 

@@ -283,6 +283,10 @@ function notify(summary: string, body: string) {
 // ---------------------------------------------------------------- http
 
 const session = new Soup.Session({ timeout: 20 })
+// in-flight HTTP cancellables so dispose() can actually stop the
+// module (a late response must not re-arm polling after teardown)
+const inFlightCancellables = new Set<Gio.Cancellable>()
+let disposed = false
 
 interface Reply {
     ok: boolean // 2xx with parseable body (or no body needed)
@@ -315,7 +319,9 @@ function request(method: string, path: string, body: any, cb: (r: Reply) => void
         msg.set_request_body_from_bytes("application/json", bytes)
     }
     const cancellable = new Gio.Cancellable()
+    inFlightCancellables.add(cancellable)
     session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, cancellable, (_s, res) => {
+        inFlightCancellables.delete(cancellable)
         let reply: Reply
         try {
             const bytes = session.send_and_read_finish(res)
@@ -426,7 +432,7 @@ function effectiveInterval(): number {
 }
 
 function scheduleNext(retryAfter = 0) {
-    if (authDisabled.get()) return
+    if (authDisabled.get() || disposed) return
     if (fastTimer) sourceRemove(fastTimer)
     const delay = Math.max(retryAfter, effectiveInterval())
     fastTimer = timeoutAddSeconds("harvest:deltaPoll", GLib.PRIORITY_DEFAULT, delay, () => {
@@ -961,16 +967,16 @@ export function resumeLast() {
 
 // false when the update could not even be attempted (busy/disabled), so
 // the notes field keeps its dirty state instead of silently dropping text
-export function setNotes(text: string): boolean {
+export function setNotes(text: string, onDone?: (ok: boolean) => void): boolean {
     const cur = running.get()
     if (!cur) return false
-    return setEntryNotes(cur, text)
+    return setEntryNotes(cur, text, onDone)
 }
 
 // edit the notes of any entry, running or stopped. Same return contract
 // as setNotes: false = not attempted, the field stays dirty
-export function setEntryNotes(entry: Entry, text: string): boolean {
-    return updateEntry(entry, { notes: text })
+export function setEntryNotes(entry: Entry, text: string, onDone?: (ok: boolean) => void): boolean {
+    return updateEntry(entry, { notes: text }, onDone)
 }
 
 // one PATCH carrying every changed field (notes and/or project/task
@@ -982,6 +988,7 @@ export function setEntryNotes(entry: Entry, text: string): boolean {
 export function updateEntry(
     entry: Entry,
     fields: { notes?: string; projectId?: number; taskId?: number },
+    onDone?: (ok: boolean) => void,
 ): boolean {
     const body: Record<string, any> = {}
     if (fields.notes !== undefined && fields.notes !== entry.notes) body.notes = fields.notes
@@ -1016,6 +1023,7 @@ export function updateEntry(
                         if (paused.get()?.id === e.id) setPaused(e)
                     }
                 } else console.warn(`Harvest: entry update failed (status ${r.status})`)
+                onDone?.(r.ok)
             } finally {
                 done()
             }
@@ -1028,7 +1036,7 @@ export function updateEntry(
 // Duration accounts PATCH raw hours; timestamp accounts get the same
 // duration expressed as a started/ended window instead. Same return
 // contract as setNotes: false = not attempted, the field stays dirty
-export function setHours(entry: Entry, hours: number): boolean {
+export function setHours(entry: Entry, hours: number, onDone?: (ok: boolean) => void): boolean {
     // the server stores hundredths of an hour
     hours = Math.round(hours * 100) / 100
     if (hours <= 0 || entry.isRunning || mutInFlight || authDisabled.get()) return false
@@ -1059,6 +1067,7 @@ export function setHours(entry: Entry, hours: number): boolean {
                     refreshStoppedFromMap()
                     if (paused.get()?.id === e.id) setPaused(e)
                 } else console.warn(`Harvest: hours update failed (status ${r.status})`)
+                onDone?.(r.ok)
             } finally {
                 done()
             }
@@ -1202,6 +1211,9 @@ let connectivityHandler = 0
 // convention for lib modules with long-lived sources, even though the
 // shell never calls it today: one place that tears everything down
 export function dispose() {
+    disposed = true
+    for (const c of inFlightCancellables) c.cancel()
+    inFlightCancellables.clear()
     if (fastTimer) {
         sourceRemove(fastTimer)
         fastTimer = 0

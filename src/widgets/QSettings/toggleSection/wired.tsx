@@ -109,7 +109,13 @@ export function WiredSwitch() {
                         active={createBinding(wired, "state").as(s => s === DS.ACTIVATED)}
                         onNotifyActive={self => {
                             // idempotent: binding syncs must not toggle
-                            if (self.active !== (wired.state === DS.ACTIVATED)) wiredToggle(wired)
+                            if (self.active !== (wired.state === DS.ACTIVATED)) {
+                                wiredToggle(wired)
+                                // wiredToggle is a no-op without a cable:
+                                // the switch must not stay flipped on
+                                if (wired.state === DS.UNAVAILABLE)
+                                    self.set_state(wired.state === DS.ACTIVATED)
+                            }
                         }}
                     />
                 )

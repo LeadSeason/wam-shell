@@ -551,7 +551,13 @@ export function poll() {
                     : null,
             )
             merged.sort((a, b) => b.time - a.time)
-            setItems(merged.slice(0, 50))
+            // prune the session maps to the surviving ids: a sweep maps
+            // ~800 videos but only ~50 are displayed
+            const shown = merged.slice(0, 50)
+            const keep = new Set(shown.map(i => i.id))
+            for (const id of itemAccounts.keys()) if (!keep.has(id)) itemAccounts.delete(id)
+            for (const id of thumbInfo.keys()) if (!keep.has(id)) thumbInfo.delete(id)
+            setItems(shown)
             fetchDisplayedThumbs()
             pollInFlight = false
             scheduleNext()
@@ -610,7 +616,11 @@ export function dispose() {
 // -------------------------------------------------------------- startup
 
 auth.onAccountRemoved(email => {
+    // filter first (the map still knows the account), then drop the
+    // mapping — otherwise a failed sweep's keep-stale branch
+    // resurrects the removed account's rows
     setItems(items.get().filter(i => itemAccounts.get(i.id) !== email))
+    for (const [id, acc] of itemAccounts) if (acc === email) itemAccounts.delete(id)
     channelsByAccount.delete(email)
 })
 
