@@ -320,8 +320,15 @@ function ensureWindow() {
                     )}
                     marginTop={30}
                     marginRight={12}
-                    // pill center minus half the popup width (360)
-                    marginLeft={popupAnchor.as(a => (a ? Math.max(0, Math.round(a.x - 180)) : 12))}
+                    // pill center minus half the popup width (360), but
+                    // never past the monitor's right edge — the harvest
+                    // popup clamps the same way
+                    marginLeft={popupAnchor.as(a => {
+                        if (!a) return 12
+                        const POPUP_W = 360 + 24 // request + horizontal margins
+                        const monW = a.monitor.get_geometry().width
+                        return Math.max(0, Math.min(Math.round(a.x - 180), monW - POPUP_W))
+                    })}
                     // ON_DEMAND, not EXCLUSIVE: the grab stole input from
                     // other surfaces; focus loss closes instead
                     keymode={Astal.Keymode.ON_DEMAND}
