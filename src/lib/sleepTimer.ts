@@ -255,7 +255,10 @@ function fire() {
         const brightness = Brightness.get_default()
         if (brightness.screenIsPresent) {
             preDimLevel = brightness.screen
-            dimmedToLevel = Math.max(0.1, preDimLevel / 2)
+            dimmedToLevel = Math.max(
+                Config.sleepTimer.dimFloor,
+                preDimLevel * Config.sleepTimer.dimLevel,
+            )
             brightness.screen = dimmedToLevel
         }
     }
