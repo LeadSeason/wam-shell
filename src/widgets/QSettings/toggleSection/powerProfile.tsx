@@ -291,10 +291,14 @@ export function PowerProfilesWidget({ pane, name }: { pane: Accessor<string>; na
                     <label
                         cssClasses={["paneRowDesc"]}
                         xalign={0}
+                        hexpand
+                        maxWidthChars={40}
+                        ellipsize={Pango.EllipsizeMode.END}
                         label={createComputed([Power.governor, Power.epp], (g, e) =>
-                            [`Governor: ${g || "—"}`, `Energy preference: ${e || "—"}`].join(
-                                "  ·  ",
-                            ),
+                            [
+                                `Governor: ${(g || "—").replaceAll("_", " ")}`,
+                                `Energy preference: ${(e || "—").replaceAll("_", " ")}`,
+                            ].join("  ·  "),
                         )}
                     />
                 </box>
