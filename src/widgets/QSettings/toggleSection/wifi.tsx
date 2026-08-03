@@ -567,20 +567,28 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
     function PasswordPrompt({ p }: { p: Prompt }) {
         let entry: Gtk.Entry | null = null
         let ssidEntry: Gtk.Entry | null = null
+        // hidden join: failures (typically a wrong password) must not
+        // vanish silently — the prompt stays open with an error
+        const [error, setError] = createState("")
 
         function submit() {
             const password = entry?.get_text() ?? ""
             if (p.ap) {
                 p.onConnect?.(password)
+                setPrompt(null)
             } else {
                 const ssid = ssidEntry?.get_text() ?? ""
                 if (!ssid) return
                 const args = ["nmcli", "device", "wifi", "connect", ssid]
                 if (password) args.push("password", password)
                 args.push("hidden", "yes")
-                execAsync(args).catch(e => console.warn("wifi hidden join failed:", e))
+                execAsync(args)
+                    .then(() => setPrompt(null))
+                    .catch(e => {
+                        console.warn("wifi hidden join failed:", e)
+                        setError("Couldn't join — check the SSID and password")
+                    })
             }
-            setPrompt(null)
         }
 
         return (
@@ -593,6 +601,12 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                     cssClasses={["title"]}
                     label={p.ap ? `Connect to ${p.ssid}` : "Join hidden network"}
                     xalign={0}
+                />
+                <label
+                    cssClasses={["status", "error"]}
+                    xalign={0}
+                    visible={error.as(e => e !== "")}
+                    label={error}
                 />
                 {!p.ap && (
                     <Gtk.Entry
