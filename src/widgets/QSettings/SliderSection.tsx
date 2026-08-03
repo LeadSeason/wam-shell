@@ -129,11 +129,11 @@ function AppRow({
     )
 }
 
-function AppStreams({ audio }: { audio: AstalWp.Audio }) {
+function AppStreams({ streams }: { streams: Accessor<AstalWp.Stream[] | null> }) {
     const resolveIcon = createIconResolver(
         Gtk.IconTheme.get_for_display(Gdk.Display.get_default()!),
     )
-    const groups = createBinding(audio, "streams").as(list => {
+    const groups = streams.as(list => {
         const m = new Map<string, AstalWp.Stream[]>()
         for (const s of list ?? []) {
             const key = s.description || s.name
@@ -404,7 +404,7 @@ export function SliderSection() {
                 <box cssClasses={["dropdownCard"]} orientation={Gtk.Orientation.VERTICAL}>
                     <label cssClasses={["dropdownSection"]} xalign={0} label={"Output Devices"} />
                     <DeviceList endpoints={speakers} collapse={() => setExpanded(0)} />
-                    <AppStreams audio={audio} />
+                    <AppStreams streams={createBinding(audio, "streams")} />
                 </box>
             </revealer>
             <With value={createBinding(wp, "defaultMicrophone")}>
@@ -421,7 +421,11 @@ export function SliderSection() {
                 }
             </With>
             <revealer revealChild={expanded.as(v => v === 2)}>
-                <DeviceList endpoints={microphones} collapse={() => setExpanded(0)} />
+                <box cssClasses={["dropdownCard"]} orientation={Gtk.Orientation.VERTICAL}>
+                    <label cssClasses={["dropdownSection"]} xalign={0} label={"Input Devices"} />
+                    <DeviceList endpoints={microphones} collapse={() => setExpanded(0)} />
+                    <AppStreams streams={createBinding(audio, "recorders")} />
+                </box>
             </revealer>
             <BrightnessSlider />
         </box>
