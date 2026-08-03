@@ -230,6 +230,13 @@ function disarm() {
     }
 }
 
+// convention for lib modules with long-lived sources (see AGENTS.md):
+// the countdown tick. The state file is NOT touched — it is the
+// restart-recovery contract, not a leak
+export function dispose() {
+    disarm()
+}
+
 // restore-on-extend state: the levels at the last fire. Persisted
 // through fire now, so a shell restart no longer strands the user at
 // the dimmed level
