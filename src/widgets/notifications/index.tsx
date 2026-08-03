@@ -108,7 +108,16 @@ function buildMerged() {
             // items, or just the local daemon's for the local filter
             if (!pFilter || pFilter === LOCAL_FILTER) {
                 for (const n of desktop) {
-                    rows.push({ key: `desktop:${n.id}`, time: n.time, desktop: n, item: null })
+                    // the time is part of the key: replaces_id makes the
+                    // daemon emit a NEW Notification object with the same
+                    // id but a new time, and gnim's For would otherwise
+                    // reuse the stale card (it reads state once at build)
+                    rows.push({
+                        key: `desktop:${n.id}:${n.time}`,
+                        time: n.time,
+                        desktop: n,
+                        item: null,
+                    })
                 }
             }
             providers.forEach((p, i) => {
