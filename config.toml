@@ -453,6 +453,15 @@
 # dim_level - the dim target as a fraction of the current brightness.
 #             0.5 = half (default), 0.25 = quarter
 # dim_floor - absolute minimum the dim never goes below. default 0.1
+# alarm - when the timer reaches 0, play a soft chime (assets/
+#         sleep-alarm.ogg) in a loop until stopped from the pill. the
+#         sink is raised to alarm_volume and unmuted while it rings,
+#         then restored. this key is only the default for the pill's
+#         checkbox; the checkbox itself is consulted at fire time and
+#         persists across restarts (cache dir). default false
+# alarm_volume - the volume the sink is raised to while the alarm
+#                rings, as a percentage (100 = full). only raises,
+#                never lowers a louder sink. default 100
 # [sleep_timer]
 # enabled = true
 # presets = [10, 15, 20, 30, 45, 60]
@@ -460,6 +469,8 @@
 # dim = true
 # dim_level = 0.5
 # dim_floor = 0.1
+# alarm = false
+# alarm_volume = 100
 
 # ════════════════════════════════════════════════════════════════════
 # Notifications

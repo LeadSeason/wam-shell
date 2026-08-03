@@ -380,6 +380,18 @@ function getSleepTimerConfig() {
         return v
     }
 
+    // 1..100 percent as a fraction, or the fallback when missing/wrong
+    const percent = (key: string, fallback: number) => {
+        const v = get(key, fallback)
+        if (typeof v !== "number" || v < 1 || v > 100) {
+            console.error(
+                `Config "sleep_timer.${key}" must be a number between 1 and 100, got "${v}"`,
+            )
+            return fallback / 100
+        }
+        return v / 100
+    }
+
     return {
         presets,
         // show the sleep timer toggle in quick settings
@@ -393,6 +405,11 @@ function getSleepTimerConfig() {
         dim: get("dim", true),
         dimLevel: fraction("dim_level", 0.5),
         dimFloor: fraction("dim_floor", 0.1),
+        // play a soothing chime in a loop when the timer reaches 0,
+        // until stopped from the pill
+        alarm: get("alarm", false),
+        // the volume the sink is raised to while the alarm rings
+        alarmVolume: percent("alarm_volume", 100),
     }
 }
 

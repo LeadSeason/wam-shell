@@ -3,16 +3,21 @@ import { Accessor, createComputed, Setter } from "gnim"
 import Config from "../../../config"
 import { DropdownButton } from "./ToggleButton"
 import {
+    alarmEnabled,
+    alarming,
     cancelSleepTimer,
     formatRemaining,
     paused,
     remaining,
+    setAlarmEnabled,
     startSleepTimer,
+    stopAlarm,
 } from "../../../lib/sleepTimer"
 
-// Sleep timer toggle: main click cancels a running timer or opens the
-// duration dropdown; the dropdown starts the timer for the picked
-// duration (presets or a custom minute count).
+// Sleep timer toggle: main click stops the ringing alarm, cancels a
+// running timer or opens the duration dropdown; the dropdown starts
+// the timer for the picked duration (presets or a custom minute
+// count) and carries the alarm on/off checkbox.
 
 const PRESETS = Config.sleepTimer.presets
 
@@ -35,13 +40,19 @@ export function SleepTimerButton({
             dropdownIndex={dropdownIndex}
             icon={"alarm-symbolic"}
             label={"Sleep Timer"}
-            subtitle={createComputed([remaining, paused], (s, p) =>
-                s > 0 ? `${formatRemaining(s)}${p ? " (paused)" : ""}` : "Off",
+            subtitle={createComputed([remaining, paused, alarming], (s, p, a) =>
+                // short: long subtitles push the toggle grid to 1 column
+                a
+                    ? "Stop the alarm"
+                    : s > 0
+                      ? `${formatRemaining(s)}${p ? " (paused)" : ""}`
+                      : "Off",
             )}
-            isActive={remaining.as(s => s > 0)}
+            isActive={createComputed([remaining, alarming], (s, a) => s > 0 || a)}
             activate={() => {
-                // running: cancel. otherwise open the duration dropdown
-                if (remaining.get() > 0) cancelSleepTimer()
+                // ringing: stop. running: cancel. otherwise the dropdown
+                if (alarming.get()) stopAlarm()
+                else if (remaining.get() > 0) cancelSleepTimer()
                 else if (activeDropdown.get() === dropdownIndex) setActiveDropdown(0)
                 else setActiveDropdown(dropdownIndex)
             }}
@@ -90,8 +101,29 @@ export function SleepTimerWidget({
                         hexpand
                         onActivate={startCustom}
                     />
-                    <button cssClasses={["confirm", "paneRow"]} onClicked={startCustom}>
+                    <button
+                        cssClasses={["confirm", "paneRow", "trailingBtn"]}
+                        onClicked={startCustom}
+                    >
                         <label label={"Start"} />
+                    </button>
+                </box>
+                <box spacing={8}>
+                    <image iconName={"alarm-symbolic"} />
+                    <label label={"Alarm"} xalign={0} hexpand />
+                    {/* a paneRow button like Start and the preset chips:
+                    the right edges align by construction (a Gtk.Switch
+                    has its own geometry, and is invisible unstyled) */}
+                    <button
+                        cssClasses={["paneRow", "trailingBtn"]}
+                        tooltipText={"Play the alarm when the timer reaches 0"}
+                        onClicked={() => setAlarmEnabled(!alarmEnabled.get())}
+                    >
+                        <image
+                            iconName={alarmEnabled.as(v =>
+                                v ? "checkbox-checked-symbolic" : "checkbox-symbolic",
+                            )}
+                        />
                     </button>
                 </box>
             </box>

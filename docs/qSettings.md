@@ -31,7 +31,7 @@ It closes on ESC, on click-away, and on the panel button (it's a toggle).
 
 See the commented keys in `config.toml`: `[quicksettings]` (stats, avatar,
 charge cap), `[bluetooth]` (notifications), `[sleep_timer]`
-(presets, panel countdown, dim).
+(presets, panel countdown, dim, alarm).
 
 ## Avatar
 

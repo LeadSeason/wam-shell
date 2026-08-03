@@ -4,7 +4,7 @@ import AstalMpris from "gi://AstalMpris?version=0.1"
 import { createState } from "gnim"
 import Config from "../config"
 import Brightness from "./brightness"
-import { timeoutAddSeconds, sourceRemove } from "./metrics"
+import { timeoutAddSeconds, sourceRemove, execAsync } from "./metrics"
 import { SleepTimerState, serialize, parse, decide } from "./sleepTimerState"
 
 // Sleep timer: pauses every playing MPRIS player when it fires (and
@@ -19,8 +19,8 @@ import { SleepTimerState, serialize, parse, decide } from "./sleepTimerState"
 // timer, so dev + service shells can't double-fire (dim-to-half twice
 // would be quarter brightness). A crashed or killed owner's PID is
 // dead — the restart claims and adopts instead of dropping the timer.
-// An expired deadline is never fired retroactively — the user gets one
-// notification instead.
+// An expired deadline fires the alarm on adoption (when enabled): a
+// missed wakeup is worse than a late one.
 
 const mpris = AstalMpris.get_default()
 
@@ -31,6 +31,153 @@ export { remaining }
 // countdown frozen with time still left
 const [paused, setPaused] = createState(false)
 export { paused }
+
+// play the chime loop when the timer reaches 0 (pill checkbox; the
+// config key is only the factory default). The checkbox is consulted
+// at fire time, not at start, and persists across shell restarts,
+// crashes and reboots in the cache dir — the runtime state file is
+// session-scoped by design and the wrong place for a preference
+const alarmPrefPath = `${Config.instanceCacheDir}/sleep-alarm.json`
+
+function loadAlarmEnabled(): boolean {
+    try {
+        const v = JSON.parse(new TextDecoder().decode(GLib.file_get_contents(alarmPrefPath)[1]))
+        if (typeof v === "boolean") return v
+    } catch {}
+    return Config.sleepTimer.alarm
+}
+
+const [alarmEnabled, setAlarmEnabledState] = createState(loadAlarmEnabled())
+export { alarmEnabled }
+export function setAlarmEnabled(v: boolean) {
+    setAlarmEnabledState(v)
+    try {
+        GLib.mkdir_with_parents(Config.instanceCacheDir, 0o755)
+        GLib.file_set_contents(alarmPrefPath, JSON.stringify(v))
+    } catch (e) {
+        console.warn("sleepTimer: failed writing alarm preference:", e)
+    }
+}
+
+// the chime is looping right now (fired, not yet stopped)
+const [alarming, setAlarming] = createState(false)
+export { alarming }
+
+// the chime loops until stopped, chaining on player exit: the loop
+// self-times to any file length (15s here), a failed spawn backs off
+// instead of spamming, and stop kills the in-flight player so a long
+// file doesn't ring out. This alarm must not fail silently — the user
+// may rely on it to wake up — so both the sound and the player have
+// fallbacks, and a critical notification backs up the audio
+const SOUND_CANDIDATES = [
+    `${Config.instanceSrcDir}/assets/sleep-alarm.ogg`,
+    "/usr/share/sounds/freedesktop/stereo/bell.oga",
+    "/usr/share/sounds/freedesktop/stereo/complete.oga",
+    "/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga",
+]
+const alarmSound = SOUND_CANDIDATES.find(p => GLib.file_test(p, GLib.FileTest.EXISTS)) ?? null
+
+const PLAYER_CANDIDATES: string[][] = [
+    ["pw-play"],
+    ["paplay"],
+    ["canberra-gtk-play", "-f"],
+    ["ffplay", "-nodisp", "-autoexit", "-loglevel", "quiet"],
+]
+const alarmPlayer =
+    PLAYER_CANDIDATES.find(argv => GLib.find_program_in_path(argv[0]) !== null) ?? null
+let alarmSource = 0
+
+// a wakeup alarm at 30% sink volume is a missed alarm: force 100% and
+// unmute while ringing, restore on stop — only if the user didn't
+// adjust anything themselves meanwhile. wpctl, not AstalWp: its
+// defaultSpeaker can lag the real pipewire default sink (the chime
+// plays through the pipewire default)
+let savedAudio: { volume: number; mute: boolean } | null = null
+
+// "Volume: 0.65" or "Volume: 0.30 [MUTED]"
+async function readSinkVolume(): Promise<{ volume: number; mute: boolean } | null> {
+    try {
+        const out = await execAsync(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"])
+        const m = out.match(/Volume:\s*([\d.]+)/)
+        if (!m) return null
+        return { volume: Number(m[1]), mute: /MUTED/.test(out) }
+    } catch {
+        return null
+    }
+}
+
+async function forceAlarmVolume() {
+    if (GLib.find_program_in_path("wpctl") === null) return
+    const cur = await readSinkVolume()
+    if (cur === null) return
+    savedAudio = cur
+    if (cur.mute) execAsync(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "0"]).catch(() => {})
+    const target = Config.sleepTimer.alarmVolume
+    if (cur.volume < target)
+        execAsync(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", String(target)]).catch(() => {})
+}
+
+async function restoreAlarmVolume() {
+    if (savedAudio === null) return
+    const saved = savedAudio
+    savedAudio = null
+    const cur = await readSinkVolume()
+    if (cur === null) return
+    const target = Config.sleepTimer.alarmVolume
+    // restore only what we forced and the user left untouched
+    if (cur.volume === target && saved.volume < target)
+        execAsync(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", String(saved.volume)]).catch(
+            () => {},
+        )
+    if (saved.mute && !cur.mute)
+        execAsync(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "1"]).catch(() => {})
+}
+
+function loopChime() {
+    if (!alarming.get() || !alarmPlayer || !alarmSound) return
+    let failed = false
+    execAsync([...alarmPlayer, alarmSound])
+        .catch(e => {
+            failed = true
+            console.warn("sleepTimer alarm:", e)
+        })
+        .finally(() => {
+            if (!alarming.get()) return
+            alarmSource = timeoutAddSeconds(
+                "sleepTimer:alarm",
+                GLib.PRIORITY_DEFAULT,
+                failed ? 5 : 1,
+                () => {
+                    alarmSource = 0
+                    loopChime()
+                    return GLib.SOURCE_REMOVE
+                },
+            )
+        })
+}
+
+function startAlarm() {
+    if (!alarmPlayer || !alarmSound) {
+        console.warn("sleepTimer: alarm enabled but no usable player/sound found")
+        return
+    }
+    if (alarming.get()) return
+    setAlarming(true)
+    forceAlarmVolume()
+    loopChime()
+}
+
+export function stopAlarm() {
+    if (!alarming.get()) return
+    setAlarming(false)
+    if (alarmSource) {
+        sourceRemove(alarmSource)
+        alarmSource = 0
+    }
+    restoreAlarmVolume()
+    // cut the in-flight chime instead of letting it ring out
+    if (alarmSound) execAsync(["pkill", "-f", GLib.path_get_basename(alarmSound)]).catch(() => {})
+}
 
 let timerSource = 0
 // wall-clock deadline, null = no timer running. Ticking down a counter
@@ -179,6 +326,9 @@ function loadState() {
                 "Sleep timer expired",
                 `The timer reached 0 at ${at?.format("%H:%M") ?? "??"} while wam-shell was down.`,
             )
+            // a missed wakeup is the worst outcome: ring now (the user
+            // can stop it in one click), whenever it expired
+            if (alarmEnabled.get()) startAlarm()
             // the claim file, not the original path: clearState points
             // at the pre-rename location
             try {
@@ -235,6 +385,7 @@ function disarm() {
 // restart-recovery contract, not a leak
 export function dispose() {
     disarm()
+    stopAlarm()
 }
 
 // restore-on-extend state: the levels at the last fire. Persisted
@@ -272,6 +423,12 @@ function fire() {
     // keep the file: the dim state must survive a restart so the next
     // shell can still restore on extend (dim-only decision)
     writeState()
+    if (alarmEnabled.get()) {
+        startAlarm()
+        // visual backup for the audio: critical notifications don't
+        // expire, so it stays until dismissed
+        notify("Sleep timer finished", "The alarm is sounding — stop it from the Sleep Timer pill.")
+    }
 }
 
 // extending after a fire means the user is back at the machine:
@@ -291,6 +448,7 @@ function restoreDim() {
 export function startSleepTimer(minutes: number) {
     cancelSleepTimer()
     restoreDim()
+    stopAlarm()
     if (minutes <= 0) return
     deadline = Date.now() + minutes * 60_000
     tickRemaining() // show the full duration immediately, not a tick late
@@ -303,6 +461,7 @@ export function cancelSleepTimer() {
     deadline = null
     setRemaining(0)
     setPaused(false)
+    stopAlarm()
     clearState()
 }
 

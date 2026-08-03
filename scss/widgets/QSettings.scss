@@ -269,6 +269,12 @@ window#QSettings {
         margin: 0;
     }
 
+    // trailing buttons in the sleep timer dropdown (Start, the alarm
+    // checkbox): one width so their right edges AND centers align
+    button.trailingBtn {
+        min-width: 64px;
+    }
+
     .toggleTitle {
         font-weight: bold;
     }
