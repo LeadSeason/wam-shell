@@ -16,8 +16,8 @@ import { execAsync, exec } from "./metrics"
 //     off/low/med/high). Watching the sysfs file still catches
 //     external `asusctl leds next/prev` for the OSD.
 //
-// Detected-but-unmanaged devices land in `unsupported` (with the
-// reason) instead of being silently dropped.
+// Detected-but-unmanaged devices are logged (with the reason) instead
+// of being silently dropped — not shown in the GUI.
 
 export interface BrightnessDevice {
     id: string
@@ -31,14 +31,13 @@ export interface BrightnessDevice {
     max?: number
 }
 
-export interface UnsupportedDevice {
+interface UnsupportedDevice {
     id: string
     reason: string
 }
 
 const [devices, setDevices] = createState<BrightnessDevice[]>([])
-const [unsupported, setUnsupported] = createState<UnsupportedDevice[]>([])
-export { devices, unsupported }
+export { devices }
 
 // bumped whenever any device's level changed outside us (file watch):
 // the slider re-reads and the OSD hook fires
@@ -217,7 +216,10 @@ function refresh() {
     }
 
     setDevices(found)
-    setUnsupported(unsupportedList)
+    if (unsupportedList.length > 0)
+        console.info(
+            `brightness: unsupported devices: ${unsupportedList.map(x => `${x.id} (${x.reason})`).join(", ")}`,
+        )
 }
 
 refresh()

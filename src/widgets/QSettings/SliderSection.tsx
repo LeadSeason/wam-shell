@@ -8,7 +8,7 @@ import Brightness from "../../lib/brightness"
 import hyprsunset, { setOutdoorEnabled, OUTDOOR_GAMMA } from "../../lib/hyprsunset"
 import { Accessor, For, Setter, With, createBinding, createComputed, createState } from "gnim"
 import { qsVisible } from "./MediaSection"
-import { devices, unsupported, externalChange } from "../../lib/brightnessDevices"
+import { devices, externalChange } from "../../lib/brightnessDevices"
 
 interface VolSliderProps {
     maxValue?: number
@@ -309,15 +309,6 @@ function PeripheralSliders() {
                     </box>
                 )}
             </For>
-            <label
-                cssClasses={["statTileSub"]}
-                xalign={0}
-                wrap
-                visible={unsupported.as(u => u.length > 0)}
-                label={unsupported.as(
-                    u => `Unsupported: ${u.map(x => `${x.id} (${x.reason})`).join(", ")}`,
-                )}
-            />
         </box>
     )
 }
