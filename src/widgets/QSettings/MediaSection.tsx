@@ -154,28 +154,33 @@ function Player({ player }: { player: AstalMpris.Player }) {
                 {/* fixed height whether art exists or not: switching
                 players must not move the content under the pointer */}
                 <box cssClasses={["coverRow"]} spacing={10} hexpand>
-                    {/* big cover, click focuses the player window; hidden
-                entirely when the player has no art */}
-                    <With value={localCover}>
-                        {c =>
-                            c && (
-                                <box cssName="button" tooltipText="Focus player window">
-                                    <Gtk.GestureClick
-                                        button={1}
-                                        onPressed={() => raisePlayer(player)}
-                                    />
-                                    <box
-                                        cssClasses={["mediaCover", "mediaCoverBig"]}
-                                        // the path comes from player metadata — escape
-                                        // quotes/backslashes before CSS interpolation
-                                        css={`
-                                            background-image: url("${c.replace(/['\\]/g, "\\$&")}");
-                                        `}
-                                    />
-                                </box>
-                            )
-                        }
-                    </With>
+                    {/* the slot keeps the cover on the left: a With that
+                    resolves late (art downloads async) would otherwise
+                    append the cover AFTER the text column (on the right) */}
+                    <box cssClasses={["coverSlot"]}>
+                        {/* big cover, click focuses the player window; hidden
+                        entirely when the player has no art */}
+                        <With value={localCover}>
+                            {c =>
+                                c && (
+                                    <box cssName="button" tooltipText="Focus player window">
+                                        <Gtk.GestureClick
+                                            button={1}
+                                            onPressed={() => raisePlayer(player)}
+                                        />
+                                        <box
+                                            cssClasses={["mediaCover", "mediaCoverBig"]}
+                                            // the path comes from player metadata — escape
+                                            // quotes/backslashes before CSS interpolation
+                                            css={`
+                                                background-image: url("${c.replace(/['\\]/g, "\\$&")}");
+                                            `}
+                                        />
+                                    </box>
+                                )
+                            }
+                        </With>
+                    </box>
                     <box
                         orientation={Gtk.Orientation.VERTICAL}
                         spacing={4}
