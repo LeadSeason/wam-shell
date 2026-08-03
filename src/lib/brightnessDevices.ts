@@ -56,6 +56,11 @@ function reportExternal(id: string, level: number) {
 // ---------------------------------------------------------- helpers
 
 const LOCK_LED = /^(input\d+::)?(capslock|numlock|scrolllock|compose|kana)$/
+// only real backlight-type LEDs count as brightness devices: platform
+// indicator LEDs (thinklight, micmute, phy0-led, power, lid_logo_dot,
+// thinkvantage, …) are status lights, not "peripheral brightness", and
+// listing them as unsupported was a wall of noise on ThinkPads
+const BACKLIGHT_LED = /kbd|keyboard|backlight|illum|aura/i
 
 const readInt = (path: string): number | null => {
     try {
@@ -142,7 +147,7 @@ function describeSysfsLed(dir: Gio.File): {
 } | null {
     const path = dir.get_path()!
     const name = dir.get_basename()
-    if (LOCK_LED.test(name)) return null
+    if (LOCK_LED.test(name) || !BACKLIGHT_LED.test(name)) return null
     const max = readInt(`${path}/max_brightness`)
     if (!max || max <= 0) return null
     return { name, bpath: `${path}/brightness`, max, ok: writable(`${path}/brightness`) }
