@@ -235,6 +235,10 @@ window#QSettings {
             background-color: color.mix(t.$accent, transparent, 70%);
         }
     }
+    // engaged shuffle/repeat get the accent text cue
+    .mediaButton.active {
+        color: t.$accent;
+    }
     .mediaSeek {
         .mediaTime {
             font-size: s.$font-small;

@@ -32,12 +32,13 @@ function MediaButton({
     sensitive?: any
     extraClasses?: string[] | any
 }) {
+    // extraClasses may be a plain array or an Accessor<string[]> (e.g.
+    // the shuffle/loop active state)
+    const classes = Array.isArray(extraClasses)
+        ? ["mediaButton", ...extraClasses]
+        : extraClasses.as((v: string[]) => ["mediaButton", ...v])
     return (
-        <button
-            cssClasses={["mediaButton", ...extraClasses]}
-            onClicked={onPressed}
-            sensitive={sensitive}
-        >
+        <button cssClasses={classes} onClicked={onPressed} sensitive={sensitive}>
             <image iconName={iconName} />
         </button>
     )
@@ -215,6 +216,21 @@ function Player({ player }: { player: AstalMpris.Player }) {
                     </box>
                     <box spacing={6}>
                         <MediaButton
+                            extraClasses={createBinding(player, "shuffleStatus").as(s =>
+                                s === AstalMpris.Shuffle.ON ? ["active"] : [],
+                            )}
+                            iconName="media-playlist-shuffle-symbolic"
+                            onPressed={() => {
+                                player.shuffleStatus =
+                                    player.shuffleStatus === AstalMpris.Shuffle.ON
+                                        ? AstalMpris.Shuffle.OFF
+                                        : AstalMpris.Shuffle.ON
+                            }}
+                            sensitive={createBinding(player, "shuffleStatus").as(
+                                s => s !== AstalMpris.Shuffle.UNSUPPORTED,
+                            )}
+                        />
+                        <MediaButton
                             iconName="media-skip-backward-symbolic"
                             onPressed={() => player.previous()}
                             sensitive={createBinding(player, "canGoPrevious")}
@@ -233,6 +249,29 @@ function Player({ player }: { player: AstalMpris.Player }) {
                             iconName="media-skip-forward-symbolic"
                             onPressed={() => player.next()}
                             sensitive={createBinding(player, "canGoNext")}
+                        />
+                        <MediaButton
+                            extraClasses={createBinding(player, "loopStatus").as(l =>
+                                l === AstalMpris.Loop.TRACK || l === AstalMpris.Loop.PLAYLIST
+                                    ? ["active"]
+                                    : [],
+                            )}
+                            iconName="media-playlist-repeat-symbolic"
+                            onPressed={() => {
+                                switch (player.loopStatus) {
+                                    case AstalMpris.Loop.NONE:
+                                        player.loopStatus = AstalMpris.Loop.TRACK
+                                        break
+                                    case AstalMpris.Loop.TRACK:
+                                        player.loopStatus = AstalMpris.Loop.PLAYLIST
+                                        break
+                                    default:
+                                        player.loopStatus = AstalMpris.Loop.NONE
+                                }
+                            }}
+                            sensitive={createBinding(player, "loopStatus").as(
+                                l => l !== AstalMpris.Loop.UNSUPPORTED,
+                            )}
                         />
                     </box>
                     {/* seeker (the wiring is shared with the popup:
@@ -290,6 +329,31 @@ function Player({ player }: { player: AstalMpris.Player }) {
                             widthChars={6}
                             maxWidthChars={6}
                             label={trackLength.as(l => (l > 0 ? formatTime(l) : "--:--"))}
+                        />
+                    </box>
+                    {/* per-player volume; hidden when the player has no
+                    volume control (mpris volume is -1 then) */}
+                    <box
+                        cssClasses={["sliderRow"]}
+                        spacing={8}
+                        visible={createBinding(player, "volume").as(v => v >= 0)}
+                    >
+                        <image iconName={"audio-volume-high-symbolic"} />
+                        <slider
+                            hexpand
+                            min={0}
+                            max={1}
+                            value={createBinding(player, "volume")}
+                            onChangeValue={({ value }) =>
+                                (player.volume = Math.min(1, Math.max(0, value)))
+                            }
+                        />
+                        <label
+                            widthChars={4}
+                            maxWidthChars={4}
+                            label={createBinding(player, "volume").as(
+                                v => `${Math.round(Math.max(0, v) * 100)}%`,
+                            )}
                         />
                     </box>
                 </box>
