@@ -357,6 +357,18 @@ function getSleepTimerConfig() {
         presets = [10, 15, 20, 30, 45, 60]
     }
 
+    // a 0..1 fraction, or the fallback when missing/wrong
+    const fraction = (key: string, fallback: number) => {
+        const v = get(key, fallback)
+        if (typeof v !== "number" || v < 0 || v > 1) {
+            console.error(
+                `Config "sleep_timer.${key}" must be a number between 0 and 1, got "${v}"`,
+            )
+            return fallback
+        }
+        return v
+    }
+
     return {
         presets,
         // show the sleep timer toggle in quick settings
@@ -365,8 +377,11 @@ function getSleepTimerConfig() {
         // Section-only lookup, NOT the usual top-level fallback: the
         // tray's top-level on_panel key would leak in otherwise
         onPanel: s["on_panel"] ?? true,
-        // dim the screen to half its brightness (floor 10%) on fire
+        // dim the screen on fire: dim_level as a fraction of the current
+        // brightness (default half), never below the dim_floor minimum
         dim: get("dim", true),
+        dimLevel: fraction("dim_level", 0.5),
+        dimFloor: fraction("dim_floor", 0.1),
     }
 }
 
