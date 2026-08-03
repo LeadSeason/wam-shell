@@ -232,6 +232,39 @@ function PowerDetails() {
                     }
                 </With>
             </Gtk.FlowBox>
+            {/* full-width tile for the active profile's kernel knobs:
+            each on its own row, never ellipsized */}
+            <box
+                cssClasses={["statTile"]}
+                spacing={10}
+                visible={createComputed(
+                    [Power.governor, Power.epp],
+                    (g, e) => g !== "" || e !== "",
+                )}
+            >
+                <image iconName="cpu-symbolic" pixelSize={20} valign={Gtk.Align.CENTER} />
+                <box
+                    orientation={Gtk.Orientation.VERTICAL}
+                    spacing={2}
+                    valign={Gtk.Align.CENTER}
+                    hexpand
+                >
+                    <label
+                        cssClasses={["statTileSub"]}
+                        xalign={0}
+                        label={Power.governor.as(
+                            g => `Governor: ${(g || "—").replaceAll("_", " ")}`,
+                        )}
+                    />
+                    <label
+                        cssClasses={["statTileSub"]}
+                        xalign={0}
+                        label={Power.epp.as(
+                            e => `Energy preference: ${(e || "—").replaceAll("_", " ")}`,
+                        )}
+                    />
+                </box>
+            </box>
         </box>
     )
 }
@@ -293,30 +326,6 @@ export function PowerProfilesWidget({ pane, name }: { pane: Accessor<string>; na
                         </box>
                     )
                 })}
-                {/* footer: the active profile's kernel knobs, live */}
-                <box
-                    cssClasses={["powerKernelState"]}
-                    spacing={4}
-                    visible={createComputed(
-                        [Power.governor, Power.epp],
-                        (g, e) => g !== "" || e !== "",
-                    )}
-                >
-                    <image iconName="cpu-symbolic" pixelSize={12} valign={Gtk.Align.CENTER} />
-                    <label
-                        cssClasses={["paneRowDesc"]}
-                        xalign={0}
-                        hexpand
-                        maxWidthChars={40}
-                        ellipsize={Pango.EllipsizeMode.END}
-                        label={createComputed([Power.governor, Power.epp], (g, e) =>
-                            [
-                                `Governor: ${(g || "—").replaceAll("_", " ")}`,
-                                `Energy preference: ${(e || "—").replaceAll("_", " ")}`,
-                            ].join("  ·  "),
-                        )}
-                    />
-                </box>
             </box>
             <PowerDetails />
         </box>
