@@ -222,9 +222,12 @@ test("gcal isVisible: config names, account-scoped names, overrides", () => {
     eq(isVisible(cal, {}, ["Birthdays"]), false)
     eq(isVisible(cal, {}, ["me@example.com:Birthdays"]), false)
     eq(isVisible(cal, {}, ["other@example.com:Birthdays"]), true)
-    // session override wins over config in both directions
-    eq(isVisible(cal, { c1: true }, ["Birthdays"]), true)
-    eq(isVisible(cal, { c1: false }, []), false)
+    // session override wins over config in both directions (keys are
+    // account-scoped: two accounts can share a calendar id)
+    eq(isVisible(cal, { "me@example.com:c1": true }, ["Birthdays"]), true)
+    eq(isVisible(cal, { "me@example.com:c1": false }, []), false)
+    // another account's override for the same bare id does not leak
+    eq(isVisible(cal, { "other@example.com:c1": false }, []), true)
 })
 
 test("gcal isoWeekNumber: ISO-8601 week numbers", () => {

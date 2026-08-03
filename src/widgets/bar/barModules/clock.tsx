@@ -209,7 +209,7 @@ function CalendarPopover() {
                                         <button
                                             cssClasses={["calRow"]}
                                             tooltipText={`${cal.summary} — ${cal.account}`}
-                                            onClicked={() => Gcal.toggleCalendar(cal.id)}
+                                            onClicked={() => Gcal.toggleCalendar(cal)}
                                         >
                                             <box spacing={6}>
                                                 <box
