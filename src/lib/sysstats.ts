@@ -17,6 +17,7 @@ export const [cpu, setCpu] = createState(0)
 export const [ram, setRam] = createState(0)
 export const [gpu, setGpu] = createState<number | null>(null) // null = n/a
 export const [gpuTemp, setGpuTemp] = createState(0)
+export const [gpuWatts, setGpuWatts] = createState(0) // package power draw, W
 export const [vram, setVram] = createState<[number, number]>([0, 0]) // used,total MiB
 export const [ramSize, setRamSize] = createState<[number, number]>([0, 0]) // used,total GB
 export const [loadAvg, setLoadAvg] = createState(0)
@@ -135,7 +136,7 @@ const poll = createPoll("", INTERVAL, () => {
 // the one-shot query, one line per interval.
 const GPU_CMD = [
     "nvidia-smi",
-    "--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total",
+    "--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total,power.draw",
     "--format=csv,noheader,nounits",
     `--loop-ms=${Math.max(1, Math.round(INTERVAL))}`,
 ]
@@ -149,7 +150,7 @@ let gpuRestarts = 0
 
 function handleGpuLine(line: string) {
     gpuRestarts = 0
-    const [util, temp, vramUsed, vramTotal] = line.split(",").map(Number)
+    const [util, temp, vramUsed, vramTotal, watts] = line.split(",").map(Number)
     if ([util, temp, vramUsed, vramTotal].some(isNaN)) {
         // "[N/A]" during driver transitions: hide the row until it recovers
         setGpu(null)
@@ -158,6 +159,8 @@ function handleGpuLine(line: string) {
     setGpu(util)
     setGpuTemp(temp)
     setVram([vramUsed, vramTotal])
+    // power.draw can be [N/A] on GPUs that don't report it; keep last
+    if (!isNaN(watts)) setGpuWatts(watts)
     push(gpuHist.get(), setGpuHist, util)
 }
 
@@ -206,18 +209,39 @@ export function dispose() {
     stopPoll = null
 }
 
-// createPoll is lazy until subscribed; keep it alive while stats are on
-// (panel lists are authoritative: a "stats" entry in any [[panel]]
-// renders the widget regardless of the legacy toggles)
-let stopPoll: (() => void) | null = null
-if (
-    Config.quicksettings.showStats ||
+// createPoll is lazy until subscribed. Two kinds of consumers: the bar
+// (stats_on_panel or a "stats" [[panel]] entry) needs stats around the
+// clock; the quick settings power pane only while it is visible — its
+// widget drives setActive, and a 1 Hz poll + nvidia-smi child no
+// longer run 24/7 for a pane that is open a few seconds at a time
+const barWantsStats =
     Config.quicksettings.statsOnPanel ||
     Config.panels.some(p => [...p.left, ...p.center, ...p.right].includes("stats"))
-) {
-    stopPoll = poll.subscribe(() => {})
-    if (hasNvidia) startGpuStream()
+
+let stopPoll: (() => void) | null = null
+let qsActive = false
+
+function syncEngines() {
+    const want = barWantsStats || qsActive
+    if (want && !stopPoll) {
+        stopPoll = poll.subscribe(() => {})
+        if (hasNvidia) startGpuStream()
+    }
+    if (!want && stopPoll) {
+        stopPoll()
+        stopPoll = null
+        gpuProc?.force_exit()
+        gpuProc = null
+    }
 }
+
+// the power pane's stats tiles are on screen (or left it)
+export function setActive(on: boolean) {
+    qsActive = on
+    syncEngines()
+}
+
+if (barWantsStats) syncEngines()
 
 export function formatRate(bytesPerSec: number): string {
     if (bytesPerSec >= 1024 * 1024) return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`

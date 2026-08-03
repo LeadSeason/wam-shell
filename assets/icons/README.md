@@ -23,3 +23,14 @@ Harvest "H" mark), not an Adwaita copy.
 `todoist-symbolic.svg` is the Todoist brand mark from
 [simpleicons.org](https://simpleicons.org) (CC0-1.0), bundled for the
 same fallback reason.
+
+`cpu-symbolic.svg`, `memory-symbolic.svg`, `sensors-fan-symbolic.svg`,
+`freon-temperature-symbolic.svg` and `freon-gpu-temperature-symbolic.svg`,
+`hourglass-symbolic.svg`
+are from the [Papirus icon theme](https://github.com/PapirusDevelopmentTeam/papirus-icon-theme)
+(GPL-3.0), bundled for the power pane's stat tiles.
+
+`speedometer-symbolic.svg` is the Papirus gauge (GPL-3.0), bundled
+because some themes don't inherit Breeze (a breeze-only name fell
+back to image-missing); the Papirus stroke matches the other bundled
+symbols at tile size.

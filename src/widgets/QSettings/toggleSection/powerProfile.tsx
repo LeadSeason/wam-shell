@@ -1,4 +1,4 @@
-import { Accessor, createBinding, createComputed, onCleanup } from "gnim"
+import { Accessor, With, createBinding, createComputed, createState, onCleanup } from "gnim"
 import { execAsync } from "../../../lib/metrics"
 import GLib from "gi://GLib?version=2.0"
 import Pango from "gi://Pango?version=1.0"
@@ -6,7 +6,9 @@ import { DropdownButton } from "./ToggleButton"
 import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1"
 import AstalBattery from "gi://AstalBattery?version=0.1"
 import { Gtk } from "ags/gtk4"
+import Config from "../../../config"
 import * as Power from "../../../lib/powerDetails"
+import * as Sys from "../../../lib/sysstats"
 
 const hasPowerprofilesctl = GLib.find_program_in_path("powerprofilesctl") !== null
 
@@ -55,6 +57,58 @@ function profileInfo(id: string): { name: string; desc: string } {
     )
 }
 
+// static fallback for StatTile's center flag (the notification
+// center's FALSE pattern)
+const [FALSE] = createState(false)
+
+function StatTile({
+    icon,
+    big,
+    sub,
+    bigClasses = ["statTileValue"],
+    center = FALSE,
+    visible = true,
+}: {
+    icon: string
+    big: string | Accessor<string>
+    sub: string | Accessor<string>
+    // e.g. ["statTileSub"] for text that shouldn't get the big-number size
+    bigClasses?: string[] | Accessor<string[]>
+    // center the text block (single-string tiles, e.g. "Charge limit")
+    center?: Accessor<boolean>
+    visible?: boolean | Accessor<boolean>
+}) {
+    return (
+        <box cssClasses={["statTile"]} spacing={10} visible={visible}>
+            <image iconName={icon} pixelSize={20} valign={Gtk.Align.CENTER} />
+            <box hexpand />
+            <box
+                orientation={Gtk.Orientation.VERTICAL}
+                spacing={2}
+                valign={Gtk.Align.CENTER}
+                halign={center.as(v => (v ? Gtk.Align.CENTER : Gtk.Align.FILL))}
+            >
+                <label
+                    cssClasses={bigClasses}
+                    label={big}
+                    xalign={center.as(v => (v ? 0.5 : 1))}
+                    maxWidthChars={16}
+                    ellipsize={Pango.EllipsizeMode.END}
+                />
+                <label
+                    cssClasses={["statTileSub"]}
+                    label={sub}
+                    xalign={center.as(v => (v ? 0.5 : 1))}
+                    maxWidthChars={22}
+                    ellipsize={Pango.EllipsizeMode.END}
+                />
+            </box>
+        </box>
+    )
+}
+
+// big-number tiles: power details and (moved from the main pane) the
+// performance stats, in one 2-column grid
 function PowerDetails() {
     const bat = AstalBattery.get_default()
 
@@ -65,73 +119,154 @@ function PowerDetails() {
         return h > 0 ? `~${h} h ${m} min` : `~${m} min`
     }
 
-    function row(key: string, value: any, visible: any = true) {
-        return (
-            <box visible={visible}>
-                <label cssClasses={["key"]} label={key} xalign={0} hexpand />
-                <label
-                    cssClasses={["value"]}
-                    label={value}
-                    xalign={1}
-                    maxWidthChars={30}
-                    ellipsize={Pango.EllipsizeMode.END}
-                />
-            </box>
-        )
-    }
+    const watts = createBinding(bat, "energyRate")
+    const freqPct = createComputed([Power.freqAvgMhz, Power.freqCapMhz], (avg, cap) =>
+        cap > 0 ? avg / cap : 1,
+    )
 
     return (
-        <box orientation={Gtk.Orientation.VERTICAL} spacing={2}>
-            <label cssClasses={["paneSection"]} label={"Power details"} xalign={0} hexpand />
-            <box cssClasses={["paneCard", "wifiDetails"]} orientation={Gtk.Orientation.VERTICAL}>
-                {row(
-                    "Battery",
-                    createBinding(bat, "energyRate").as(r =>
-                        r < 0 ? `+${Math.abs(r).toFixed(1)} W (charging)` : `${r.toFixed(1)} W`,
-                    ),
-                    bat.isPresent,
-                )}
-                {row(
-                    "Time left",
-                    createComputed(
+        <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
+            <Gtk.FlowBox
+                maxChildrenPerLine={2}
+                homogeneous
+                selectionMode={Gtk.SelectionMode.NONE}
+                columnSpacing={8}
+                rowSpacing={8}
+            >
+                <StatTile
+                    icon="battery-symbolic"
+                    big={watts.as(r =>
+                        r < 0 ? `+${Math.abs(r).toFixed(1)} W` : `${r.toFixed(1)} W`,
+                    )}
+                    sub={createComputed([watts, Power.battAvgWatts], (r, avg) => {
+                        const state = r < 0 ? "charging" : "discharging"
+                        // trailing 5-minute average once the ring fills
+                        return avg > 0 ? `${state} · ${avg.toFixed(1)} W` : state
+                    })}
+                    visible={bat.isPresent}
+                />
+                <StatTile
+                    icon="hourglass-symbolic"
+                    bigClasses={createBinding(bat, "percentage").as(p =>
+                        p * 100 >= Config.quicksettings.batteryFullAt - 2
+                            ? ["statTileSub"]
+                            : ["statTileValue"],
+                    )}
+                    center={createBinding(bat, "percentage").as(
+                        p => p * 100 >= Config.quicksettings.batteryFullAt - 2,
+                    )}
+                    big={createComputed(
                         [
                             createBinding(bat, "timeToEmpty"),
                             createBinding(bat, "timeToFull"),
                             createBinding(bat, "charging"),
+                            createBinding(bat, "percentage"),
                         ],
-                        (toEmpty, toFull, charging) => span(Number(charging ? toFull : toEmpty)),
-                    ),
-                    bat.isPresent,
-                )}
-                {row(
-                    "CPU frequency",
-                    createComputed([Power.freqAvgMhz, Power.freqCapMhz], (avg, cap) =>
-                        cap > 0
-                            ? `${(avg / 1000).toFixed(1)} of ${(cap / 1000).toFixed(1)} GHz (${Math.round((avg / cap) * 100)}%)`
-                            : `${(avg / 1000).toFixed(1)} GHz`,
-                    ),
-                    Power.hasFreq,
-                )}
-                {row(
-                    "Governor",
-                    Power.governor.as(g => g || "—"),
-                    Power.hasFreq,
-                )}
-                {row(
-                    "Energy preference",
-                    Power.epp.as(e => e || "—"),
-                    Power.hasFreq,
-                )}
-                {row(
-                    "CPU temperature",
-                    Power.tempC.as(t => `${t} °C`),
-                    Power.hasTemp,
-                )}
-                {row(
-                    "Fan",
-                    Power.fanRpm.as(r => `${r} RPM`),
-                    Power.hasFan,
-                )}
+                        (toEmpty, toFull, charging, pct) => {
+                            // at the charge limit UPower's times are
+                            // junk (0 min) — same check as the header
+                            if (pct * 100 >= Config.quicksettings.batteryFullAt - 2)
+                                return "Charge limit"
+                            return span(Number(charging ? toFull : toEmpty))
+                        },
+                    )}
+                    sub={createComputed(
+                        [createBinding(bat, "charging"), createBinding(bat, "percentage")],
+                        (c, pct) =>
+                            pct * 100 >= Config.quicksettings.batteryFullAt - 2
+                                ? ""
+                                : c
+                                  ? "until full"
+                                  : "at current draw",
+                    )}
+                    visible={bat.isPresent}
+                />
+                <StatTile
+                    icon="cpu-symbolic"
+                    big={Power.freqAvgMhz.as(m => `${(m / 1000).toFixed(1)} GHz`)}
+                    sub={createComputed([freqPct, Power.freqCapMhz], (pct, cap) => {
+                        const of =
+                            cap > 0
+                                ? `${Math.round(pct * 100)}% of ${(cap / 1000).toFixed(1)} GHz`
+                                : ""
+                        return pct < 0.95 && of ? `${of} capped` : of
+                    })}
+                    visible={Power.hasFreq}
+                />
+                <StatTile
+                    icon="freon-temperature-symbolic"
+                    big={createComputed([Power.tempC, Power.fanRpm], (t, r) =>
+                        Power.hasTemp ? `${t} °C` : `${r} RPM`,
+                    )}
+                    sub={createComputed([Power.tempC, Power.fanRpm], (t, r) =>
+                        Power.hasTemp && Power.hasFan ? `${r} RPM` : Power.hasFan ? "fan" : "",
+                    )}
+                    visible={Power.hasTemp || Power.hasFan}
+                />
+                {/* CPU package power (RAPL): what the profile actually
+                throttles */}
+                <StatTile
+                    icon="cpu-symbolic"
+                    big={Power.pkgWatts.as(w => `${w.toFixed(1)} W`)}
+                    sub={"CPU package"}
+                    visible={Power.hasPkg}
+                />
+                {/* moved stats (gated by show_stats) */}
+                <StatTile
+                    icon="speedometer-symbolic"
+                    big={Sys.cpu.as(c => `${c}%`)}
+                    sub={Sys.loadAvg.as(l => `load ${l.toFixed(2)}`)}
+                    visible={Config.quicksettings.showStats}
+                />
+                <StatTile
+                    icon="memory-symbolic"
+                    big={Sys.ram.as(r => `${r}%`)}
+                    sub={Sys.ramSize.as(([used, total]) => `${used}/${total} GB`)}
+                    visible={Config.quicksettings.showStats}
+                />
+                <StatTile
+                    icon="network-transmit-receive-symbolic"
+                    big={Sys.netDown.as(d => `↓ ${Sys.formatRate(d)}`)}
+                    sub={Sys.netUp.as(u => `↑ ${Sys.formatRate(u)}`)}
+                    visible={Config.quicksettings.showStats}
+                />
+                <With value={Sys.gpu.as(g => g !== null && Config.quicksettings.showStats)}>
+                    {present =>
+                        present && (
+                            <StatTile
+                                icon="freon-gpu-temperature-symbolic"
+                                big={Sys.gpu.as(g => `${g}%`)}
+                                sub={createComputed(
+                                    [Sys.gpuTemp, Sys.vram, Sys.gpuWatts],
+                                    (t, [used, total], w) =>
+                                        w > 0
+                                            ? `${t}°C · ${used}/${total} · ${Math.round(w)} W`
+                                            : `${t}°C · ${used}/${total}`,
+                                )}
+                            />
+                        )
+                    }
+                </With>
+            </Gtk.FlowBox>
+            {/* full-width tile: the active profile's energy preference,
+            live — two sub-size rows so the tile matches the others'
+            height. The governor is dropped: on pstate systems it maps
+            1:1 to the profile anyway */}
+            <box cssClasses={["statTile"]} spacing={10} visible={Power.epp.as(e => e !== "")}>
+                <image iconName="cpu-symbolic" pixelSize={20} valign={Gtk.Align.CENTER} />
+                <box
+                    orientation={Gtk.Orientation.VERTICAL}
+                    spacing={2}
+                    valign={Gtk.Align.CENTER}
+                    hexpand
+                >
+                    <label cssClasses={["statTileSub"]} xalign={0} label={"Energy preference:"} />
+                    <label
+                        cssClasses={["statTileSub"]}
+                        xalign={0}
+                        label={Power.epp.as(e => (e || "—").replaceAll("_", " "))}
+                    />
+                </box>
             </box>
         </box>
     )
@@ -141,8 +276,13 @@ export function PowerProfilesWidget({ pane, name }: { pane: Accessor<string>; na
     const powerProfiles = AstalPowerProfiles.get_default()
     const profiles = powerProfiles.get_profiles()
 
-    // the details poll runs only while this pane is on screen
-    const unsub = pane.subscribe(() => Power.setActive(pane.get() === name))
+    // the details poll and the stats poll run only while this pane is
+    // on screen
+    const unsub = pane.subscribe(() => {
+        const on = pane.get() === name
+        Power.setActive(on)
+        Sys.setActive(on)
+    })
     onCleanup(unsub)
 
     return (
