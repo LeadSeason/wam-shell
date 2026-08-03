@@ -209,7 +209,17 @@ function useUptimeLine(): { line: Accessor<string> } {
             return ""
         }
     })
-    poll.subscribe(() => setLine(poll.get()))
+    // createPoll is lazy: subscribing only while the popup is open stops
+    // the 30s wakes entirely, and the open-time compute is fresher than
+    // anything a background interval would have produced
+    let stop: (() => void) | null = null
+    qsVisible.subscribe(() => {
+        if (qsVisible.get() && !stop) stop = poll.subscribe(() => setLine(poll.get()))
+        if (!qsVisible.get() && stop) {
+            stop()
+            stop = null
+        }
+    })
     return { line }
 }
 
