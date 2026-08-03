@@ -204,10 +204,12 @@ const hiddenIds = new Set<string>()
 // from every poll: tasks that left the list get cancelled, tasks
 // whose due time moved get re-scheduled
 const reminderTimers = new Map<string, { src: number; dueMs: number }>()
-const remindedIds = new Set<string>()
+// id -> due time it already fired for: a recurring task (or an edited
+// due time) re-arms, an exact repeat doesn't
+const remindedIds = new Map<string, number>()
 
 function fireReminder(item: ProviderItem) {
-    remindedIds.add(item.id)
+    remindedIds.set(item.id, item.time * 1000)
     reminderTimers.delete(item.id)
     addProviderPopup(item)
 }
@@ -239,7 +241,7 @@ function scheduleReminders(mapped: ProviderItem[]) {
             sourceRemove(existing.src)
             reminderTimers.delete(item.id)
             remindedIds.delete(item.id)
-        } else if (existing || remindedIds.has(item.id)) {
+        } else if (existing || remindedIds.get(item.id) === dueMs) {
             continue
         }
         const delaySec = Math.ceil(

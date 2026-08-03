@@ -244,11 +244,15 @@ const IO_TIMEOUT_SEC = 30
 
 function ioWatchdog() {
     const cancellable = new Gio.Cancellable()
+    // the source destroys itself when it fires: done() must not try to
+    // remove it again (GLib-CRITICAL "Source ID was not found")
+    let fired = false
     const src = timeoutAddSeconds("protonmail:io", GLib.PRIORITY_DEFAULT, IO_TIMEOUT_SEC, () => {
+        fired = true
         cancellable.cancel()
         return GLib.SOURCE_REMOVE
     })
-    return { cancellable, done: () => sourceRemove(src) }
+    return { cancellable, done: () => !fired && sourceRemove(src) }
 }
 
 function readLineRaw(input: Gio.DataInputStream, cancellable: Gio.Cancellable): Promise<string> {
@@ -368,9 +372,14 @@ async function fetchUnread(): Promise<Envelope[]> {
             wd.cancellable,
         )
         if (!/^a1 OK/im.test(login)) throw Object.assign(new Error("auth"), { auth: true })
-        // SEARCH needs a selected mailbox: EXAMINE (read-only select)
-        await cmd(input, conn, "a2", "EXAMINE INBOX", wd.cancellable)
+        // SEARCH needs a selected mailbox: EXAMINE (read-only select).
+        // Status-check both reads: a NO/BAD must not parse as "zero
+        // unread" (which would blank the list and re-banner everything
+        // as new on the next healthy poll)
+        const examine = await cmd(input, conn, "a2", "EXAMINE INBOX", wd.cancellable)
+        if (!/^a2 OK/im.test(examine)) throw new Error("EXAMINE failed")
         const search = await cmd(input, conn, "a3", "UID SEARCH UNSEEN", wd.cancellable)
+        if (!/^a3 OK/im.test(search)) throw new Error("SEARCH failed")
         const ids = parseSearchIds(search).slice(-MAX_ITEMS)
         let envs: Envelope[] = []
         if (ids.length > 0) {
