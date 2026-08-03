@@ -30,6 +30,7 @@ same fallback reason.
 are from the [Papirus icon theme](https://github.com/PapirusDevelopmentTeam/papirus-icon-theme)
 (GPL-3.0), bundled for the power pane's stat tiles.
 
-`speedometer-symbolic.svg` is from the [Breeze icon theme](https://invent.kde.org/frameworks/breeze-icons)
-(LGPL-3.0), bundled because some themes don't inherit Breeze (a
-breeze-only name fell back to image-missing).
+`speedometer-symbolic.svg` is the Papirus gauge (GPL-3.0), bundled
+because some themes don't inherit Breeze (a breeze-only name fell
+back to image-missing); the Papirus stroke matches the other bundled
+symbols at tile size.
