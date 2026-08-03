@@ -34,14 +34,16 @@ function hyprlandTitle(resolveAppIcon: (name: string | null | undefined) => stri
     ) as Gtk.Widget
 }
 
-// the focused leaf of the sway tree, null when none
+// the focused leaf of the sway tree, null when none. Two traps:
+// sway.tree is the ARRAY of output nodes, and containers on the
+// focus path (output, workspace) are flagged focused too — descend
+// first; the focused node with no focused children is the window
 function focusedLeaf(node: Node): Node | null {
-    if (node.focused) return node
     for (const child of [...(node.nodes ?? []), ...(node.floating_nodes ?? [])]) {
         const found = focusedLeaf(child)
         if (found) return found
     }
-    return null
+    return node.focused && (node.type === "con" || node.type === "floating_con") ? node : null
 }
 
 function swayTitle(resolveAppIcon: (name: string | null | undefined) => string | null) {
@@ -50,7 +52,13 @@ function swayTitle(resolveAppIcon: (name: string | null | undefined) => string |
     if (!sway.ok) return (<></>) as Gtk.Widget
 
     const tree = createBinding(sway, "tree")
-    const leaf = tree.as(t => focusedLeaf(t))
+    const leaf = tree.as(nodes => {
+        for (const n of nodes) {
+            const f = focusedLeaf(n)
+            if (f) return f
+        }
+        return null
+    })
     const iconName = leaf.as(l => {
         if (!l) return ""
         const icon = resolveAppIcon(l.app_id) ?? resolveAppIcon(l.window_properties?.class)
