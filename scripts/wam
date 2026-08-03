@@ -202,6 +202,8 @@ cmd_force_start() {
 
 write_unit() {
     mkdir -p "$UNIT_DIR"
+    # an empty ExecStart only surfaces as a dead service at next login
+    command -v ags >/dev/null || die "ags not found in PATH"
     local target="graphical-session.target"
     systemctl --user list-units --type=target --no-legend 2>/dev/null | grep -q "$target" ||
         target="default.target"

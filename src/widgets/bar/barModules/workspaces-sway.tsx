@@ -182,6 +182,11 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
                         if (cached && cached.key === key) return cached.box
                         const box = (
                             <box
+                                cssClasses={createBinding(sway, "wss").as(wss =>
+                                    wss.find(ws => ws.id === workspace.id)?.urgent
+                                        ? ["urgent"]
+                                        : [],
+                                )}
                                 $={self => {
                                     iconNames.forEach(name => {
                                         self.append((<image iconName={name} />) as Gtk.Widget)

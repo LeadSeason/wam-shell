@@ -201,3 +201,29 @@ instance_name = "wam-shell-test-x"
     )
     eq(c.instanceCacheDir, `${c.__dir}/cache/wam-shell-test-x`)
 })
+
+test("config: sleep_timer.alarm_volume parses as a 1..100 percentage", () => {
+    eq(loadConfig({ DESKTOP_SESSION: "hyprland" }).sleepTimer.alarmVolume, 0.8, "default 80%")
+    eq(
+        loadConfig(
+            { DESKTOP_SESSION: "hyprland" },
+            `
+[sleep_timer]
+alarm_volume = 50
+`,
+        ).sleepTimer.alarmVolume,
+        0.5,
+        "50% becomes the 0.5 fraction",
+    )
+    eq(
+        loadConfig(
+            { DESKTOP_SESSION: "hyprland" },
+            `
+[sleep_timer]
+alarm_volume = 0
+`,
+        ).sleepTimer.alarmVolume,
+        0.8,
+        "out-of-range falls back to the default",
+    )
+})
