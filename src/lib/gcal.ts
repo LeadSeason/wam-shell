@@ -440,12 +440,14 @@ export function sync(focus?: { y: number; m: number }) {
     const allCals: CalInfo[] = []
     const signedIn = auth.getAccounts()
     let pending = signedIn.length
+    let failedAccounts = 0
     for (const account of signedIn) {
         syncAccount(account, range, (list, cals) => {
             if (list) {
                 merged.push(...list)
                 allCals.push(...cals)
             } else {
+                failedAccounts++
                 // transient failure: keep the account's previous events
                 // (clamped to the window) and calendars instead of
                 // blanking it until the next successful sync — same
@@ -461,8 +463,14 @@ export function sync(focus?: { y: number; m: number }) {
             }
             if (--pending > 0) return
             merged.sort((a, b) => a.startMs - b.startMs)
-            loadedFrom = from
-            loadedTo = to
+            // a window is only "loaded" when at least one account
+            // actually synced: advancing past a total failure would
+            // stop ensureCoverage from retrying the new month until the
+            // next poll (default 15 min)
+            if (failedAccounts < signedIn.length) {
+                loadedFrom = from
+                loadedTo = to
+            }
             setEvents(merged)
             setCalendars(allCals)
             writeCache(merged)
