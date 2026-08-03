@@ -111,7 +111,9 @@ async function readSinkVolume(): Promise<{ volume: number; mute: boolean } | nul
 async function forceAlarmVolume() {
     if (GLib.find_program_in_path("wpctl") === null) return
     const cur = await readSinkVolume()
-    if (cur === null) return
+    // the alarm may have been stopped while wpctl was out: don't latch
+    // a saved level and force the sink for a session that's over
+    if (cur === null || !alarming.get()) return
     savedAudio = cur
     if (cur.mute) execAsync(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "0"]).catch(() => {})
     const target = Config.sleepTimer.alarmVolume
@@ -170,17 +172,17 @@ function startAlarm() {
 }
 
 export function stopAlarm() {
+    // the pause sweep re-mutes anything still unmuted when it ticks —
+    // it must not outlive the session, whether or not a chime rang
+    if (pauseSweepSource) {
+        sourceRemove(pauseSweepSource)
+        pauseSweepSource = 0
+    }
     if (!alarming.get()) return
     setAlarming(false)
     if (alarmSource) {
         sourceRemove(alarmSource)
         alarmSource = 0
-    }
-    // the pause sweep re-mutes anything still unmuted when it ticks —
-    // the alarm session is over, so it must not run past this point
-    if (pauseSweepSource) {
-        sourceRemove(pauseSweepSource)
-        pauseSweepSource = 0
     }
     restoreAlarmVolume()
     // cut the in-flight chime instead of letting it ring out
