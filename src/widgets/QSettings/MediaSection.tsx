@@ -142,12 +142,16 @@ function Player({ player }: { player: AstalMpris.Player }) {
             {/* cover-left stack: big art on the left, text + controls
             in a column to its right */}
             <box spacing={10} hexpand>
-                {/* big cover, click focuses the player window */}
-                <box cssName="button" tooltipText="Focus player window">
-                    <Gtk.GestureClick button={1} onPressed={() => raisePlayer(player)} />
-                    <With value={localCover}>
-                        {c =>
-                            c ? (
+                {/* big cover, click focuses the player window; hidden
+                entirely when the player has no art */}
+                <With value={localCover}>
+                    {c =>
+                        c && (
+                            <box cssName="button" tooltipText="Focus player window">
+                                <Gtk.GestureClick
+                                    button={1}
+                                    onPressed={() => raisePlayer(player)}
+                                />
                                 <box
                                     cssClasses={["mediaCover", "mediaCoverBig"]}
                                     // the path comes from player metadata — escape
@@ -156,20 +160,10 @@ function Player({ player }: { player: AstalMpris.Player }) {
                                         background-image: url("${c.replace(/['\\]/g, "\\$&")}");
                                     `}
                                 />
-                            ) : (
-                                <box
-                                    cssClasses={[
-                                        "mediaCover",
-                                        "mediaCoverBig",
-                                        "mediaCoverFallback",
-                                    ]}
-                                >
-                                    <image iconName="audio-x-generic-symbolic" />
-                                </box>
-                            )
-                        }
-                    </With>
-                </box>
+                            </box>
+                        )
+                    }
+                </With>
                 <box
                     orientation={Gtk.Orientation.VERTICAL}
                     spacing={4}
@@ -329,31 +323,6 @@ function Player({ player }: { player: AstalMpris.Player }) {
                             widthChars={6}
                             maxWidthChars={6}
                             label={trackLength.as(l => (l > 0 ? formatTime(l) : "--:--"))}
-                        />
-                    </box>
-                    {/* per-player volume; hidden when the player has no
-                    volume control (mpris volume is -1 then) */}
-                    <box
-                        cssClasses={["sliderRow"]}
-                        spacing={8}
-                        visible={createBinding(player, "volume").as(v => v >= 0)}
-                    >
-                        <image iconName={"audio-volume-high-symbolic"} />
-                        <slider
-                            hexpand
-                            min={0}
-                            max={1}
-                            value={createBinding(player, "volume")}
-                            onChangeValue={({ value }) =>
-                                (player.volume = Math.min(1, Math.max(0, value)))
-                            }
-                        />
-                        <label
-                            widthChars={4}
-                            maxWidthChars={4}
-                            label={createBinding(player, "volume").as(
-                                v => `${Math.round(Math.max(0, v) * 100)}%`,
-                            )}
                         />
                     </box>
                 </box>

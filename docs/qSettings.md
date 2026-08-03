@@ -24,8 +24,8 @@ It closes on ESC, on click-away, and on the panel button (it's a toggle).
   network graphs; the same stats can go on the panel
   (`quicksettings.stats_on_panel`).
 - **Media section**: the active MPRIS player as a big-cover card:
-  seek with undo, per-player volume, shuffle/repeat, and multi-player
-  switching (segments, scroll, arrow keys).
+  seek with undo, shuffle/repeat, and multi-player switching
+  (segments, scroll, arrow keys).
 - **Tray**: when `tray.on_panel` is off, the non-pinned tray items live
   here as a pill row.
 
