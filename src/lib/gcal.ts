@@ -109,18 +109,21 @@ export interface CalInfo {
 const [calendars, setCalendars] = createState<CalInfo[]>([])
 export { calendars }
 
-// session visibility overrides (calendar id -> visible); defaults come
+// session visibility overrides (visKey -> visible); defaults come
 // from config's hidden_calendars. Toggles live here so month dots and
 // the agenda follow the same source
 const [visibilityOverrides, setVisibilityOverrides] = createState<Record<string, boolean>>({})
 export { visibilityOverrides }
 
-export function toggleCalendar(id: string) {
-    const cal = calendars.get().find(c => c.id === id)
-    if (!cal) return
+// two accounts can subscribe to the SAME Google calendar id (holiday
+// calendars, shared calendars added twice) — visibility is tracked per
+// account, not per bare id, or the later account's entry wins for both
+export const visKey = (cal: CalInfo) => `${cal.account}:${cal.id}`
+
+export function toggleCalendar(cal: CalInfo) {
     setVisibilityOverrides({
         ...visibilityOverrides.get(),
-        [id]: !calendarVisible(cal, visibilityOverrides.get()),
+        [visKey(cal)]: !calendarVisible(cal, visibilityOverrides.get()),
     })
 }
 
@@ -130,7 +133,7 @@ export function isVisible(
     overrides: Record<string, boolean>,
     hiddenNames: string[],
 ): boolean {
-    const o = overrides[cal.id]
+    const o = overrides[visKey(cal)]
     if (o !== undefined) return o
     return (
         !hiddenNames.includes(cal.summary) && !hiddenNames.includes(`${cal.account}:${cal.summary}`)
@@ -146,9 +149,9 @@ export function calendarVisible(cal: CalInfo, overrides: Record<string, boolean>
 export const visibleEvents = createComputed(
     [events, calendars, visibilityOverrides],
     (evts, cals, ovs) => {
-        const byId = new Map(cals.map(c => [c.id, c]))
+        const byKey = new Map(cals.map(c => [`${c.account}:${c.id}`, c]))
         return evts.filter(e => {
-            const cal = byId.get(e.calendarId)
+            const cal = byKey.get(`${e.account}:${e.calendarId}`)
             return cal ? calendarVisible(cal, ovs) : true
         })
     },
