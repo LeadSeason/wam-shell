@@ -230,26 +230,24 @@ function PowerDetails() {
                     sub={Sys.netUp.as(u => `↑ ${Sys.formatRate(u)}`)}
                     visible={Config.quicksettings.showStats}
                 />
+                <With value={Sys.gpu.as(g => g !== null && Config.quicksettings.showStats)}>
+                    {present =>
+                        present && (
+                            <StatTile
+                                icon="freon-gpu-temperature-symbolic"
+                                big={Sys.gpu.as(g => `${g}%`)}
+                                sub={createComputed(
+                                    [Sys.gpuTemp, Sys.vram, Sys.gpuWatts],
+                                    (t, [used, total], w) =>
+                                        w > 0
+                                            ? `${t}°C · ${used}/${total} MiB · ${Math.round(w)} W`
+                                            : `${t}°C · ${used}/${total} MiB`,
+                                )}
+                            />
+                        )
+                    }
+                </With>
             </Gtk.FlowBox>
-            {/* GPU tile goes full-width (its sub is long): same tile
-            look, both grid columns' width */}
-            <With value={Sys.gpu.as(g => g !== null && Config.quicksettings.showStats)}>
-                {present =>
-                    present && (
-                        <StatTile
-                            icon="freon-gpu-temperature-symbolic"
-                            big={Sys.gpu.as(g => `${g}%`)}
-                            sub={createComputed(
-                                [Sys.gpuTemp, Sys.vram, Sys.gpuWatts],
-                                (t, [used, total], w) =>
-                                    w > 0
-                                        ? `${t}°C · ${used}/${total} MiB · ${Math.round(w)} W`
-                                        : `${t}°C · ${used}/${total} MiB`,
-                            )}
-                        />
-                    )
-                }
-            </With>
             {/* full-width tile: the active profile's energy preference,
             live — two sub-size rows so the tile matches the others'
             height. The governor is dropped: on pstate systems it maps
