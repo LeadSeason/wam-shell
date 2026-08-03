@@ -353,9 +353,12 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
 
 export function formatTime(seconds: number): string {
     if (seconds < 0) seconds = 0
-    const m = Math.floor(seconds / 60)
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
     const s = Math.floor(seconds % 60)
-    return `${m}:${s.toString().padStart(2, "0")}`
+    return h > 0
+        ? `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`
+        : `${m}:${s.toString().padStart(2, "0")}`
 }
 
 export interface SmoothedPosition {
