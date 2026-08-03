@@ -7,7 +7,6 @@ import Config from "../config"
 import Brightness from "./brightness"
 import hyprsunset, { OUTDOOR_GAMMA } from "./hyprsunset"
 import { ensureLayoutSource, ensureLockSource, layoutOsdText, lockKeyState } from "./kbLayout"
-import { externalChange, devices } from "./brightnessDevices"
 
 // OSD state and triggers. Widgets read `content`/`visible`; triggers
 // call show() which (re)starts the hide timer.
@@ -38,7 +37,7 @@ const graceUntil = Date.now() + 1500
 // long-lived sources, see AGENTS.md)
 const disposers: (() => void)[] = []
 
-type OsdKind = "volume" | "microphone" | "brightness" | "layout" | "lockKeys" | "peripherals"
+type OsdKind = "volume" | "microphone" | "brightness" | "layout" | "lockKeys"
 
 function show(c: Omit<OsdContent, "kind">, kind: OsdKind) {
     if (!Config.osd.enabled) return
@@ -220,31 +219,6 @@ if (Config.osd.enabled && Config.osd.lockKeys) {
                 }
             }
             prev = cur
-        }),
-    )
-}
-
-// peripheral brightness (keyboard backlight & co.): the device watch
-// in brightnessDevices catches external changes (asusctl next/prev,
-// sysfs writes) — show the new level. Our own slider sets land here
-// too, which is the feedback for the drag itself
-if (Config.osd.enabled && Config.osd.peripherals) {
-    disposers.push(
-        externalChange.subscribe(() => {
-            const change = externalChange.get()
-            if (!change || change.level === null) return
-            const device = devices.get().find(d => d.id === change.id)
-            show(
-                {
-                    icon: "input-keyboard-symbolic",
-                    value: change.level,
-                    label: device?.stageLabel
-                        ? device.stageLabel()
-                        : `${Math.round(change.level * 100)}%`,
-                    over: false,
-                },
-                "peripherals",
-            )
         }),
     )
 }

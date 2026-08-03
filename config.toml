@@ -530,7 +530,7 @@
 # enabled - default true
 # position - "bottom", "center" or "top". default "bottom"
 # timeout - milliseconds before the OSD hides. default 2000
-# volume, microphone, brightness, layout, lock_keys, peripherals -
+# volume, microphone, brightness, layout, lock_keys -
 #           per-trigger toggles. default true
 # [osd]
 # enabled = true
@@ -541,7 +541,6 @@
 # brightness = true
 # layout = true
 # lock_keys = true
-# peripherals = true
 
 # ════════════════════════════════════════════════════════════════════
 # Night light (hyprsunset, hyprland only)

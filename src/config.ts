@@ -748,7 +748,6 @@ function getOsdConfig() {
         brightness: get("brightness", true),
         layout: get("layout", true),
         lockKeys: get("lock_keys", true),
-        peripherals: get("peripherals", true),
     }
 }
 

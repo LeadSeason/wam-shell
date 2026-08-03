@@ -164,6 +164,17 @@ function brightnessWidget() {
                     return true
                 }}
             />
+            {/* middle-click: toggle between the two restore levels, or
+            jump to 100% when nothing was recorded yet */}
+            <Gtk.GestureClick
+                button={2}
+                onPressed={() => {
+                    show()
+                    if (previous.get() >= 0) brightness.restorePrevious()
+                    else brightness.screen = 1
+                    return true
+                }}
+            />
             <image iconName={"display-brightness-symbolic"} />
             <revealer revealChild={visible} transitionType={Gtk.RevealerTransitionType.SLIDE_RIGHT}>
                 <label marginStart={5} label={screen.as(v => `${Math.floor(v * 100)}%`)} />
