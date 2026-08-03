@@ -87,22 +87,32 @@ const prettify = (name: string) =>
 
 const ASUS_STAGES = ["off", "low", "med", "high"] as const
 
-function discoverAsusctl(): { device: BrightnessDevice; refresh: () => void } | null {
+function discoverAsusctl(): {
+    device: BrightnessDevice
+    refresh: (done?: () => void) => void
+} | null {
     if (GLib.find_program_in_path("asusctl") === null) return null
     const stageOf = (text: string) => {
         const m = text.toLowerCase().match(/brightness:\s*(\w+)/)
         return ASUS_STAGES.includes(m?.[1] as any) ? (m![1] as (typeof ASUS_STAGES)[number]) : null
     }
     let stage: (typeof ASUS_STAGES)[number] | null = null
-    // re-query through asusd (cheap, only on watch fires / refresh)
-    const refresh = () => {
-        try {
-            stage = stageOf(exec(["asusctl", "leds", "get"]).trim())
-        } catch {
-            stage = null
-        }
+    // async on the watch path: a sync exec inside a file-monitor
+    // callback stalls the UI for a fork+asusd round-trip per change
+    const refresh = (done?: () => void) => {
+        execAsync(["asusctl", "leds", "get"])
+            .then(out => {
+                stage = stageOf(out.trim())
+                done?.()
+            })
+            .catch(e => console.warn("asusctl leds get:", e))
     }
-    refresh()
+    // initial probe (sync, once): decides whether asusd answers at all
+    try {
+        stage = stageOf(exec(["asusctl", "leds", "get"]).trim())
+    } catch {
+        return null
+    }
     if (stage === null) return null // asusctl exists but asusd isn't answering
 
     const device: BrightnessDevice = {
@@ -186,8 +196,8 @@ function refresh() {
                 monitors.push(
                     monitorFile(led.bpath, () => {
                         if (asusManaged) {
-                            asus.refresh()
-                            reportExternal(asus.device.id, asus.device.level())
+                            // async refresh; report after the new stage lands
+                            asus.refresh(() => reportExternal(asus.device.id, asus.device.level()))
                         } else {
                             const d = found.find(x => x.id === led.name)
                             if (d) reportExternal(d.id, d.level())
