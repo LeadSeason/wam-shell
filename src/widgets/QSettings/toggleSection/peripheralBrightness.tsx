@@ -26,9 +26,14 @@ export function PeripheralBrightnessButton({ navigate }: { navigate: () => void 
                         // label ("Keyboard backlight") pushed the
                         // FlowBox to one column
                         label={"Peripherals"}
-                        subtitle={createComputed([devices, externalChange], l =>
-                            l.length === 1 ? levelText(l[0]) : `${l.length} devices`,
-                        )}
+                        // count-aware so "Off" can't be misread as
+                        // "some devices off": "1 device · Off",
+                        // "2 devices · 1 on"
+                        subtitle={createComputed([devices, externalChange], l => {
+                            if (l.length === 1) return `1 device · ${levelText(l[0])}`
+                            const on = l.filter(d => d.level() > 0).length
+                            return `${l.length} devices · ${on} on`
+                        })}
                         isActive={createComputed([devices, externalChange], l =>
                             l.some(d => d.level() > 0),
                         )}
