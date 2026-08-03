@@ -27,6 +27,10 @@ export interface BrightnessDevice {
     set(level: number): void
     // for the slider overlay: "High" for staged devices, "" otherwise
     stageLabel?: () => string
+    // display labels of every stage (staged devices only, e.g. asusctl's
+    // ["Off", "Low", "Med", "High"]): the pane renders them as one-tap
+    // buttons. stage i maps to set(i / (stages.length - 1))
+    stages?: string[]
     // raw max (sysfs only); staged devices have none
     max?: number
 }
@@ -90,6 +94,7 @@ const prettify = (name: string) =>
 // ------------------------------------------------------------ asusctl
 
 const ASUS_STAGES = ["off", "low", "med", "high"] as const
+const ASUS_STAGE_LABELS = ASUS_STAGES.map(s => s[0].toUpperCase() + s.slice(1))
 
 function discoverAsusctl(): {
     device: BrightnessDevice
@@ -124,6 +129,7 @@ function discoverAsusctl(): {
         label: "Keyboard backlight",
         level: () => (stage === null ? 0 : ASUS_STAGES.indexOf(stage) / (ASUS_STAGES.length - 1)),
         stageLabel: () => (stage === null ? "" : stage[0].toUpperCase() + stage.slice(1)),
+        stages: ASUS_STAGE_LABELS,
         set: (l: number) => {
             const next =
                 ASUS_STAGES[Math.max(0, Math.min(3, Math.round(l * (ASUS_STAGES.length - 1))))]
