@@ -350,6 +350,31 @@ window#QSettings {
         color: t.$accent;
     }
 
+    // per-app audio rows in the volume dropdown: the header and the
+    // muted-state cue on the mute toggle
+    .dropdownCard {
+        background-color: t.$crust;
+        border-radius: s.$radius;
+        padding: 6px 12px;
+        margin-top: 4px;
+    }
+    .dropdownSection {
+        font-weight: bold;
+        margin: 4px 0 2px 4px;
+        // breathing room between the two sections, none needed above
+        // the first
+        &:not(:first-child) {
+            margin-top: 10px;
+        }
+    }
+    .appMuteBtn.active {
+        color: t.$accent;
+    }
+    .appStreamVol {
+        font-size: s.$font-small;
+        color: t.$subtext0;
+    }
+
     // wifi band section headers in the wifi pane
     // wifi band badge pill, overlaid bottom-right on signal icons
     // (2.4GHz gets no badge)

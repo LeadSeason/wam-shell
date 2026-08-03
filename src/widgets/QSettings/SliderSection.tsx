@@ -8,6 +8,7 @@ import Brightness from "../../lib/brightness"
 import hyprsunset, { setOutdoorEnabled, OUTDOOR_GAMMA } from "../../lib/hyprsunset"
 import { Accessor, For, Setter, With, createBinding, createComputed, createState } from "gnim"
 import { qsVisible } from "./MediaSection"
+import { createIconResolver } from "../../lib/appIcon"
 
 interface VolSliderProps {
     maxValue?: number
@@ -52,6 +53,103 @@ function DeviceList({
                     </box>
                 )}
             </For>
+        </box>
+    )
+}
+
+// one row per application with playback streams (grouped by app):
+// per-app volume and mute, so muted streams never need pwvucontrol.
+// Rows follow the bluetooth pane's design language
+function AppRow({
+    g,
+    resolveIcon,
+}: {
+    g: { description: string; members: AstalWp.Stream[] }
+    resolveIcon: (name: string | null | undefined) => string | null
+}) {
+    // group volume shows the loudest stream; a drag applies to all of
+    // the app's streams
+    const volume = createComputed(
+        g.members.map(s => createBinding(s, "volume")),
+        (...vs) => Math.max(...vs),
+    )
+    const muted = createComputed(
+        g.members.map(s => createBinding(s, "mute")),
+        (...ms) => ms.every(m => m),
+    )
+    return (
+        <box
+            cssClasses={["appStreamRow", "paneRow"]}
+            orientation={Gtk.Orientation.VERTICAL}
+            spacing={2}
+        >
+            <label
+                cssClasses={["paneRowName"]}
+                label={g.description}
+                xalign={0}
+                maxWidthChars={24}
+                ellipsize={Pango.EllipsizeMode.END}
+            />
+            {/* one axis: icon, slider, %, mute all vertically centered */}
+            <box spacing={8} valign={Gtk.Align.CENTER}>
+                <image
+                    valign={Gtk.Align.CENTER}
+                    iconName={resolveIcon(g.description) ?? "audio-x-generic-symbolic"}
+                />
+                <slider
+                    hexpand
+                    min={0}
+                    max={1}
+                    value={volume}
+                    onChangeValue={({ value }) => {
+                        for (const s of g.members) s.volume = value
+                    }}
+                />
+                <label
+                    cssClasses={["appStreamVol"]}
+                    widthChars={4}
+                    maxWidthChars={4}
+                    label={volume.as(v => `${Math.round(v * 100)}%`)}
+                />
+                <button
+                    cssClasses={muted.as(m => ["appMuteBtn", ...(m ? ["active"] : [])])}
+                    valign={Gtk.Align.CENTER}
+                    tooltipText={muted.as(m =>
+                        m ? `Unmute ${g.description}` : `Mute ${g.description}`,
+                    )}
+                    onClicked={() => {
+                        const unmute = g.members.every(s => s.mute)
+                        for (const s of g.members) s.mute = !unmute
+                    }}
+                >
+                    <image
+                        iconName={muted.as(m =>
+                            m ? "audio-volume-muted-symbolic" : "audio-volume-high-symbolic",
+                        )}
+                    />
+                </button>
+            </box>
+        </box>
+    )
+}
+
+function AppStreams({ streams }: { streams: Accessor<AstalWp.Stream[] | null> }) {
+    const resolveIcon = createIconResolver(
+        Gtk.IconTheme.get_for_display(Gdk.Display.get_default()!),
+    )
+    const groups = streams.as(list => {
+        const m = new Map<string, AstalWp.Stream[]>()
+        for (const s of list ?? []) {
+            const key = s.description || s.name
+            if (!m.has(key)) m.set(key, [])
+            m.get(key)!.push(s)
+        }
+        return [...m.entries()].map(([description, members]) => ({ description, members }))
+    })
+    return (
+        <box orientation={Gtk.Orientation.VERTICAL} visible={groups.as(g => g.length > 0)}>
+            <label cssClasses={["dropdownSection"]} xalign={0} label={"Applications"} />
+            <For each={groups}>{g => <AppRow g={g} resolveIcon={resolveIcon} />}</For>
         </box>
     )
 }
@@ -305,7 +403,13 @@ export function SliderSection() {
                 }
             </With>
             <revealer revealChild={expanded.as(v => v === 1)}>
-                <DeviceList endpoints={speakers} collapse={() => setExpanded(0)} />
+                {/* the inset crust card is what reads as "a pane" inside
+                the sliders' base card (base-on-base would be invisible) */}
+                <box cssClasses={["dropdownCard"]} orientation={Gtk.Orientation.VERTICAL}>
+                    <label cssClasses={["dropdownSection"]} xalign={0} label={"Output Devices"} />
+                    <DeviceList endpoints={speakers} collapse={() => setExpanded(0)} />
+                    <AppStreams streams={createBinding(audio, "streams")} />
+                </box>
             </revealer>
             <With value={createBinding(wp, "defaultMicrophone")}>
                 {microphone =>
@@ -321,7 +425,11 @@ export function SliderSection() {
                 }
             </With>
             <revealer revealChild={expanded.as(v => v === 2)}>
-                <DeviceList endpoints={microphones} collapse={() => setExpanded(0)} />
+                <box cssClasses={["dropdownCard"]} orientation={Gtk.Orientation.VERTICAL}>
+                    <label cssClasses={["dropdownSection"]} xalign={0} label={"Input Devices"} />
+                    <DeviceList endpoints={microphones} collapse={() => setExpanded(0)} />
+                    <AppStreams streams={createBinding(audio, "recorders")} />
+                </box>
             </revealer>
             <BrightnessSlider />
         </box>

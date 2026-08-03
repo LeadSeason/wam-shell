@@ -14,7 +14,9 @@ It closes on ESC, on click-away, and on the panel button (it's a toggle).
 - **Header**: avatar (see below), battery ring (charge-cap aware), uptime
   and load, lock/reboot/power buttons.
 - **Sliders**: speaker volume, microphone, screen brightness (outdoor mode
-  allows >100% on supported setups).
+  allows >100% on supported setups). The speaker dropdown also lists
+  applications with playback streams: per-app volume and a mute toggle,
+  so a muted app never needs pwvucontrol.
 - **Toggle section** (`quicksettings` FlowBox): Wi-Fi, Bluetooth, Wired,
   Power Mode, Sway Gaps (sway only), Night Light, Dark Style, VPN
   (Mullvad), Airplane Mode, Sleep Timer. Toggles with a chevron either
