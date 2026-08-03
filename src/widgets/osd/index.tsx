@@ -1,6 +1,5 @@
 import { Astal, Gtk, Gdk } from "ags/gtk4"
 import GLib from "gi://GLib?version=2.0"
-import Pango from "gi://Pango?version=1.0"
 import app from "ags/gtk4/app"
 import { createBinding, With, onCleanup } from "gnim"
 import AstalHyprland from "gi://AstalHyprland"
@@ -134,9 +133,10 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
                     </With>
                     <label
                         label={content.as(c => c.label)}
+                        // minimum width only: capping + ellipsizing ate
+                        // the longer layout names ("English (US) →
+                        // Swedish") — the pill grows to fit instead
                         widthChars={4}
-                        maxWidthChars={36}
-                        ellipsize={Pango.EllipsizeMode.END}
                     />
                 </box>
             </revealer>
