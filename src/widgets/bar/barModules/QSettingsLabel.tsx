@@ -2,7 +2,7 @@ import { Gtk, Gdk } from "ags/gtk4"
 import GLib from "gi://GLib?version=2.0"
 import { timeout } from "ags/time"
 import AstalWp from "gi://AstalWp?version=0.1"
-import { createBinding, createState, onCleanup, With } from "gnim"
+import { createBinding, createComputed, createState, onCleanup, With } from "gnim"
 import CommandRegistry from "../../../lib/requestHandler"
 import { SliderSection } from "../../QSettings/SliderSection"
 import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1"
@@ -11,7 +11,8 @@ import ArchUpdates from "../../../lib/archUpdates"
 import trayNeedsAttention from "../../../lib/trayAttention"
 import vpnStatus from "../../../lib/vpn"
 import Brightness from "../../../lib/brightness"
-import { execAsync } from "../../../lib/metrics"
+import { alarming } from "../../../lib/sleepTimer"
+import { execAsync, timeoutAdd, sourceRemove } from "../../../lib/metrics"
 import Config from "../../../config"
 
 const registry = CommandRegistry.get_default()
@@ -352,8 +353,34 @@ function ButtonLabel() {
 }
 
 export default function QSettings() {
+    // flash the label as a vibrant accent block while the sleep
+    // timer's alarm rings: no notification — the panel itself calls
+    // for attention. JS-driven flip (600ms): CSS opacity animations
+    // don't run in this shell
+    const [flashOn, setFlashOn] = createState(false)
+    let flashSource = 0
+    alarming.subscribe(() => {
+        if (alarming.get()) {
+            if (flashSource === 0)
+                flashSource = timeoutAdd("bar:alarmFlash", GLib.PRIORITY_DEFAULT, 600, () => {
+                    setFlashOn(!flashOn.get())
+                    return true
+                })
+        } else {
+            if (flashSource !== 0) {
+                sourceRemove(flashSource)
+                flashSource = 0
+            }
+            setFlashOn(false)
+        }
+    })
     return (
-        <box cssClasses={["QSettings"]}>
+        <box
+            cssClasses={createComputed([alarming, flashOn], (a, f) => [
+                "QSettings",
+                ...(a && f ? ["alarmAttention"] : []),
+            ])}
+        >
             <Gtk.GestureClick
                 button={1}
                 onPressed={() => {

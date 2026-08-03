@@ -152,6 +152,18 @@ window.Bar {
         }
     }
 
+    // the sleep timer's alarm rings without a notification: the panel
+    // label flashes as a vibrant accent block until stopped (driven
+    // in JS — CSS opacity animations don't run in this shell)
+    .QSettings.alarmAttention {
+        background-color: t.$accent;
+        border-radius: s.$radius;
+        label,
+        image {
+            color: t.$base;
+        }
+    }
+
     .swayNC {
         border-radius: s.$radius;
         margin: 0px s.$padding;
