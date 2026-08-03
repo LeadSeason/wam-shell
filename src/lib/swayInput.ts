@@ -86,6 +86,10 @@ function connect(path: string, handlers: Handlers, attempt: number) {
                     out.write_bytes_finish(wres)
                     next()
                 } catch {
+                    // close before retrying: the read loop on the old
+                    // connection must not outlive it (the EOF path does
+                    // the same), and retry() dedupes the pending source
+                    conn.close(null)
                     retry(path, handlers, attempt)
                 }
             })
@@ -104,6 +108,9 @@ function retry(path: string, handlers: Handlers, attempt: number) {
         handlers.onUnavailable()
         return
     }
+    // several failure paths can land here near-simultaneously (write
+    // error, then the closed read's EOF): one pending reconnect only
+    if (retrySource) return
     retrySource = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
         retrySource = 0
         connect(path, handlers, attempt + 1)
