@@ -527,49 +527,59 @@ export function poll() {
         const seenIds = new Set<string>()
         let pending = accounts.length
         let failedAccounts = 0
+        const onAccountDone = (
+            account: (typeof accounts)[number],
+            videos: ProviderItem[] | null,
+        ) => {
+            // a totally failed sweep keeps that account's previous
+            // rows (transient errors must not blank the center);
+            // a successful one is authoritative, even when smaller
+            if (videos === null) failedAccounts++
+            for (const v of videos ?? prev.filter(p => itemAccounts.get(p.id) === account.email)) {
+                if (seenIds.has(v.id)) continue
+                seenIds.add(v.id)
+                merged.push(v)
+            }
+            if (--pending > 0) return
+            // quota day / outage: every account failed -> lengthen
+            // the next interval (1h, 2h, 4h, cap 8h); any success
+            // resets
+            failStreak = failedAccounts === accounts.length ? failStreak + 1 : 0
+            setStatus(
+                failStreak > 0
+                    ? `Couldn't sync YouTube (HTTP ${lastHttp || "network error"}) — retrying in ${effectivePollMinutes()}m`
+                    : null,
+            )
+            merged.sort((a, b) => b.time - a.time)
+            setItems(merged.slice(0, 50))
+            fetchDisplayedThumbs()
+            pollInFlight = false
+            scheduleNext()
+            if (!baselineDone) {
+                baselineDone = true
+                return
+            }
+            if (!Config.notifications.popupProviders.includes("youtube")) return
+            for (const id of bannerCandidates(prev, merged, seen, Date.now() / 1000)) {
+                const item = merged.find(i => i.id === id)
+                if (item) addProviderPopup(item)
+            }
+        }
         for (const account of accounts) {
-            sweepAccount(account, videos => {
-                // a totally failed sweep keeps that account's previous
-                // rows (transient errors must not blank the center);
-                // a successful one is authoritative, even when smaller
-                if (videos === null) failedAccounts++
-                for (const v of videos ??
-                    prev.filter(p => itemAccounts.get(p.id) === account.email)) {
-                    if (seenIds.has(v.id)) continue
-                    seenIds.add(v.id)
-                    merged.push(v)
-                }
-                if (--pending > 0) return
-                // quota day / outage: every account failed -> lengthen
-                // the next interval (1h, 2h, 4h, cap 8h); any success
-                // resets
-                failStreak = failedAccounts === accounts.length ? failStreak + 1 : 0
-                setStatus(
-                    failStreak > 0
-                        ? `Couldn't sync YouTube (HTTP ${lastHttp || "network error"}) — retrying in ${effectivePollMinutes()}m`
-                        : null,
-                )
-                merged.sort((a, b) => b.time - a.time)
-                setItems(merged.slice(0, 50))
-                fetchDisplayedThumbs()
-                pollInFlight = false
-                scheduleNext()
-                if (!baselineDone) {
-                    baselineDone = true
-                    return
-                }
-                if (!Config.notifications.popupProviders.includes("youtube")) return
-                for (const id of bannerCandidates(prev, merged, seen, Date.now() / 1000)) {
-                    const item = merged.find(i => i.id === id)
-                    if (item) addProviderPopup(item)
-                }
-            })
+            // discovery failed with no cache for this account: its sweep
+            // can't run — treat it as a failed account, not an
+            // authoritative empty success (an outage would look healthy)
+            if (failedDiscovery.has(account.email)) onAccountDone(account, null)
+            else sweepAccount(account, videos => onAccountDone(account, videos))
         }
     }
+    const failedDiscovery = new Set<string>()
     if (channelsStale()) {
         let pending = accounts.length
         for (const account of accounts) {
-            discoverChannels(account, () => {
+            discoverChannels(account, ok => {
+                if (!ok && (channelsByAccount.get(account.email)?.length ?? 0) === 0)
+                    failedDiscovery.add(account.email)
                 if (--pending === 0) startSweep()
             })
         }
