@@ -309,6 +309,11 @@ window#QSettings {
     .paneCard revealer button.active label {
         color: t.$accent;
     }
+    // and for the active stage chip in the backlights pane (asusctl
+    // Off/Low/Med/High)
+    .stageBtn.active label {
+        color: t.$accent;
+    }
 
     // wifi band section headers in the wifi pane
     // wifi band badge pill, overlaid bottom-right on signal icons

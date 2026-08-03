@@ -20,6 +20,7 @@ import { WiredWidget, WiredSwitch } from "./toggleSection/wired"
 import { BluetoothWidget, BtSwitch } from "./toggleSection/bluetooth"
 import { PowerProfilesWidget } from "./toggleSection/powerProfile"
 import { VpnPane, VpnSwitch } from "./toggleSection/vpnPane"
+import { PeripheralBrightnessWidget } from "./toggleSection/peripheralBrightness"
 
 const registry = CommandRegistry.get_default()
 
@@ -271,6 +272,14 @@ export default function QSettings() {
                                 >
                                     <PowerProfilesWidget pane={pane} name="powerprofiles" />
                                 </Gtk.ScrolledWindow>
+                            </box>
+                            <box
+                                $type="named"
+                                name="peripherals"
+                                orientation={Gtk.Orientation.VERTICAL}
+                            >
+                                <PaneHeader title="Backlights" onBack={() => setPane("main")} />
+                                <PeripheralBrightnessWidget />
                             </box>
                         </stack>
                     </Gtk.ScrolledWindow>

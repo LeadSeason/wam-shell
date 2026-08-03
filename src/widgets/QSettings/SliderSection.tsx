@@ -8,7 +8,6 @@ import Brightness from "../../lib/brightness"
 import hyprsunset, { setOutdoorEnabled, OUTDOOR_GAMMA } from "../../lib/hyprsunset"
 import { Accessor, For, Setter, With, createBinding, createComputed, createState } from "gnim"
 import { qsVisible } from "./MediaSection"
-import { devices, externalChange } from "../../lib/brightnessDevices"
 
 interface VolSliderProps {
     maxValue?: number
@@ -268,51 +267,6 @@ function BrightnessSlider() {
     )
 }
 
-// one slider row per discovered writable peripheral (keyboard
-// backlights & co.), plus a dim line for detected-but-unmanaged ones
-function PeripheralSliders() {
-    return (
-        <box orientation={Gtk.Orientation.VERTICAL}>
-            <For each={devices}>
-                {d => (
-                    <box cssClasses={["sliderRow"]}>
-                        <box cssName="button" tooltipText={d.label}>
-                            <image iconName={"input-keyboard-symbolic"} />
-                        </box>
-                        <overlay>
-                            <slider
-                                hexpand
-                                min={0}
-                                max={1}
-                                onChangeValue={({ value }) => d.set(value)}
-                                value={externalChange.as(() => d.level())}
-                            />
-                            {Config.quicksettings.showDeviceNames && (
-                                <label
-                                    canTarget={false}
-                                    cssClasses={["deviceName"]}
-                                    halign={Gtk.Align.START}
-                                    valign={Gtk.Align.CENTER}
-                                    maxWidthChars={24}
-                                    ellipsize={Pango.EllipsizeMode.END}
-                                    label={d.label}
-                                />
-                            )}
-                        </overlay>
-                        <label
-                            widthChars={5}
-                            maxWidthChars={5}
-                            label={externalChange.as(() =>
-                                d.stageLabel ? d.stageLabel() : `${Math.round(d.level() * 100)}%`,
-                            )}
-                        />
-                    </box>
-                )}
-            </For>
-        </box>
-    )
-}
-
 export function SliderSection() {
     const wp = AstalWp.get_default()
 
@@ -321,7 +275,6 @@ export function SliderSection() {
         return (
             <box cssClasses={["paneCard"]} orientation={Gtk.Orientation.VERTICAL}>
                 <BrightnessSlider />
-                <PeripheralSliders />
             </box>
         )
     const { audio } = wp
@@ -371,7 +324,6 @@ export function SliderSection() {
                 <DeviceList endpoints={microphones} collapse={() => setExpanded(0)} />
             </revealer>
             <BrightnessSlider />
-            <PeripheralSliders />
         </box>
     )
 }

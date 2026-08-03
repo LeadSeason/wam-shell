@@ -8,6 +8,7 @@ import { WiredButton } from "./wired"
 import { NightLightButton, DarkStyleButton, AirplaneModeButton } from "./miscToggles"
 import { SleepTimerButton, SleepTimerWidget } from "./sleepTimer"
 import { VpnButton } from "./vpn"
+import { PeripheralBrightnessButton } from "./peripheralBrightness"
 
 /**
  * @TODO Fix buttons being wonky
@@ -45,6 +46,7 @@ export function ToggleSection({ onNavigate }: { onNavigate: (pane: string) => vo
                         setActiveDropdown={setActiveDropdownIndex}
                         dropdownIndex={2}
                     />
+                    <PeripheralBrightnessButton navigate={() => onNavigate("peripherals")} />
                 </Gtk.FlowBox>
                 <SwayGapsWidget activeDropdown={activeDropdownIndex} dropdownIndex={1} />
                 <SleepTimerWidget activeDropdown={activeDropdownIndex} dropdownIndex={2} />
