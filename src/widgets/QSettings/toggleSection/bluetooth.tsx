@@ -8,7 +8,7 @@ import Pango from "gi://Pango?version=1.0"
 import { Gtk } from "ags/gtk4"
 import bluetooth, { batteryPercent } from "../../../lib/bluetooth"
 import { batteryPercentValue } from "../../../lib/utils"
-import { timeoutAdd, connect, disconnect } from "../../../lib/metrics"
+import { timeoutAdd, sourceRemove, connect, disconnect } from "../../../lib/metrics"
 import { pairingRequest, setBtPaneOpen, dismissPairingPrompt } from "../../../lib/bluetoothAgent"
 import { PromptContent } from "../../bluetoothPairing"
 import AstalWp from "gi://AstalWp?version=0.1"
@@ -352,14 +352,31 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
             setScanning(false)
         }
     }
-    pane.subscribe(maybeScan)
-    createBinding(adapter, "powered").subscribe(maybeScan)
+    // everything below must die with this body: it remounts whenever
+    // the adapter flips (rfkill, dongle, bluez restart), and these
+    // subscribe on the long-lived pane accessor, the old adapter
+    // proxy, and every device object
+    const disposers: (() => void)[] = []
+    onCleanup(() => {
+        for (const d of disposers) d()
+        for (const h of hookedDevices.values()) for (const id of h.ids) disconnect(h.d, id)
+        hookedDevices.clear()
+        if (listTimer) {
+            sourceRemove(listTimer)
+            listTimer = 0
+        }
+        setBtPaneOpen(false)
+        stopDiscoveryAsync()
+    })
+
+    disposers.push(pane.subscribe(maybeScan))
+    disposers.push(createBinding(adapter, "powered").subscribe(maybeScan))
     maybeScan()
 
     // the pairing prompt renders inline while this pane is on screen;
     // the floating dialog window covers prompts arriving otherwise
     const updatePaneOpen = () => setBtPaneOpen(pane.get() === name)
-    pane.subscribe(updatePaneOpen)
+    disposers.push(pane.subscribe(updatePaneOpen))
     updatePaneOpen()
 
     // mirror the device list into state, and bump it when any device's
@@ -405,11 +422,13 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
             hookedDevices.delete(addr)
         }
     }
-    createBinding(bluetooth, "devices").subscribe(() => {
-        bluetooth.devices.forEach(hookDevice)
-        pruneDevices()
-        refreshDeviceList()
-    })
+    disposers.push(
+        createBinding(bluetooth, "devices").subscribe(() => {
+            bluetooth.devices.forEach(hookDevice)
+            pruneDevices()
+            refreshDeviceList()
+        }),
+    )
     bluetooth.devices.forEach(hookDevice)
 
     const paired = deviceList.as(ds =>
