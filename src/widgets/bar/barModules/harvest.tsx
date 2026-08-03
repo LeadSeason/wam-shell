@@ -37,15 +37,18 @@ const [workDays, setWorkDays] = createState(withinWorkDays())
 function msUntilNextBoundary(): number {
     const { workStart, workEnd } = Config.harvest
     const now = new Date()
-    const mins = now.getHours() * 60 + now.getMinutes()
-    const toMin = (s: string) => {
+    const nowMs = now.getTime()
+    const toMs = (s: string) => {
         const [h, m] = s.split(":").map(Number)
-        return h * 60 + m
+        const d = new Date(now)
+        d.setHours(h, m, 0, 0)
+        return d.getTime()
     }
     const next = [workStart, workEnd]
-        .map(s => (toMin(s) - mins + 1440) % 1440 || 1440)
+        .map(s => (((toMs(s) - nowMs) % 86_400_000) + 86_400_000) % 86_400_000 || 86_400_000)
         .sort((a, b) => a - b)[0]
-    return next * 60_000 + 1000
+    // seconds were truncated before: the timer fired up to 59s late
+    return next + 1000
 }
 
 if (Config.harvest.workStart && Config.harvest.workEnd) {
