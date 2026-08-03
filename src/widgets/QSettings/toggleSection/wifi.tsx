@@ -126,6 +126,40 @@ export function WifiSwitch() {
 
 /** the connected-network card: ssid, band+channel+security, ips, mac
  *  and negotiated link speed; a status line when off or unassociated */
+function DeviceDetails({ dev }: { dev: NM.DeviceWifi }) {
+    const ipLine = createComputed(
+        [createBinding(dev, "ip4Config"), createBinding(dev, "ip6Config")],
+        () => {
+            const v4 = dev.get_ip4_config()?.get_addresses()?.[0]?.get_address()
+            const v6addrs = dev.get_ip6_config()?.get_addresses()
+            const v6 = v6addrs && v6addrs.length > 0 ? v6addrs[0].get_address() : null
+            return [v4, v6].filter(Boolean).join(" · ")
+        },
+    )
+    const hwLine = createBinding(dev, "bitrate").as(() => {
+        const mac = dev.get_permanent_hw_address() ?? dev.get_hw_address() ?? ""
+        const bitrate = dev.get_bitrate()
+        const speed = bitrate > 0 ? `${Math.round(bitrate / 1000)} Mb/s` : ""
+        return [mac && `MAC ${mac}`, speed].filter(Boolean).join(" · ")
+    })
+    return (
+        <box orientation={Gtk.Orientation.VERTICAL}>
+            <label
+                cssClasses={["wifiConnectedInfo"]}
+                xalign={0}
+                label={ipLine}
+                visible={ipLine.as(l => l !== "")}
+            />
+            <label
+                cssClasses={["wifiConnectedInfo"]}
+                xalign={0}
+                label={hwLine}
+                visible={hwLine.as(l => l !== "")}
+            />
+        </box>
+    )
+}
+
 function ConnectedSection({ wifi }: { wifi: AstalNetwork.Wifi }) {
     const enabled = createBinding(wifi, "enabled")
     const ssid = createBinding(wifi, "ssid")
@@ -133,24 +167,6 @@ function ConnectedSection({ wifi }: { wifi: AstalNetwork.Wifi }) {
 
     const connected = createComputed([enabled, ssid], (e, s) => e && !!s)
     const status = createComputed([enabled, ssid], (e, s) => (e && !s ? "On — not connected" : ""))
-
-    const dev = wifi.device as NM.DeviceWifi | null
-    const ipLine = dev
-        ? createComputed([createBinding(dev, "ip4Config"), createBinding(dev, "ip6Config")], () => {
-              const v4 = dev.get_ip4_config()?.get_addresses()?.[0]?.get_address()
-              const v6addrs = dev.get_ip6_config()?.get_addresses()
-              const v6 = v6addrs && v6addrs.length > 0 ? v6addrs[0].get_address() : null
-              return [v4, v6].filter(Boolean).join(" · ")
-          })
-        : new Accessor(() => "")
-    const hwLine = dev
-        ? createBinding(dev, "bitrate").as(() => {
-              const mac = dev.get_permanent_hw_address() ?? dev.get_hw_address() ?? ""
-              const bitrate = dev.get_bitrate()
-              const speed = bitrate > 0 ? `${Math.round(bitrate / 1000)} Mb/s` : ""
-              return [mac && `MAC ${mac}`, speed].filter(Boolean).join(" · ")
-          })
-        : new Accessor(() => "")
 
     return (
         // hidden entirely when wifi is off — the header switch says it
@@ -181,18 +197,12 @@ function ConnectedSection({ wifi }: { wifi: AstalNetwork.Wifi }) {
                                     : "",
                             )}
                         />
-                        <label
-                            cssClasses={["wifiConnectedInfo"]}
-                            xalign={0}
-                            label={ipLine}
-                            visible={ipLine.as(l => l !== "")}
-                        />
-                        <label
-                            cssClasses={["wifiConnectedInfo"]}
-                            xalign={0}
-                            label={hwLine}
-                            visible={hwLine.as(l => l !== "")}
-                        />
+                        {/* rebind on notify::device: the NM device can
+                        appear after the wifi object, or be swapped on
+                        multi-adapter machines */}
+                        <With value={createBinding(wifi, "device")}>
+                            {dev => dev && <DeviceDetails dev={dev as NM.DeviceWifi} />}
+                        </With>
                     </box>
                 </box>
             </box>
@@ -304,6 +314,10 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
         const [detailsOpen, setDetailsOpen] = createState(false)
         const [autoconnect, setAutoconnect] = createState<boolean | null>(null)
         let errorToken = 0
+        // token guards the 45s hang guard and the late .then/.catch
+        // against a newer attempt on the same AP (a stale completion
+        // must not restore/fail the current attempt)
+        let connectAttempt = 0
 
         // one connection attempt at a time, pane-wide: while any AP is
         // connecting, all rows are blocked (busy) and only the in-flight
@@ -342,6 +356,7 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
             // remember where we were: restore the previous network if
             // this attempt fails
             const previous = wifi.ssid || null
+            const attempt = ++connectAttempt
             setConnectingBssid(ap.bssid)
             let args: string[]
             if (password) {
@@ -365,8 +380,12 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
             // success in ~30ms without the connection becoming active.
             // nmcli blocks until the connection is really up (or errors)
             execAsync(args)
-                .then(() => setConnectingBssid(null))
+                .then(() => {
+                    if (attempt !== connectAttempt) return
+                    setConnectingBssid(null)
+                })
                 .catch(e => {
+                    if (attempt !== connectAttempt) return
                     // known network with no stored secret: the activation
                     // fails immediately — ask for the password instead
                     if (!password && `${e}`.match(/secrets were required|password/i)) {
@@ -379,6 +398,7 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                 })
             // bluez-grade hang guard: NM may never answer on some failures
             setTimeout(() => {
+                if (attempt !== connectAttempt) return
                 if (connectingBssid.get() === ap.bssid) {
                     restore()
                     fail("Connection failed", "timed out")
@@ -577,14 +597,22 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                 p.onConnect?.(password)
                 setPrompt(null)
             } else {
+                if (connectingBssid.get() !== null) return // an attempt is in flight
                 const ssid = ssidEntry?.get_text() ?? ""
                 if (!ssid) return
                 const args = ["nmcli", "device", "wifi", "connect", ssid]
                 if (password) args.push("password", password)
                 args.push("hidden", "yes")
+                // join the pane-wide mutual exclusion (and debounce
+                // double submits): rows stay blocked while this runs
+                setConnectingBssid(`hidden:${ssid}`)
                 execAsync(args)
-                    .then(() => setPrompt(null))
+                    .then(() => {
+                        setConnectingBssid(null)
+                        setPrompt(null)
+                    })
                     .catch(e => {
+                        setConnectingBssid(null)
                         console.warn("wifi hidden join failed:", e)
                         setError("Couldn't join — check the SSID and password")
                     })
