@@ -210,6 +210,13 @@ window#QSettings {
     // players must not move the content under the pointer
     .coverRow {
         min-height: 104px;
+        // the cover's button wrapper would otherwise add margin,
+        // padding and a transparent border around the 104px art
+        > button {
+            margin: 0;
+            padding: 0;
+            border: none;
+        }
     }
     .mediaCoverFallback {
         color: t.$subtext0;
