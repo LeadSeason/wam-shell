@@ -2,7 +2,7 @@ import Gio from "gi://Gio?version=2.0"
 import GLib from "gi://GLib?version=2.0"
 import { createState } from "gnim"
 import bluetooth from "./bluetooth"
-import { timeoutAdd, sourceRemove } from "./metrics"
+import { timeoutAdd, sourceRemove, connect, disconnect } from "./metrics"
 
 // BlueZ pairing agent (org.bluez.Agent1): answers confirmation / PIN /
 // passkey prompts during pairing. The GTK side lives in
@@ -143,24 +143,28 @@ function makeResponder(
                 console.warn("bluetooth agent: reply failed:", e)
             }
         }
-        advance()
+        // a queued request answering early (dismissPairingPrompt) must
+        // not advance past — and kill — the active prompt
+        if (pairingRequest.get()?.respond === finish) advance()
     }
 
     // bluez cancels the pairing if the agent does not answer in time.
     // Armed when the prompt becomes active (see present/advance), not
-    // here — a queued prompt must not expire unseen.
-    if (invocation) {
-        armByRespond.set(finish, () => {
-            if (timer || done) return
-            timer = timeoutAdd(
-                "btAgent:promptTimeout",
-                GLib.PRIORITY_DEFAULT,
-                PROMPT_TIMEOUT_MS,
-                () => {
-                    timer = 0
-                    if (done) return GLib.SOURCE_REMOVE
-                    done = true
-                    armByRespond.delete(finish)
+    // here — a queued prompt must not expire unseen. Display requests
+    // have no invocation to answer, but must still expire or they
+    // wedge the queue forever.
+    armByRespond.set(finish, () => {
+        if (timer || done) return
+        timer = timeoutAdd(
+            "btAgent:promptTimeout",
+            GLib.PRIORITY_DEFAULT,
+            PROMPT_TIMEOUT_MS,
+            () => {
+                timer = 0
+                if (done) return GLib.SOURCE_REMOVE
+                done = true
+                armByRespond.delete(finish)
+                if (invocation) {
                     try {
                         invocation.return_dbus_error(
                             "org.bluez.Error.Canceled",
@@ -169,12 +173,12 @@ function makeResponder(
                     } catch (e) {
                         console.warn("bluetooth agent: timeout reply failed:", e)
                     }
-                    advance()
-                    return GLib.SOURCE_REMOVE
-                },
-            )
-        })
-    }
+                }
+                advance()
+                return GLib.SOURCE_REMOVE
+            },
+        )
+    })
     return finish
 }
 
@@ -329,9 +333,21 @@ function register() {
                     try {
                         Gio.DBus.system.call_finish(res2)
                         registered = true
+                        retried = false // next failure gets its own retry
                         console.log("bluetooth: pairing agent registered")
                     } catch (e) {
                         registered = false
+                        // one bounded retry per failure (bluez restart
+                        // races, transient bus errors) — otherwise the
+                        // agent is silently dead for the session
+                        if (!retried) {
+                            retried = true
+                            timeoutAdd("btAgent:registerRetry", GLib.PRIORITY_DEFAULT, 2000, () => {
+                                register()
+                                return GLib.SOURCE_REMOVE
+                            })
+                            return
+                        }
                         console.warn("bluetooth: default agent request failed:", e)
                     }
                 },
@@ -341,7 +357,17 @@ function register() {
 }
 
 export function startBluetoothAgent() {
-    if (!bluetooth.adapter) return
+    if (!bluetooth.adapter) {
+        // the adapter can appear later (rfkill at login, bluez starting
+        // after the shell): retry when it shows up, once
+        const id = connect(bluetooth, "notify::adapter", () => {
+            if (bluetooth.adapter) {
+                disconnect(bluetooth, id)
+                startBluetoothAgent()
+            }
+        })
+        return
+    }
     const info = Gio.DBusInterfaceInfo.new_for_xml(AGENT_XML)
     Gio.DBus.system.register_object(AGENT_PATH, info, onMethodCall, null, null)
     register()
