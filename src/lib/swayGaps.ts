@@ -37,6 +37,9 @@ export default class SwayGaps extends GObject.Object {
     // slider drag fires per motion event, but the file only needs the
     // settled value — one write once the changes stop
     #writeSource = 0
+    // i3ipc's on() offers no off(): teardown is a guard flag, same as
+    // the Sway class solves it
+    #disposed = false
 
     @getter(Number)
     get gap_size(): number {
@@ -90,12 +93,22 @@ export default class SwayGaps extends GObject.Object {
         this.gap_state = state
     }
 
+    // convention for lib modules with long-lived sources (see AGENTS.md)
+    dispose() {
+        this.#disposed = true
+        if (this.#writeSource !== 0) {
+            GLib.source_remove(this.#writeSource)
+            this.#writeSource = 0
+        }
+    }
+
     constructor() {
         super()
         // Ensure that correct state is applied when shell launches
         this.#applyGaps(true)
 
         this.#conn?.on("workspace", async (conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
+            if (this.#disposed) return
             if (event.change === "init") {
                 console.log("New Workspace Init, Setting size...")
                 this.#applyGaps(true)
