@@ -6,7 +6,8 @@ import Gio from "gi://Gio?version=2.0"
 import GLib from "gi://GLib?version=2.0"
 import Pango from "gi://Pango?version=1.0"
 import { Gtk } from "ags/gtk4"
-import bluetooth from "../../../lib/bluetooth"
+import bluetooth, { batteryPercent } from "../../../lib/bluetooth"
+import { batteryPercentValue } from "../../../lib/utils"
 import { timeoutAdd, connect, disconnect } from "../../../lib/metrics"
 import { pairingRequest, setBtPaneOpen, dismissPairingPrompt } from "../../../lib/bluetoothAgent"
 import { PromptContent } from "../../bluetoothPairing"
@@ -227,7 +228,7 @@ function BluetoothButtonBody({ navigate }: { navigate: () => void }) {
             const connected = devices.find(d => d.connected)
             if (!connected) return "On"
             const name = connected.alias || connected.name
-            const battery = connected.batteryPercentage
+            const battery = batteryPercent(connected)
             return battery >= 0 ? `${name} · ${battery}%` : name
         },
     )
@@ -461,7 +462,7 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                 createBinding(device, "connecting"),
                 createBinding(device, "connected"),
                 createBinding(device, "paired"),
-                createBinding(device, "batteryPercentage"),
+                createBinding(device, "batteryPercentage").as(batteryPercentValue),
             ],
             (pending, error, connecting, connected, paired, battery) => {
                 if (error) return error
@@ -570,7 +571,7 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                     tooltipText={createComputed(
                         [
                             createBinding(device, "connected"),
-                            createBinding(device, "batteryPercentage"),
+                            createBinding(device, "batteryPercentage").as(batteryPercentValue),
                         ],
                         (c, b) => (c && b >= 0 ? `${device.address} · ${b}%` : device.address),
                     )}

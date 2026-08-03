@@ -16,6 +16,17 @@ export function isFile(path: string): boolean {
     return GLib.file_test(path, GLib.FileTest.IS_REGULAR)
 }
 
+// AstalBluetooth's batteryPercentage is a FRACTION (0..1, like AstalWp
+// volume and brightness.screen), the gir's "percentage" comment
+// notwithstanding — a 90% device reports 0.9 and the UI printed "0.9%".
+// Returns whole percents, -1 when the device reports nothing. The
+// <=1 heuristic: a true-1% reading in a percent-mode lib would read as
+// 100%, an accepted edge over the always-wrong fraction display
+export function batteryPercentValue(v: number): number {
+    if (v < 0) return -1
+    return Math.round(v <= 1 ? v * 100 : v)
+}
+
 /**
  * Base text direction for alignment: true when the first strong
  * directional character is RTL (Hebrew, Arabic, …). Use to flip xalign.

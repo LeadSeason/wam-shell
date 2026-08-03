@@ -3,12 +3,17 @@ import GLib from "gi://GLib?version=2.0"
 import AstalBluetooth from "gi://AstalBluetooth?version=0.1"
 import Config from "../config"
 import { connect, disconnect } from "./metrics"
+import { batteryPercentValue } from "./utils"
 
 // Shared bluetooth state + connect/battery event notifications.
 
 const bluetooth = AstalBluetooth.get_default()
 
-const LOW_BATTERY = 20
+const LOW_BATTERY = 20 // percent
+
+export function batteryPercent(device: AstalBluetooth.Device): number {
+    return batteryPercentValue(device.batteryPercentage)
+}
 
 // per-device watcher state, keyed by address
 interface WatchState {
@@ -93,7 +98,7 @@ function watchDevice(device: AstalBluetooth.Device) {
         connect(device, "notify::battery-percentage", () => {
             if (!Config.bluetooth.notifications) return
             const state = watched.get(address)
-            const battery = device.batteryPercentage
+            const battery = batteryPercent(device)
             if (!state || !device.connected || battery < 0) return
             if (battery <= LOW_BATTERY && !state.batteryWarned) {
                 state.batteryWarned = true
