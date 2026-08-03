@@ -279,7 +279,7 @@ export default function QSettings() {
                                 orientation={Gtk.Orientation.VERTICAL}
                             >
                                 <PaneHeader title="Peripherals" onBack={() => setPane("main")} />
-                                <PeripheralBrightnessWidget />
+                                <PeripheralBrightnessWidget pane={pane} name="peripherals" />
                             </box>
                         </stack>
                     </Gtk.ScrolledWindow>

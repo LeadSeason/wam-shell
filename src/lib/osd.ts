@@ -236,7 +236,7 @@ if (Config.osd.enabled && Config.osd.peripherals) {
             const device = devices.get().find(d => d.id === change.id)
             show(
                 {
-                    icon: "input-keyboard-symbolic",
+                    icon: device?.icon ?? "input-keyboard-symbolic",
                     value: change.level,
                     label: device?.stageLabel
                         ? device.stageLabel()

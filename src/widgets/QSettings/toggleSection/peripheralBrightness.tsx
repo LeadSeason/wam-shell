@@ -1,6 +1,11 @@
 import { Gtk } from "ags/gtk4"
-import { For, With, createComputed } from "gnim"
-import { BrightnessDevice, devices, externalChange } from "../../../lib/brightnessDevices"
+import { Accessor, For, With, createComputed, onCleanup } from "gnim"
+import {
+    BrightnessDevice,
+    devices,
+    externalChange,
+    refreshExternal,
+} from "../../../lib/brightnessDevices"
 import { DropdownButton } from "./ToggleButton"
 import { PaneEmpty } from "../../PaneEmpty"
 
@@ -50,7 +55,7 @@ function DeviceRow({ d }: { d: BrightnessDevice }) {
         <box orientation={Gtk.Orientation.VERTICAL} spacing={4}>
             <box spacing={10}>
                 <image
-                    iconName={"input-keyboard-symbolic"}
+                    iconName={d.icon ?? "input-keyboard-symbolic"}
                     pixelSize={16}
                     valign={Gtk.Align.CENTER}
                 />
@@ -86,7 +91,19 @@ function DeviceRow({ d }: { d: BrightnessDevice }) {
     )
 }
 
-export function PeripheralBrightnessWidget() {
+export function PeripheralBrightnessWidget({
+    pane,
+    name,
+}: {
+    pane: Accessor<string>
+    name: string
+}) {
+    // ddc has nothing to watch: re-read monitor levels on every open
+    const unsub = pane.subscribe(() => {
+        if (pane.get() === name) refreshExternal()
+    })
+    onCleanup(unsub)
+
     return (
         <With value={devices.as(l => l.length === 0)}>
             {empty =>
@@ -95,7 +112,7 @@ export function PeripheralBrightnessWidget() {
                         icon={"input-keyboard-symbolic"}
                         title={"No brightness devices"}
                         hint={
-                            "Writable /sys/class/leds backlights and asusctl-managed devices show up here"
+                            "Writable /sys/class/leds backlights, asusctl, ddcutil and OpenRGB devices show up here"
                         }
                     />
                 ) : (

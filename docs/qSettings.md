@@ -18,12 +18,16 @@ It closes on ESC, on click-away, and on the panel button (it's a toggle).
 - **Toggle section** (`quicksettings` FlowBox): Wi-Fi, Bluetooth, Wired,
   Power Mode, Sway Gaps (sway only), Night Light, Dark Style, VPN
   (Mullvad), Airplane Mode, Sleep Timer, Peripherals (peripheral
-  brightness; only when a writable device exists — keyboard backlights
-  from `/sys/class/leds` or asusctl). Toggles with a chevron either
-  navigate to a pane (Wi-Fi, Bluetooth, Wired, Power Mode, Peripherals)
-  or expand an inline dropdown (Sway Gaps, Sleep Timer). The
-  Peripherals pane has one slider per device; staged devices (asusctl)
-  also get one-tap Off/Low/Med/High buttons.
+  brightness; only when a manageable device exists). Toggles with a
+  chevron either navigate to a pane (Wi-Fi, Bluetooth, Wired, Power
+  Mode, Peripherals) or expand an inline dropdown (Sway Gaps, Sleep
+  Timer). The Peripherals pane has one slider per device; staged
+  devices (asusctl) also get one-tap Off/Low/Med/High buttons.
+  Backends, all optional and zero-cost when absent: writable
+  `/sys/class/leds` backlights, asusctl, ddcutil (external monitors
+  over DDC/CI, re-read on pane open) and OpenRGB (RGB gear; the CLI
+  can't read brightness, so the level is what was last set, 100%
+  until then).
 - **Stats section** (optional, `quicksettings.show_stats`): cpu/ram/gpu/
   network graphs; the same stats can go on the panel
   (`quicksettings.stats_on_panel`).
