@@ -363,21 +363,21 @@ function fetchAll(
 ) {
     request("GET", path, null, r => {
         // one bounded retry on throttle: a 429 would otherwise silently
-        // abandon the whole slow fetch. The source is tracked so
-        // dispose() can cancel a pending retry instead of firing a
-        // fetch on a torn-down module
+        // abandon the whole slow fetch. Sources are tracked per chain
+        // (chains run concurrently — a single global id would let one
+        // chain cancel another's retry) so dispose() can cancel them
         if (r.status === 429 && !retried) {
-            if (fetchRetrySource) sourceRemove(fetchRetrySource)
-            fetchRetrySource = timeoutAddSeconds(
+            const src = timeoutAddSeconds(
                 "harvest:fetchRetry",
                 GLib.PRIORITY_DEFAULT,
                 Math.max(r.retryAfter, 1),
                 () => {
-                    fetchRetrySource = 0
+                    fetchRetrySources.delete(src)
                     fetchAll(path, key, acc, cb, true)
                     return GLib.SOURCE_REMOVE
                 },
             )
+            fetchRetrySources.add(src)
             return
         }
         if (!r.ok || !r.json) {
@@ -396,8 +396,9 @@ function fetchAll(
 let fastTimer = 0
 let slowTimer = 0
 let baselineTimer = 0
-// pending 429 retry (fetchAll): tracked so dispose() can cancel it
-let fetchRetrySource = 0
+// pending 429 retries (fetchAll chains run concurrently): tracked so
+// dispose() can cancel them all
+const fetchRetrySources = new Set<number>()
 let tickerSource = 0
 let authStrikes = 0
 let backoffLevel = 0
@@ -1213,10 +1214,8 @@ export function dispose() {
         sourceRemove(baselineTimer)
         baselineTimer = 0
     }
-    if (fetchRetrySource) {
-        sourceRemove(fetchRetrySource)
-        fetchRetrySource = 0
-    }
+    for (const src of fetchRetrySources) sourceRemove(src)
+    fetchRetrySources.clear()
     if (rolloverTimer) {
         sourceRemove(rolloverTimer)
         rolloverTimer = 0
