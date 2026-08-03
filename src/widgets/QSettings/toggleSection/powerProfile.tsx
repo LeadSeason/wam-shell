@@ -99,7 +99,7 @@ function StatTile({
                     cssClasses={["statTileSub"]}
                     label={sub}
                     xalign={center.as(v => (v ? 0.5 : 1))}
-                    maxWidthChars={28}
+                    maxWidthChars={22}
                     ellipsize={Pango.EllipsizeMode.END}
                 />
             </box>
@@ -141,7 +141,7 @@ function PowerDetails() {
                     sub={createComputed([watts, Power.battAvgWatts], (r, avg) => {
                         const state = r < 0 ? "charging" : "discharging"
                         // trailing 5-minute average once the ring fills
-                        return avg > 0 ? `${state} · avg ${avg.toFixed(1)} W` : state
+                        return avg > 0 ? `${state} · ${avg.toFixed(1)} W` : state
                     })}
                     visible={bat.isPresent}
                 />
@@ -189,7 +189,7 @@ function PowerDetails() {
                             cap > 0
                                 ? `${Math.round(pct * 100)}% of ${(cap / 1000).toFixed(1)} GHz`
                                 : ""
-                        return pct < 0.95 && of ? `${of} · capped` : of
+                        return pct < 0.95 && of ? `${of} capped` : of
                     })}
                     visible={Power.hasFreq}
                 />
@@ -240,8 +240,8 @@ function PowerDetails() {
                                     [Sys.gpuTemp, Sys.vram, Sys.gpuWatts],
                                     (t, [used, total], w) =>
                                         w > 0
-                                            ? `${t}°C · ${used}/${total} MiB · ${Math.round(w)} W`
-                                            : `${t}°C · ${used}/${total} MiB`,
+                                            ? `${t}°C · ${used}/${total} · ${Math.round(w)} W`
+                                            : `${t}°C · ${used}/${total}`,
                                 )}
                             />
                         )
