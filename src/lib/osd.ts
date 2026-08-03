@@ -7,8 +7,6 @@ import Config from "../config"
 import Brightness from "./brightness"
 import hyprsunset, { OUTDOOR_GAMMA } from "./hyprsunset"
 import { ensureLayoutSource, ensureLockSource, layoutOsdText, lockKeyState } from "./kbLayout"
-import { coverFile } from "./coverArt"
-import { hookPlayers } from "./mpris"
 
 // OSD state and triggers. Widgets read `content`/`visible`; triggers
 // call show() which (re)starts the hide timer.
@@ -39,7 +37,7 @@ const graceUntil = Date.now() + 1500
 // long-lived sources, see AGENTS.md)
 const disposers: (() => void)[] = []
 
-type OsdKind = "volume" | "microphone" | "brightness" | "layout" | "lockKeys" | "media"
+type OsdKind = "volume" | "microphone" | "brightness" | "layout" | "lockKeys"
 
 function show(c: Omit<OsdContent, "kind">, kind: OsdKind) {
     if (!Config.osd.enabled) return
@@ -144,27 +142,6 @@ disposers.push(
             },
             "brightness",
         )
-    }),
-)
-
-// media (mpris): show the track when it changes. The bar is the
-// position at show time, the icon the cover art when already cached.
-disposers.push(
-    hookPlayers(p => {
-        let lastTitle = p.title
-        return createBinding(p, "title").subscribe(() => {
-            if (!p.title || p.title === lastTitle) return
-            lastTitle = p.title
-            show(
-                {
-                    icon: coverFile(p.coverArt) || "audio-x-generic-symbolic",
-                    value: p.length > 0 ? Math.min(1, Math.max(0, p.position / p.length)) : null,
-                    label: `${p.title}${p.artist ? ` — ${p.artist}` : ""}`,
-                    over: false,
-                },
-                "media",
-            )
-        })
     }),
 )
 
