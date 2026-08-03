@@ -1,4 +1,4 @@
-import { Accessor, With, createBinding, createComputed, onCleanup } from "gnim"
+import { Accessor, With, createBinding, createComputed, createState, onCleanup } from "gnim"
 import { execAsync } from "../../../lib/metrics"
 import GLib from "gi://GLib?version=2.0"
 import Pango from "gi://Pango?version=1.0"
