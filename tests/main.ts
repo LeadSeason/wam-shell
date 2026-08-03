@@ -17,3 +17,4 @@ import "./vpn.test"
 import { summary } from "./framework"
 
 summary()
+import "./bluetooth.test"
