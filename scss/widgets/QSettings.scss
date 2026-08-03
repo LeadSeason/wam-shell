@@ -206,6 +206,11 @@ window#QSettings {
         min-width: 185px;
         min-height: 104px;
     }
+    // the card keeps this height with or without art: switching
+    // players must not move the content under the pointer
+    .coverRow {
+        min-height: 104px;
+    }
     .mediaCoverFallback {
         color: t.$subtext0;
     }

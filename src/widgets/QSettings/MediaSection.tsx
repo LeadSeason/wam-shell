@@ -151,7 +151,9 @@ function Player({ player }: { player: AstalMpris.Player }) {
             {/* cover-left stack: big art on the left, text + controls
             in a column to its right */}
             <box orientation={Gtk.Orientation.VERTICAL} spacing={4} hexpand>
-                <box spacing={10} hexpand>
+                {/* fixed height whether art exists or not: switching
+                players must not move the content under the pointer */}
+                <box cssClasses={["coverRow"]} spacing={10} hexpand>
                     {/* big cover, click focuses the player window; hidden
                 entirely when the player has no art */}
                     <With value={localCover}>
