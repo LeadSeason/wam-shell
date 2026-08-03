@@ -159,6 +159,9 @@ export interface GoogleAuth {
     // a revoked refresh token drops one account; consumers clear their
     // own state for it
     onAccountRemoved(fn: (email: string) => void): void
+    // fired when a sign-in lands — consumers that idle while signed out
+    // (no timers of their own) start their work here
+    onAccountAdded(fn: (email: string) => void): void
     dispose(): void
 }
 
@@ -186,6 +189,7 @@ export function createGoogleAuth(opts: {
     let accounts: GoogleAccount[] = []
     const [accountEmails, setAccountEmails] = createState<string[]>([])
     const removedCallbacks: ((email: string) => void)[] = []
+    const addedCallbacks: ((email: string) => void)[] = []
 
     function loadTokens() {
         if (!isFile(tokensPath)) return
@@ -282,6 +286,7 @@ export function createGoogleAuth(opts: {
                     storeTokens()
                     setAccountEmails(accounts.map(a => a.email))
                     console.log(`${logTag}: signed in as ${account.email}`)
+                    for (const fn of addedCallbacks) fn(account.email)
                 })
             },
         )
@@ -463,6 +468,7 @@ export function createGoogleAuth(opts: {
         authenticate,
         ensureAccessToken,
         onAccountRemoved: fn => removedCallbacks.push(fn),
+        onAccountAdded: fn => addedCallbacks.push(fn),
         dispose: () => {
             if (authTimeout) {
                 sourceRemove(authTimeout)
