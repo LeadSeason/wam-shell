@@ -10,6 +10,7 @@ import { Accessor, createBinding, createComputed, createState, onCleanup } from 
 import Config from "../../config"
 import { isFile } from "../../lib/utils"
 import { confirmDialog } from "../dialog"
+import { qsVisible } from "./MediaSection"
 
 // avatar sources, in order: configured absolute path, the login avatar
 // from AccountsService, the OS icon (same as the panel's osIcon)
