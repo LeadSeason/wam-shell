@@ -35,11 +35,14 @@ interface GridCell extends Gcal.GridDay {
 // the theme. Without Google Calendar the month pane stands alone.
 function CalendarPopover() {
     const now0 = new Date()
-    const todayKey = Gcal.dayKey(now0.getTime())
+    // recomputed off the shared 1s poll (gnim dedupes the equal strings,
+    // so deps fire only on an actual day change): the today ring and the
+    // agenda labels must not stay frozen at bar-construction time
+    const todayKey = now.as(() => Gcal.dayKey(Date.now()))
     const [viewY, setViewY] = createState(now0.getFullYear())
     const [viewM, setViewM] = createState(now0.getMonth()) // 0-based
     // the agenda starts here; clicking a day in the grid moves it
-    const [selectedDay, setSelectedDay] = createState(todayKey)
+    const [selectedDay, setSelectedDay] = createState(todayKey.get())
 
     const monthLabel = createComputed(
         [viewY, viewM],
@@ -47,8 +50,8 @@ function CalendarPopover() {
     )
 
     const grid = createComputed(
-        [viewY, viewM, selectedDay, Gcal.visibleEvents],
-        (y, m, sel, evts) => {
+        [viewY, viewM, selectedDay, Gcal.visibleEvents, todayKey],
+        (y, m, sel, evts, today) => {
             // day -> up to 3 distinct calendar colors with events that day
             const dots = new Map<string, string[]>()
             for (const e of evts) {
@@ -61,7 +64,7 @@ function CalendarPopover() {
             return Gcal.monthGrid(y, m).map(week =>
                 week.map((day): GridCell => ({
                     ...day,
-                    today: day.key === todayKey,
+                    today: day.key === today,
                     selected: day.key === sel,
                     dots: dots.get(day.key) ?? [],
                 })),
@@ -71,8 +74,8 @@ function CalendarPopover() {
 
     // agenda pane: days with events from the selected day onward,
     // empty days skipped (Google's schedule layout)
-    const agenda = createComputed([Gcal.visibleEvents, selectedDay], (evts, day) =>
-        Gcal.agendaGroups(evts, day, todayKey),
+    const agenda = createComputed([Gcal.visibleEvents, selectedDay, todayKey], (evts, day, today) =>
+        Gcal.agendaGroups(evts, day, today),
     )
 
     const nav = (delta: number) => {
