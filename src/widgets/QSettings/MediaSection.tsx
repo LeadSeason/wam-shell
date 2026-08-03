@@ -200,12 +200,17 @@ function Player({ player }: { player: AstalMpris.Player }) {
                             {/* widthChars + maxWidthChars together pin the
                         size request: natural = max(width, min(text,
                         max)) = constant, so the popup never resizes
-                        per track. ellipsize clips the overflow */}
+                        per track. long titles wrap onto a second line
+                        (fits the cover row's 104px), ellipsize clips
+                        what even two lines can't hold */}
                             <label
                                 cssClasses={["mediaTitle"]}
                                 xalign={0}
                                 widthChars={24}
                                 maxWidthChars={24}
+                                lines={2}
+                                wrap
+                                wrapMode={Pango.WrapMode.WORD_CHAR}
                                 ellipsize={Pango.EllipsizeMode.END}
                                 label={title.as(t => t || "Unknown title")}
                             />
