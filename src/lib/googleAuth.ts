@@ -478,7 +478,10 @@ export function createGoogleAuth(opts: {
                 authListener.close()
                 authListener = null
             }
+            // a mid-flow dispose would otherwise leave the consumer's
+            // sign-in button spinning forever
             authInProgress = false
+            setAuthBusy(false)
         },
     }
 }
