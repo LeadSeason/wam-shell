@@ -232,38 +232,19 @@ function PowerDetails() {
                     }
                 </With>
             </Gtk.FlowBox>
-            {/* full-width tile for the active profile's kernel knobs:
-            each on its own row, never ellipsized */}
-            <box
-                cssClasses={["statTile"]}
-                spacing={10}
-                visible={createComputed(
-                    [Power.governor, Power.epp],
-                    (g, e) => g !== "" || e !== "",
-                )}
-            >
+            {/* full-width tile: the active profile's energy preference,
+            live. The governor is dropped — on pstate systems it maps
+            1:1 to the profile anyway (see the PR discussion) */}
+            <box cssClasses={["statTile"]} spacing={10} visible={Power.epp.as(e => e !== "")}>
                 <image iconName="cpu-symbolic" pixelSize={20} valign={Gtk.Align.CENTER} />
-                <box
-                    orientation={Gtk.Orientation.VERTICAL}
-                    spacing={2}
+                <label
+                    cssClasses={["statTileSub"]}
+                    xalign={0}
                     valign={Gtk.Align.CENTER}
-                    hexpand
-                >
-                    <label
-                        cssClasses={["statTileSub"]}
-                        xalign={0}
-                        label={Power.governor.as(
-                            g => `Governor: ${(g || "—").replaceAll("_", " ")}`,
-                        )}
-                    />
-                    <label
-                        cssClasses={["statTileSub"]}
-                        xalign={0}
-                        label={Power.epp.as(
-                            e => `Energy preference: ${(e || "—").replaceAll("_", " ")}`,
-                        )}
-                    />
-                </box>
+                    label={Power.epp.as(
+                        e => `Energy preference: ${(e || "—").replaceAll("_", " ")}`,
+                    )}
+                />
             </box>
         </box>
     )
