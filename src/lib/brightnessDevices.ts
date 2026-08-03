@@ -3,7 +3,7 @@ import Gio from "gi://Gio?version=2.0"
 import { createState } from "gnim"
 import { monitorFile } from "ags/file"
 import { execAsync, exec } from "./metrics"
-import { parseDdcDetect, parseDdcGetvcp } from "./brightnessParsers"
+import { parseDdcDetect, parseDdcGetvcp, parseOpenRgbList } from "./brightnessParsers"
 
 // Peripheral brightness (keyboard backlights and friends) beyond the
 // screen. Backends:
@@ -322,8 +322,68 @@ export function refreshExternal() {
     discoverDdc()
 }
 
+// ---------------------------------------------------------- OpenRGB
+
+// RGB peripherals via the OpenRGB CLI. Two CLI limitations shape the
+// design: brightness is mode-scoped and cannot be read back (the level
+// is what we last set, 100% until then), and every invocation re-probes
+// all hardware (seconds) — so sets are serialized per device with
+// latest-value-wins, which keeps slider drags from spawning a flock of
+// multi-second probes.
+
+const hasOpenRgb = GLib.find_program_in_path("openrgb") !== null
+
+async function discoverOpenRgb() {
+    if (!hasOpenRgb) return
+    let text: string
+    try {
+        text = await execAsync(["openrgb", "--list-devices", "--noautoconnect"])
+    } catch (e) {
+        console.info("brightness: openrgb probe:", e)
+        return
+    }
+    const found: BrightnessDevice[] = []
+    for (const d of parseOpenRgbList(text)) {
+        // OpenRGB also exposes kernel backlight LEDs we already manage
+        // (e.g. the asus::kbd_backlight asusctl owns) — skip those
+        if (managedLeds.some(n => d.location.includes(`/leds/${n}`))) continue
+        let level = 1
+        let pending: number | null = null
+        let inflight = false
+        const send = (): void => {
+            if (inflight || pending === null) return
+            const v = Math.round(pending * 100)
+            pending = null
+            inflight = true
+            execAsync(["openrgb", "-d", String(d.index), "-b", String(v), "--noautoconnect"])
+                .catch(e => console.warn(`openrgb set ${d.name}:`, e))
+                .finally(() => {
+                    inflight = false
+                    send()
+                })
+        }
+        found.push({
+            id: `openrgb-${d.index}`,
+            label: d.name,
+            icon:
+                /mouse/i.test(d.type) || /mouse/i.test(d.name)
+                    ? "input-mouse-symbolic"
+                    : "input-keyboard-symbolic",
+            level: () => level,
+            set: (l: number) => {
+                level = Math.min(1, Math.max(0, l))
+                pending = level
+                send()
+            },
+        })
+    }
+    rgbDevices = found
+    publish()
+}
+
 refresh()
 discoverDdc()
+discoverOpenRgb()
 
 // convention for lib modules with long-lived sources (see AGENTS.md)
 export function dispose() {
