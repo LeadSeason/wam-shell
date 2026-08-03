@@ -167,10 +167,15 @@ function handleGpuLine(line: string) {
 let gpuRestartSource = 0
 let gpuProc: Gio.Subprocess | null = null
 let gpuDisposed = false
+// the visibility engines' intent: a force_exit WE ordered (pane
+// closed) must not look like a crash to the restart path
+let gpuWanted = false
 
 function scheduleGpuRestart() {
     setGpu(null)
-    if (gpuDisposed) return
+    // clear the handle of the just-died process (crash or our own kill)
+    gpuProc = null
+    if (gpuDisposed || !gpuWanted) return
     if (gpuRestarts >= GPU_MAX_RESTARTS) {
         console.warn("sysstats gpu: nvidia-smi keeps dying, giving up")
         return
@@ -189,7 +194,13 @@ function scheduleGpuRestart() {
 }
 
 function startGpuStream() {
-    if (gpuDisposed) return
+    if (gpuDisposed || !gpuWanted) return
+    // a pending restart must not double-spawn alongside us
+    if (gpuRestartSource) {
+        sourceRemove(gpuRestartSource)
+        gpuRestartSource = 0
+    }
+    if (gpuProc) return
     gpuProc = streamLines(GPU_CMD, handleGpuLine, scheduleGpuRestart)
     if (!gpuProc) scheduleGpuRestart()
 }
@@ -223,6 +234,7 @@ let qsActive = false
 
 function syncEngines() {
     const want = barWantsStats || qsActive
+    gpuWanted = want
     if (want && !stopPoll) {
         stopPoll = poll.subscribe(() => {})
         if (hasNvidia) startGpuStream()
