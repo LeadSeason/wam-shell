@@ -78,54 +78,57 @@ function AppRow({
         (...ms) => ms.every(m => m),
     )
     return (
-        <box cssClasses={["appStreamRow", "paneRow"]} spacing={8}>
-            <image
-                valign={Gtk.Align.CENTER}
-                iconName={resolveIcon(g.description) ?? "audio-x-generic-symbolic"}
+        <box
+            cssClasses={["appStreamRow", "paneRow"]}
+            orientation={Gtk.Orientation.VERTICAL}
+            spacing={2}
+        >
+            <label
+                cssClasses={["paneRowName"]}
+                label={g.description}
+                xalign={0}
+                maxWidthChars={24}
+                ellipsize={Pango.EllipsizeMode.END}
             />
-            <box orientation={Gtk.Orientation.VERTICAL} hexpand spacing={2}>
-                <label
-                    cssClasses={["paneRowName"]}
-                    label={g.description}
-                    xalign={0}
-                    maxWidthChars={20}
-                    ellipsize={Pango.EllipsizeMode.END}
-                />
-                <box spacing={6}>
-                    <slider
-                        hexpand
-                        min={0}
-                        max={1}
-                        value={volume}
-                        onChangeValue={({ value }) => {
-                            for (const s of g.members) s.volume = value
-                        }}
-                    />
-                    <label
-                        cssClasses={["appStreamVol"]}
-                        widthChars={4}
-                        maxWidthChars={4}
-                        label={volume.as(v => `${Math.round(v * 100)}%`)}
-                    />
-                </box>
-            </box>
-            <button
-                cssClasses={muted.as(m => ["appMuteBtn", ...(m ? ["active"] : [])])}
-                valign={Gtk.Align.CENTER}
-                tooltipText={muted.as(m =>
-                    m ? `Unmute ${g.description}` : `Mute ${g.description}`,
-                )}
-                onClicked={() => {
-                    const unmute = g.members.every(s => s.mute)
-                    for (const s of g.members) s.mute = !unmute
-                }}
-            >
+            {/* one axis: icon, slider, %, mute all vertically centered */}
+            <box spacing={8} valign={Gtk.Align.CENTER}>
                 <image
-                    iconName={muted.as(m =>
-                        m ? "audio-volume-muted-symbolic" : "audio-volume-high-symbolic",
-                    )}
+                    valign={Gtk.Align.CENTER}
+                    iconName={resolveIcon(g.description) ?? "audio-x-generic-symbolic"}
                 />
-            </button>
+                <slider
+                    hexpand
+                    min={0}
+                    max={1}
+                    value={volume}
+                    onChangeValue={({ value }) => {
+                        for (const s of g.members) s.volume = value
+                    }}
+                />
+                <label
+                    cssClasses={["appStreamVol"]}
+                    widthChars={4}
+                    maxWidthChars={4}
+                    label={volume.as(v => `${Math.round(v * 100)}%`)}
+                />
+                <button
+                    cssClasses={muted.as(m => ["appMuteBtn", ...(m ? ["active"] : [])])}
+                    valign={Gtk.Align.CENTER}
+                    tooltipText={muted.as(m =>
+                        m ? `Unmute ${g.description}` : `Mute ${g.description}`,
+                    )}
+                    onClicked={() => {
+                        const unmute = g.members.every(s => s.mute)
+                        for (const s of g.members) s.mute = !unmute
+                    }}
+                >
+                    <image
+                        iconName={muted.as(m =>
+                            m ? "audio-volume-muted-symbolic" : "audio-volume-high-symbolic",
+                        )}
+                    />
+                </button>
+            </box>
         </box>
     )
 }
