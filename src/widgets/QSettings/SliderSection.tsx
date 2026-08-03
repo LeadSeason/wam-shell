@@ -111,6 +111,7 @@ function AppRow({
             </box>
             <button
                 cssClasses={muted.as(m => ["appMuteBtn", ...(m ? ["active"] : [])])}
+                valign={Gtk.Align.CENTER}
                 tooltipText={muted.as(m =>
                     m ? `Unmute ${g.description}` : `Mute ${g.description}`,
                 )}
