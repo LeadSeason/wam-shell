@@ -25,13 +25,19 @@ function MediaButton({
     iconName,
     onPressed,
     sensitive,
+    extraClasses = [],
 }: {
-    iconName: string
+    iconName: string | any
     onPressed: () => void
     sensitive?: any
+    extraClasses?: string[] | any
 }) {
     return (
-        <button cssClasses={["mediaButton"]} onClicked={onPressed} sensitive={sensitive}>
+        <button
+            cssClasses={["mediaButton", ...extraClasses]}
+            onClicked={onPressed}
+            sensitive={sensitive}
+        >
             <image iconName={iconName} />
         </button>
     )
@@ -132,51 +138,60 @@ function Player({ player }: { player: AstalMpris.Player }) {
                     )}
                 </For>
             </box>
-            <box orientation={Gtk.Orientation.VERTICAL} spacing={4} hexpand>
-                {/* scroll switches between players when more than one has a
-                track loaded (e.g. Firefox and Brave). scoped to this row:
-                on the seeker row below scroll must seek, not switch */}
+            {/* cover-left stack: big art on the left, text + controls
+            in a column to its right */}
+            <box spacing={10} hexpand>
+                {/* big cover, click focuses the player window */}
+                <box cssName="button" tooltipText="Focus player window">
+                    <Gtk.GestureClick button={1} onPressed={() => raisePlayer(player)} />
+                    <With value={localCover}>
+                        {c =>
+                            c ? (
+                                <box
+                                    cssClasses={["mediaCover", "mediaCoverBig"]}
+                                    // the path comes from player metadata — escape
+                                    // quotes/backslashes before CSS interpolation
+                                    css={`
+                                        background-image: url("${c.replace(/['\\]/g, "\\$&")}");
+                                    `}
+                                />
+                            ) : (
+                                <box
+                                    cssClasses={[
+                                        "mediaCover",
+                                        "mediaCoverBig",
+                                        "mediaCoverFallback",
+                                    ]}
+                                >
+                                    <image iconName="audio-x-generic-symbolic" />
+                                </box>
+                            )
+                        }
+                    </With>
+                </box>
                 <box
-                    spacing={8}
-                    tooltipText={eligiblePlayers.as(l =>
-                        l.length > 1 ? "Scroll to switch player" : "",
-                    )}
+                    orientation={Gtk.Orientation.VERTICAL}
+                    spacing={4}
+                    hexpand
+                    valign={Gtk.Align.CENTER}
                 >
-                    <Gtk.EventControllerScroll
-                        flags={Gtk.EventControllerScrollFlags.VERTICAL}
-                        onScroll={(_e, _dx, dy) => {
-                            scrollActivePlayer(dy)
-                            return true
-                        }}
-                    />
-                    <box cssName="button" tooltipText="Focus player window">
-                        <Gtk.GestureClick button={1} onPressed={() => raisePlayer(player)} />
-                        <With value={localCover}>
-                            {c =>
-                                c ? (
-                                    <box
-                                        cssClasses={["mediaCover"]}
-                                        // the path comes from player metadata — escape
-                                        // quotes/backslashes before CSS interpolation
-                                        css={`
-                                            background-image: url("${c.replace(/['\\]/g, "\\$&")}");
-                                        `}
-                                    />
-                                ) : (
-                                    <box cssClasses={["mediaCover", "mediaCoverFallback"]}>
-                                        <image iconName="audio-x-generic-symbolic" />
-                                    </box>
-                                )
-                            }
-                        </With>
-                    </box>
-                    {/* click focuses the player's window, same as the cover */}
+                    {/* title/artist: click focuses the player, scroll
+                    switches players when more than one has a track
+                    loaded (scoped to this block: on the seeker below
+                    scroll must seek, not switch) */}
                     <box
                         orientation={Gtk.Orientation.VERTICAL}
-                        hexpand
-                        valign={Gtk.Align.CENTER}
-                        tooltipText="Focus player window"
+                        tooltipText={eligiblePlayers.as(l =>
+                            l.length > 1 ? "Scroll to switch player" : "Focus player window",
+                        )}
                     >
+                        <Gtk.EventControllerScroll
+                            flags={Gtk.EventControllerScrollFlags.VERTICAL}
+                            onScroll={(_e, _dx, dy) => {
+                                scrollActivePlayer(dy)
+                                return true
+                            }}
+                        />
                         <Gtk.GestureClick button={1} onPressed={() => raisePlayer(player)} />
                         {/* widthChars + maxWidthChars together pin the
                         size request: natural = max(width, min(text,
@@ -198,82 +213,85 @@ function Player({ player }: { player: AstalMpris.Player }) {
                             label={artist.as(a => a || player.identity || "")}
                         />
                     </box>
-                    <MediaButton
-                        iconName="media-skip-backward-symbolic"
-                        onPressed={() => player.previous()}
-                        sensitive={createBinding(player, "canGoPrevious")}
-                    />
-                    <MediaButton
-                        iconName={status.as(s =>
-                            s === AstalMpris.PlaybackStatus.PLAYING
-                                ? "media-playback-pause-symbolic"
-                                : "media-playback-start-symbolic",
-                        )}
-                        onPressed={() => playPauseExclusive(player)}
-                        sensitive={createBinding(player, "canPlay")}
-                    />
-                    <MediaButton
-                        iconName="media-skip-forward-symbolic"
-                        onPressed={() => player.next()}
-                        sensitive={createBinding(player, "canGoNext")}
-                    />
-                </box>
-                {/* seeker (the wiring is shared with the popup:
-            bindSeekScale in lib/mpris) */}
-                <box cssClasses={["mediaSeek"]} spacing={6}>
-                    {/* undo the last drag, mirroring the brightness restore
-                button; toggles between the two positions. dimmed until a
-                drag has been recorded */}
-                    <box
-                        cssName="button"
-                        cssClasses={createComputed([canSeek, revertTo], (c, r) => [
-                            "mediaSeekRevert",
-                            ...(c && r >= 0 ? [] : ["disabled"]),
-                        ])}
-                        tooltipText="Restore pre-seek position"
-                    >
-                        <Gtk.GestureClick
-                            button={1}
-                            onPressed={() => {
-                                const r = revertTo.get()
-                                if (!player.canSeek || r < 0) return
-                                // toggle: a second click seeks forward again
-                                setRevertTo(position.accessor.get())
-                                position.seekTo(r)
-                                player.position = r
-                            }}
+                    <box spacing={6}>
+                        <MediaButton
+                            iconName="media-skip-backward-symbolic"
+                            onPressed={() => player.previous()}
+                            sensitive={createBinding(player, "canGoPrevious")}
                         />
-                        <image iconName="edit-undo-symbolic" />
+                        <MediaButton
+                            extraClasses={["mediaPlay"]}
+                            iconName={status.as(s =>
+                                s === AstalMpris.PlaybackStatus.PLAYING
+                                    ? "media-playback-pause-symbolic"
+                                    : "media-playback-start-symbolic",
+                            )}
+                            onPressed={() => playPauseExclusive(player)}
+                            sensitive={createBinding(player, "canPlay")}
+                        />
+                        <MediaButton
+                            iconName="media-skip-forward-symbolic"
+                            onPressed={() => player.next()}
+                            sensitive={createBinding(player, "canGoNext")}
+                        />
                     </box>
-                    <label
-                        cssClasses={["mediaTime"]}
-                        // pinned request: "--:--" vs "20:17" vs
-                        // "101:47" must not resize the popup
-                        widthChars={6}
-                        maxWidthChars={6}
-                        label={createComputed([position.accessor, position.known], (p, k) =>
-                            k ? formatTime(p) : "--:--",
-                        )}
-                    />
-                    <Gtk.Scale
-                        $={self =>
-                            bindSeekScale(self, player, position, () => {
-                                // first fire of a drag: record the pre-seek
-                                // position for the revert button
-                                const now = GLib.get_monotonic_time() / 1e6
-                                if (now - lastSeekAt > 1.5) setRevertTo(position.accessor.get())
-                                lastSeekAt = now
-                            })
-                        }
-                        hexpand
-                        sensitive={canSeek}
-                    />
-                    <label
-                        cssClasses={["mediaTime"]}
-                        widthChars={6}
-                        maxWidthChars={6}
-                        label={trackLength.as(l => (l > 0 ? formatTime(l) : "--:--"))}
-                    />
+                    {/* seeker (the wiring is shared with the popup:
+                    bindSeekScale in lib/mpris) */}
+                    <box cssClasses={["mediaSeek"]} spacing={6}>
+                        {/* undo the last drag, mirroring the brightness restore
+                        button; toggles between the two positions. dimmed until a
+                        drag has been recorded */}
+                        <box
+                            cssName="button"
+                            cssClasses={createComputed([canSeek, revertTo], (c, r) => [
+                                "mediaSeekRevert",
+                                ...(c && r >= 0 ? [] : ["disabled"]),
+                            ])}
+                            tooltipText="Restore pre-seek position"
+                        >
+                            <Gtk.GestureClick
+                                button={1}
+                                onPressed={() => {
+                                    const r = revertTo.get()
+                                    if (!player.canSeek || r < 0) return
+                                    // toggle: a second click seeks forward again
+                                    setRevertTo(position.accessor.get())
+                                    position.seekTo(r)
+                                    player.position = r
+                                }}
+                            />
+                            <image iconName="edit-undo-symbolic" />
+                        </box>
+                        <label
+                            cssClasses={["mediaTime"]}
+                            // pinned request: "--:--" vs "20:17" vs
+                            // "101:47" must not resize the popup
+                            widthChars={6}
+                            maxWidthChars={6}
+                            label={createComputed([position.accessor, position.known], (p, k) =>
+                                k ? formatTime(p) : "--:--",
+                            )}
+                        />
+                        <Gtk.Scale
+                            $={self =>
+                                bindSeekScale(self, player, position, () => {
+                                    // first fire of a drag: record the pre-seek
+                                    // position for the revert button
+                                    const now = GLib.get_monotonic_time() / 1e6
+                                    if (now - lastSeekAt > 1.5) setRevertTo(position.accessor.get())
+                                    lastSeekAt = now
+                                })
+                            }
+                            hexpand
+                            sensitive={canSeek}
+                        />
+                        <label
+                            cssClasses={["mediaTime"]}
+                            widthChars={6}
+                            maxWidthChars={6}
+                            label={trackLength.as(l => (l > 0 ? formatTime(l) : "--:--"))}
+                        />
+                    </box>
                 </box>
             </box>
         </box>

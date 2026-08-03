@@ -200,6 +200,11 @@ window#QSettings {
         background-position: center;
         background-color: t.$surface0;
     }
+    // the big-cover card layout: ~104px art on the left
+    .mediaCoverBig {
+        min-width: 104px;
+        min-height: 104px;
+    }
     .mediaCoverFallback {
         color: t.$subtext0;
     }
@@ -217,6 +222,17 @@ window#QSettings {
         padding: 0;
         &:disabled {
             opacity: 0.35;
+        }
+    }
+    // the play button is the controls row's anchor: accent block,
+    // slightly larger
+    .mediaPlay {
+        background-color: t.$accent;
+        color: t.$base;
+        min-width: 2.4em;
+        min-height: 2.4em;
+        &:hover {
+            background-color: color.mix(t.$accent, transparent, 70%);
         }
     }
     .mediaSeek {
