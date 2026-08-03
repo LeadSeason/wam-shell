@@ -198,6 +198,15 @@ function getQSettingsConfig() {
         showStats: get("show_stats", false),
         statsOnPanel: get("stats_on_panel", false),
         statsInterval,
+        // popup content width in px (the scroll view clamps it)
+        width: (() => {
+            const w = get("width", 440)
+            if (typeof w !== "number" || w <= 0) {
+                console.error(`Config "quicksettings.width" must be a positive number, got "${w}"`)
+                return 440
+            }
+            return w
+        })(),
         // the power profile icon in the bar's quicksettings label
         powerProfileOnPanel: get("power_profile_on_panel", true),
         // header avatar: absolute path to an image; empty = the login

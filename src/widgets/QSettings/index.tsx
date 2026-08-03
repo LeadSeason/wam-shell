@@ -174,7 +174,7 @@ export default function QSettings() {
                         vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
                         hscrollbarPolicy={Gtk.PolicyType.NEVER}
                         propagateNaturalHeight
-                        widthRequest={520}
+                        widthRequest={Config.quicksettings.width}
                     >
                         <stack
                             // one consistent shell size: panes match the
