@@ -283,6 +283,31 @@ async function discoverDdc() {
             )
             if (!reply) throw new Error("no usable VCP 10 reply")
             let cur = reply.cur
+            // serialized, latest-value-wins: an unthrottled setvcp per
+            // slider tick crashed a monitor's DDC/CI firmware (Acer
+            // X34P): dozens of overlapping writes per drag
+            let pending: number | null = null
+            let inflight = false
+            const send = (): void => {
+                if (inflight || pending === null) return
+                const v = pending
+                pending = null
+                inflight = true
+                execAsync([
+                    "ddcutil",
+                    "setvcp",
+                    "10",
+                    String(v),
+                    "--bus",
+                    String(bus),
+                    "--noverify",
+                ])
+                    .catch(e => console.warn(`ddcutil setvcp (bus ${bus}):`, e))
+                    .finally(() => {
+                        inflight = false
+                        send()
+                    })
+            }
             found.push({
                 id: `ddc-bus${bus}`,
                 label: (counts.get(label) ?? 0) > 1 ? `${label} #${bus}` : label,
@@ -291,15 +316,8 @@ async function discoverDdc() {
                 level: () => cur / reply.max,
                 set: (l: number) => {
                     cur = Math.round(Math.min(1, Math.max(0, l)) * reply.max)
-                    execAsync([
-                        "ddcutil",
-                        "setvcp",
-                        "10",
-                        String(cur),
-                        "--bus",
-                        String(bus),
-                        "--noverify",
-                    ]).catch(e => console.warn(`ddcutil setvcp (bus ${bus}):`, e))
+                    pending = cur
+                    send()
                 },
             })
         } catch (e) {

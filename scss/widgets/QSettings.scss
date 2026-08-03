@@ -310,9 +310,13 @@ window#QSettings {
         color: t.$accent;
     }
     // and for the active stage chip in the backlights pane (asusctl
-    // Off/Low/Med/High)
-    .stageBtn.active label {
-        color: t.$accent;
+    // Off/Low/Med/High): a plain label color was easy to miss
+    .stageBtn.active {
+        background-color: t.$accent20;
+        border-color: t.$accent20;
+        label {
+            color: t.$accent;
+        }
     }
 
     // wifi band section headers in the wifi pane
