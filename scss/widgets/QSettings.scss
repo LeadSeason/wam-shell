@@ -352,6 +352,12 @@ window#QSettings {
 
     // per-app audio rows in the volume dropdown: the header and the
     // muted-state cue on the mute toggle
+    .dropdownCard {
+        background-color: t.$crust;
+        border-radius: s.$radius;
+        padding: 6px 12px;
+        margin-top: 4px;
+    }
     .appStreamsHeader {
         font-size: s.$font-small;
         color: t.$subtext0;

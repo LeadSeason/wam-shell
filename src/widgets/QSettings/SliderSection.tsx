@@ -399,7 +399,9 @@ export function SliderSection() {
                 }
             </With>
             <revealer revealChild={expanded.as(v => v === 1)}>
-                <box orientation={Gtk.Orientation.VERTICAL}>
+                {/* the inset crust card is what reads as "a pane" inside
+                the sliders' base card (base-on-base would be invisible) */}
+                <box cssClasses={["dropdownCard"]} orientation={Gtk.Orientation.VERTICAL}>
                     <DeviceList endpoints={speakers} collapse={() => setExpanded(0)} />
                     <AppStreams audio={audio} />
                 </box>
