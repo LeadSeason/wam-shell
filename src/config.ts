@@ -476,7 +476,7 @@ function getCalendarConfig() {
     }
 
     return {
-        enabled: c["enabled"] ?? false,
+        enabled: c["enabled"] ?? true,
         pollMinutes,
         hiddenCalendars,
         // ISO-8601 week numbers down the month grid's left edge

@@ -530,16 +530,21 @@ export function dispose() {
 export function init() {
     if (!active) return
     loadCache() // instant marks from the last run; sync refreshes below
-    if (auth.getAccounts().length > 0) sync()
-    // armed even when signed out: the poll is inert until authenticate()
-    // lands, then keeps the session fresh without a restart
-    pollTimer = timeoutAddSeconds(
-        "gcal:poll",
-        GLib.PRIORITY_DEFAULT,
-        Config.calendar.pollMinutes * 60,
-        () => {
-            sync()
-            return GLib.SOURCE_CONTINUE
-        },
-    )
+    // no poll timer while signed out (the perf gate counts it): the
+    // first sign-in arms it via onAccountAdded
+    const arm = () => {
+        if (pollTimer) return
+        sync()
+        pollTimer = timeoutAddSeconds(
+            "gcal:poll",
+            GLib.PRIORITY_DEFAULT,
+            Config.calendar.pollMinutes * 60,
+            () => {
+                sync()
+                return GLib.SOURCE_CONTINUE
+            },
+        )
+    }
+    if (auth.getAccounts().length > 0) arm()
+    else auth.onAccountAdded(arm)
 }
