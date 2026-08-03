@@ -233,9 +233,9 @@ function PowerDetails() {
                 </With>
             </Gtk.FlowBox>
             {/* full-width tile: the active profile's energy preference,
-            live (same two-line shape as the other tiles). The governor
-            is dropped — on pstate systems it maps 1:1 to the profile
-            anyway */}
+            live — two sub-size rows so the tile matches the others'
+            height. The governor is dropped: on pstate systems it maps
+            1:1 to the profile anyway */}
             <box cssClasses={["statTile"]} spacing={10} visible={Power.epp.as(e => e !== "")}>
                 <image iconName="cpu-symbolic" pixelSize={20} valign={Gtk.Align.CENTER} />
                 <box
@@ -244,12 +244,12 @@ function PowerDetails() {
                     valign={Gtk.Align.CENTER}
                     hexpand
                 >
+                    <label cssClasses={["statTileSub"]} xalign={0} label={"Energy preference:"} />
                     <label
-                        cssClasses={["statTileValue"]}
+                        cssClasses={["statTileSub"]}
                         xalign={0}
                         label={Power.epp.as(e => (e || "—").replaceAll("_", " "))}
                     />
-                    <label cssClasses={["statTileSub"]} xalign={0} label={"Energy preference"} />
                 </box>
             </box>
         </box>
