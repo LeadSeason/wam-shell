@@ -346,8 +346,9 @@ export function dispose() {
 
 // registry presence must not depend on network: the provider registers
 // at import (the center reads it whenever its lazy window is built),
-// network only starts in init() from app.tsx
-if (active) {
+// network only starts in init() from app.tsx. Enabled-but-unconfigured
+// registers too — the center shows setupHint when its filter is picked
+if (Config.github.enabled) {
     registerProvider({
         name: "github",
         iconName: "github-symbolic",
@@ -356,6 +357,9 @@ if (active) {
         refresh,
         dispose,
         status,
+        setupHint: active
+            ? null
+            : "GitHub needs a token: create a personal access token (notifications scope) at github.com/settings/tokens and put it in ~/.config/wam-shell/github.env as GITHUB_TOKEN=<token>",
     } satisfies Provider)
 }
 

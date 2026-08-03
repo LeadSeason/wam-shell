@@ -28,6 +28,8 @@ const dump = {
     calendar: Config.calendar,
     github: Config.github,
     youtube: Config.youtube,
+    todoist: Config.todoist,
+    protonmail: Config.protonmail,
 }
 
 // must stay the last stdout line — config.test.ts parses it

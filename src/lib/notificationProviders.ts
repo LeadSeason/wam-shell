@@ -45,6 +45,10 @@ export interface Provider {
     // signInVisible is true (typically "no accounts yet")
     signIn?(): void
     signInVisible?: Accessor<boolean>
+    // enabled but not configured (no credentials): instructions shown
+    // in the center's empty state when the provider's filter is
+    // selected. null/absent when properly configured
+    setupHint?: string | null
 }
 
 // plain array: providers register at module scope (their init may not

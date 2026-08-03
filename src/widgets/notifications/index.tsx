@@ -362,10 +362,45 @@ function ensureWindow() {
                                 middle with a centered state instead */}
                                 <box orientation={Gtk.Orientation.VERTICAL} heightRequest={640}>
                                     <box visible={merged.as(l => l.length === 0)} vexpand>
+                                        {/* an enabled-but-unconfigured
+                                        provider gets setup instructions
+                                        when its filter is picked */}
+                                        <box
+                                            visible={providerFilter.as(f => {
+                                                const p = providers.find(x => x.name === f)
+                                                return !!p?.setupHint
+                                            })}
+                                            vexpand
+                                        >
+                                            <PaneEmpty
+                                                icon={providerFilter.as(
+                                                    f =>
+                                                        providers.find(x => x.name === f)
+                                                            ?.iconName ?? "dialog-warning-symbolic",
+                                                )}
+                                                title={providerFilter.as(f => {
+                                                    const p = providers.find(x => x.name === f)
+                                                    return `Set up ${p?.displayName ?? p?.name ?? ""}`
+                                                })}
+                                                hint={providerFilter.as(
+                                                    f =>
+                                                        providers.find(x => x.name === f)
+                                                            ?.setupHint ?? "",
+                                                )}
+                                            />
+                                        </box>
                                         {/* a failing provider explains
                                         itself instead of pretending the
                                         inbox is empty */}
-                                        <box visible={providerStatus.as(s => s !== null)} vexpand>
+                                        <box
+                                            visible={createComputed(
+                                                [providerStatus, providerFilter],
+                                                (s, f) =>
+                                                    s !== null &&
+                                                    !providers.find(x => x.name === f)?.setupHint,
+                                            )}
+                                            vexpand
+                                        >
                                             <PaneEmpty
                                                 icon="dialog-warning-symbolic"
                                                 title={providerStatus.as(s => s ?? "")}
@@ -411,8 +446,11 @@ function ensureWindow() {
                                         matches for the search */}
                                         <box
                                             visible={createComputed(
-                                                [providerStatus, signInTarget],
-                                                (s, t) => s === null && t === null,
+                                                [providerStatus, signInTarget, providerFilter],
+                                                (s, t, f) =>
+                                                    s === null &&
+                                                    t === null &&
+                                                    !providers.find(x => x.name === f)?.setupHint,
                                             )}
                                             vexpand
                                         >

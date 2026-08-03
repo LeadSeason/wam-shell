@@ -548,7 +548,7 @@ export function dispose() {
 // registry presence must not depend on network: the provider registers
 // at import (the center reads it whenever its lazy window is built),
 // network only starts in init() from app.tsx
-if (active) {
+if (Config.protonmail.enabled) {
     registerProvider({
         name: "protonmail",
         iconName: "protonmail-symbolic",
@@ -557,6 +557,9 @@ if (active) {
         refresh,
         dispose,
         status,
+        setupHint: active
+            ? null
+            : "Set up ProtonMail: install Proton Mail Bridge and sign in, then put its IMAP credentials in ~/.config/wam-shell/protonmail.env as PROTONMAIL_IMAP_USER=<user> and PROTONMAIL_IMAP_PASSWORD=<password>",
     } satisfies Provider)
 }
 

@@ -196,7 +196,7 @@
 # and win over the file.) Without credentials the widget stays off,
 # even when enabled.
 #
-# enabled - master toggle (requires the credentials above). default false
+# enabled - master toggle (requires the credentials above). default true
 # on_panel - show the timer on the panel: elapsed while running, the day
 #            total when idle inside work hours. left-click opens the
 #            picker popup, right-click stops/resumes. default true.
@@ -261,7 +261,7 @@
 #       The same names as real environment variables also work and win
 #       over both the file and the embedded client.
 #
-# enabled - master toggle (requires the credentials above). default false
+# enabled - master toggle (requires the credentials above). default true
 # poll_minutes - minutes between syncs with Google. the popover also
 #                refreshes when opened (at most once a minute). clamped
 #                to >= 5. default 15
@@ -294,7 +294,7 @@
 #       wins over the file. Without a token the center shows desktop
 #       notifications only, even when enabled.
 #
-# enabled - master toggle (requires the token above). default false
+# enabled - master toggle (requires the token above). default true
 # poll_minutes - minutes between inbox syncs. the center also refreshes
 #                when opened (at most once a minute). re-polls are
 #                conditional (If-Modified-Since) and rate-limit free.
@@ -318,7 +318,7 @@
 #       wins over the file. Without a token the provider stays off,
 #       even when enabled.
 #
-# enabled - master toggle (requires the token above). default false
+# enabled - master toggle (requires the token above). default true
 # poll_minutes - minutes between syncs. the center also refreshes when
 #                opened (at most once a minute). clamped to >= 1.
 #                default 5
@@ -348,7 +348,7 @@
 #       over the file. Without credentials the provider stays off, even
 #       when enabled.
 #
-# enabled - master toggle (requires the credentials above). default false
+# enabled - master toggle (requires the credentials above). default true
 # poll_minutes - minutes between syncs. the center also refreshes when
 #                opened (at most once a minute). clamped to >= 1.
 #                default 2

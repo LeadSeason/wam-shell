@@ -516,13 +516,9 @@ function scheduleNext() {
 export function poll() {
     if (!active || pollInFlight) return
     const accounts = auth.getAccounts()
-    if (accounts.length === 0) {
-        // keep the chain alive when signed out: the timer is one-shot
-        // and only re-arms here, so returning without scheduling kills
-        // polling for good — signing in would never resume it
-        scheduleNext()
-        return
-    }
+    // signed out: the chain stops here (no timer at all) — the first
+    // sign-in restarts it via onAccountAdded
+    if (accounts.length === 0) return
     pollInFlight = true
     lastPollAttempt = Date.now()
     const startSweep = () => {
@@ -629,6 +625,14 @@ export function init() {
     loadSeen()
     loadChannelsCache()
     GLib.mkdir_with_parents(thumbsDir, 0o755)
-    poll()
-    scheduleNext()
+    if (auth.getAccounts().length > 0) {
+        poll()
+        scheduleNext()
+    } else {
+        // no poll timer while signed out: the first sign-in starts it
+        auth.onAccountAdded(() => {
+            poll()
+            scheduleNext()
+        })
+    }
 }
