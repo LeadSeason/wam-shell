@@ -7,6 +7,7 @@ const base: SleepTimerState = {
     paused: false,
     pausedSeconds: 0,
     dim: null,
+    mutedStreams: [],
     pid: 1234,
 }
 
@@ -18,6 +19,7 @@ test("sleepTimerState: serialize/parse round-trips", () => {
         ),
         { ...base, paused: true, pausedSeconds: 420, dim: { pre: 0.7, to: 0.35 } },
     )
+    eq(parse(serialize({ ...base, mutedStreams: [183, 186] }))!.mutedStreams, [183, 186])
 })
 
 test("sleepTimerState: parse rejects malformed input", () => {
@@ -32,6 +34,9 @@ test("sleepTimerState: parse rejects malformed input", () => {
     // wrong-typed must not reject the file
     eq(parse(JSON.stringify({ deadline: null }))!.pid, 0)
     eq(parse(JSON.stringify({ deadline: null, pid: "bash" }))!.pid, 0)
+    // mutedStreams defaults to [] when absent (files predating the field)
+    eq(parse(JSON.stringify({ deadline: null }))!.mutedStreams, [])
+    eq(parse(JSON.stringify({ deadline: null, mutedStreams: [1, "x", 2] }))!.mutedStreams, [1, 2])
 })
 
 test("sleepTimerState decide: empty and owned", () => {

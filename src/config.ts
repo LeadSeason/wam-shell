@@ -409,7 +409,7 @@ function getSleepTimerConfig() {
         // until stopped from the pill
         alarm: get("alarm", false),
         // the volume the sink is raised to while the alarm rings
-        alarmVolume: percent("alarm_volume", 100),
+        alarmVolume: percent("alarm_volume", 80),
     }
 }
 

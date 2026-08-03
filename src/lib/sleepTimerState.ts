@@ -9,6 +9,10 @@ export interface SleepTimerState {
     pausedSeconds: number // frozen remainder while paused
     // set by fire() so a restart still knows the pre-dim level
     dim: { pre: number; to: number } | null
+    // sink-input streams muted at fire (the MPRIS-invisible audio
+    // fallback): a restart must still be able to unmute what the
+    // previous shell muted, or the streams stay muted forever
+    mutedStreams: number[]
     // owning shell's PID: how a starting shell tells a live owner from
     // a crashed one — a dead pid means the file is abandoned (0 =
     // unknown)
@@ -34,6 +38,10 @@ export function parse(text: string): SleepTimerState | null {
             paused: s.paused === true,
             pausedSeconds: typeof s.pausedSeconds === "number" ? s.pausedSeconds : 0,
             dim,
+            // absent in files predating the field
+            mutedStreams: Array.isArray(s.mutedStreams)
+                ? s.mutedStreams.filter((id: unknown) => typeof id === "number")
+                : [],
             pid: typeof s.pid === "number" ? s.pid : 0,
         }
     } catch {

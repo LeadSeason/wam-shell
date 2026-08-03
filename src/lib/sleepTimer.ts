@@ -1,10 +1,11 @@
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
 import AstalMpris from "gi://AstalMpris?version=0.1"
-import { createState } from "gnim"
+import AstalWp from "gi://AstalWp?version=0.1"
+import { createBinding, createState } from "gnim"
 import Config from "../config"
 import Brightness from "./brightness"
-import { timeoutAddSeconds, sourceRemove, execAsync } from "./metrics"
+import { timeoutAdd, timeoutAddSeconds, sourceRemove, execAsync } from "./metrics"
 import { SleepTimerState, serialize, parse, decide } from "./sleepTimerState"
 
 // Sleep timer: pauses every playing MPRIS player when it fires (and
@@ -68,7 +69,8 @@ export { alarming }
 // instead of spamming, and stop kills the in-flight player so a long
 // file doesn't ring out. This alarm must not fail silently — the user
 // may rely on it to wake up — so both the sound and the player have
-// fallbacks, and a critical notification backs up the audio
+// fallbacks, and the panel's quicksettings label blinks while it
+// rings (no notification — the user finds the source on the panel)
 const SOUND_CANDIDATES = [
     `${Config.instanceSrcDir}/assets/sleep-alarm.ogg`,
     "/usr/share/sounds/freedesktop/stereo/bell.oga",
@@ -174,9 +176,16 @@ export function stopAlarm() {
         sourceRemove(alarmSource)
         alarmSource = 0
     }
+    // the pause sweep re-mutes anything still unmuted when it ticks —
+    // the alarm session is over, so it must not run past this point
+    if (pauseSweepSource) {
+        sourceRemove(pauseSweepSource)
+        pauseSweepSource = 0
+    }
     restoreAlarmVolume()
     // cut the in-flight chime instead of letting it ring out
     if (alarmSound) execAsync(["pkill", "-f", GLib.path_get_basename(alarmSound)]).catch(() => {})
+    unmuteStreams()
 }
 
 let timerSource = 0
@@ -227,6 +236,7 @@ function currentState(): SleepTimerState {
             preDimLevel !== null && dimmedToLevel !== null
                 ? { pre: preDimLevel, to: dimmedToLevel }
                 : null,
+        mutedStreams: [...mutedStreams],
         pid: myPid,
     }
 }
@@ -343,8 +353,10 @@ function loadState() {
         default:
             return // "owned" is impossible past the owner-pid check
     }
-    // adopted: we are the owner now — leave the claim file behind by
-    // writing state under the original path
+    // adopted: we are the owner now — restore the muted set too, so a
+    // later stop/cancel can still unmute what the previous shell muted.
+    // Leave the claim file behind by writing state under the original path
+    for (const id of state?.mutedStreams ?? []) mutedStreams.add(id)
     console.log(`sleepTimer: adopted "${decision}" state from a previous shell`)
     writeState()
 }
@@ -386,6 +398,14 @@ function disarm() {
 export function dispose() {
     disarm()
     stopAlarm()
+    if (pauseSweepSource) {
+        sourceRemove(pauseSweepSource)
+        pauseSweepSource = 0
+    }
+    // stream mutes are user-visible state (like the dim): left as-is,
+    // only the watchers come down
+    for (const un of streamUnsubs.values()) un()
+    streamUnsubs.clear()
 }
 
 // restore-on-extend state: the levels at the last fire. Persisted
@@ -394,13 +414,11 @@ export function dispose() {
 let preDimLevel: number | null = null
 let dimmedToLevel: number | null = null
 
-function fire() {
-    timerSource = 0
-    deadline = null
-    setRemaining(0)
-    setPaused(false)
+function pauseAllPlayers() {
+    // no canPause filter: pause() already no-ops where unsupported, and
+    // a flapping capability must not skip a player
     for (const p of mpris.players) {
-        if (p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING && p.canPause) {
+        if (p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING) {
             try {
                 p.pause()
             } catch (e) {
@@ -408,6 +426,96 @@ function fire() {
             }
         }
     }
+}
+
+// ------------------------------------------------------ stream muting
+
+// Some Firefox tabs lose their MPRIS interface (crashed content
+// process, no MediaSession): nothing on D-Bus can pause them, but
+// their audio still streams. The fallback is a sink-input mute at
+// fire — only streams we muted are restored, user unmutes win, and
+// streams that appear later get muted on the next sweep
+const mutedStreams = new Set<number>()
+const userUnmuted = new Set<number>()
+const streamUnsubs = new Map<number, () => void>()
+
+function watchStream(s: AstalWp.Stream) {
+    if (streamUnsubs.has(s.id)) return
+    const un = createBinding(s, "mute").subscribe(() => {
+        // the user freed this stream: never re-mute it
+        if (!s.mute && mutedStreams.has(s.id)) {
+            mutedStreams.delete(s.id)
+            userUnmuted.add(s.id)
+        }
+    })
+    streamUnsubs.set(s.id, un)
+}
+
+// the alarm's own chime must never be muted by the sweep: the player
+// stream carries the app name as its description and the sound file
+// path as its name
+const ALARM_PLAYER_NAMES = new Set(["pw-play", "paplay", "canberra-gtk-play", "ffplay"])
+const isAlarmStream = (s: AstalWp.Stream) =>
+    ALARM_PLAYER_NAMES.has(s.description) ||
+    (!!alarmSound && s.name.endsWith(GLib.path_get_basename(alarmSound)))
+
+function muteActiveStreams() {
+    const audio = AstalWp.get_default()?.audio
+    if (!audio) return
+    for (const s of audio.streams ?? []) {
+        if (s.mute || userUnmuted.has(s.id) || isAlarmStream(s)) continue
+        // wpctl, not the endpoint property: the property write races
+        // (observed landing for one stream and silently not for another)
+        execAsync(["wpctl", "set-mute", String(s.id), "1"]).catch(() => {})
+        mutedStreams.add(s.id)
+        watchStream(s)
+    }
+    // a restart must be able to unmute what we just muted
+    if (mutedStreams.size > 0) writeState()
+}
+
+function unmuteStreams() {
+    for (const id of mutedStreams) execAsync(["wpctl", "set-mute", String(id), "0"]).catch(() => {})
+    mutedStreams.clear()
+    userUnmuted.clear()
+    for (const un of streamUnsubs.values()) un()
+    streamUnsubs.clear()
+    writeState()
+}
+
+// multi-player fireboxes leave tabs audible after one sweep: a player
+// can be mid-buffering (paused for an instant), racing the fire, or
+// re-created under a fresh bus name just after it. Re-sweep twice,
+// re-reading the player list each time, then log whatever survives
+let pauseSweepSource = 0
+function armPauseSweep() {
+    if (pauseSweepSource) sourceRemove(pauseSweepSource)
+    let sweep = 0
+    pauseSweepSource = timeoutAdd("sleepTimer:pauseSweep", GLib.PRIORITY_DEFAULT, 1500, () => {
+        pauseAllPlayers()
+        muteActiveStreams()
+        if (++sweep < 2) return GLib.SOURCE_CONTINUE
+        pauseSweepSource = 0
+        const left = mpris.players.filter(
+            p => p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING,
+        )
+        if (left.length > 0)
+            console.warn(
+                `sleepTimer: still playing after pauses: ${left.map(p => p.identity).join(", ")}`,
+            )
+        return GLib.SOURCE_REMOVE
+    })
+}
+
+function fire() {
+    timerSource = 0
+    deadline = null
+    setRemaining(0)
+    setPaused(false)
+    pauseAllPlayers()
+    // what has no MPRIS interface can't be paused — mute it instead
+    muteActiveStreams()
+    armPauseSweep()
     // dim to half the current brightness, never below 10%
     if (Config.sleepTimer.dim) {
         const brightness = Brightness.get_default()
@@ -423,12 +531,7 @@ function fire() {
     // keep the file: the dim state must survive a restart so the next
     // shell can still restore on extend (dim-only decision)
     writeState()
-    if (alarmEnabled.get()) {
-        startAlarm()
-        // visual backup for the audio: critical notifications don't
-        // expire, so it stays until dismissed
-        notify("Sleep timer finished", "The alarm is sounding — stop it from the Sleep Timer pill.")
-    }
+    if (alarmEnabled.get()) startAlarm()
 }
 
 // extending after a fire means the user is back at the machine:
@@ -462,6 +565,7 @@ export function cancelSleepTimer() {
     setRemaining(0)
     setPaused(false)
     stopAlarm()
+    unmuteStreams()
     clearState()
 }
 

@@ -461,7 +461,7 @@
 #         persists across restarts (cache dir). default false
 # alarm_volume - the volume the sink is raised to while the alarm
 #                rings, as a percentage (100 = full). only raises,
-#                never lowers a louder sink. default 100
+#                never lowers a louder sink. default 80
 # [sleep_timer]
 # enabled = true
 # presets = [10, 15, 20, 30, 45, 60]
@@ -470,7 +470,7 @@
 # dim_level = 0.5
 # dim_floor = 0.1
 # alarm = false
-# alarm_volume = 100
+# alarm_volume = 80
 
 # ════════════════════════════════════════════════════════════════════
 # Notifications
