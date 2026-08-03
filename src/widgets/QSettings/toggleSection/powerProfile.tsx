@@ -61,11 +61,14 @@ function StatTile({
     icon,
     big,
     sub,
+    bigClasses = ["statTileValue"],
     visible = true,
 }: {
     icon: string
     big: string | Accessor<string>
     sub: string | Accessor<string>
+    // e.g. ["statTileSub"] for text that shouldn't get the big-number size
+    bigClasses?: string[] | Accessor<string[]>
     visible?: boolean | Accessor<boolean>
 }) {
     return (
@@ -74,7 +77,7 @@ function StatTile({
             <box hexpand />
             <box orientation={Gtk.Orientation.VERTICAL} spacing={2} valign={Gtk.Align.CENTER}>
                 <label
-                    cssClasses={["statTileValue"]}
+                    cssClasses={bigClasses}
                     label={big}
                     xalign={1}
                     maxWidthChars={16}
@@ -128,6 +131,11 @@ function PowerDetails() {
                 />
                 <StatTile
                     icon="hourglass-symbolic"
+                    bigClasses={createBinding(bat, "percentage").as(p =>
+                        p * 100 >= Config.quicksettings.batteryFullAt - 2
+                            ? ["statTileSub"]
+                            : ["statTileValue"],
+                    )}
                     big={createComputed(
                         [
                             createBinding(bat, "timeToEmpty"),
