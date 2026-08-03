@@ -57,11 +57,16 @@ function profileInfo(id: string): { name: string; desc: string } {
     )
 }
 
+// static fallback for StatTile's center flag (the notification
+// center's FALSE pattern)
+const [FALSE] = createState(false)
+
 function StatTile({
     icon,
     big,
     sub,
     bigClasses = ["statTileValue"],
+    center = FALSE,
     visible = true,
 }: {
     icon: string
@@ -69,24 +74,31 @@ function StatTile({
     sub: string | Accessor<string>
     // e.g. ["statTileSub"] for text that shouldn't get the big-number size
     bigClasses?: string[] | Accessor<string[]>
+    // center the text block (single-string tiles, e.g. "Charge limit")
+    center?: Accessor<boolean>
     visible?: boolean | Accessor<boolean>
 }) {
     return (
         <box cssClasses={["statTile"]} spacing={10} visible={visible}>
             <image iconName={icon} pixelSize={20} valign={Gtk.Align.CENTER} />
             <box hexpand />
-            <box orientation={Gtk.Orientation.VERTICAL} spacing={2} valign={Gtk.Align.CENTER}>
+            <box
+                orientation={Gtk.Orientation.VERTICAL}
+                spacing={2}
+                valign={Gtk.Align.CENTER}
+                halign={center.as(v => (v ? Gtk.Align.CENTER : Gtk.Align.FILL))}
+            >
                 <label
                     cssClasses={bigClasses}
                     label={big}
-                    xalign={1}
+                    xalign={center.as(v => (v ? 0.5 : 1))}
                     maxWidthChars={16}
                     ellipsize={Pango.EllipsizeMode.END}
                 />
                 <label
                     cssClasses={["statTileSub"]}
                     label={sub}
-                    xalign={1}
+                    xalign={center.as(v => (v ? 0.5 : 1))}
                     maxWidthChars={24}
                     ellipsize={Pango.EllipsizeMode.END}
                 />
@@ -135,6 +147,9 @@ function PowerDetails() {
                         p * 100 >= Config.quicksettings.batteryFullAt - 2
                             ? ["statTileSub"]
                             : ["statTileValue"],
+                    )}
+                    center={createBinding(bat, "percentage").as(
+                        p => p * 100 >= Config.quicksettings.batteryFullAt - 2,
                     )}
                     big={createComputed(
                         [
