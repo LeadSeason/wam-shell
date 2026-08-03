@@ -25,13 +25,20 @@ function MediaButton({
     iconName,
     onPressed,
     sensitive,
+    extraClasses = [],
 }: {
-    iconName: string
+    iconName: string | any
     onPressed: () => void
     sensitive?: any
+    extraClasses?: string[] | any
 }) {
+    // extraClasses may be a plain array or an Accessor<string[]> (e.g.
+    // the shuffle/loop active state)
+    const classes = Array.isArray(extraClasses)
+        ? ["mediaButton", ...extraClasses]
+        : extraClasses.as((v: string[]) => ["mediaButton", ...v])
     return (
-        <button cssClasses={["mediaButton"]} onClicked={onPressed} sensitive={sensitive}>
+        <button cssClasses={classes} onClicked={onPressed} sensitive={sensitive}>
             <image iconName={iconName} />
         </button>
     )
@@ -107,6 +114,15 @@ function Player({ player }: { player: AstalMpris.Player }) {
                     return false
                 }}
             />
+            {/* scroll anywhere on the card switches the focused player —
+            except on the seeker, which seeks (its own controller wins) */}
+            <Gtk.EventControllerScroll
+                flags={Gtk.EventControllerScrollFlags.VERTICAL}
+                onScroll={(_e, _dx, dy) => {
+                    scrollActivePlayer(dy)
+                    return true
+                }}
+            />
             {/* scroll-position strip on the left edge: one segment per
             player with the shown one lit; click a segment to jump to
             that player. on the side so it does not read as a second
@@ -132,98 +148,140 @@ function Player({ player }: { player: AstalMpris.Player }) {
                     )}
                 </For>
             </box>
+            {/* cover-left stack: big art on the left, text + controls
+            in a column to its right */}
             <box orientation={Gtk.Orientation.VERTICAL} spacing={4} hexpand>
-                {/* scroll switches between players when more than one has a
-                track loaded (e.g. Firefox and Brave). scoped to this row:
-                on the seeker row below scroll must seek, not switch */}
-                <box
-                    spacing={8}
-                    tooltipText={eligiblePlayers.as(l =>
-                        l.length > 1 ? "Scroll to switch player" : "",
-                    )}
-                >
-                    <Gtk.EventControllerScroll
-                        flags={Gtk.EventControllerScrollFlags.VERTICAL}
-                        onScroll={(_e, _dx, dy) => {
-                            scrollActivePlayer(dy)
-                            return true
-                        }}
-                    />
-                    <box cssName="button" tooltipText="Focus player window">
-                        <Gtk.GestureClick button={1} onPressed={() => raisePlayer(player)} />
-                        <With value={localCover}>
-                            {c =>
-                                c ? (
+                {/* fixed height whether art exists or not: switching
+                players must not move the content under the pointer */}
+                <box cssClasses={["coverRow"]} spacing={10} hexpand>
+                    {/* big cover, click focuses the player window; hidden
+                entirely when the player has no art */}
+                    <With value={localCover}>
+                        {c =>
+                            c && (
+                                <box cssName="button" tooltipText="Focus player window">
+                                    <Gtk.GestureClick
+                                        button={1}
+                                        onPressed={() => raisePlayer(player)}
+                                    />
                                     <box
-                                        cssClasses={["mediaCover"]}
+                                        cssClasses={["mediaCover", "mediaCoverBig"]}
                                         // the path comes from player metadata — escape
                                         // quotes/backslashes before CSS interpolation
                                         css={`
                                             background-image: url("${c.replace(/['\\]/g, "\\$&")}");
                                         `}
                                     />
-                                ) : (
-                                    <box cssClasses={["mediaCover", "mediaCoverFallback"]}>
-                                        <image iconName="audio-x-generic-symbolic" />
-                                    </box>
-                                )
-                            }
-                        </With>
-                    </box>
-                    {/* click focuses the player's window, same as the cover */}
+                                </box>
+                            )
+                        }
+                    </With>
                     <box
                         orientation={Gtk.Orientation.VERTICAL}
+                        spacing={4}
                         hexpand
                         valign={Gtk.Align.CENTER}
-                        tooltipText="Focus player window"
                     >
-                        <Gtk.GestureClick button={1} onPressed={() => raisePlayer(player)} />
-                        {/* widthChars + maxWidthChars together pin the
+                        {/* title/artist: click focuses the player; scroll
+                        switches players anywhere on the card (card-level
+                        controller) */}
+                        <box
+                            orientation={Gtk.Orientation.VERTICAL}
+                            tooltipText={eligiblePlayers.as(l =>
+                                l.length > 1 ? "Scroll to switch player" : "Focus player window",
+                            )}
+                        >
+                            <Gtk.GestureClick button={1} onPressed={() => raisePlayer(player)} />
+                            {/* widthChars + maxWidthChars together pin the
                         size request: natural = max(width, min(text,
                         max)) = constant, so the popup never resizes
                         per track. ellipsize clips the overflow */}
-                        <label
-                            cssClasses={["mediaTitle"]}
-                            xalign={0}
-                            widthChars={24}
-                            maxWidthChars={24}
-                            ellipsize={Pango.EllipsizeMode.END}
-                            label={title.as(t => t || "Unknown title")}
-                        />
-                        <label
-                            cssClasses={["mediaArtist"]}
-                            xalign={0}
-                            maxWidthChars={24}
-                            ellipsize={Pango.EllipsizeMode.END}
-                            label={artist.as(a => a || player.identity || "")}
-                        />
+                            <label
+                                cssClasses={["mediaTitle"]}
+                                xalign={0}
+                                widthChars={24}
+                                maxWidthChars={24}
+                                ellipsize={Pango.EllipsizeMode.END}
+                                label={title.as(t => t || "Unknown title")}
+                            />
+                            <label
+                                cssClasses={["mediaArtist"]}
+                                xalign={0}
+                                maxWidthChars={24}
+                                ellipsize={Pango.EllipsizeMode.END}
+                                label={artist.as(a => a || player.identity || "")}
+                            />
+                        </box>
+                        <box spacing={6} halign={Gtk.Align.CENTER}>
+                            <MediaButton
+                                extraClasses={createBinding(player, "shuffleStatus").as(s =>
+                                    s === AstalMpris.Shuffle.ON ? ["active"] : [],
+                                )}
+                                iconName="media-playlist-shuffle-symbolic"
+                                onPressed={() => {
+                                    player.shuffleStatus =
+                                        player.shuffleStatus === AstalMpris.Shuffle.ON
+                                            ? AstalMpris.Shuffle.OFF
+                                            : AstalMpris.Shuffle.ON
+                                }}
+                                sensitive={createBinding(player, "shuffleStatus").as(
+                                    s => s !== AstalMpris.Shuffle.UNSUPPORTED,
+                                )}
+                            />
+                            <MediaButton
+                                iconName="media-skip-backward-symbolic"
+                                onPressed={() => player.previous()}
+                                sensitive={createBinding(player, "canGoPrevious")}
+                            />
+                            <MediaButton
+                                extraClasses={["mediaPlay"]}
+                                iconName={status.as(s =>
+                                    s === AstalMpris.PlaybackStatus.PLAYING
+                                        ? "media-playback-pause-symbolic"
+                                        : "media-playback-start-symbolic",
+                                )}
+                                onPressed={() => playPauseExclusive(player)}
+                                sensitive={createBinding(player, "canPlay")}
+                            />
+                            <MediaButton
+                                iconName="media-skip-forward-symbolic"
+                                onPressed={() => player.next()}
+                                sensitive={createBinding(player, "canGoNext")}
+                            />
+                            <MediaButton
+                                extraClasses={createBinding(player, "loopStatus").as(l =>
+                                    l === AstalMpris.Loop.TRACK || l === AstalMpris.Loop.PLAYLIST
+                                        ? ["active"]
+                                        : [],
+                                )}
+                                iconName="media-playlist-repeat-symbolic"
+                                onPressed={() => {
+                                    switch (player.loopStatus) {
+                                        case AstalMpris.Loop.NONE:
+                                            player.loopStatus = AstalMpris.Loop.TRACK
+                                            break
+                                        case AstalMpris.Loop.TRACK:
+                                            player.loopStatus = AstalMpris.Loop.PLAYLIST
+                                            break
+                                        default:
+                                            player.loopStatus = AstalMpris.Loop.NONE
+                                    }
+                                }}
+                                sensitive={createBinding(player, "loopStatus").as(
+                                    l => l !== AstalMpris.Loop.UNSUPPORTED,
+                                )}
+                            />
+                        </box>
                     </box>
-                    <MediaButton
-                        iconName="media-skip-backward-symbolic"
-                        onPressed={() => player.previous()}
-                        sensitive={createBinding(player, "canGoPrevious")}
-                    />
-                    <MediaButton
-                        iconName={status.as(s =>
-                            s === AstalMpris.PlaybackStatus.PLAYING
-                                ? "media-playback-pause-symbolic"
-                                : "media-playback-start-symbolic",
-                        )}
-                        onPressed={() => playPauseExclusive(player)}
-                        sensitive={createBinding(player, "canPlay")}
-                    />
-                    <MediaButton
-                        iconName="media-skip-forward-symbolic"
-                        onPressed={() => player.next()}
-                        sensitive={createBinding(player, "canGoNext")}
-                    />
                 </box>
-                {/* seeker (the wiring is shared with the popup:
-            bindSeekScale in lib/mpris) */}
+                {/* seeker: full card width below the cover+column row —
+                a column-width scale was too short for precise seeking.
+                (the wiring is shared with the popup: bindSeekScale in
+                lib/mpris) */}
                 <box cssClasses={["mediaSeek"]} spacing={6}>
                     {/* undo the last drag, mirroring the brightness restore
-                button; toggles between the two positions. dimmed until a
-                drag has been recorded */}
+                        button; toggles between the two positions. dimmed until a
+                        drag has been recorded */}
                     <box
                         cssName="button"
                         cssClasses={createComputed([canSeek, revertTo], (c, r) => [
