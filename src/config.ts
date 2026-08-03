@@ -500,7 +500,7 @@ function getGitHubConfig() {
     if (pollMinutes < 1) pollMinutes = 1
 
     return {
-        enabled: g["enabled"] ?? false,
+        enabled: g["enabled"] ?? true,
         pollMinutes,
     }
 }
@@ -530,7 +530,7 @@ function getTodoistConfig() {
     }
 
     return {
-        enabled: t["enabled"] ?? false,
+        enabled: t["enabled"] ?? true,
         pollMinutes,
         // proactive banners before a scheduled (timed) task is due
         reminders: t["reminders"] ?? true,
@@ -563,7 +563,7 @@ function getProtonmailConfig() {
     const host = typeof p["host"] === "string" && p["host"] !== "" ? p["host"] : "127.0.0.1"
 
     return {
-        enabled: p["enabled"] ?? false,
+        enabled: p["enabled"] ?? true,
         pollMinutes,
         host,
         port,
@@ -587,7 +587,7 @@ function getYouTubeConfig() {
     if (pollMinutes < 15) pollMinutes = 15
 
     return {
-        enabled: y["enabled"] ?? false,
+        enabled: y["enabled"] ?? true,
         pollMinutes,
     }
 }

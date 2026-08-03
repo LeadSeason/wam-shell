@@ -384,7 +384,7 @@ export function dispose() {
 // registry presence must not depend on network: the provider registers
 // at import (the center reads it whenever its lazy window is built),
 // network only starts in init() from app.tsx
-if (active) {
+if (Config.todoist.enabled) {
     registerProvider({
         name: "todoist",
         iconName: "todoist-symbolic",
@@ -393,6 +393,9 @@ if (active) {
         refresh,
         dispose,
         status,
+        setupHint: active
+            ? null
+            : "Todoist needs an API token: copy it from Todoist → Settings → Integrations → Developer and put it in ~/.config/wam-shell/todoist.env as TODOIST_API_TOKEN=<token>",
     } satisfies Provider)
 }
 

@@ -47,7 +47,13 @@ export function PaneEmpty({
             {/* hidden while empty: a blank hint must not take a line */}
             {typeof hint === "string" ? (
                 hint !== "" && (
-                    <label cssClasses={["paneEmptyHint"]} label={hint} halign={Gtk.Align.CENTER} />
+                    <label
+                        cssClasses={["paneEmptyHint"]}
+                        label={hint}
+                        halign={Gtk.Align.CENTER}
+                        maxWidthChars={44}
+                        wrap
+                    />
                 )
             ) : (
                 <label
@@ -55,6 +61,8 @@ export function PaneEmpty({
                     label={hint}
                     halign={Gtk.Align.CENTER}
                     visible={hint.as(h => h !== "")}
+                    maxWidthChars={44}
+                    wrap
                 />
             )}
             {child}
