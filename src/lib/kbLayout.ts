@@ -76,12 +76,14 @@ let lockHandlerIds: number[] = []
 // connect once; the seat's keyboard device lives for the whole session
 export function ensureLockSource(): void {
     if (lockSourceStarted) return
-    lockSourceStarted = true
     const kb = Gdk.Display.get_default()?.get_default_seat()?.get_keyboard()
     if (!kb) {
-        console.error("lock keys: no GDK keyboard device")
+        // latch only on success: a keyboard appearing after shell start
+        // (hotplug) must not kill lock-key OSD for the whole session
+        console.error("lock keys: no GDK keyboard device, will retry on next ensure")
         return
     }
+    lockSourceStarted = true
     const read = () => setLockKeyState({ caps: kb.capsLockState, num: kb.numLockState })
     read() // the signals only fire on change, so seed the initial state
     lockKb = kb
