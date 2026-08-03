@@ -138,7 +138,11 @@ function PowerDetails() {
                     big={watts.as(r =>
                         r < 0 ? `+${Math.abs(r).toFixed(1)} W` : `${r.toFixed(1)} W`,
                     )}
-                    sub={watts.as(r => (r < 0 ? "charging" : "discharging"))}
+                    sub={createComputed([watts, Power.battAvgWatts], (r, avg) => {
+                        const state = r < 0 ? "charging" : "discharging"
+                        // trailing 5-minute average once the ring fills
+                        return avg > 0 ? `${state} · avg ${avg.toFixed(1)} W` : state
+                    })}
                     visible={bat.isPresent}
                 />
                 <StatTile
@@ -199,6 +203,14 @@ function PowerDetails() {
                     )}
                     visible={Power.hasTemp || Power.hasFan}
                 />
+                {/* CPU package power (RAPL): what the profile actually
+                throttles */}
+                <StatTile
+                    icon="cpu-symbolic"
+                    big={Power.pkgWatts.as(w => `${w.toFixed(1)} W`)}
+                    sub={"CPU package"}
+                    visible={Power.hasPkg}
+                />
                 {/* moved stats (gated by show_stats) */}
                 <StatTile
                     icon="speedometer-symbolic"
@@ -224,9 +236,13 @@ function PowerDetails() {
                             <StatTile
                                 icon="freon-gpu-temperature-symbolic"
                                 big={Sys.gpu.as(g => `${g}%`)}
-                                sub={createComputed([Sys.gpuTemp, Sys.vram], (t, [used, total]) => {
-                                    return `${t}°C · ${used}/${total} MiB`
-                                })}
+                                sub={createComputed(
+                                    [Sys.gpuTemp, Sys.vram, Sys.gpuWatts],
+                                    (t, [used, total], w) =>
+                                        w > 0
+                                            ? `${t}°C · ${used}/${total} MiB · ${Math.round(w)} W`
+                                            : `${t}°C · ${used}/${total} MiB`,
+                                )}
                             />
                         )
                     }

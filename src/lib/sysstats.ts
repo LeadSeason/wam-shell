@@ -17,6 +17,7 @@ export const [cpu, setCpu] = createState(0)
 export const [ram, setRam] = createState(0)
 export const [gpu, setGpu] = createState<number | null>(null) // null = n/a
 export const [gpuTemp, setGpuTemp] = createState(0)
+export const [gpuWatts, setGpuWatts] = createState(0) // package power draw, W
 export const [vram, setVram] = createState<[number, number]>([0, 0]) // used,total MiB
 export const [ramSize, setRamSize] = createState<[number, number]>([0, 0]) // used,total GB
 export const [loadAvg, setLoadAvg] = createState(0)
@@ -135,7 +136,7 @@ const poll = createPoll("", INTERVAL, () => {
 // the one-shot query, one line per interval.
 const GPU_CMD = [
     "nvidia-smi",
-    "--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total",
+    "--query-gpu=utilization.gpu,temperature.gpu,memory.used,memory.total,power.draw",
     "--format=csv,noheader,nounits",
     `--loop-ms=${Math.max(1, Math.round(INTERVAL))}`,
 ]
@@ -149,7 +150,7 @@ let gpuRestarts = 0
 
 function handleGpuLine(line: string) {
     gpuRestarts = 0
-    const [util, temp, vramUsed, vramTotal] = line.split(",").map(Number)
+    const [util, temp, vramUsed, vramTotal, watts] = line.split(",").map(Number)
     if ([util, temp, vramUsed, vramTotal].some(isNaN)) {
         // "[N/A]" during driver transitions: hide the row until it recovers
         setGpu(null)
@@ -158,6 +159,8 @@ function handleGpuLine(line: string) {
     setGpu(util)
     setGpuTemp(temp)
     setVram([vramUsed, vramTotal])
+    // power.draw can be [N/A] on GPUs that don't report it; keep last
+    if (!isNaN(watts)) setGpuWatts(watts)
     push(gpuHist.get(), setGpuHist, util)
 }
 

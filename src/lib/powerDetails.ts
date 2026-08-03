@@ -77,9 +77,27 @@ function findFanPath(): string | null {
 const tempPath = findTempPath()
 const fanPath = findFanPath()
 
+// CPU package power: RAPL energy counter (µJ, monotonically
+// increasing, wraps at max_energy_range_uj); diff / poll interval
+const RAPL_PATH = "/sys/class/powercap/intel-rapl:0/energy_uj"
+const RAPL_MAX_PATH = "/sys/class/powercap/intel-rapl:0/max_energy_range_uj"
+const hasPkg = GLib.file_test(RAPL_PATH, GLib.FileTest.EXISTS)
+
+// battery drain: read power_now (µW) into a ring for the trailing
+// ~5-minute average — the instantaneous rate flickers too much to
+// show a profile's effect
+const battPath =
+    ["/sys/class/power_supply/BAT0/power_now", "/sys/class/power_supply/BAT1/power_now"].find(p =>
+        GLib.file_test(p, GLib.FileTest.EXISTS),
+    ) ?? null
+const BATT_AVG_WINDOW = 100 // samples at the 3s poll interval ≈ 5 min
+const battRing: number[] = []
+
 export const hasFreq = hasCpu
 export const hasTemp = tempPath !== null
 export const hasFan = fanPath !== null
+export { hasPkg }
+export const hasBattAvg = battPath !== null
 
 const [freqAvgMhz, setFreqAvgMhz] = createState(0)
 const [freqCapMhz] = createState(Math.round(capKhz / 1000))
@@ -87,7 +105,12 @@ const [governor, setGovernor] = createState("")
 const [epp, setEpp] = createState("")
 const [tempC, setTempC] = createState(0)
 const [fanRpm, setFanRpm] = createState(0)
-export { freqAvgMhz, freqCapMhz, governor, epp, tempC, fanRpm }
+const [pkgWatts, setPkgWatts] = createState(0)
+const [battAvgWatts, setBattAvgWatts] = createState(0)
+export { freqAvgMhz, freqCapMhz, governor, epp, tempC, fanRpm, pkgWatts, battAvgWatts }
+
+let prevEnergyUj = 0
+let prevPollMs = 0
 
 const poll = createPoll("", 3000, () => {
     try {
@@ -107,6 +130,30 @@ const poll = createPoll("", 3000, () => {
         }
         if (tempPath) setTempC(Math.round(Number(read(tempPath)) / 1000))
         if (fanPath) setFanRpm(Number(read(fanPath)) || 0)
+        if (hasPkg) {
+            const uj = Number(read(RAPL_PATH))
+            const nowMs = Date.now()
+            if (uj > 0 && prevEnergyUj > 0 && nowMs > prevPollMs) {
+                let delta = uj - prevEnergyUj
+                // counter wrap
+                if (delta < 0) delta = Number(read(RAPL_MAX_PATH)) - prevEnergyUj + uj
+                const dt = (nowMs - prevPollMs) / 1000
+                setPkgWatts(Math.round((delta / 1e6 / dt) * 10) / 10)
+            }
+            if (uj > 0) {
+                prevEnergyUj = uj
+                prevPollMs = nowMs
+            }
+        }
+        if (battPath) {
+            const uw = Number(read(battPath))
+            if (uw > 0) {
+                battRing.push(uw)
+                if (battRing.length > BATT_AVG_WINDOW) battRing.shift()
+                const avg = battRing.reduce((a, b) => a + b, 0) / battRing.length
+                setBattAvgWatts(Math.round(avg / 1e4) / 100)
+            }
+        }
     } catch (e) {
         console.warn("powerDetails:", e)
     }
