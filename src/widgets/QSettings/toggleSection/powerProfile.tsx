@@ -99,7 +99,7 @@ function StatTile({
                     cssClasses={["statTileSub"]}
                     label={sub}
                     xalign={center.as(v => (v ? 0.5 : 1))}
-                    maxWidthChars={24}
+                    maxWidthChars={28}
                     ellipsize={Pango.EllipsizeMode.END}
                 />
             </box>
