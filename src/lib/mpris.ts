@@ -2,7 +2,7 @@ import AstalMpris from "gi://AstalMpris?version=0.1"
 import AstalApps from "gi://AstalApps"
 import GioUnix from "gi://GioUnix?version=2.0"
 import GLib from "gi://GLib?version=2.0"
-import { Gtk, Gdk } from "ags/gtk4"
+import { Gtk } from "ags/gtk4"
 import { Accessor, createBinding, createComputed, createState, onCleanup } from "gnim"
 import { connect, disconnect, execAsync, timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
@@ -539,30 +539,11 @@ export function bindSeekScale(
             player.position = value
         },
     )
-    // scroll on the seeker seeks back/forth: GTK's native scale scroll
-    // uses its own tiny step; ±5s per wheel notch (smooth -dy on
-    // touchpads) is what feels right. returning true swallows the
-    // native handling
-    const scroll = new Gtk.EventControllerScroll({
-        flags: Gtk.EventControllerScrollFlags.VERTICAL,
-    })
-    scroll.connect("scroll", (_c, _dx, dy) => {
-        if (!player.canSeek) return true
-        const delta = scroll.get_unit() === Gdk.ScrollUnit.WHEEL ? (dy < 0 ? 5 : -5) : -dy * 0.5
-        const value = Math.min(Math.max(position.accessor.get() + delta, 0), end())
-        lastInputAt = GLib.get_monotonic_time() / 1e6
-        onSeek?.(value)
-        position.seekTo(value)
-        player.position = value
-        return true
-    })
-    self.add_controller(scroll)
     // the position unsubscribe also keeps the binding from notifying a
     // dead scale after unmount (#16)
     onCleanup(() => {
         unsubs.forEach(u => u())
         disconnect(self, handler)
-        self.remove_controller(scroll)
     })
 }
 
