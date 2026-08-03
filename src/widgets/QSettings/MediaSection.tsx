@@ -208,7 +208,7 @@ function Player({ player }: { player: AstalMpris.Player }) {
                             label={artist.as(a => a || player.identity || "")}
                         />
                     </box>
-                    <box spacing={6}>
+                    <box spacing={6} halign={Gtk.Align.CENTER}>
                         <MediaButton
                             extraClasses={createBinding(player, "shuffleStatus").as(s =>
                                 s === AstalMpris.Shuffle.ON ? ["active"] : [],
