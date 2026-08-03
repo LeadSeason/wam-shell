@@ -404,6 +404,8 @@
 # power_profile_on_panel - show the active power profile icon in the
 #                          bar's quicksettings label. default true
 # show_avatar - show the avatar in the popup header. default true
+# width - popup content width in px. default 440 (the pre-config value
+#         was 520; raise it back if you liked the wide layout)
 # avatar - absolute path to the avatar image. square crop recommended,
 #          ~96x96px (resize with scripts/prepare-avatar.sh). empty
 #          (default) = the login avatar from AccountsService, falling
@@ -413,6 +415,7 @@
 #                   (charge_control_end_threshold) when exposed, else
 #                   100. set explicitly to override
 # [quicksettings]
+# width = 440
 # show_battery_percentage = true
 # show_device_names = false
 # show_stats = false

@@ -99,7 +99,7 @@ function StatTile({
                     cssClasses={["statTileSub"]}
                     label={sub}
                     xalign={center.as(v => (v ? 0.5 : 1))}
-                    maxWidthChars={22}
+                    maxWidthChars={20}
                     ellipsize={Pango.EllipsizeMode.END}
                 />
             </box>
@@ -186,9 +186,7 @@ function PowerDetails() {
                     big={Power.freqAvgMhz.as(m => `${(m / 1000).toFixed(1)} GHz`)}
                     sub={createComputed([freqPct, Power.freqCapMhz], (pct, cap) => {
                         const of =
-                            cap > 0
-                                ? `${Math.round(pct * 100)}% of ${(cap / 1000).toFixed(1)} GHz`
-                                : ""
+                            cap > 0 ? `${Math.round(pct * 100)}% of ${(cap / 1000).toFixed(1)}` : ""
                         return pct < 0.95 && of ? `${of} capped` : of
                     })}
                     visible={Power.hasFreq}
@@ -235,13 +233,12 @@ function PowerDetails() {
                         present && (
                             <StatTile
                                 icon="freon-gpu-temperature-symbolic"
-                                big={Sys.gpu.as(g => `${g}%`)}
+                                big={createComputed([Sys.gpu, Sys.gpuWatts], (g, w) =>
+                                    w > 0 ? `${g}% · ${Math.round(w)} W` : `${g}%`,
+                                )}
                                 sub={createComputed(
-                                    [Sys.gpuTemp, Sys.vram, Sys.gpuWatts],
-                                    (t, [used, total], w) =>
-                                        w > 0
-                                            ? `${t}°C · ${used}/${total} · ${Math.round(w)} W`
-                                            : `${t}°C · ${used}/${total}`,
+                                    [Sys.gpuTemp, Sys.vram],
+                                    (t, [used, total]) => `${t}°C · ${used}/${total} MiB`,
                                 )}
                             />
                         )
