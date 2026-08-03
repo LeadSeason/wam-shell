@@ -31,6 +31,10 @@ export interface BrightnessDevice {
     // 0..1 fraction, matching the shell's brightness conventions
     level: () => number
     set(level: number): void
+    // true while a write is in flight or queued (slow backends: ddc,
+    // openrgb): the pane shows a pending state. Input is NOT blocked —
+    // blocking a slider mid-drag aborts the gesture
+    busy?: () => boolean
     // for the slider overlay: "High" for staged devices, "" otherwise
     stageLabel?: () => string
     // display labels of every stage (staged devices only, e.g. asusctl's
@@ -60,12 +64,29 @@ const managedLeds: string[] = []
 const [externalChange, bumpExternalChange] = createState<{ id: string; level: number } | null>(null)
 export { externalChange }
 
+// bumped whenever a device's busy flag flips: the pane swaps the level
+// label for a pending indicator
+const [busyChange, bumpBusyChange] = createState<{ id: string; busy: boolean } | null>(null)
+export { busyChange }
+
 // identical consecutive levels are not news
 const lastExternal = new Map<string, number>()
 function reportExternal(id: string, level: number) {
     if (lastExternal.get(id) === level) return
     lastExternal.set(id, level)
     bumpExternalChange({ id, level })
+}
+
+// shared pending-state plumbing for the serialized backends (ddc,
+// openrgb): one write in flight, latest queued value wins
+function makeBusy(id: string) {
+    let busy = false
+    const setBusy = (v: boolean) => {
+        if (busy === v) return
+        busy = v
+        bumpBusyChange({ id, busy: v })
+    }
+    return { isBusy: () => busy, setBusy }
 }
 
 // ---------------------------------------------------------- helpers
@@ -226,11 +247,13 @@ async function discoverDdc() {
             // X34P): dozens of overlapping writes per drag
             let pending: number | null = null
             let inflight = false
+            const { isBusy, setBusy } = makeBusy(`ddc-bus${bus}`)
             const send = (): void => {
                 if (inflight || pending === null) return
                 const v = pending
                 pending = null
                 inflight = true
+                setBusy(true)
                 execAsync([
                     "ddcutil",
                     "setvcp",
@@ -243,6 +266,7 @@ async function discoverDdc() {
                     .catch(e => console.warn(`ddcutil setvcp (bus ${bus}):`, e))
                     .finally(() => {
                         inflight = false
+                        if (pending === null) setBusy(false)
                         send()
                     })
             }
@@ -252,6 +276,7 @@ async function discoverDdc() {
                 icon: "video-display-symbolic",
                 max: reply.max,
                 level: () => cur / reply.max,
+                busy: isBusy,
                 set: (l: number) => {
                     cur = Math.round(Math.min(1, Math.max(0, l)) * reply.max)
                     pending = cur
@@ -310,15 +335,18 @@ async function discoverOpenRgb() {
         let level = 1
         let pending: number | null = null
         let inflight = false
+        const { isBusy, setBusy } = makeBusy(`openrgb-${d.index}`)
         const send = (): void => {
             if (inflight || pending === null) return
             const v = Math.round(pending * 100)
             pending = null
             inflight = true
+            setBusy(true)
             execAsync(["openrgb", "-d", String(d.index), "-b", String(v), "--noautoconnect"])
                 .catch(e => console.warn(`openrgb set ${d.name}:`, e))
                 .finally(() => {
                     inflight = false
+                    if (pending === null) setBusy(false)
                     send()
                 })
         }
@@ -330,6 +358,7 @@ async function discoverOpenRgb() {
                     ? "input-mouse-symbolic"
                     : "input-keyboard-symbolic",
             level: () => level,
+            busy: isBusy,
             set: (l: number) => {
                 level = Math.min(1, Math.max(0, l))
                 pending = level

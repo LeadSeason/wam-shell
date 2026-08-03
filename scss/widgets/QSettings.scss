@@ -318,6 +318,10 @@ window#QSettings {
             color: t.$accent;
         }
     }
+    // pending state while a slow backend (ddc/openrgb) applies a write
+    .deviceRow.busy slider {
+        opacity: 0.5;
+    }
 
     // wifi band section headers in the wifi pane
     // wifi band badge pill, overlaid bottom-right on signal icons

@@ -2,6 +2,7 @@ import { Gtk } from "ags/gtk4"
 import { Accessor, For, With, createComputed, onCleanup } from "gnim"
 import {
     BrightnessDevice,
+    busyChange,
     devices,
     externalChange,
     refreshExternal,
@@ -51,8 +52,16 @@ export function PeripheralBrightnessButton({ navigate }: { navigate: () => void 
 
 function DeviceRow({ d }: { d: BrightnessDevice }) {
     const stages = d.stages
+    // pending state for slow backends (ddc/openrgb): spinner instead of
+    // the level label and a dimmed row, input stays live (the queue
+    // coalesces to the latest value)
+    const busy = busyChange.as(() => d.busy?.() ?? false)
     return (
-        <box orientation={Gtk.Orientation.VERTICAL} spacing={4}>
+        <box
+            orientation={Gtk.Orientation.VERTICAL}
+            spacing={4}
+            cssClasses={busy.as(b => ["deviceRow", ...(b ? ["busy"] : [])])}
+        >
             <box spacing={10}>
                 <image
                     iconName={d.icon ?? "input-keyboard-symbolic"}
@@ -60,7 +69,12 @@ function DeviceRow({ d }: { d: BrightnessDevice }) {
                     valign={Gtk.Align.CENTER}
                 />
                 <label cssClasses={["paneRowName"]} label={d.label} xalign={0} hexpand />
-                <label cssClasses={["paneRowDesc"]} label={externalChange.as(() => levelText(d))} />
+                <Gtk.Spinner spinning visible={busy} />
+                <label
+                    cssClasses={["paneRowDesc"]}
+                    visible={busy.as(b => !b)}
+                    label={externalChange.as(() => levelText(d))}
+                />
             </box>
             {/* staged devices (asusctl Off/Low/Med/High) get buttons
             only — a slider implies finer steps than exist */}
@@ -87,7 +101,12 @@ function DeviceRow({ d }: { d: BrightnessDevice }) {
                     min={0}
                     max={1}
                     value={externalChange.as(() => d.level())}
-                    onChangeValue={({ value }) => d.set(value)}
+                    // value-changed also fires for programmatic/binding
+                    // updates — only real moves may trigger an expensive
+                    // write (ddc/openrgb)
+                    onChangeValue={({ value }) => {
+                        if (Math.abs(value - d.level()) > 1e-6) d.set(value)
+                    }}
                 />
             )}
         </box>
