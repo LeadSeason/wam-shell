@@ -114,6 +114,15 @@ function Player({ player }: { player: AstalMpris.Player }) {
                     return false
                 }}
             />
+            {/* scroll anywhere on the card switches the focused player —
+            except on the seeker, which seeks (its own controller wins) */}
+            <Gtk.EventControllerScroll
+                flags={Gtk.EventControllerScrollFlags.VERTICAL}
+                onScroll={(_e, _dx, dy) => {
+                    scrollActivePlayer(dy)
+                    return true
+                }}
+            />
             {/* scroll-position strip on the left edge: one segment per
             player with the shown one lit; click a segment to jump to
             that player. on the side so it does not read as a second
@@ -171,23 +180,15 @@ function Player({ player }: { player: AstalMpris.Player }) {
                         hexpand
                         valign={Gtk.Align.CENTER}
                     >
-                        {/* title/artist: click focuses the player, scroll
-                    switches players when more than one has a track
-                    loaded (scoped to this block: on the seeker below
-                    scroll must seek, not switch) */}
+                        {/* title/artist: click focuses the player; scroll
+                        switches players anywhere on the card (card-level
+                        controller) */}
                         <box
                             orientation={Gtk.Orientation.VERTICAL}
                             tooltipText={eligiblePlayers.as(l =>
                                 l.length > 1 ? "Scroll to switch player" : "Focus player window",
                             )}
                         >
-                            <Gtk.EventControllerScroll
-                                flags={Gtk.EventControllerScrollFlags.VERTICAL}
-                                onScroll={(_e, _dx, dy) => {
-                                    scrollActivePlayer(dy)
-                                    return true
-                                }}
-                            />
                             <Gtk.GestureClick button={1} onPressed={() => raisePlayer(player)} />
                             {/* widthChars + maxWidthChars together pin the
                         size request: natural = max(width, min(text,
