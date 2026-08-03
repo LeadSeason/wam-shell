@@ -358,10 +358,14 @@ window#QSettings {
         padding: 6px 12px;
         margin-top: 4px;
     }
-    .appStreamsHeader {
-        font-size: s.$font-small;
-        color: t.$subtext0;
+    .dropdownSection {
+        font-weight: bold;
         margin: 4px 0 2px 4px;
+        // breathing room between the two sections, none needed above
+        // the first
+        &:not(:first-child) {
+            margin-top: 10px;
+        }
     }
     .appMuteBtn.active {
         color: t.$accent;

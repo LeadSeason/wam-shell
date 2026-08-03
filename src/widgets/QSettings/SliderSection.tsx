@@ -144,7 +144,7 @@ function AppStreams({ audio }: { audio: AstalWp.Audio }) {
     })
     return (
         <box orientation={Gtk.Orientation.VERTICAL} visible={groups.as(g => g.length > 0)}>
-            <label cssClasses={["appStreamsHeader"]} xalign={0} label={"Applications"} />
+            <label cssClasses={["dropdownSection"]} xalign={0} label={"Applications"} />
             <For each={groups}>{g => <AppRow g={g} resolveIcon={resolveIcon} />}</For>
         </box>
     )
@@ -402,6 +402,7 @@ export function SliderSection() {
                 {/* the inset crust card is what reads as "a pane" inside
                 the sliders' base card (base-on-base would be invisible) */}
                 <box cssClasses={["dropdownCard"]} orientation={Gtk.Orientation.VERTICAL}>
+                    <label cssClasses={["dropdownSection"]} xalign={0} label={"Output Devices"} />
                     <DeviceList endpoints={speakers} collapse={() => setExpanded(0)} />
                     <AppStreams audio={audio} />
                 </box>
