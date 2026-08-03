@@ -172,12 +172,18 @@ function localDay(offsetDays = 0): string {
 const [dayEntries, setDayEntries] = createState<Entry[]>([])
 export { dayEntries }
 
+// rapid navigation fires one fetch per change with no natural
+// ordering: only the latest request may write (same trick as the
+// window fetch's requestSeq)
+let dayFetchSeq = 0
+
 // 0 = today, -1 = yesterday, …: fetch that day into dayEntries
 export function fetchDayOffset(offsetDays: number) {
     if (!active || offsetDays === 0) return
+    const seq = ++dayFetchSeq
     const day = localDay(offsetDays)
     fetchAll(`/time_entries?from=${day}&to=${day}`, "time_entries", [], (items, _r) => {
-        if (items) setDayEntries(dayTimeline(items.map(mapEntry)))
+        if (items && seq === dayFetchSeq) setDayEntries(dayTimeline(items.map(mapEntry)))
     })
 }
 
