@@ -200,9 +200,10 @@ window#QSettings {
         background-position: center;
         background-color: t.$surface0;
     }
-    // the big-cover card layout: ~104px art on the left
+    // the big-cover card layout: ~104px art on the left, 16:9 like
+    // the video thumbnails most content carries
     .mediaCoverBig {
-        min-width: 104px;
+        min-width: 185px;
         min-height: 104px;
     }
     .mediaCoverFallback {
@@ -254,7 +255,8 @@ window#QSettings {
     // player, the shown one lit; wide enough to click
     .mediaSegments {
         .mediaSegment {
-            min-width: 4px;
+            // 4px was a frustrating click target
+            min-width: 8px;
             border-radius: 2px;
             background-color: t.$surface1;
             &.active {
