@@ -3,6 +3,7 @@ import GLib from "gi://GLib?version=2.0"
 import Soup from "gi://Soup?version=3.0"
 import Config from "../config"
 import { isFile } from "./utils"
+import { writeFileAtomic } from "./atomicWrite"
 
 // Synchronous local path for mpris cover art. http(s) art is downloaded
 // once into the cache dir — the next track change uses the cached copy.
@@ -53,24 +54,16 @@ function fetchCover(url: string): Promise<Uint8Array> {
 }
 
 /** download url into the cover cache; resolves the cached path.
- *  Writes to a .part file first: a killed download must not leave a
- *  truncated file behind that the cache then treats as valid forever. */
+ *  The write is tmp+rename atomic (writeFileAtomic): a killed download
+ *  must not leave a truncated file behind that the cache then treats
+ *  as valid forever. */
 export function downloadCover(url: string): Promise<string> {
     const path = cachePath(url)
     if (isFile(path)) return Promise.resolve(path)
     const pending = inFlight.get(url)
     if (pending) return pending
-    const part = `${path}.part`
     const promise = fetchCover(url)
-        .then(data => {
-            GLib.file_set_contents(part, data)
-            GLib.rename(part, path)
-            return path
-        })
-        .catch(e => {
-            GLib.unlink(part)
-            throw e
-        })
+        .then(data => writeFileAtomic(path, data).then(() => path))
         .finally(() => inFlight.delete(url))
     inFlight.set(url, promise)
     return promise
@@ -89,7 +82,7 @@ export function coverFile(url: string): string {
 }
 
 // prune cached covers older than a week once at startup: the cache is
-// keyed by url hash, so stale entries (and leftover .part files) would
+// keyed by url hash, so stale entries (and leftover tmp files) would
 // otherwise accumulate forever
 const COVER_TTL_SEC = 7 * 24 * 60 * 60
 function pruneCache() {

@@ -2,6 +2,7 @@ import GLib from "gi://GLib?version=2.0"
 import { createComputed, createState } from "gnim"
 import Config from "../config"
 import { isFile } from "./utils"
+import { writeFileAtomic } from "./atomicWrite"
 import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { GoogleAccount, createGoogleAuth, googleRequest } from "./googleAuth"
 
@@ -513,15 +514,15 @@ export function refresh() {
 
 // --------------------------------------------------------------- cache
 
+// the serialized window is multi-hundred-KB and syncs run every poll:
+// skip the write entirely when the payload didn't change
+let lastCacheJson = ""
+
 function writeCache(list: CalEvent[]) {
-    try {
-        GLib.file_set_contents(
-            cachePath,
-            JSON.stringify({ from: loadedFrom, to: loadedTo, events: list }),
-        )
-    } catch (e) {
-        console.warn("GCal: failed writing cache:", e)
-    }
+    const json = JSON.stringify({ from: loadedFrom, to: loadedTo, events: list })
+    if (json === lastCacheJson) return
+    lastCacheJson = json
+    writeFileAtomic(cachePath, json).catch(e => console.warn("GCal: failed writing cache:", e))
 }
 
 function loadCache() {

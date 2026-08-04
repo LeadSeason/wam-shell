@@ -4,6 +4,7 @@ import Soup from "gi://Soup?version=3.0"
 import { createState } from "gnim"
 import Config from "../config"
 import { isFile } from "./utils"
+import { writeFileAtomic } from "./atomicWrite"
 import { timeoutAdd, timeoutAddSeconds, sourceRemove, trackHttp } from "./metrics"
 import { Provider, ProviderItem, registerProvider } from "./notificationProviders"
 import { GoogleAccount, Reply, createGoogleAuth, googleRequest } from "./googleAuth"
@@ -149,11 +150,9 @@ function loadSeen() {
 }
 
 function storeSeen() {
-    try {
-        GLib.file_set_contents(seenPath, JSON.stringify({ seen: [...seen].slice(-200) }))
-    } catch (e) {
-        console.warn("YouTube: failed writing seen store:", e)
-    }
+    writeFileAtomic(seenPath, JSON.stringify({ seen: [...seen].slice(-200) })).catch(e =>
+        console.warn("YouTube: failed writing seen store:", e),
+    )
 }
 
 function markSeen(id: string) {
@@ -185,17 +184,13 @@ function loadChannelsCache() {
 }
 
 function storeChannelsCache() {
-    try {
-        GLib.file_set_contents(
-            channelsPath,
-            JSON.stringify({
-                fetchedAt: channelsFetchedAt,
-                byAccount: Object.fromEntries(channelsByAccount),
-            }),
-        )
-    } catch (e) {
-        console.warn("YouTube: failed writing channel cache:", e)
-    }
+    writeFileAtomic(
+        channelsPath,
+        JSON.stringify({
+            fetchedAt: channelsFetchedAt,
+            byAccount: Object.fromEntries(channelsByAccount),
+        }),
+    ).catch(e => console.warn("YouTube: failed writing channel cache:", e))
 }
 
 function channelsStale(): boolean {
@@ -221,7 +216,10 @@ function fetchThumb(videoId: string, url: string, done: () => void) {
             const bytes = thumbSession.send_and_read_finish(res)
             if (msg.get_status() === 200 && bytes) {
                 trackHttp(url, bytes.get_size())
-                GLib.file_set_contents(path, bytes.get_data() ?? new Uint8Array())
+                // done waits for the write to land: the caller isFile-
+                // checks the thumb before pointing the row at it
+                writeFileAtomic(path, bytes.get_data() ?? new Uint8Array()).then(done, done)
+                return
             }
         } catch {} // a missing thumb is not a failure worth logging
         done()
