@@ -188,7 +188,7 @@ export default function NotificationCard({
                 </box>
             </box>
             {actions.length > 0 && (
-                <box cssClasses={["actions"]} spacing={6}>
+                <box cssClasses={["actions"]} spacing={6} hexpand halign={Gtk.Align.END}>
                     {actions.map(a => (
                         <button
                             $={self => {
