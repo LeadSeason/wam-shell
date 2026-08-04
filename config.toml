@@ -330,11 +330,15 @@
 # remind_before_minutes - fallback banner time for tasks WITHOUT a
 #             Todoist reminder of their own: this many minutes before
 #             due. default 5
+# snooze_minutes - the banner's Postpone button: re-raise it this many
+#             minutes later (capped at the task's due time). Local only:
+#             the task's due time on Todoist is never changed. default 30
 # [todoist]
 # enabled = false
 # poll_minutes = 5
 # reminders = true
 # remind_before_minutes = 5
+# snooze_minutes = 30
 
 # [protonmail] - ProtonMail unread mail in the notification center, via
 #             ProtonMail Bridge's local IMAP: the unread INBOX merges

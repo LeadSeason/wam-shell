@@ -117,6 +117,12 @@ export default function PopupRow({ entry }: { entry: PopupEntry }) {
                             entry.item!.activate()
                         }}
                         onHide={() => removePopup(entry.key)}
+                        // every action closes the banner; "dismiss" is
+                        // consumed so the item survives in the center
+                        onAction={id => {
+                            removePopup(entry.key)
+                            return id === "dismiss"
+                        }}
                     />
                 )}
                 <Gtk.DrawingArea

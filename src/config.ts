@@ -580,12 +580,21 @@ function getTodoistConfig() {
         remindBefore = 5
     }
 
+    let snooze = t["snooze_minutes"] ?? 30
+    if (typeof snooze !== "number" || snooze <= 0) {
+        console.error(`Config "todoist.snooze_minutes" must be a positive number, got "${snooze}"`)
+        snooze = 30
+    }
+
     return {
         enabled: t["enabled"] ?? true,
         pollMinutes,
         // proactive banners before a scheduled (timed) task is due
         reminders: t["reminders"] ?? true,
         remindBeforeMinutes: remindBefore,
+        // the banner's Postpone button: local snooze length (capped at
+        // the task's due time)
+        snoozeMinutes: snooze,
     }
 }
 

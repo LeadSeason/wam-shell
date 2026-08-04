@@ -21,6 +21,11 @@ export interface ProviderItem {
     // the image slot; absent = the icon shows instead
     imagePath?: string
     url: string // opened by activate()
+    // optional button row (rendered like the desktop card's .actions
+    // row). run() executes after the host's onAction; a host may consume
+    // an id (the banner consumes "dismiss" so the item survives in the
+    // center)
+    actions?: { id: string; label: string; run(): void }[]
     hide(): void // session-scoped: out of the center, no service-side call
     dismiss(): void // "mark done" — the provider's done semantics
     activate(): void // primary click: open + whatever "read" means here

@@ -82,6 +82,12 @@
             border: solid 2px t.$accent20;
         }
     }
+    // action buttons (app actions, provider buttons like todoist's
+    // done/postpone/dismiss): a resting background so they read as
+    // buttons — the generic rule above only paints on hover
+    .actions button {
+        background: t.$surface0;
+    }
 }
 
 // Notification center window.

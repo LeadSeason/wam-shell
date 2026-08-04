@@ -5,6 +5,7 @@ import {
     taskData,
     newArrivals,
     buildReminderMap,
+    snoozeDelayMs,
 } from "../src/lib/todoist"
 
 // fixed "now": 2026-08-01 12:00 local
@@ -54,7 +55,10 @@ test("todoist taskData: maps timed tasks, skips all-day and due-less", () => {
     // legacy v2 datetime field maps too
     eq(
         taskData(
-            { ...raw, due: { date: "2026-07-31", datetime: "2026-07-31T14:00:00", string: "Jul 31" } },
+            {
+                ...raw,
+                due: { date: "2026-07-31", datetime: "2026-07-31T14:00:00", string: "Jul 31" },
+            },
             now,
         )?.time,
         Date.parse("2026-07-31T14:00:00") / 1000,
@@ -84,12 +88,25 @@ test("todoist buildReminderMap: groups fire times by task, skips junk", () => {
         { item_id: "4", due: { date: "garbage" }, is_deleted: false },
         { due: { date: "2026-08-04T11:00:00" }, is_deleted: false },
     ])
-    eq(map.get("1"), [
-        Date.parse("2026-08-04T07:00:00"),
-        Date.parse("2026-08-04T08:30:00"),
-    ])
+    eq(map.get("1"), [Date.parse("2026-08-04T07:00:00"), Date.parse("2026-08-04T08:30:00")])
     eq(map.get("2"), [Date.parse("2026-08-04T09:00:00")])
     eq(map.has("3"), false, "deleted reminder skipped")
     eq(map.has("4"), false, "unparseable fire time skipped")
     eq(map.size, 2)
+})
+
+test("todoist snoozeDelayMs: full length, capped at due, past due", () => {
+    const min30 = 30 * 60_000
+    // due beyond the snooze window: the full duration
+    eq(snoozeDelayMs(now + 2 * 3_600_000, now, 30), min30)
+    // due sooner than the window: capped at the due time ("whichever
+    // comes first")
+    eq(snoozeDelayMs(now + 10 * 60_000, now, 30), 10 * 60_000)
+    // exactly at the boundary: the cap is the due delta
+    eq(snoozeDelayMs(now + min30, now, 30), min30)
+    // already past due: the full duration (no zero/negative delay)
+    eq(snoozeDelayMs(now - 60_000, now, 30), min30)
+    eq(snoozeDelayMs(now, now, 30), min30)
+    // honors the configured length
+    eq(snoozeDelayMs(now + 2 * 3_600_000, now, 10), 10 * 60_000)
 })
