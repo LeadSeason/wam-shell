@@ -203,12 +203,14 @@ function addPopup(entry: PopupEntry, urgency: AstalNotifd.Urgency | null): boole
     return true
 }
 
-// a brand-new provider thread (github poll diff) wants a banner. The
-// banner expiring is NOT a dismissal: the item stays in the center
-export function addProviderPopup(item: ProviderItem) {
+// a brand-new provider thread (github poll diff) or a due reminder
+// wants a banner. The banner expiring is NOT a dismissal: the item
+// stays in the center. urgency CRITICAL banners never drain and break
+// through DND (todoist due reminders use this).
+export function addProviderPopup(item: ProviderItem, urgency: AstalNotifd.Urgency | null = null) {
     if (!useOurs) return // no popup windows exist in that case
     if (mutedProviders.get().includes(item.provider)) return
-    addPopup({ key: item.id, desktop: null, item }, null)
+    addPopup({ key: item.id, desktop: null, item }, urgency)
 }
 
 const notifiedId = connect(notifd, "notified", (_s: AstalNotifd.Notifd, id: number) => {

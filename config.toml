@@ -304,12 +304,13 @@
 # poll_minutes = 5
 
 # [todoist] - Todoist tasks in the notification center: SCHEDULED
-#             tasks (due at a concrete time today, tomorrow, or
-#             overdue) merge into the center's list, soonest first,
-#             and a Todoist icon in the header filters to just them.
+#             tasks (due at a concrete time today or tomorrow)
+#             merge into the center's list, soonest first, and a
+#             Todoist icon in the header filters to just them.
 #             clicking an item opens the task in the browser;
 #             dismissing an item COMPLETES the task on Todoist.
-#             all-day tasks are not listed
+#             all-day and overdue tasks are not listed: the provider
+#             is about time-critical tasks, not historical records
 # Auth: copy your API token from Todoist settings (Integrations →
 #       Developer) and put it in ~/.config/wam-shell/todoist.env
 #       (chmod 600), NOT in this file:
@@ -322,10 +323,13 @@
 # poll_minutes - minutes between syncs. the center also refreshes when
 #                opened (at most once a minute). clamped to >= 1.
 #                default 5
-# reminders - raise a transient banner before a scheduled task is due.
+# reminders - raise banners for a scheduled task: once at its own
+#             Todoist reminder time and again at the due moment.
+#             banners are high priority and stay until dismissed.
 #             default true
-# remind_before_minutes - how long before the due time the banner
-#             appears. default 5
+# remind_before_minutes - fallback banner time for tasks WITHOUT a
+#             Todoist reminder of their own: this many minutes before
+#             due. default 5
 # [todoist]
 # enabled = false
 # poll_minutes = 5
