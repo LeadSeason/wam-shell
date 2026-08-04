@@ -16,14 +16,16 @@ test("todoist isOverdue: date and datetime semantics", () => {
     eq(isOverdue({ date: "garbage" }, now), false)
 })
 
-test("todoist dueLabel: overdue, timed today, all-day today", () => {
+test("todoist dueLabel: overdue, timed today, all-day today, tomorrow", () => {
     eq(dueLabel({ date: "2026-07-30", string: "Jul 30" }, now), "Overdue · Jul 30")
     eq(dueLabel({ datetime: "2026-08-01T15:30:00Z" }, now).startsWith("Today · "), true)
     eq(dueLabel({ date: "2026-08-01" }, now), "Today")
+    eq(dueLabel({ date: "2026-08-02" }, now), "Tomorrow")
+    eq(dueLabel({ datetime: "2026-08-02T10:00:00" }, now), "Tomorrow · 10:00")
     eq(dueLabel(null, now), "")
 })
 
-test("todoist taskData: maps a scheduled task, skips unscheduled", () => {
+test("todoist taskData: maps timed tasks, skips all-day and due-less", () => {
     const raw = {
         id: "12345",
         content: "Water the plants",
@@ -40,11 +42,12 @@ test("todoist taskData: maps a scheduled task, skips unscheduled", () => {
         // v1 drops the url field: constructed from the id
         url: "https://todoist.com/app/task/12345",
     })
-    // all-day tasks (no due time) are not scheduled: dropped
+    // all-day tasks (no due time) are out of scope: dropped
     eq(taskData({ ...raw, due: { date: "2026-08-01" } }, now), null)
     // unusable shapes are dropped
     eq(taskData({ id: "1" }, now), null)
     eq(taskData({ content: "x" }, now), null)
+    eq(taskData({ ...raw, due: null }, now), null)
 })
 
 test("todoist newArrivals: only brand-new task ids", () => {
