@@ -3,7 +3,7 @@ import Gio from "gi://Gio?version=2.0"
 import Soup from "gi://Soup?version=3.0"
 import { createState } from "gnim"
 import Config from "../config"
-import { isFile } from "./utils"
+import { loadCredentials } from "./credentials"
 import { timeoutAddSeconds, sourceRemove, trackHttp } from "./metrics"
 import { Provider, ProviderItem, registerProvider } from "./notificationProviders"
 import { addProviderPopup } from "./notifd"
@@ -26,41 +26,8 @@ const configHome = `${GLib.getenv("XDG_CONFIG_HOME") || `${GLib.getenv("HOME")}/
 const envPath = `${configHome}/github.env`
 
 function loadToken(): string | null {
-    const envToken = GLib.getenv("GITHUB_TOKEN")
-    if (envToken) return envToken
-
-    if (!isFile(envPath)) return null
-
-    // documented chmod 600 is advice; warn when group/other can read it
-    try {
-        const info = Gio.File.new_for_path(envPath).query_info(
-            "unix::mode",
-            Gio.FileQueryInfoFlags.NONE,
-            null,
-        )
-        const mode = info.get_attribute_uint32("unix::mode") & 0o777
-        if (mode & 0o077) {
-            console.warn(
-                `GitHub: ${envPath} is readable by group/other (mode ${mode.toString(8)}); consider chmod 600`,
-            )
-        }
-    } catch (e) {
-        console.warn("GitHub: could not stat credentials file:", e)
-    }
-
-    try {
-        const contents = GLib.file_get_contents(envPath)[1]
-        const text = new TextDecoder().decode(contents)
-        for (const line of text.split("\n")) {
-            const m = line.match(/^\s*(?:export\s+)?GITHUB_TOKEN\s*=\s*(.+?)\s*$/)
-            if (!m) continue
-            // tolerate inline comments and single/double quotes
-            return m[1].replace(/\s+#.*$/, "").replace(/^["']|["']$/g, "")
-        }
-    } catch (e) {
-        console.warn("GitHub: failed reading credentials file:", e)
-    }
-    return null
+    const creds = loadCredentials("GitHub", ["GITHUB_TOKEN"], envPath)
+    return creds ? creds.GITHUB_TOKEN : null
 }
 
 const token = Config.github.enabled ? loadToken() : null
