@@ -1,6 +1,7 @@
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
 import Soup from "gi://Soup?version=3.0"
+import AstalNotifd from "gi://AstalNotifd?version=0.1"
 import { createState } from "gnim"
 import Config from "../config"
 import { isFile } from "./utils"
@@ -16,8 +17,9 @@ import { addProviderPopup } from "./notifd"
 // scope: awareness of time-critical tasks, not historical records.
 // (REST v2 went 410 Gone; v1 paginates with a results/next_cursor
 // envelope, drops the task url field — it is constructed from the id —
-// and drops the `filter` param from /tasks: filtering moved to the
-// dedicated /tasks/filter?query= endpoint)
+// drops the `filter` param from /tasks: filtering moved to the
+// dedicated /tasks/filter?query= endpoint — and drops due.datetime:
+// the due time now lives in due.date itself)
 
 const API = "https://api.todoist.com/api/v1"
 const UA = "wam-shell (https://github.com/LeadSeason/wam-shell)"
@@ -77,14 +79,29 @@ if (Config.todoist.enabled && !token) {
 
 // ------------------------------------------------- pure mapping (tests)
 
+// v1 due shape: due.date is "YYYY-MM-DD" for all-day tasks and
+// "YYYY-MM-DDTHH:MM:SS" (floating local) for timed ones — the v2
+// due.datetime field is gone (kept as a fallback below in case the
+// API reintroduces it)
+function dueStamp(due: any): string | null {
+    if (due?.datetime) return due.datetime
+    const d = due?.date
+    if (typeof d !== "string") return null
+    return d.includes("T") ? d : `${d}T00:00:00`
+}
+
+// a task counts as timed when its due carries a real clock time
+function isTimed(due: any): boolean {
+    return !!due?.datetime || (typeof due?.date === "string" && due.date.includes("T"))
+}
+
 // due.date is YYYY-MM-DD (all-day) or RFC 3339 (timed); overdue =
 // strictly before today (local)
 export function isOverdue(
     due: { date?: string; datetime?: string } | null,
     nowMs: number,
 ): boolean {
-    if (!due) return false
-    const stamp = due.datetime ?? (due.date ? `${due.date}T00:00:00` : null)
+    const stamp = dueStamp(due)
     if (!stamp) return false
     const ms = Date.parse(stamp)
     if (Number.isNaN(ms)) return false
@@ -96,7 +113,7 @@ export function isOverdue(
 export function dueLabel(due: any, nowMs: number): string {
     if (!due) return ""
     if (isOverdue(due, nowMs)) return `Overdue · ${due.string ?? due.date ?? ""}`
-    const stamp = due.datetime ?? (due.date ? `${due.date}T00:00:00` : null)
+    const stamp = dueStamp(due)
     if (!stamp) return ""
     const d = new Date(Date.parse(stamp))
     if (Number.isNaN(d.getTime())) return ""
@@ -108,7 +125,7 @@ export function dueLabel(due: any, nowMs: number): string {
     // beyond tomorrow (shouldn't happen with the poll query): fall back
     // to the API's own rendering
     const dayName = diffDays === 0 ? "Today" : diffDays === 1 ? "Tomorrow" : (due.string ?? "")
-    if (due.datetime) return `${dayName} · ${d.toTimeString().slice(0, 5)}`
+    if (isTimed(due)) return `${dayName} · ${d.toTimeString().slice(0, 5)}`
     return dayName
 }
 
@@ -124,9 +141,9 @@ export function taskData(
 ): Omit<ProviderItem, "dismiss" | "activate"> | null {
     const id = raw?.id
     const content = raw?.content
-    const stamp = raw?.due?.datetime
-    if (!id || !content || !stamp) return null
-    const ms = Date.parse(stamp)
+    if (!id || !content || !isTimed(raw?.due)) return null
+    const stamp = dueStamp(raw.due)
+    const ms = Date.parse(stamp!)
     return {
         id: `todoist:${id}`,
         provider: "todoist",
@@ -214,65 +231,99 @@ const hiddenIds = new Set<string>()
 
 // ------------------------------------------------------- due reminders
 
-// one-shot banners at (due time − remind_before_minutes). Re-armed
-// from every poll: tasks that left the list get cancelled, tasks
-// whose due time moved get re-scheduled
-const reminderTimers = new Map<string, { src: number; dueMs: number }>()
-// id -> due time it already fired for: a recurring task (or an edited
-// due time) re-arms, an exact repeat doesn't
-const remindedIds = new Map<string, number>()
+// banners fire TWICE per task: at the task's own Todoist reminder
+// (relative "30 min before" or absolute — the API precomputes the
+// fire time into the reminder's due.date) and again at the actual due
+// moment. Tasks without a reminder fall back to (due −
+// remind_before_minutes) for the first banner. Re-armed from every
+// poll: tasks that left the list get cancelled, tasks whose due time
+// moved get re-scheduled.
+// Pure so tests can pin the mapping. item_id → sorted fire times (ms)
+export function buildReminderMap(rawList: any[]): Map<string, number[]> {
+    const map = new Map<string, number[]>()
+    for (const r of rawList) {
+        if (r?.is_deleted) continue
+        const taskId = r?.item_id
+        const stamp = r?.due?.datetime ?? r?.due?.date
+        if (!taskId || typeof stamp !== "string") continue
+        const ms = Date.parse(stamp)
+        if (Number.isNaN(ms)) continue
+        map.set(taskId, [...(map.get(taskId) ?? []), ms])
+    }
+    for (const fires of map.values()) fires.sort((a, b) => a - b)
+    return map
+}
 
-function fireReminder(item: ProviderItem) {
-    remindedIds.set(item.id, item.time * 1000)
-    reminderTimers.delete(item.id)
-    addProviderPopup(item)
+// timers keyed `${item.id}|${fireMs}` so a task can carry several
+// reminders; dueMs is the task's due time for re-arm detection
+const reminderTimers = new Map<string, { src: number; id: string; dueMs: number }>()
+// keys that already fired: an edited due time (or edited reminder)
+// produces a new key and re-arms, an exact repeat doesn't
+const remindedKeys = new Set<string>()
+
+function fireReminder(key: string, item: ProviderItem) {
+    remindedKeys.add(key)
+    reminderTimers.delete(key)
+    // due reminders are time-critical: the banner never auto-hides
+    // and breaks through DND, like an alarm clock
+    addProviderPopup(item, AstalNotifd.Urgency.CRITICAL)
 }
 
 // a task the user dealt with (completed/hidden) must not pop its
-// armed reminder afterwards
+// armed reminders afterwards
 function cancelReminder(id: string) {
-    const t = reminderTimers.get(id)
-    if (t) {
-        sourceRemove(t.src)
-        reminderTimers.delete(id)
+    for (const [key, t] of reminderTimers) {
+        if (t.id === id) {
+            sourceRemove(t.src)
+            reminderTimers.delete(key)
+        }
     }
 }
 
-function scheduleReminders(mapped: ProviderItem[]) {
-    const present = new Set(mapped.map(i => i.id))
-    for (const [id, t] of reminderTimers) {
-        if (!present.has(id)) {
+function scheduleReminders(mapped: ProviderItem[], reminderMap: Map<string, number[]>) {
+    const byId = new Map(mapped.map(i => [i.id, i]))
+    // cancel timers for tasks that left the list or whose due moved
+    for (const [key, t] of reminderTimers) {
+        const item = byId.get(t.id)
+        if (!item || item.time * 1000 !== t.dueMs) {
             sourceRemove(t.src)
-            reminderTimers.delete(id)
+            reminderTimers.delete(key)
         }
     }
     if (!Config.todoist.reminders) return
     for (const item of mapped) {
         const dueMs = item.time * 1000
-        const existing = reminderTimers.get(item.id)
-        // a re-scheduled task (moved due time) re-arms from scratch
-        if (existing && existing.dueMs !== dueMs) {
-            sourceRemove(existing.src)
-            reminderTimers.delete(item.id)
-            remindedIds.delete(item.id)
-        } else if (existing || remindedIds.get(item.id) === dueMs) {
-            continue
-        }
-        const delaySec = Math.ceil(
-            (dueMs - Config.todoist.remindBeforeMinutes * 60_000 - Date.now()) / 1000,
+        // first banner: the task's Todoist reminder(s), or the
+        // remind_before_minutes fallback; second banner: at due. The
+        // set dedupes a reminder set exactly at the due time
+        const fires = new Set(
+            reminderMap.get(item.id.slice("todoist:".length)) ?? [
+                dueMs - Config.todoist.remindBeforeMinutes * 60_000,
+            ],
         )
-        if (delaySec <= 0) {
-            // the reminder point already passed: banner immediately if
-            // the task is still in the future; past-due tasks get no
-            // banner (no historical records)
-            if (dueMs > Date.now()) fireReminder(item)
-            continue
+        fires.add(dueMs)
+        for (const fireMs of fires) {
+            const key = `${item.id}|${fireMs}`
+            if (reminderTimers.has(key) || remindedKeys.has(key)) continue
+            const delaySec = Math.ceil((fireMs - Date.now()) / 1000)
+            if (delaySec <= 0) {
+                // the fire point passed while we weren't looking:
+                // banner only while the task is still in the future;
+                // past-due tasks get no banner (no historical records)
+                if (dueMs > Date.now()) fireReminder(key, item)
+                continue
+            }
+            const src = timeoutAddSeconds(
+                "todoist:reminder",
+                GLib.PRIORITY_DEFAULT,
+                delaySec,
+                () => {
+                    fireReminder(key, item)
+                    return GLib.SOURCE_REMOVE
+                },
+            )
+            reminderTimers.set(key, { src, id: item.id, dueMs })
         }
-        const src = timeoutAddSeconds("todoist:reminder", GLib.PRIORITY_DEFAULT, delaySec, () => {
-            fireReminder(item)
-            return GLib.SOURCE_REMOVE
-        })
-        reminderTimers.set(item.id, { src, dueMs })
     }
 }
 
@@ -310,7 +361,7 @@ function complete(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">) {
     })
 }
 
-function applyTasks(rawList: any[]) {
+function applyTasks(rawList: any[], reminderMap: Map<string, number[]>) {
     const nowMs = Date.now()
     const mapped: ProviderItem[] = []
     for (const raw of rawList) {
@@ -321,7 +372,7 @@ function applyTasks(rawList: any[]) {
     mapped.sort((a, b) => a.time - b.time)
     const prev = items.get()
     setItems(mapped)
-    scheduleReminders(mapped)
+    scheduleReminders(mapped, reminderMap)
     if (!baselineDone) {
         // the first fetch after startup is the baseline: bannering the
         // whole backlog would spam the screen
@@ -372,7 +423,17 @@ function fetchTasks(cursor: string, acc: any[]) {
             fetchTasks(r.json.next_cursor, merged)
             return
         }
-        applyTasks(merged)
+        fetchReminders(merged)
+    })
+}
+
+// each task's own Todoist reminder drives its banner time; a failed
+// fetch degrades to the remind_before_minutes fallback, not to silence
+function fetchReminders(taskList: any[]) {
+    request("GET", "/reminders", r => {
+        const map =
+            r.ok && Array.isArray(r.json?.results) ? buildReminderMap(r.json.results) : new Map()
+        applyTasks(taskList, map)
     })
 }
 
