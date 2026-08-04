@@ -2,7 +2,7 @@ import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
 import { createState } from "gnim"
 import Config from "../config"
-import { isFile } from "./utils"
+import { loadCredentials as loadEnvCredentials } from "./credentials"
 import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { Provider, ProviderItem, registerProvider } from "./notificationProviders"
 import { addProviderPopup } from "./notifd"
@@ -13,8 +13,14 @@ import { addProviderPopup } from "./notifd"
 // webmail, dismiss marks the mail seen on the bridge. Read-only plus
 // UID STORE; nothing here deletes or sends.
 //
-// Each poll is a short connection (loopback, cheap): LOGIN → UID
-// SEARCH UNSEEN → UID FETCH ENVELOPE for the newest few → LOGOUT.
+// Updates are push where possible: a persistent connection issues IMAP
+// IDLE (RFC 2177) and refreshes on EXISTS/RECENT/EXPUNGE/FETCH events,
+// re-issuing IDLE every 25 min (servers time it out at ~30). Any
+// failure tears the session down and falls back to the original
+// short-connection poll (LOGIN → UID SEARCH UNSEEN → UID FETCH
+// ENVELOPE → LOGOUT per poll) for one poll interval, then retries
+// IDLE; a server that refuses IDLE polls permanently. Both paths share
+// the same login/search/fetch/parse code (ImapSession).
 
 const WEBMAIL = "https://mail.proton.me/u/0/inbox"
 const MAX_ITEMS = 20
@@ -25,44 +31,12 @@ const configHome = `${GLib.getenv("XDG_CONFIG_HOME") || `${GLib.getenv("HOME")}/
 const envPath = `${configHome}/protonmail.env`
 
 function loadCredentials(): { user: string; password: string } | null {
-    const envUser = GLib.getenv("PROTONMAIL_IMAP_USER")
-    const envPass = GLib.getenv("PROTONMAIL_IMAP_PASSWORD")
-    if (envUser && envPass) return { user: envUser, password: envPass }
-
-    if (!isFile(envPath)) return null
-
-    // documented chmod 600 is advice; warn when group/other can read it
-    try {
-        const info = Gio.File.new_for_path(envPath).query_info(
-            "unix::mode",
-            Gio.FileQueryInfoFlags.NONE,
-            null,
-        )
-        const mode = info.get_attribute_uint32("unix::mode") & 0o777
-        if (mode & 0o077) {
-            console.warn(
-                `ProtonMail: ${envPath} is readable by group/other (mode ${mode.toString(8)}); consider chmod 600`,
-            )
-        }
-    } catch (e) {
-        console.warn("ProtonMail: could not stat credentials file:", e)
-    }
-
-    let user = ""
-    let password = ""
-    try {
-        const contents = GLib.file_get_contents(envPath)[1]
-        const text = new TextDecoder().decode(contents)
-        for (const line of text.split("\n")) {
-            const u = line.match(/^\s*(?:export\s+)?PROTONMAIL_IMAP_USER\s*=\s*(.+?)\s*$/)
-            if (u) user = u[1].replace(/\s+#.*$/, "").replace(/^["']|["']$/g, "")
-            const p = line.match(/^\s*(?:export\s+)?PROTONMAIL_IMAP_PASSWORD\s*=\s*(.+?)\s*$/)
-            if (p) password = p[1].replace(/\s+#.*$/, "").replace(/^["']|["']$/g, "")
-        }
-    } catch (e) {
-        console.warn("ProtonMail: failed reading credentials file:", e)
-    }
-    return user && password ? { user, password } : null
+    const env = loadEnvCredentials(
+        "ProtonMail",
+        ["PROTONMAIL_IMAP_USER", "PROTONMAIL_IMAP_PASSWORD"],
+        envPath,
+    )
+    return env ? { user: env.PROTONMAIL_IMAP_USER, password: env.PROTONMAIL_IMAP_PASSWORD } : null
 }
 
 const creds = Config.protonmail.enabled ? loadCredentials() : null
@@ -221,6 +195,17 @@ export function newArrivals(prev: { id: string }[], next: { id: string }[]): str
     return next.filter(i => !prevIds.has(i.id)).map(i => i.id)
 }
 
+// an untagged line seen while idling: "event" = the mailbox changed
+// (new mail, expunge, flag change made from another client), "bye" =
+// the server is closing the session, null = ignorable chatter ("* OK
+// still alive"). Only called on IDLE-round lines, where an untagged
+// FETCH is always an unsolicited flag update
+export function idleEventKind(line: string): "event" | "bye" | null {
+    if (/^\*\s+\d+\s+(EXISTS|RECENT|EXPUNGE|FETCH)\b/i.test(line)) return "event"
+    if (/^\*\s+BYE\b/i.test(line)) return "bye"
+    return null
+}
+
 // ---------------------------------------------------------------- imap
 
 function socketConnect(host: string, port: number): Promise<Gio.SocketConnection> {
@@ -357,46 +342,260 @@ async function cmd(
 // IMAP strings are quoted with \ escapes
 const quote = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
 
+function taggedOk(reply: string, tag: string): boolean {
+    return new RegExp(`^${tag} OK`, "im").test(reply)
+}
+
+// RFC 2177 servers time an IDLE out at ~30 min; re-issue well before
+const IDLE_REISSUE_SEC = 25 * 60
+
+// a logged-in IMAP connection. The poll fallback opens one per poll;
+// the IDLE session holds one open for push. Every command runs under a
+// watchdog that cancels the session cancellable: a hung bridge kills
+// the session (ending the IDLE loop, which falls back to polling), it
+// never wedges the provider
+class ImapSession {
+    private input: Gio.DataInputStream
+    private tagCounter = 0
+    private readonly cancellable = new Gio.Cancellable()
+    private closed = false
+
+    private constructor(private conn: Gio.SocketConnection) {
+        this.input = Gio.DataInputStream.new(conn.get_input_stream())
+    }
+
+    // connect + greeting + LOGIN; auth rejection carries e.auth (the
+    // marker poll() and startIdle() key on)
+    static async open(): Promise<ImapSession> {
+        const conn = await socketConnect(Config.protonmail.host, Config.protonmail.port)
+        // the SocketClient timeout (10s) also applies to ASYNC reads on
+        // the socket (observed: G_IO_ERROR_TIMED_OUT 10s into a quiet
+        // IDLE) — drop it; the session's own timers (command watchdogs,
+        // the 25-min re-issue, the post-DONE reply watchdog) are the
+        // real deadlines
+        conn.get_socket()?.set_timeout(0)
+        const s = new ImapSession(conn)
+        const done = s.watchdog()
+        try {
+            await readChunk(s.input, "", s.cancellable) // server greeting
+            const tag = s.nextTag()
+            const login = await cmd(
+                s.input,
+                s.conn,
+                tag,
+                `LOGIN "${quote(creds!.user)}" "${quote(creds!.password)}"`,
+                s.cancellable,
+            )
+            if (!taggedOk(login, tag)) throw Object.assign(new Error("auth"), { auth: true })
+            return s
+        } catch (e) {
+            s.close()
+            throw e
+        } finally {
+            done()
+        }
+    }
+
+    private nextTag() {
+        return `a${++this.tagCounter}`
+    }
+
+    // the source destroys itself when it fires: the disarm must not
+    // remove it again (GLib-CRITICAL "Source ID was not found")
+    private watchdog() {
+        let fired = false
+        const src = timeoutAddSeconds(
+            "protonmail:io",
+            GLib.PRIORITY_DEFAULT,
+            IO_TIMEOUT_SEC,
+            () => {
+                fired = true
+                this.cancellable.cancel()
+                return GLib.SOURCE_REMOVE
+            },
+        )
+        return () => !fired && sourceRemove(src)
+    }
+
+    // one tagged command with an OK check; throws on NO/BAD — a failed
+    // command must never parse as "zero unread" (which would blank the
+    // list and re-banner everything as new on the next healthy sync)
+    private async command(text: string): Promise<string> {
+        const tag = this.nextTag()
+        const done = this.watchdog()
+        try {
+            const reply = await cmd(this.input, this.conn, tag, text, this.cancellable)
+            if (!taggedOk(reply, tag)) throw new Error(`IMAP command failed: ${text}`)
+            return reply
+        } finally {
+            done()
+        }
+    }
+
+    // SEARCH needs a selected mailbox: EXAMINE (read-only select)
+    async examineInbox(): Promise<void> {
+        await this.command("EXAMINE INBOX")
+    }
+
+    // UID SEARCH UNSEEN + UID FETCH ENVELOPE for the newest few; shared
+    // by the one-shot poll and the IDLE session
+    async fetchUnread(): Promise<Envelope[]> {
+        const search = await this.command("UID SEARCH UNSEEN")
+        const ids = parseSearchIds(search).slice(-MAX_ITEMS)
+        if (ids.length === 0) return []
+        return parseFetchEnvelopes(await this.command(`UID FETCH ${ids.join(",")} (ENVELOPE)`))
+    }
+
+    // one IDLE round: enter IDLE, wait for a mail event or the re-issue
+    // timer, DONE, await the tagged reply. Resolves "refresh" when an
+    // event was seen (the caller re-fetches), "reissue" on a plain
+    // timer cycle. Throws on BYE/close/NO/BAD/timeout — the caller
+    // tears the session down. A tagged refusal of the IDLE command
+    // itself carries e.unsupported (server without IDLE: poll forever)
+    async idleRound(): Promise<"refresh" | "reissue"> {
+        const tag = this.nextTag()
+        const out = this.conn.get_output_stream()
+
+        return new Promise((resolve, reject) => {
+            let settled = false
+            let continuation = false
+            let doneSent = false
+            let sawEvent = false
+
+            // every GLib source below is "gone" once it fired or was
+            // disarmed; cleanup must never remove one twice
+            let contGone = false
+            let reissueGone = false
+            let replyGone = false
+            let replyTimer = 0
+
+            const cleanup = () => {
+                if (!contGone) sourceRemove(contTimer)
+                if (!reissueGone) sourceRemove(reissueTimer)
+                if (replyTimer && !replyGone) sourceRemove(replyTimer)
+            }
+            const settle = (fn: () => void) => {
+                if (settled) return
+                settled = true
+                cleanup()
+                fn()
+            }
+
+            const endIdle = () => {
+                if (doneSent || settled) return
+                doneSent = true
+                writeAll(out, "DONE\r\n", this.cancellable)
+                    .then(() => {
+                        if (settled) return
+                        // the tagged reply must come quickly now
+                        replyTimer = timeoutAddSeconds(
+                            "protonmail:io",
+                            GLib.PRIORITY_DEFAULT,
+                            IO_TIMEOUT_SEC,
+                            () => {
+                                replyGone = true
+                                this.cancellable.cancel()
+                                return GLib.SOURCE_REMOVE
+                            },
+                        )
+                    })
+                    .catch(e => settle(() => reject(e)))
+            }
+
+            // no answer to the IDLE command at all: dead session
+            const contTimer = timeoutAddSeconds(
+                "protonmail:io",
+                GLib.PRIORITY_DEFAULT,
+                IO_TIMEOUT_SEC,
+                () => {
+                    contGone = true
+                    this.cancellable.cancel()
+                    return GLib.SOURCE_REMOVE
+                },
+            )
+            const reissueTimer = timeoutAddSeconds(
+                "protonmail:idle",
+                GLib.PRIORITY_DEFAULT,
+                IDLE_REISSUE_SEC,
+                () => {
+                    reissueGone = true
+                    endIdle()
+                    return GLib.SOURCE_REMOVE
+                },
+            )
+
+            const onLine = (line: string) => {
+                if (settled) return
+                if (line.startsWith(tag + " ")) {
+                    if (!continuation) {
+                        // tagged reply instead of "+ idling": IDLE refused
+                        settle(() =>
+                            reject(Object.assign(new Error("IDLE refused"), { unsupported: true })),
+                        )
+                        return
+                    }
+                    const ok = /^OK/i.test(line.slice(tag.length + 1))
+                    settle(() =>
+                        ok ? resolve(sawEvent ? "refresh" : "reissue") : reject(new Error(line)),
+                    )
+                    return
+                }
+                if (line.startsWith("+")) {
+                    continuation = true
+                    if (!contGone) {
+                        sourceRemove(contTimer)
+                        contGone = true
+                    }
+                    // an event queued between rounds refreshes at once
+                    if (sawEvent) endIdle()
+                } else {
+                    const kind = idleEventKind(line)
+                    if (kind === "bye") {
+                        settle(() => reject(new Error("server closed the session (BYE)")))
+                        return
+                    }
+                    if (kind === "event") {
+                        sawEvent = true
+                        if (continuation) endIdle()
+                    }
+                    // anything else ("* OK still alive") is ignored
+                }
+                readNext()
+            }
+            const readNext = () => {
+                readLineRaw(this.input, this.cancellable).then(onLine, e => settle(() => reject(e)))
+            }
+
+            writeAll(out, `${tag} IDLE\r\n`, this.cancellable)
+                .then(readNext)
+                .catch(e => settle(() => reject(e)))
+        })
+    }
+
+    async logout(): Promise<void> {
+        if (this.closed) return
+        await this.command("LOGOUT").catch(() => {})
+    }
+
+    // aborts pending reads/writes (cancel) and closes the socket;
+    // idempotent, safe from dispose() while a round is in flight
+    close(): void {
+        if (this.closed) return
+        this.closed = true
+        this.cancellable.cancel()
+        this.conn.close(null)
+    }
+}
+
 // one full poll on a fresh connection; throws on any failure
 async function fetchUnread(): Promise<Envelope[]> {
-    const conn = await socketConnect(Config.protonmail.host, Config.protonmail.port)
-    const wd = ioWatchdog()
+    const s = await ImapSession.open()
     try {
-        const input = Gio.DataInputStream.new(conn.get_input_stream())
-        await readChunk(input, "", wd.cancellable) // server greeting
-        const login = await cmd(
-            input,
-            conn,
-            "a1",
-            `LOGIN "${quote(creds!.user)}" "${quote(creds!.password)}"`,
-            wd.cancellable,
-        )
-        if (!/^a1 OK/im.test(login)) throw Object.assign(new Error("auth"), { auth: true })
-        // SEARCH needs a selected mailbox: EXAMINE (read-only select).
-        // Status-check both reads: a NO/BAD must not parse as "zero
-        // unread" (which would blank the list and re-banner everything
-        // as new on the next healthy poll)
-        const examine = await cmd(input, conn, "a2", "EXAMINE INBOX", wd.cancellable)
-        if (!/^a2 OK/im.test(examine)) throw new Error("EXAMINE failed")
-        const search = await cmd(input, conn, "a3", "UID SEARCH UNSEEN", wd.cancellable)
-        if (!/^a3 OK/im.test(search)) throw new Error("SEARCH failed")
-        const ids = parseSearchIds(search).slice(-MAX_ITEMS)
-        let envs: Envelope[] = []
-        if (ids.length > 0) {
-            const fetch = await cmd(
-                input,
-                conn,
-                "a4",
-                `UID FETCH ${ids.join(",")} (ENVELOPE)`,
-                wd.cancellable,
-            )
-            envs = parseFetchEnvelopes(fetch)
-        }
-        await cmd(input, conn, "a5", "LOGOUT", wd.cancellable).catch(() => {})
-        return envs
+        await s.examineInbox()
+        return await s.fetchUnread()
     } finally {
-        wd.done()
-        conn.close(null)
+        await s.logout()
+        s.close()
     }
 }
 
@@ -507,26 +706,29 @@ const popupsEnabled = () => Config.notifications.popupProviders.includes("proton
 // surfaced in the center's empty state while unhealthy
 const [status, setStatus] = createState<string | null>(null)
 
+// the poll loop and the IDLE session funnel every result through here
+function deliver(envs: Envelope[]) {
+    setStatus(null)
+    lastPollAttempt = Date.now()
+    applyEnvelopes(envs)
+}
+
+function onAuthFailure() {
+    authFailed = true
+    setStatus("ProtonMail login rejected — check ~/.config/wam-shell/protonmail.env")
+    stopTimers()
+    console.warn("ProtonMail: login rejected; provider disabled until the shell restarts")
+}
+
 export function poll() {
-    if (!active || authFailed || pollInFlight) return
+    if (!active || authFailed || pollInFlight || disposed) return
     pollInFlight = true
     lastPollAttempt = Date.now()
     fetchUnread()
-        .then(envs => {
-            setStatus(null)
-            applyEnvelopes(envs)
-        })
+        .then(deliver)
         .catch(e => {
             if (e?.auth) {
-                authFailed = true
-                setStatus("ProtonMail login rejected — check ~/.config/wam-shell/protonmail.env")
-                if (pollTimer) {
-                    sourceRemove(pollTimer)
-                    pollTimer = 0
-                }
-                console.warn(
-                    "ProtonMail: login rejected; provider disabled until the shell restarts",
-                )
+                onAuthFailure()
             } else {
                 // bridge not running, network down, …
                 setStatus("Couldn't sync ProtonMail — is the bridge running?")
@@ -545,11 +747,109 @@ export function refresh() {
     poll()
 }
 
-export function dispose() {
+// ----------------------------------------------------- idle / fallback
+
+// Push (IDLE) is the default; the short-connection poll loop is the
+// fallback. Any IDLE failure tears the session down and polls for one
+// poll-interval cooldown, then retries IDLE. A tagged IDLE refusal
+// (server without IDLE) polls without retrying; an auth rejection
+// disables the provider until restart — both paths share the markers
+let idleSession: ImapSession | null = null
+let idleStarting = false
+let idleRetryTimer = 0
+let idleUnsupported = false
+let disposed = false
+
+function stopTimers() {
     if (pollTimer) {
         sourceRemove(pollTimer)
         pollTimer = 0
     }
+    if (idleRetryTimer) {
+        sourceRemove(idleRetryTimer)
+        idleRetryTimer = 0
+    }
+}
+
+function startPolling() {
+    if (pollTimer || authFailed || disposed) return
+    poll()
+    pollTimer = timeoutAddSeconds(
+        "protonmail:poll",
+        GLib.PRIORITY_DEFAULT,
+        Config.protonmail.pollMinutes * 60,
+        () => {
+            poll()
+            return GLib.SOURCE_CONTINUE
+        },
+    )
+}
+
+// one cooldown interval in poll mode, then another push attempt
+function scheduleIdleRetry() {
+    if (idleRetryTimer || authFailed || disposed) return
+    idleRetryTimer = timeoutAddSeconds(
+        "protonmail:idle-retry",
+        GLib.PRIORITY_DEFAULT,
+        Config.protonmail.pollMinutes * 60,
+        () => {
+            idleRetryTimer = 0
+            startIdle()
+            return GLib.SOURCE_REMOVE
+        },
+    )
+}
+
+function startIdle() {
+    if (idleSession || idleStarting || idleUnsupported || authFailed || disposed) return
+    idleStarting = true
+    runIdle()
+        .catch(e => {
+            if (disposed) return
+            if (e?.auth) {
+                onAuthFailure()
+            } else if (e?.unsupported) {
+                console.warn("ProtonMail: server has no IDLE; using the poll loop")
+                idleUnsupported = true
+                startPolling()
+            } else {
+                console.warn("ProtonMail: IDLE failed, falling back to polling:", e)
+                setStatus("Couldn't sync ProtonMail — is the bridge running?")
+                startPolling()
+                scheduleIdleRetry()
+            }
+        })
+        .finally(() => {
+            idleStarting = false
+            idleSession?.close()
+            idleSession = null
+        })
+}
+
+// the push loop: one session, IDLE rounds until an error ends it (the
+// .catch in startIdle owns the fallback)
+async function runIdle() {
+    const s = await ImapSession.open()
+    if (disposed) {
+        s.close()
+        return
+    }
+    idleSession = s
+    stopTimers() // push replaces polling
+    await s.examineInbox()
+    deliver(await s.fetchUnread()) // initial sync, today's startup poll
+    while (!disposed) {
+        if ((await s.idleRound()) === "refresh") deliver(await s.fetchUnread())
+    }
+}
+
+export function dispose() {
+    disposed = true
+    stopTimers()
+    // cancelling the session cancellable aborts any pending read, which
+    // ends runIdle(); its .catch sees disposed and stays silent
+    idleSession?.close()
+    idleSession = null
 }
 
 // -------------------------------------------------------------- startup
@@ -574,14 +874,5 @@ if (Config.protonmail.enabled) {
 
 export function init() {
     if (!active) return
-    poll()
-    pollTimer = timeoutAddSeconds(
-        "protonmail:poll",
-        GLib.PRIORITY_DEFAULT,
-        Config.protonmail.pollMinutes * 60,
-        () => {
-            poll()
-            return GLib.SOURCE_CONTINUE
-        },
-    )
+    startIdle()
 }
