@@ -50,12 +50,20 @@ Notes:
   at it with `AGS_JS_DIR=/path/to/ags/js pnpm run setup`.
 - Runtime features need their daemons: battery needs `upower`, the audio
   slider needs `wireplumber`, power profiles need `power-profiles-daemon`.
+- The Google features (calendar, YouTube) ship with an embedded OAuth
+  desktop client — the zero-setup default Google sanctions for installed
+  apps (installed-app client secrets are non-confidential by design).
+  Override it with your own client via `~/.config/wam-shell/google.env`
+  or the `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` environment
+  variables; see `src/lib/googleAuth.ts`.
 - Upstream ags install docs: https://aylur.github.io/ags/guide/install.html
 
 ## Archlinux update checker script Install
+
 will show in bar if enough available updates.
+
 ```shell
-mkdir ~/.config/systemd/user/ 
+mkdir ~/.config/systemd/user/
 mkdir ~/.local/bin
 cp pending-updates-daemon.service ~/.config/systemd/user/pending-updates-daemon.service
 cp pending-updates-daemon ~/.local/bin/pending-updates-daemon

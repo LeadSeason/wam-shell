@@ -33,8 +33,27 @@ export default function Scratchpad() {
     const [apps, setApps] = createState(scratchpadNodes())
     const [list, setList] = createState(scratchpadNodes())
 
+    // the Fuse index rebuilds only when the scratchpad contents change
+    // (tree subscription), not on every search keystroke
+    const fuse = new Fuse(apps.get(), {
+        keys: [
+            "name",
+            "app_id",
+            "window_properties.class",
+            "window_properties.instance",
+            "window_properties.title",
+            "window_properties.window_role",
+            "window_properties.window_type",
+        ],
+        threshold: 0.3,
+        ignoreLocation: true,
+        includeScore: true,
+    })
+
     createBinding(sway, "tree").subscribe(() => {
-        setApps(scratchpadNodes())
+        const nodes = scratchpadNodes()
+        setApps(nodes)
+        fuse.setCollection(nodes)
     })
 
     function search(text: string) {
@@ -42,20 +61,6 @@ export default function Scratchpad() {
             setList(apps.get())
             return
         }
-        const fuse = new Fuse(apps.get(), {
-            keys: [
-                "name",
-                "app_id",
-                "window_properties.class",
-                "window_properties.instance",
-                "window_properties.title",
-                "window_properties.window_role",
-                "window_properties.window_type",
-            ],
-            threshold: 0.3,
-            ignoreLocation: true,
-            includeScore: true,
-        })
 
         setList(fuse.search(text).map(result => result.item))
     }

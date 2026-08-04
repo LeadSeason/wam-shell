@@ -16,9 +16,10 @@ import CommandRegistry from "./commandRegistry"
 const ENABLED = GLib.getenv("WAM_SHELL_METRICS") === "1"
 
 // Known holes by design:
-// - src/config.ts runs two startup-only exec calls (pwd, systemctl)
-//   before this module could load without an import cycle; they never
-//   occur inside a measurement window (reset after startup).
+// - src/config.ts runs one startup-only blocking exec (pwd) before this
+//   module could load without an import cycle, plus one async systemctl
+//   probe (ags/process, unmeasured); neither occurs inside a measurement
+//   window (reset after startup).
 // - timers created indirectly via ags/time (createPoll, timeout,
 //   interval) call GLib.timeout_add inside ags, not at our call sites.
 // - gnim's own subscriptions (createBinding, subscribe) connect signals

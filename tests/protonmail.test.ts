@@ -5,6 +5,7 @@ import {
     parseFetchEnvelopes,
     envelopeData,
     newArrivals,
+    idleEventKind,
 } from "../src/lib/protonmail"
 
 test("protonmail decodeWords: base64 and quoted-printable", () => {
@@ -74,4 +75,14 @@ test("protonmail newArrivals: only brand-new uids", () => {
     eq(newArrivals([{ id: "protonmail:1" }], [{ id: "protonmail:1" }, { id: "protonmail:2" }]), [
         "protonmail:2",
     ])
+})
+
+test("protonmail idleEventKind: events, bye, chatter", () => {
+    eq(idleEventKind("* 3 EXISTS"), "event")
+    eq(idleEventKind("* 1 RECENT"), "event")
+    eq(idleEventKind("* 2 EXPUNGE"), "event")
+    eq(idleEventKind("* 1 FETCH (FLAGS (\\Seen))"), "event")
+    eq(idleEventKind("* BYE Server logging out"), "bye")
+    eq(idleEventKind("* OK Still alive"), null)
+    eq(idleEventKind("+ idling"), null)
 })

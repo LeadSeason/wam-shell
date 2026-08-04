@@ -1,8 +1,8 @@
-import GLib from "gi://GLib"
-import { readFile, writeFileAsync } from "ags/file"
-import GObject, { register, property, getter } from "ags/gobject"
+import { readFile } from "ags/file"
+import GObject, { register, getter, setter } from "ags/gobject"
 import Config from "../config"
 import { isFile } from "./utils"
+import { writeFileAtomic } from "./atomicWrite"
 
 const cacheFile = Config.cacheFile
 
@@ -55,40 +55,15 @@ function getCacheData(): cacheType {
     return data
 }
 
-// gjs exposes no getpid; the pid comes from procfs so concurrent shell
-// instances get distinct tmp names (random fallback still differs)
-const pid = (() => {
-    try {
-        return readFile("/proc/self/stat").split(" ")[0]
-    } catch {
-        return `${GLib.random_int()}`
-    }
-})()
-let writeCounter = 0
-
 // writes are fire-and-forget; without a handler a failed write is an
 // unhandled rejection
 const logSaveError = (e: unknown) => console.warn("cache: save failed:", e)
 
-let writeChain: Promise<unknown> = Promise.resolve()
-
 async function saveCacheData(data: cacheType) {
     data.lastSave = Date.now()
-    // write to a temp file then swap: a crash mid-write must not leave
-    // a truncated cache behind. Unique tmp name per write: every
-    // `cache.data = ...` starts an async write, and overlapping writes
-    // (slider bursts) must not rename the tmp file out from under a
-    // write still in flight
-    const tmp = `${cacheFile}.tmp-${pid}-${writeCounter++}`
-    const run = async () => {
-        await writeFileAsync(tmp, JSON.stringify(data))
-        GLib.rename(tmp, cacheFile)
-    }
-    // serialized: writes complete in start order (an older payload
-    // can't rename last and win), and a failed write doesn't break the
-    // chain for the next one
-    writeChain = writeChain.then(run, run)
-    return writeChain as Promise<void>
+    // tmp+rename swap and per-path write serialization (an older
+    // payload can't overwrite a newer one) live in writeFileAtomic
+    return writeFileAtomic(cacheFile, JSON.stringify(data))
 }
 
 @register({ GTypeName: "Cache" })
@@ -102,20 +77,19 @@ export default class Cache extends GObject.Object {
 
     #cache: cacheType = getCacheData()
 
+    @getter(Object)
     get data(): cacheType {
         return this.#cache
     }
 
+    @setter(Object)
     set data(data: cacheType) {
         // merge into the existing cache and persist
         Object.assign(this.#cache, data)
         saveCacheData(this.#cache)
-            .then(() => {
-                /*
-            @TODO: Create cacheType constructor so we can notify that the
-            data has changed.
-            this.notify("data")*/
-            })
+            // notify once the merge is persisted so watchers can react
+            // through the property system (notify::data)
+            .then(() => this.notify("data"))
             .catch(logSaveError)
     }
 }

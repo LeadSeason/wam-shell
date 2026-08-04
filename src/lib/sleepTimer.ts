@@ -6,6 +6,7 @@ import { createBinding, createState } from "gnim"
 import Config from "../config"
 import Brightness from "./brightness"
 import { timeoutAdd, timeoutAddSeconds, sourceRemove, execAsync } from "./metrics"
+import { writeFileAtomic } from "./atomicWrite"
 import { SleepTimerState, serialize, parse, decide } from "./sleepTimerState"
 
 // Sleep timer: pauses every playing MPRIS player when it fires (and
@@ -48,16 +49,25 @@ function loadAlarmEnabled(): boolean {
     return Config.sleepTimer.alarm
 }
 
+// file writes are fire-and-forget but must stay ordered — and the
+// delete in clearState must not be overtaken by a pending write — so
+// file ops chain on one queue. writeFileAtomic (temp + rename, async)
+// keeps synchronous disk I/O off the main loop.
+let ioQueue: Promise<unknown> = Promise.resolve()
+function queueIo(what: string, fn: () => Promise<void> | void) {
+    ioQueue = ioQueue.then(fn).catch(e => console.warn(`sleepTimer: failed writing ${what}:`, e))
+}
+
 const [alarmEnabled, setAlarmEnabledState] = createState(loadAlarmEnabled())
 export { alarmEnabled }
 export function setAlarmEnabled(v: boolean) {
     setAlarmEnabledState(v)
     try {
         GLib.mkdir_with_parents(Config.instanceCacheDir, 0o755)
-        GLib.file_set_contents(alarmPrefPath, JSON.stringify(v))
     } catch (e) {
         console.warn("sleepTimer: failed writing alarm preference:", e)
     }
+    queueIo("alarm preference", () => writeFileAtomic(alarmPrefPath, JSON.stringify(v)))
 }
 
 // the chime is looping right now (fired, not yet stopped)
@@ -137,27 +147,51 @@ async function restoreAlarmVolume() {
         execAsync(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "1"]).catch(() => {})
 }
 
+function rearmChime(failed: boolean) {
+    if (!alarming.get()) return
+    alarmSource = timeoutAddSeconds(
+        "sleepTimer:alarm",
+        GLib.PRIORITY_DEFAULT,
+        failed ? 5 : 1,
+        () => {
+            alarmSource = 0
+            loopChime()
+            return GLib.SOURCE_REMOVE
+        },
+    )
+}
+
+// the in-flight player, kept so stop kills exactly this process —
+// pkill -f on the sound basename could match unrelated players
+let alarmProc: Gio.Subprocess | null = null
+
 function loopChime() {
     if (!alarming.get() || !alarmPlayer || !alarmSound) return
-    let failed = false
-    execAsync([...alarmPlayer, alarmSound])
-        .catch(e => {
+    let proc: Gio.Subprocess
+    try {
+        proc = Gio.Subprocess.new(
+            [...alarmPlayer, alarmSound],
+            Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE,
+        )
+    } catch (e) {
+        console.warn("sleepTimer alarm:", e)
+        rearmChime(true)
+        return
+    }
+    alarmProc = proc
+    proc.wait_check_async(null, (p, res) => {
+        let failed = false
+        try {
+            p?.wait_check_finish(res)
+        } catch (e) {
             failed = true
-            console.warn("sleepTimer alarm:", e)
-        })
-        .finally(() => {
-            if (!alarming.get()) return
-            alarmSource = timeoutAddSeconds(
-                "sleepTimer:alarm",
-                GLib.PRIORITY_DEFAULT,
-                failed ? 5 : 1,
-                () => {
-                    alarmSource = 0
-                    loopChime()
-                    return GLib.SOURCE_REMOVE
-                },
-            )
-        })
+            // a stop force_exit lands here too; only a mid-alarm
+            // player failure is news
+            if (alarming.get()) console.warn("sleepTimer alarm:", e)
+        }
+        if (alarmProc === p) alarmProc = null // natural exit or killed
+        rearmChime(failed)
+    })
 }
 
 function startAlarm() {
@@ -185,8 +219,9 @@ export function stopAlarm() {
         alarmSource = 0
     }
     restoreAlarmVolume()
-    // cut the in-flight chime instead of letting it ring out
-    if (alarmSound) execAsync(["pkill", "-f", GLib.path_get_basename(alarmSound)]).catch(() => {})
+    // cut the in-flight chime instead of letting it ring out: kill
+    // exactly our player, never an unrelated process
+    alarmProc?.force_exit()
     unmuteStreams()
 }
 
@@ -249,16 +284,21 @@ function currentState(): SleepTimerState {
 function writeState() {
     try {
         GLib.mkdir_with_parents(stateDir, 0o700)
-        GLib.file_set_contents(statePath, serialize(currentState()))
     } catch (e) {
         console.warn("sleepTimer: failed writing state:", e)
     }
+    // capture the state NOW, at call time: the queued write must
+    // serialize what the caller saw, not whatever is live when it runs
+    const data = serialize(currentState())
+    queueIo("state", () => writeFileAtomic(statePath, data))
 }
 
 function clearState() {
-    try {
-        Gio.File.new_for_path(statePath).delete(null)
-    } catch {} // absent is fine
+    queueIo("state", () => {
+        try {
+            Gio.File.new_for_path(statePath).delete(null)
+        } catch {} // absent is fine
+    })
 }
 
 /** send a notification through the daemon (same pattern as bluetooth) */

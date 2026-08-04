@@ -167,6 +167,10 @@ function resolveWmClass(player: AstalMpris.Player): string | null {
  *  window through the compositor instead */
 export function raisePlayer(player: AstalMpris.Player) {
     if (player.canRaise) return player.raise()
+    // no shell anywhere below (argv exec), but the class is still
+    // interpolated into hyprctl lua / swaymsg criteria syntax — the
+    // sanitize guards THOSE parsers (quotes, ';', brackets would
+    // otherwise break out of the match string into new commands)
     const wmClass = resolveWmClass(player)?.replace(/[^a-zA-Z0-9._-]/g, "")
     if (!wmClass) {
         console.warn(`raisePlayer: no wm class resolved for "${player.identity}"`)
@@ -175,13 +179,15 @@ export function raisePlayer(player: AstalMpris.Player) {
     if (Config.desktopSession === "hyprland") {
         // lua dispatcher syntax (hyprland >= 0.55): the old
         // "focuswindow class:..." form is rejected by the new parser
-        execAsync(`hyprctl dispatch 'hl.dsp.focus({ window = "class:^(?i)${wmClass}$" })'`).catch(
-            e => console.warn("raisePlayer:", e),
-        )
+        execAsync([
+            "hyprctl",
+            "dispatch",
+            `hl.dsp.focus({ window = "class:^(?i)${wmClass}$" })`,
+        ]).catch(e => console.warn("raisePlayer:", e))
     } else if (Config.desktopSession === "sway" || Config.desktopSession === "i3") {
         const msg = Config.desktopSession === "sway" ? "swaymsg" : "i3-msg"
         // app_id covers wayland-native, class covers X11/XWayland
-        execAsync(`${msg} '[app_id="${wmClass}"] focus; [class="${wmClass}"] focus'`).catch(e =>
+        execAsync([msg, `[app_id="${wmClass}"] focus; [class="${wmClass}"] focus`]).catch(e =>
             console.warn("raisePlayer:", e),
         )
     } else {
