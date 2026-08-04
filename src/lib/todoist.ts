@@ -7,14 +7,18 @@ import Config from "../config"
 import { loadCredentials } from "./credentials"
 import { timeoutAddSeconds, sourceRemove, trackHttp } from "./metrics"
 import { Provider, ProviderItem, registerProvider } from "./notificationProviders"
-import { addProviderPopup } from "./notifd"
+import { addProviderPopup, removePopup } from "./notifd"
 
 // Todoist provider for the notification center (API v1): timed tasks
 // due today or tomorrow merge into the center's list, and banner when
-// their time comes. Click opens the task in the browser, dismiss
-// completes it on Todoist. Read-only plus the complete endpoint;
-// nothing here creates content. Overdue/all-day tasks are out of
-// scope: awareness of time-critical tasks, not historical records.
+// their time comes. Action buttons: Mark done completes the task,
+// Postpone snoozes the banner locally (snooze_minutes, capped at the
+// due time — the remote task is never touched), Dismiss closes the
+// banner only (in the center, where there is no banner, it session-
+// hides the row). Click opens the task in the browser. Read-only plus
+// the complete endpoint; nothing here creates content. Overdue/all-day
+// tasks are out of scope: awareness of time-critical tasks, not
+// historical records.
 // (REST v2 went 410 Gone; v1 paginates with a results/next_cursor
 // envelope, drops the task url field — it is constructed from the id —
 // drops the `filter` param from /tasks: filtering moved to the
@@ -237,7 +241,7 @@ function fireReminder(key: string, item: ProviderItem) {
 }
 
 // a task the user dealt with (completed/hidden) must not pop its
-// armed reminders afterwards
+// armed reminders afterwards — nor a pending snooze
 function cancelReminder(id: string) {
     for (const [key, t] of reminderTimers) {
         if (t.id === id) {
@@ -245,6 +249,45 @@ function cancelReminder(id: string) {
             reminderTimers.delete(key)
         }
     }
+    const snoozed = snoozeTimers.get(id)
+    if (snoozed) {
+        sourceRemove(snoozed)
+        snoozeTimers.delete(id)
+    }
+}
+
+// -------------------------------------------------------------- snooze
+
+// Postpone = LOCAL snooze of the banner only: the remote task's due
+// time is never touched. The banner re-raises after snooze_minutes,
+// capped at the task's due time when that comes first (a task already
+// past due snoozes the full duration). Pure so tests can pin the math
+export function snoozeDelayMs(dueMs: number, nowMs: number, snoozeMin: number): number {
+    const full = snoozeMin * 60_000
+    return dueMs > nowMs ? Math.min(full, dueMs - nowMs) : full
+}
+
+const snoozeTimers = new Map<string, number>()
+
+function snooze(item: ProviderItem) {
+    removePopup(item.id)
+    const existing = snoozeTimers.get(item.id)
+    if (existing) sourceRemove(existing)
+    const delayMs = snoozeDelayMs(item.time * 1000, Date.now(), Config.todoist.snoozeMinutes)
+    const src = timeoutAddSeconds(
+        "todoist:snooze",
+        GLib.PRIORITY_DEFAULT,
+        Math.ceil(delayMs / 1000),
+        () => {
+            snoozeTimers.delete(item.id)
+            // re-raise with the CURRENT item: a poll may have replaced
+            // the object — and a task completed elsewhere gets no banner
+            const fresh = items.get().find(i => i.id === item.id)
+            if (fresh) addProviderPopup(fresh, AstalNotifd.Urgency.CRITICAL)
+            return GLib.SOURCE_REMOVE
+        },
+    )
+    snoozeTimers.set(item.id, src)
 }
 
 function scheduleReminders(mapped: ProviderItem[], reminderMap: Map<string, number[]>) {
@@ -295,11 +338,12 @@ function scheduleReminders(mapped: ProviderItem[], reminderMap: Map<string, numb
 }
 
 function attachActions(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">): ProviderItem {
-    return {
+    const item: ProviderItem = {
         ...data,
         hide: () => {
             hiddenIds.add(data.id)
             cancelReminder(data.id)
+            removePopup(data.id)
             setItems(items.get().filter(i => i.id !== data.id))
         },
         dismiss: () => complete(data),
@@ -313,6 +357,19 @@ function attachActions(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">
             })
         },
     }
+    // visible buttons on the banner and the center row (the gestures
+    // stay as power-user shortcuts). On the banner the host consumes
+    // "dismiss": closing the banner must not hide the center row
+    item.actions = [
+        { id: "done", label: "Mark done", run: () => item.dismiss() },
+        {
+            id: "postpone",
+            label: `Postpone ${Config.todoist.snoozeMinutes}m`,
+            run: () => snooze(item),
+        },
+        { id: "dismiss", label: "Dismiss", run: () => item.hide() },
+    ]
+    return item
 }
 
 // complete the task (POST close → 204): a successful mutation removes
@@ -323,6 +380,7 @@ function complete(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">) {
     request("POST", `/tasks/${taskId}/close`, r => {
         if (r.ok) {
             cancelReminder(data.id)
+            removePopup(data.id)
             setItems(items.get().filter(i => i.id !== data.id))
         } else console.warn(`Todoist: task close failed (status ${r.status})`)
     })
@@ -425,6 +483,8 @@ export function dispose() {
     }
     for (const [, t] of reminderTimers) sourceRemove(t.src)
     reminderTimers.clear()
+    for (const [, src] of snoozeTimers) sourceRemove(src)
+    snoozeTimers.clear()
 }
 
 // -------------------------------------------------------------- startup

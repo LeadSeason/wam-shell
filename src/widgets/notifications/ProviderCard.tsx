@@ -29,11 +29,15 @@ export default function ProviderCard({
     onDismiss,
     onActivate,
     onHide,
+    onAction,
 }: {
     item: ProviderItem
     onDismiss?: () => void
     onActivate?: () => void
     onHide?: () => void
+    // host bookkeeping for action buttons (the banner closes itself on
+    // any action); return true to consume the id and skip the item's run()
+    onAction?: (id: string) => boolean
 }) {
     const dismiss = onDismiss ?? (() => item.dismiss())
     const activate = onActivate ?? (() => item.activate())
@@ -165,6 +169,25 @@ export default function ProviderCard({
                     )}
                 </box>
             </box>
+            {/* provider action buttons (todoist's done/postpone/dismiss):
+            same .actions row as the desktop card */}
+            {item.actions && item.actions.length > 0 && (
+                <box cssClasses={["actions"]} spacing={6} hexpand halign={Gtk.Align.END}>
+                    {item.actions.map(a => (
+                        <button
+                            $={self => {
+                                interactiveButtons.push(self)
+                            }}
+                            onClicked={() => {
+                                if (onAction?.(a.id)) return
+                                a.run()
+                            }}
+                        >
+                            <label label={a.label} />
+                        </button>
+                    ))}
+                </box>
+            )}
         </box>
     )
 }
