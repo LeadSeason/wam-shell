@@ -44,10 +44,16 @@ Not merged.
   credentials, perms warning, Soup session, metrics wrappers, explicit
   `init()` from `app.tsx`, `dispose()`.
 - Auth: OAuth2 installed-app flow, loopback redirect (RFC 8252) on a
-  random 127.0.0.1 port via `Gio.SocketListener`; **one OAuth client,
-  any number of accounts** — refresh tokens per account at
-  `~/.config/wam-shell/gcal-tokens.json`, keyed by email (discovered
-  from the primary calendar's id, no extra scope). Read-only scope only
+  random 127.0.0.1 port via `Gio.SocketListener`, with PKCE (S256) and a
+  per-flow `state` nonce; the listener loops until a redirect carries a
+  valid `code`/`error` (preconnects, favicons and bad-state requests get
+  a 4xx and don't end the flow). **One OAuth client, any number of
+  accounts** — refresh tokens per account, keyed by email (discovered
+  from the primary calendar's id, no extra scope). Tokens are stored in
+  the Secret Service keyring when available (`src/lib/secretStore.ts`),
+  falling back to mode-0600 `~/.config/wam-shell/gcal-tokens.json`; the
+  file always keeps account metadata + short-lived access tokens.
+  Read-only scope only
   (`calendar.readonly`). `invalid_grant` drops just that account;
   the popover's sign-in button adds/re-authorizes accounts.
 - Sync is a **full refetch** of the window per account (no syncToken/

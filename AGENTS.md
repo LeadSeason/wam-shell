@@ -20,8 +20,10 @@
 - The clock popover is a Google Calendar (`src/lib/gcal.ts`,
   `[calendar]`): OAuth installed-app flow over loopback (the project
   ships a desktop client; `google.env`/env vars override it), one
-  sign-in per Google account, tokens in
-  `~/.config/wam-shell/gcal-tokens.json`. Design notes + resume
+  sign-in per Google account. Refresh tokens live in the Secret Service
+  keyring when available (`src/lib/secretStore.ts`), falling back to
+  mode-0600 `~/.config/wam-shell/*-tokens.json` (the file always keeps
+  account metadata + access tokens). Design notes + resume
   checklist: `docs/gcal.md`.
 - Performance counters: start the shell with `WAM_SHELL_METRICS=1`,
   then query `ags request -i <instance> metrics` (single-line JSON,
