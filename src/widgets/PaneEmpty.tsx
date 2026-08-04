@@ -43,6 +43,10 @@ export function PaneEmpty({
                 cssClasses={["paneEmptyTitle", ...titleClasses]}
                 label={title}
                 halign={Gtk.Align.CENTER}
+                // long provider status lines must not widen the pane
+                maxWidthChars={44}
+                wrap
+                justify={Gtk.Justification.CENTER}
             />
             {/* hidden while empty: a blank hint must not take a line */}
             {typeof hint === "string" ? (
