@@ -1,7 +1,7 @@
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
 import toml from "toml"
-import { exec } from "ags/process"
+import { execAsync } from "ags/process"
 import { readFile } from "ags/file"
 import { isFile } from "./lib/utils"
 
@@ -10,7 +10,6 @@ import { isFile } from "./lib/utils"
 const instanceSrcDir = GLib.getenv("WAM_SHELL_DIR") || GLib.get_current_dir()
 const userHomeDir = GLib.getenv("HOME")
 const xdgConfigHomeDir = GLib.getenv("XDG_CONFIG_HOME")
-const xdgRuntimeDir = GLib.getenv("XDG_RUNTIME_DIR")
 
 // Locate and load config
 const configFile = findConfigFile()
@@ -833,35 +832,19 @@ function getPanelsConfig(): PanelConfig[] {
 }
 
 /**
- * Check if the pending updates daemon is active. pending update daemon is a
- * LeadSeason
+ * Resolve the pending-updates daemon's package list. The daemon
+ * (extra/pending-updates-daemon) writes it next to the shell cache —
+ * same resolution as GLib.get_user_cache_dir() — so the file's
+ * presence is the cheap startup signal. Never /tmp: a predictable
+ * world-writable path is a symlink/planted-content hazard.
  *
  * @returns
- * - false → daemon not active OR update file missing
- * - string → absolute path to the update file (when active and file exists)
+ * - false → update file missing
+ * - string → absolute path to the update file
  */
-function getPendingUpdateDaemonStatus(): false | string {
-    let status
-    try {
-        status = exec("systemctl --user is-active pending-updates-daemon.service")
-    } catch (e) {
-        return false
-    }
-    if (status !== "active") {
-        return false
-    }
-
-    let updateFile = "/tmp/system_updates"
-
-    if (xdgRuntimeDir) {
-        updateFile = `${xdgRuntimeDir}/system_updates`
-    }
-
-    if (!isFile(updateFile)) {
-        return false
-    }
-
-    return updateFile
+function getPendingUpdateDaemonStatus(instanceName: string): false | string {
+    const updateFile = `${GLib.get_user_cache_dir()}/${instanceName}/system_updates`
+    return isFile(updateFile) ? updateFile : false
 }
 
 export default class Config {
@@ -880,7 +863,9 @@ export default class Config {
     static instanceSrcDir = instanceSrcDir
     static osIcon = getOsIcon()
     static desktopSession = getDesktopSession()
-    static pendingUpdates = getPendingUpdateDaemonStatus()
+    // file-based default; the exact daemon state (a systemctl probe)
+    // resolves asynchronously after class init so it can't block startup
+    static pendingUpdates = getPendingUpdateDaemonStatus(this.instanceName)
     static updatesThreshold = (() => {
         const v = configData.arch_updates_threshold
         if (v === undefined) return 50
@@ -921,6 +906,21 @@ export default class Config {
     static cssPath = `${this.instanceCacheDir}/style.css`
     static scssPath = `${this.instanceSrcDir}/scss/style.scss`
 }
+
+// Correct Config.pendingUpdates once the real daemon state is known.
+// The old startup path ran this probe synchronously, blocking the main
+// loop during class init; the bar widget reads the static at build
+// time from the file-based default above, the probe refines it for
+// later readers (a stale list next to a stopped daemon reads as false,
+// same as the old probe decided at startup).
+execAsync(["systemctl", "--user", "is-active", "pending-updates-daemon.service"])
+    .then(status => {
+        Config.pendingUpdates =
+            status.trim() === "active" ? getPendingUpdateDaemonStatus(Config.instanceName) : false
+    })
+    .catch(() => {
+        Config.pendingUpdates = false
+    })
 
 // Re-read the theme key from the config file so theme changes apply
 // on reloadStyle without a restart.
