@@ -8,12 +8,16 @@ import { timeoutAddSeconds, sourceRemove, trackHttp } from "./metrics"
 import { Provider, ProviderItem, registerProvider } from "./notificationProviders"
 import { addProviderPopup } from "./notifd"
 
-// Todoist provider for the notification center (API v1): tasks due
-// today or overdue merge into the center's list. Click opens the task
-// in the browser, dismiss completes it on Todoist. Read-only plus the
-// complete endpoint; nothing here creates content.
+// Todoist provider for the notification center (API v1): timed tasks
+// due today or tomorrow merge into the center's list, and banner when
+// their time comes. Click opens the task in the browser, dismiss
+// completes it on Todoist. Read-only plus the complete endpoint;
+// nothing here creates content. Overdue/all-day tasks are out of
+// scope: awareness of time-critical tasks, not historical records.
 // (REST v2 went 410 Gone; v1 paginates with a results/next_cursor
-// envelope and drops the task url field — it is constructed from the id)
+// envelope, drops the task url field — it is constructed from the id —
+// and drops the `filter` param from /tasks: filtering moved to the
+// dedicated /tasks/filter?query= endpoint)
 
 const API = "https://api.todoist.com/api/v1"
 const UA = "wam-shell (https://github.com/LeadSeason/wam-shell)"
@@ -92,17 +96,27 @@ export function isOverdue(
 export function dueLabel(due: any, nowMs: number): string {
     if (!due) return ""
     if (isOverdue(due, nowMs)) return `Overdue · ${due.string ?? due.date ?? ""}`
-    if (due.datetime) {
-        const hhmm = new Date(Date.parse(due.datetime)).toTimeString().slice(0, 5)
-        return `Today · ${hhmm}`
-    }
-    return "Today"
+    const stamp = due.datetime ?? (due.date ? `${due.date}T00:00:00` : null)
+    if (!stamp) return ""
+    const d = new Date(Date.parse(stamp))
+    if (Number.isNaN(d.getTime())) return ""
+    const today = new Date(nowMs)
+    today.setHours(0, 0, 0, 0)
+    const dueDay = new Date(d)
+    dueDay.setHours(0, 0, 0, 0)
+    const diffDays = Math.round((dueDay.getTime() - today.getTime()) / 86_400_000)
+    // beyond tomorrow (shouldn't happen with the poll query): fall back
+    // to the API's own rendering
+    const dayName = diffDays === 0 ? "Today" : diffDays === 1 ? "Tomorrow" : (due.string ?? "")
+    if (due.datetime) return `${dayName} · ${d.toTimeString().slice(0, 5)}`
+    return dayName
 }
 
 // the data half of a ProviderItem; actions are attached by the module
-// (they close over the poll state). Only SCHEDULED tasks (a concrete
-// due time) are listed — all-day tasks are not what this provider is
-// for. null = unusable task shape or not scheduled.
+// (they close over the poll state). Only TIMED tasks (a concrete due
+// time) are listed — all-day tasks are out of scope by design (user
+// decision: notifications are for timed tasks only). null = unusable
+// task shape or no due time.
 // v1 drops the url field: the web link is /app/task/<id>
 export function taskData(
     raw: any,
@@ -249,8 +263,8 @@ function scheduleReminders(mapped: ProviderItem[]) {
         )
         if (delaySec <= 0) {
             // the reminder point already passed: banner immediately if
-            // the task is still in the future; overdue tasks are in the
-            // list already and get no banner
+            // the task is still in the future; past-due tasks get no
+            // banner (no historical records)
             if (dueMs > Date.now()) fireReminder(item)
             continue
         }
@@ -303,7 +317,7 @@ function applyTasks(rawList: any[]) {
         const data = taskData(raw, nowMs)
         if (data && !hiddenIds.has(data.id)) mapped.push(attachActions(data))
     }
-    // soonest due first: overdue floats to the top of the provider list
+    // soonest due first
     mapped.sort((a, b) => a.time - b.time)
     const prev = items.get()
     setItems(mapped)
@@ -325,10 +339,14 @@ function applyTasks(rawList: any[]) {
 const [status, setStatus] = createState<string | null>(null)
 
 function fetchTasks(cursor: string, acc: any[]) {
-    // the filter query needs encoding: "today | overdue | tomorrow"
-    // (tomorrow is included so its scheduled tasks get reminders)
+    // the filter query needs encoding: "today | tomorrow" (tomorrow is
+    // included so its scheduled tasks get reminders). Overdue is
+    // deliberately absent: the provider is about time-critical tasks,
+    // not historical records. v1 removed `filter` from /tasks (it
+    // silently pages the whole backlog); the dedicated endpoint honors
+    // the query
     const q = cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""
-    request("GET", `/tasks?filter=today%20%7C%20overdue%20%7C%20tomorrow${q}`, r => {
+    request("GET", `/tasks/filter?query=today%20%7C%20tomorrow${q}`, r => {
         pollInFlight = false
         if (r.status === 401 || r.status === 403) {
             authFailed = true

@@ -20,9 +20,18 @@ mimetypes, places, emblems; non-standard ones like Adwaita's
 `harvest-symbolic.svg` is an exception: an original drawing (the
 Harvest "H" mark), not an Adwaita copy.
 
-`todoist-symbolic.svg` is the Todoist brand mark from
-[simpleicons.org](https://simpleicons.org) (CC0-1.0), bundled for the
-same fallback reason.
+`todoist-symbolic.svg` is an original drawing too (the brand's three
+stripes in a rounded-square frame): the simpleicons Todoist mark is a
+solid square that collapses into an illegible blob at 16px monochrome,
+and the stripes alone alias into moiré at that size.
+
+`mail-inbox-symbolic.svg` is also an original drawing (inbox tray):
+current Adwaita dropped the name, and the notification center's empty
+state fell back to image-missing.
+
+Bundled icons must be FILL-only (fill="currentColor", no stroke
+attributes): GTK4's built-in SVG renderer (4.22+) renders strokes as
+fills, which turns stroked glyphs into solid blobs.
 
 `cpu-symbolic.svg`, `memory-symbolic.svg`, `sensors-fan-symbolic.svg`,
 `freon-temperature-symbolic.svg` and `freon-gpu-temperature-symbolic.svg`,
