@@ -470,6 +470,15 @@
 # alarm_volume - the volume the sink is raised to while the alarm
 #                rings, as a percentage (100 = full). only raises,
 #                never lowers a louder sink. default 80
+# restore_on_play - when media starts playing after the timer fired,
+#                   also restore the pre-dim brightness (starting to
+#                   play always lifts the timer's mutes). like alarm,
+#                   only the default for the pill's checkbox. default
+#                   false
+# reminder - reminder mode: when the timer reaches 0 only the chime
+#            rings — nothing is paused, muted or dimmed, and it rings
+#            whether or not the alarm checkbox is on. like alarm, only
+#            the default for the pill's checkbox. default false
 # [sleep_timer]
 # enabled = true
 # presets = [10, 15, 20, 30, 45, 60]
@@ -479,6 +488,8 @@
 # dim_floor = 0.1
 # alarm = false
 # alarm_volume = 80
+# restore_on_play = false
+# reminder = false
 
 # ════════════════════════════════════════════════════════════════════
 # Notifications

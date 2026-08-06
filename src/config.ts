@@ -409,6 +409,11 @@ function getSleepTimerConfig() {
         alarm: get("alarm", false),
         // the volume the sink is raised to while the alarm rings
         alarmVolume: percent("alarm_volume", 80),
+        // restore the pre-dim brightness when media starts playing
+        // after a fire (the mute lift on play always happens)
+        restoreOnPlay: get("restore_on_play", false),
+        // reminder mode: fire = chime only, nothing paused/muted/dimmed
+        reminder: get("reminder", false),
     }
 }
 

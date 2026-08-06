@@ -35,21 +35,6 @@ export { remaining }
 const [paused, setPaused] = createState(false)
 export { paused }
 
-// play the chime loop when the timer reaches 0 (pill checkbox; the
-// config key is only the factory default). The checkbox is consulted
-// at fire time, not at start, and persists across shell restarts,
-// crashes and reboots in the cache dir — the runtime state file is
-// session-scoped by design and the wrong place for a preference
-const alarmPrefPath = `${Config.instanceCacheDir}/sleep-alarm.json`
-
-function loadAlarmEnabled(): boolean {
-    try {
-        const v = JSON.parse(new TextDecoder().decode(GLib.file_get_contents(alarmPrefPath)[1]))
-        if (typeof v === "boolean") return v
-    } catch {}
-    return Config.sleepTimer.alarm
-}
-
 // file writes are fire-and-forget but must stay ordered — and the
 // delete in clearState must not be overtaken by a pending write — so
 // file ops chain on one queue. writeFileAtomic (temp + rename, async)
@@ -59,17 +44,51 @@ function queueIo(what: string, fn: () => Promise<void> | void) {
     ioQueue = ioQueue.then(fn).catch(e => console.warn(`sleepTimer: failed writing ${what}:`, e))
 }
 
-const [alarmEnabled, setAlarmEnabledState] = createState(loadAlarmEnabled())
-export { alarmEnabled }
-export function setAlarmEnabled(v: boolean) {
-    setAlarmEnabledState(v)
+// pill checkbox preferences (alarm, undim-on-play, reminder): the
+// config key is only the factory default — the checkbox is consulted
+// at fire time, not at start, and persists across shell restarts,
+// crashes and reboots in the cache dir. The runtime state file is
+// session-scoped by design and the wrong place for a preference
+function boolPref(file: string, fallback: boolean) {
+    const path = `${Config.instanceCacheDir}/${file}`
+    let initial = fallback
     try {
-        GLib.mkdir_with_parents(Config.instanceCacheDir, 0o755)
-    } catch (e) {
-        console.warn("sleepTimer: failed writing alarm preference:", e)
+        const v = JSON.parse(new TextDecoder().decode(GLib.file_get_contents(path)[1]))
+        if (typeof v === "boolean") initial = v
+    } catch {} // absent or malformed: the config default
+    const [state, setState] = createState(initial)
+    const set = (v: boolean) => {
+        setState(v)
+        try {
+            GLib.mkdir_with_parents(Config.instanceCacheDir, 0o755)
+        } catch (e) {
+            console.warn(`sleepTimer: failed writing ${file}:`, e)
+        }
+        queueIo(file, () => writeFileAtomic(path, JSON.stringify(v)))
     }
-    queueIo("alarm preference", () => writeFileAtomic(alarmPrefPath, JSON.stringify(v)))
+    return [state, set] as const
 }
+
+// play the chime loop when the timer reaches 0
+export const [alarmEnabled, setAlarmEnabled] = boolPref(
+    "sleep-alarm.json",
+    Config.sleepTimer.alarm,
+)
+
+// restore the pre-dim brightness when a human presses play after a
+// fire — the same wake-up signal that lifts the mutes
+export const [restoreOnPlay, setRestoreOnPlay] = boolPref(
+    "sleep-restore-on-play.json",
+    Config.sleepTimer.restoreOnPlay,
+)
+
+// reminder mode: the fire only rings the chime — nothing is paused,
+// muted or dimmed. It rings regardless of the alarm checkbox: a
+// silent reminder is no reminder
+export const [reminderOnly, setReminderOnly] = boolPref(
+    "sleep-reminder.json",
+    Config.sleepTimer.reminder,
+)
 
 // the chime is looping right now (fired, not yet stopped)
 const [alarming, setAlarming] = createState(false)
@@ -730,8 +749,10 @@ const streamAddedHandler = wpAudio
 // awake, and whatever else they touch next must have sound too. The
 // sweeps are long over by morning; this is the event-driven long tail
 function onPlayerPlaying() {
-    if (mutedStreams.size === 0) return
-    unmuteStreams()
+    if (mutedStreams.size > 0) unmuteStreams()
+    // opt-in: the same wake-up signal can also bring the light back
+    // (restoreDim no-ops unless a fire dimmed and nothing restored yet)
+    if (restoreOnPlay.get()) restoreDim()
 }
 
 const playerStatusUnsubs = new Map<AstalMpris.Player, () => void>()
@@ -791,6 +812,13 @@ function fire() {
     deadline = null
     setRemaining(0)
     setPaused(false)
+    // reminder mode: the timer is just a bell — nothing is paused,
+    // muted or dimmed, and there is no state worth persisting
+    if (reminderOnly.get()) {
+        clearState()
+        startAlarm()
+        return
+    }
     coveredTitles.clear() // coverage is per fire session
     pauseAllPlayers()
     // what has no MPRIS interface can't be paused — mute it instead.
