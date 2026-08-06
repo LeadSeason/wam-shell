@@ -561,12 +561,17 @@
 #         changes
 # enabled - default true
 # position - "bottom", "center" or "top". default "bottom"
+# margin - pixels between the OSD and the edge it is anchored to.
+#          default 140, which clears the message composer of a
+#          bottom-docked chat app (the old fixed 60 sat on top of
+#          slack's input). ignored when position = "center"
 # timeout - milliseconds before the OSD hides. default 2000
 # volume, microphone, brightness, layout, lock_keys -
 #           per-trigger toggles. default true
 # [osd]
 # enabled = true
 # position = "bottom"
+# margin = 140
 # timeout = 2000
 # volume = true
 # microphone = true
