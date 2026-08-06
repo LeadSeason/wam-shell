@@ -18,6 +18,10 @@ function focus_workspace(sway: Sway, ws: any) {
 export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
     const resolveAppIcon = createIconResolver(Gtk.IconTheme.get_for_display(monitor.display))
 
+    // connector can be null at construction (monitor still initializing):
+    // bind it and recompute when it arrives instead of reading it once
+    const displayName = createBinding(monitor, "connector")
+
     function swayNodeToIconName(node: Node): string {
         let elements = []
         if (node.shell === "xwayland") {
