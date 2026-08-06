@@ -219,6 +219,10 @@ function getQSettingsConfig() {
         })(),
         // the power profile icon in the bar's quicksettings label
         powerProfileOnPanel: get("power_profile_on_panel", true),
+        // close the popup when a player starts playing: pressing play
+        // here (or a video starting elsewhere) means the user wants to
+        // watch, not to keep reading the popup
+        hideOnMediaPlay: get("hide_on_media_play", true),
         // header avatar: absolute path to an image; empty = the login
         // avatar from AccountsService, else the OS icon. Type-guarded:
         // a non-string (avatar = 5) would crash GLib.file_test at

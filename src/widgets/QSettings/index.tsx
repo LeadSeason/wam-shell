@@ -1,4 +1,5 @@
 import Graphene from "gi://Graphene?version=1.0"
+import AstalMpris from "gi://AstalMpris?version=0.1"
 
 import { Astal, Gdk, Gtk } from "ags/gtk4"
 import { timeout } from "ags/time"
@@ -10,7 +11,8 @@ import { isPinned } from "../../lib/trayPinned"
 import { refreshHyprsunset } from "../../lib/hyprsunset"
 import { hideOnFocusLoss } from "../../lib/popupFocus"
 
-import { createState } from "gnim"
+import { createBinding, createState } from "gnim"
+import { hookPlayers } from "../../lib/mpris"
 import { ToggleSection } from "./toggleSection"
 import { HeaderSection } from "./HeaderSection"
 import { SliderSection } from "./SliderSection"
@@ -115,6 +117,17 @@ export default function QSettings() {
         },
     })
 
+    // playback starting means the user is done with the popup: they
+    // pressed play in the media section, or a video started elsewhere
+    // — either way, get out of the way of what they want to watch.
+    // Only the transition INTO playing counts, so pausing from the
+    // popup (and a player merely appearing paused) leaves it open
+    function hideOnPlay(p: AstalMpris.Player) {
+        if (p.playbackStatus !== AstalMpris.PlaybackStatus.PLAYING) return
+        if (!win?.is_visible()) return
+        hide()
+    }
+
     // close on ESC
     function onKey(_e: Gtk.EventControllerKey, keyValue: number, _: number, mod: number) {
         if (keyValue === Gdk.KEY_Escape) {
@@ -138,6 +151,14 @@ export default function QSettings() {
             $={ref => {
                 win = ref
                 hideOnFocusLoss(win, hide)
+                // one hook for every current and future player; the
+                // registration lives as long as this window does (the
+                // whole session), like the focus watcher above
+                if (Config.quicksettings.hideOnMediaPlay)
+                    hookPlayers(p => {
+                        hideOnPlay(p) // a player that shows up already playing
+                        return createBinding(p, "playbackStatus").subscribe(() => hideOnPlay(p))
+                    })
             }}
             name="QSettings"
             class="QSettings"
