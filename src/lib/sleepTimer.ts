@@ -464,16 +464,33 @@ let preDimLevel: number | null = null
 let dimmedToLevel: number | null = null
 
 function pauseAllPlayers() {
-    // no canPause filter: pause() already no-ops where unsupported, and
-    // a flapping capability must not skip a player
+    // raw D-Bus Pause, not Astal's pause(): pause() silently no-ops
+    // while CanPause is false, and browsers flap that capability — a
+    // fire landing in a false window paused nothing and the mute
+    // fallback silenced a still-running video. The bus method has no
+    // client-side gate and is idempotent by spec: players that truly
+    // can't pause ignore it, and the mute sweep picks those up
     for (const p of mpris.players) {
-        if (p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING) {
-            try {
-                p.pause()
-            } catch (e) {
-                console.warn("sleepTimer: pause failed:", e)
-            }
-        }
+        if (p.playbackStatus !== AstalMpris.PlaybackStatus.PLAYING) continue
+        const identity = p.identity
+        Gio.DBus.session.call(
+            p.busName,
+            "/org/mpris/MediaPlayer2",
+            "org.mpris.MediaPlayer2.Player",
+            "Pause",
+            null,
+            null,
+            Gio.DBusCallFlags.NONE,
+            -1,
+            null,
+            (_conn, res) => {
+                try {
+                    Gio.DBus.session.call_finish(res)
+                } catch (e) {
+                    console.warn(`sleepTimer: pause failed for ${identity}:`, e)
+                }
+            },
+        )
     }
 }
 
@@ -512,6 +529,11 @@ function muteActiveStreams() {
     const audio = AstalWp.get_default()?.audio
     if (!audio) return
     for (const s of audio.streams ?? []) {
+        // only streams actually producing audio: a paused player's
+        // corked stream sits in IDLE, and muting it would silence the
+        // app long after the timer — the fallback is for what the
+        // pauses could not stop, not for everything with a stream
+        if (s.state !== AstalWp.NodeState.RUNNING) continue
         if (s.mute || userUnmuted.has(s.id) || isAlarmStream(s)) continue
         // wpctl, not the endpoint property: the property write races
         // (observed landing for one stream and silently not for another)
@@ -535,7 +557,11 @@ function unmuteStreams() {
 // multi-player fireboxes leave tabs audible after one sweep: a player
 // can be mid-buffering (paused for an instant), racing the fire, or
 // re-created under a fresh bus name just after it. Re-sweep twice,
-// re-reading the player list each time, then log whatever survives
+// re-reading the player list each time, then log whatever survives.
+// The sweep is also where the mute fallback lives (streams with no
+// MPRIS interface, e.g. a firefox tab whose content process crashed):
+// by the first sweep the fire's pauses have landed and corked their
+// streams to IDLE, so only what is still genuinely playing gets muted
 let pauseSweepSource = 0
 function armPauseSweep() {
     if (pauseSweepSource) sourceRemove(pauseSweepSource)
@@ -562,8 +588,10 @@ function fire() {
     setRemaining(0)
     setPaused(false)
     pauseAllPlayers()
-    // what has no MPRIS interface can't be paused — mute it instead
-    muteActiveStreams()
+    // no mute here: the pauses are async bus calls, so at this instant
+    // every stream still looks live — muting now would mute apps the
+    // pause was about to stop anyway. The sweep mutes what is still
+    // audibly RUNNING once the pauses have had time to land
     armPauseSweep()
     // dim to half the current brightness, never below 10%
     if (Config.sleepTimer.dim) {
