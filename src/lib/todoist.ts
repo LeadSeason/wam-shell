@@ -123,8 +123,26 @@ export function taskData(
         summary: content,
         body: dueLabel(raw.due ?? null, nowMs),
         iconName: "todoist-symbolic",
+        // a task whose time has come (or gone) is something to act on;
+        // one due later today or tomorrow is something to know about.
+        // The center sorts the two into its "Needs you" zone and its feed
+        actionable: isDueSoon(raw.due ?? null, nowMs),
         url: `https://todoist.com/app/task/${id}`,
     }
+}
+
+// overdue, or due within the next hour. The window exists because "due
+// at 14:00" stops being informational somewhere before 14:00 — you want
+// it in front of you while you can still do something about it
+const DUE_SOON_MS = 60 * 60 * 1000
+
+export function isDueSoon(due: { date?: string; datetime?: string } | null, nowMs: number) {
+    if (!due) return false
+    if (isOverdue(due, nowMs)) return true
+    const stamp = dueStamp(due)
+    if (!stamp) return false
+    const ms = Date.parse(stamp)
+    return !Number.isNaN(ms) && ms - nowMs <= DUE_SOON_MS
 }
 
 // ids in next but not in prev. Brand-new tasks only: a task that was

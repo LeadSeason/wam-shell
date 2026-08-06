@@ -62,6 +62,24 @@ export function reasonLabel(reason: string): string {
     return REASONS[reason] ?? reason.replace(/_/g, " ").replace(/^\w/, c => c.toUpperCase())
 }
 
+// Reasons where a person (or a scanner) is waiting on you, as opposed to
+// keeping you informed. The center lifts these out of the feed.
+// "author" and "subscribed" are the loud ones and deliberately absent:
+// every comment on your own PR carries reason "author", so treating it
+// as actionable would leave the zone permanently full and useless.
+const ACTIONABLE_REASONS = new Set([
+    "assign",
+    "invitation",
+    "mention",
+    "review_requested",
+    "security_alert",
+    "team_mention",
+])
+
+export function isActionableReason(reason: string): boolean {
+    return ACTIONABLE_REASONS.has(reason)
+}
+
 const TYPES: Record<string, string> = {
     PullRequest: "Pull request",
     Issue: "Issue",
@@ -102,6 +120,7 @@ export function threadData(raw: any): Omit<ProviderItem, "dismiss" | "activate">
         summary: title,
         body: `${reasonLabel(raw.reason ?? "")} · ${typeLabel(raw.subject?.type ?? "")}`,
         iconName: "github-symbolic",
+        actionable: isActionableReason(raw.reason ?? ""),
         url: webUrl(
             raw.subject?.url ?? null,
             raw.repository?.html_url ?? "https://github.com/notifications",

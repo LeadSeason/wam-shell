@@ -20,6 +20,27 @@
 // Style ROOT, Allies to all.
 * {
     all: unset; // Unset all user provided style. Since we are
-    font-family: "Symbols Nerd Font Mono", "FiraCode Nerd Font Propo";
+    font-family: s.$font-ui;
     transition-duration: 200ms;
+}
+
+// Everything the shell renders is prose EXCEPT the readouts below, where
+// a digit changing must not move the ones beside it. Proportional digits
+// make a running clock shuffle sideways once a second and the calendar
+// grid's columns drift; these keep the mono face for that reason alone.
+// Kept in one block rather than scattered across the widget sheets so the
+// rule stays legible as a rule — add to it when a new readout appears.
+clock-time,
+clock-date,
+.sysStats,
+.weekday,
+.calWeek,
+button.calDay label,
+.gcalMeta,
+.percentEntry,
+.batteryPercent,
+.time,
+.count,
+.Badge {
+    font-family: s.$font-mono;
 }
