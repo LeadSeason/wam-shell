@@ -6,7 +6,14 @@ import { createBinding, createState } from "gnim"
 import Config from "../config"
 import Brightness from "./brightness"
 import CommandRegistry from "./commandRegistry"
-import { timeoutAdd, timeoutAddSeconds, sourceRemove, execAsync, connect, disconnect } from "./metrics"
+import {
+    timeoutAdd,
+    timeoutAddSeconds,
+    sourceRemove,
+    execAsync,
+    connect,
+    disconnect,
+} from "./metrics"
 import { writeFileAtomic } from "./atomicWrite"
 import { SleepTimerState, serialize, parse, decide } from "./sleepTimerState"
 
@@ -44,20 +51,20 @@ function queueIo(what: string, fn: () => Promise<void> | void) {
     ioQueue = ioQueue.then(fn).catch(e => console.warn(`sleepTimer: failed writing ${what}:`, e))
 }
 
-// pill checkbox preferences (alarm, undim-on-play, reminder): the
-// config key is only the factory default — the checkbox is consulted
-// at fire time, not at start, and persists across shell restarts,
+// pill preferences (alarm, undim-on-play, notification text): the
+// config key is only the factory default — the pill is consulted at
+// fire time, not at start, and persists across shell restarts,
 // crashes and reboots in the cache dir. The runtime state file is
 // session-scoped by design and the wrong place for a preference
-function boolPref(file: string, fallback: boolean) {
+function pref<T extends boolean | string>(file: string, fallback: T) {
     const path = `${Config.instanceCacheDir}/${file}`
     let initial = fallback
     try {
         const v = JSON.parse(new TextDecoder().decode(GLib.file_get_contents(path)[1]))
-        if (typeof v === "boolean") initial = v
+        if (typeof v === typeof fallback) initial = v as T
     } catch {} // absent or malformed: the config default
-    const [state, setState] = createState(initial)
-    const set = (v: boolean) => {
+    const [state, setState] = createState<T>(initial)
+    const set = (v: T) => {
         setState(v)
         try {
             GLib.mkdir_with_parents(Config.instanceCacheDir, 0o755)
@@ -69,26 +76,27 @@ function boolPref(file: string, fallback: boolean) {
     return [state, set] as const
 }
 
-// play the chime loop when the timer reaches 0
-export const [alarmEnabled, setAlarmEnabled] = boolPref(
-    "sleep-alarm.json",
-    Config.sleepTimer.alarm,
-)
+// ring the chime when the timer reaches 0. An alarm is a REMINDER by
+// default (alarm_only): it rings without pausing, muting or dimming —
+// the sleep actions and a wake-up chime are different jobs, and the
+// one thing an alarm must not do is silence the machine it is trying
+// to wake you with. alarm_only = false gives both at once
+export const [alarmEnabled, setAlarmEnabled] = pref("sleep-alarm.json", Config.sleepTimer.alarm)
 
 // restore the pre-dim brightness when a human presses play after a
 // fire — the same wake-up signal that lifts the mutes
-export const [restoreOnPlay, setRestoreOnPlay] = boolPref(
+export const [restoreOnPlay, setRestoreOnPlay] = pref(
     "sleep-restore-on-play.json",
     Config.sleepTimer.restoreOnPlay,
 )
 
-// reminder mode: the fire only rings the chime — nothing is paused,
-// muted or dimmed. It rings regardless of the alarm checkbox: a
-// silent reminder is no reminder
-export const [reminderOnly, setReminderOnly] = boolPref(
-    "sleep-reminder.json",
-    Config.sleepTimer.reminder,
-)
+// optional message shown as a notification at 0, typed in the pill —
+// no config key, it is a per-timer thought, not a setting. It rides
+// with the alarm (the pill only offers the field while the alarm is
+// on): a hidden field must not fire a notification the user can no
+// longer see or edit. Critical urgency, so the banner never drains on
+// its own — it waits to be dismissed
+export const [notificationText, setNotificationText] = pref("sleep-note.json", "")
 
 // the chime is looping right now (fired, not yet stopped)
 const [alarming, setAlarming] = createState(false)
@@ -221,6 +229,12 @@ function startAlarm() {
     }
     if (alarming.get()) return
     setAlarming(true)
+    // silence everything else FIRST: the sink is about to be forced to
+    // alarm_volume, and an alarm that is not a sleep fire has paused
+    // nothing — a video still playing would be blasted at that level.
+    // Issued before forceAlarmVolume, whose sink read costs a round
+    // trip, so the mutes land first. stopAlarm restores them
+    muteForAlarm()
     forceAlarmVolume()
     loopChime()
 }
@@ -321,8 +335,10 @@ function clearState() {
     })
 }
 
-/** send a notification through the daemon (same pattern as bluetooth) */
-function notify(summary: string, body: string) {
+/** send a notification through the daemon (same pattern as bluetooth).
+ *  expireMs 0 = never expires on its own (our daemon also never drains
+ *  a critical banner); -1 = the daemon's default lifetime */
+function notify(summary: string, body: string, expireMs = -1) {
     Gio.DBus.session.call(
         "org.freedesktop.Notifications",
         "/org/freedesktop/Notifications",
@@ -336,7 +352,7 @@ function notify(summary: string, body: string) {
             body,
             [],
             { urgency: new GLib.Variant("y", 2) },
-            -1,
+            expireMs,
         ]),
         null,
         Gio.DBusCallFlags.NONE,
@@ -626,6 +642,26 @@ function streamHasPlayer(s: AstalWp.Stream, streams: AstalWp.Stream[]): boolean 
     })
 }
 
+// every audible stream except the chime, muted for the ring's
+// duration. Unlike the sleep fallback this ignores player coverage:
+// a reminder pauses nothing, so a covered video is exactly the stream
+// that would otherwise be blasted at alarm_volume. Restored by
+// stopAlarm -> unmuteStreams (and by the play hook, and by cancel)
+function muteForAlarm() {
+    const audio = AstalWp.get_default()?.audio
+    if (!audio) return
+    let changed = false
+    for (const s of audio.streams ?? []) {
+        if (s.mute || userUnmuted.has(s.id) || mutedStreams.has(s.id) || isAlarmStream(s)) continue
+        execAsync(["wpctl", "set-mute", String(s.id), "1"]).catch(() => {})
+        mutedStreams.set(s.id, s.description ?? "")
+        watchStream(s)
+        changed = true
+    }
+    // a restart must be able to unmute what the alarm muted
+    if (changed) writeState()
+}
+
 function muteActiveStreams() {
     const audio = AstalWp.get_default()?.audio
     if (!audio) return
@@ -812,10 +848,12 @@ function fire() {
     deadline = null
     setRemaining(0)
     setPaused(false)
-    // reminder mode: the timer is just a bell — nothing is paused,
-    // muted or dimmed, and there is no state worth persisting
-    if (reminderOnly.get()) {
+    // an alarm is a reminder: it rings (and pops the note) without
+    // touching playback or the screen, so there is no state worth
+    // persisting either. alarm_only = false opts into both
+    if (alarmEnabled.get() && Config.sleepTimer.alarmOnly) {
         clearState()
+        notifyNote()
         startAlarm()
         return
     }
@@ -842,7 +880,19 @@ function fire() {
     // keep the file: the dim state must survive a restart so the next
     // shell can still restore on extend (dim-only decision)
     writeState()
+    notifyNote()
     if (alarmEnabled.get()) startAlarm()
+}
+
+// the user's message as a notification at 0. Critical urgency and no
+// expiry — it waits on screen until dismissed, which is the point of
+// writing one. Gated on the alarm because the pill hides the field
+// without one: what cannot be seen or edited must not fire
+function notifyNote() {
+    if (!alarmEnabled.get()) return
+    const text = notificationText.get().trim()
+    if (text === "") return
+    notify("Sleep timer", text, 0)
 }
 
 // extending after a fire means the user is back at the machine:
@@ -918,7 +968,15 @@ sleep-timer status
     main: args => {
         const arg = args[0] ?? ""
         if (arg === "status")
-            return `remaining=${remaining.get()} paused=${paused.get()} alarming=${alarming.get()}`
+            return [
+                `remaining=${remaining.get()}`,
+                `paused=${paused.get()}`,
+                `alarming=${alarming.get()}`,
+                `alarm=${alarmEnabled.get()}`,
+                `alarmOnly=${Config.sleepTimer.alarmOnly}`,
+                `muted=${mutedStreams.size}`,
+                `note=${JSON.stringify(notificationText.get())}`,
+            ].join(" ")
         if (foreignOwned) return "another shell instance owns the timer"
         if (arg === "cancel" || arg === "0") {
             // startSleepTimer(0), not cancelSleepTimer: only the former
