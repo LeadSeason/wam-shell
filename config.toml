@@ -423,6 +423,12 @@
 #                      (pressing play in the media section, or a video
 #                      starting anywhere else). pausing leaves it open.
 #                      default true
+# min_height - the popup never shrinks below this many px when you
+#              switch to a short pane (vpn, wired), so navigating
+#              settles it instead of yanking it. 0 (default) derives
+#              the floor from the smallest monitor — half a 1080p panel
+#              is comfortable, half a 1366x768 one is not, and a 1080p
+#              screen at 1.5x scale is only 720px tall
 # show_avatar - show the avatar in the popup header. default true
 # width - popup content width in px. default 440 (the pre-config value
 #         was 520; raise it back if you liked the wide layout)
@@ -443,6 +449,7 @@
 # stats_interval = 1000
 # power_profile_on_panel = true
 # hide_on_media_play = true
+# min_height = 0
 # show_avatar = true
 # avatar = ""
 # battery_full_at = 100
