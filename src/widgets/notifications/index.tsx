@@ -322,9 +322,21 @@ function dismissRow(r: Row) {
 function FeedGroup({ block }: { block: Extract<FeedBlock<Row>, { kind: "group" }> }) {
     if (block.rows.length === 1) return <ItemRow row={block.rows[0]} />
 
+    // the group's rows all come from one app and mirror or don't as a
+    // set, so the header and the rule down the side follow the first of
+    // them rather than being decided separately
+    const head = block.rows[0]
+    const rtl = (head.desktop ? fromDesktop(head.desktop) : fromItem(head.item!)).rtl
+
     const [open, setOpen] = createState(false)
     return (
-        <box cssClasses={["group"]} orientation={Gtk.Orientation.VERTICAL}>
+        <box
+            $={self => {
+                if (rtl) self.set_direction(Gtk.TextDirection.RTL)
+            }}
+            cssClasses={["group"]}
+            orientation={Gtk.Orientation.VERTICAL}
+        >
             <button
                 cssClasses={["groupHead"]}
                 tooltipText={`${block.rows.length} from ${block.appName} — middle-click to clear them all`}
@@ -364,7 +376,21 @@ function FeedGroup({ block }: { block: Extract<FeedBlock<Row>, { kind: "group" }
                 transitionDuration={150}
                 transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
             >
-                <box cssClasses={["groupRows"]} orientation={Gtk.Orientation.VERTICAL}>
+                <box
+                    $={self => {
+                        // set on THIS box, not the group: marginStart is
+                        // resolved against the widget's own direction,
+                        // and gtk does not push an explicitly set
+                        // direction down to children that never had one
+                        if (rtl) self.set_direction(Gtk.TextDirection.RTL)
+                    }}
+                    cssClasses={rtl ? ["groupRows", "rtl"] : ["groupRows"]}
+                    orientation={Gtk.Orientation.VERTICAL}
+                    // marginStart follows the text direction; the rule
+                    // down the side cannot, so it switches sides via the
+                    // rtl class instead
+                    marginStart={10}
+                >
                     {block.rows.map(r => (
                         <ItemRow row={r} />
                     ))}

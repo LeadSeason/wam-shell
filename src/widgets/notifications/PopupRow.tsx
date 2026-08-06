@@ -173,9 +173,23 @@ export default function PopupRow({ group }: { group: PopupEntry[] }) {
                         transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
                     >
                         <box
+                            $={self => {
+                                // the direction has to be set on THIS
+                                // box, not an ancestor: marginStart is
+                                // resolved against the widget's own
+                                // direction, and gtk does not push an
+                                // explicitly set direction down to
+                                // children that never had one
+                                if (data.rtl) self.set_direction(Gtk.TextDirection.RTL)
+                            }}
                             cssClasses={["drawer"]}
                             orientation={Gtk.Orientation.VERTICAL}
                             spacing={6}
+                            // marginStart, not a css margin-left: this
+                            // follows the text direction, so a mirrored
+                            // drawer indents from the right like its
+                            // header does
+                            marginStart={16}
                         >
                             {group.slice(1).map(p => (
                                 <Toast
