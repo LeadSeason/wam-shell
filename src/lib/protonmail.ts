@@ -706,8 +706,42 @@ const popupsEnabled = () => Config.notifications.popupProviders.includes("proton
 // surfaced in the center's empty state while unhealthy
 const [status, setStatus] = createState<string | null>(null)
 
+/** is this the bridge simply not being up? Connection-refused (and an
+ *  unreachable loopback) means the local Bridge app is not running —
+ *  a normal state on a machine where mail is opened occasionally, not
+ *  a fault worth a stack trace */
+export function isBridgeDown(e: unknown): boolean {
+    if (e instanceof GLib.Error) {
+        return (
+            e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CONNECTION_REFUSED) ||
+            e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.HOST_UNREACHABLE) ||
+            e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NETWORK_UNREACHABLE)
+        )
+    }
+    // the imap layer rejects with plain objects too; the wrapped error
+    // keeps gio's wording
+    const message = String((e as { message?: string })?.message ?? e ?? "")
+    return /connection refused|could not connect|unreachable/i.test(message)
+}
+
+// the bridge being off would otherwise print two stack traces per poll
+// AND one per IDLE retry, for as long as it stays off. Note it once,
+// then stay quiet until it answers again
+let bridgeDownSince = 0
+
+function noteBridgeDown() {
+    setStatus("ProtonMail bridge isn't running")
+    if (bridgeDownSince) return
+    bridgeDownSince = Date.now()
+    console.log("ProtonMail: bridge not reachable; retrying quietly until it is back")
+}
+
 // the poll loop and the IDLE session funnel every result through here
 function deliver(envs: Envelope[]) {
+    if (bridgeDownSince) {
+        console.log("ProtonMail: bridge reachable again")
+        bridgeDownSince = 0
+    }
     setStatus(null)
     lastPollAttempt = Date.now()
     applyEnvelopes(envs)
@@ -729,8 +763,9 @@ export function poll() {
         .catch(e => {
             if (e?.auth) {
                 onAuthFailure()
+            } else if (isBridgeDown(e)) {
+                noteBridgeDown()
             } else {
-                // bridge not running, network down, …
                 setStatus("Couldn't sync ProtonMail — is the bridge running?")
                 console.warn("ProtonMail: poll failed:", e)
             }
@@ -812,6 +847,13 @@ function startIdle() {
                 console.warn("ProtonMail: server has no IDLE; using the poll loop")
                 idleUnsupported = true
                 startPolling()
+            } else if (isBridgeDown(e)) {
+                // same fallback, no noise: the poll loop keeps trying
+                // and the IDLE retry picks the session back up when
+                // the bridge returns
+                noteBridgeDown()
+                startPolling()
+                scheduleIdleRetry()
             } else {
                 console.warn("ProtonMail: IDLE failed, falling back to polling:", e)
                 setStatus("Couldn't sync ProtonMail — is the bridge running?")
