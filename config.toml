@@ -483,6 +483,16 @@
 # presets - preset durations in minutes shown in the dropdown. custom
 #           values can always be typed in the entry. must be a non-empty
 #           list of positive numbers. default [10, 15, 20, 30, 45, 60]
+# time_format - how the entry reads clock times. the entry takes either
+#               a duration in minutes ("45") or a time of day ("23:30"),
+#               told apart by the colon. a time of day always resolves
+#               FORWARDS: one that has already passed today means
+#               tomorrow.
+#               "24h" (default) reads 7:30 as the morning; "12h" reads a
+#               bare 7:30 as whichever of 07:30/19:30 comes first, and
+#               shows an am/pm example in the placeholder; "auto" picks
+#               between them from the system locale. an explicit am/pm
+#               ("11:30 pm") is always honoured whatever this is set to
 # on_panel - show the countdown on the panel while a timer runs. click
 #            it to pause/resume. default true. section-only key.
 #            position it like any other widget: "sleeptimer" in a
@@ -522,6 +532,7 @@
 # [sleep_timer]
 # enabled = true
 # presets = [10, 15, 20, 30, 45, 60]
+# time_format = "24h"
 # on_panel = true
 # dim = true
 # dim_level = 0.5
