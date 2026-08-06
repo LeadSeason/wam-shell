@@ -6,6 +6,7 @@ import {
     newArrivals,
     buildReminderMap,
     snoozeDelayMs,
+    isDueSoon,
 } from "../src/lib/todoist"
 
 // fixed "now": 2026-08-01 12:00 local
@@ -49,6 +50,8 @@ test("todoist taskData: maps timed tasks, skips all-day and due-less", () => {
         summary: "Water the plants",
         body: "Overdue · Jul 31",
         iconName: "todoist-symbolic",
+        // overdue, so the center lifts it into "Needs you"
+        actionable: true,
         // v1 drops the url field: constructed from the id
         url: "https://todoist.com/app/task/12345",
     })
@@ -109,4 +112,29 @@ test("todoist snoozeDelayMs: full length, capped at due, past due", () => {
     eq(snoozeDelayMs(now, now, 30), min30)
     // honors the configured length
     eq(snoozeDelayMs(now + 2 * 3_600_000, now, 10), 10 * 60_000)
+})
+
+test("todoist isDueSoon: overdue or inside the next hour", () => {
+    const iso = (ms: number) => ({ date: new Date(ms).toISOString() })
+    // already past due
+    eq(isDueSoon(iso(now - 60_000), now), true)
+    // inside the window, including its far edge
+    eq(isDueSoon(iso(now + 10 * 60_000), now), true)
+    eq(isDueSoon(iso(now + 60 * 60_000), now), true)
+    // beyond it: informational, stays in the feed
+    eq(isDueSoon(iso(now + 61 * 60_000), now), false)
+    eq(isDueSoon(iso(now + 5 * 3_600_000), now), false)
+    // nothing to judge
+    eq(isDueSoon(null, now), false)
+    eq(isDueSoon({ date: "not a date" }, now), false)
+})
+
+test("todoist taskData: carries the actionable flag", () => {
+    const task = (dueMs: number) => ({
+        id: "1",
+        content: "c",
+        due: { date: new Date(dueMs).toISOString() },
+    })
+    eq(taskData(task(now + 5 * 60_000), now)?.actionable, true)
+    eq(taskData(task(now + 6 * 3_600_000), now)?.actionable, false)
 })

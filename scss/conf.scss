@@ -9,6 +9,19 @@ $gap-small: 4px;
 $bar-widget-spacing: 6px;
 
 $font-small: 0.85em;
+
+// Two faces, one job each. Prose (summaries, bodies, labels, menu items)
+// is set in a UI face — a coding font makes every sentence in the shell
+// read like terminal output. Anything where digits must line up in a
+// column — clocks, percentages, the calendar grid, timers — keeps a mono
+// face, because proportional digits jitter as the value changes.
+//
+// "Symbols Nerd Font Mono" leads both stacks and carries no Latin
+// coverage of its own: it supplies the private-use-area glyphs the bar
+// draws as text, and everything else falls through to the next family.
+$font-ui: "Symbols Nerd Font Mono", "Adwaita Sans", "Noto Sans", sans-serif;
+$font-mono: "Symbols Nerd Font Mono", "Adwaita Mono", "FiraCode Nerd Font Propo", monospace;
+
 $slider-height: 9px;
 $pill-size: 44px;
 

@@ -6,6 +6,7 @@ import {
     threadData,
     newArrivals,
     bannerCandidates,
+    isActionableReason,
 } from "../src/lib/github"
 
 test("github reasonLabel: known reasons and fallback", () => {
@@ -104,4 +105,30 @@ test("github bannerCandidates: unseen and recent only", () => {
     )
     // everything seen: silence
     eq(bannerCandidates([fresh], new Set(["github:1"]), now).length, 0)
+})
+
+test("github isActionableReason: waiting on you vs. keeping you informed", () => {
+    eq(isActionableReason("review_requested"), true)
+    eq(isActionableReason("assign"), true)
+    eq(isActionableReason("mention"), true)
+    eq(isActionableReason("security_alert"), true)
+    // the loud ones stay in the feed: every comment on your own PR
+    // arrives as "author", and subscribed threads are pure firehose
+    eq(isActionableReason("author"), false)
+    eq(isActionableReason("subscribed"), false)
+    eq(isActionableReason("comment"), false)
+    eq(isActionableReason("ci_activity"), false)
+    eq(isActionableReason(""), false)
+})
+
+test("github threadData: carries the actionable flag", () => {
+    const raw = (reason: string) => ({
+        id: "1",
+        reason,
+        updated_at: "2026-08-06T12:00:00Z",
+        repository: { full_name: "o/r", html_url: "https://github.com/o/r" },
+        subject: { title: "t", type: "PullRequest", url: null },
+    })
+    eq(threadData(raw("review_requested"))?.actionable, true)
+    eq(threadData(raw("author"))?.actionable, false)
 })

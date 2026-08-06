@@ -549,8 +549,12 @@
 #          freeze on hover, and respect do-not-disturb (critical still
 #          breaks through). only shown when our daemon is used.
 #          default true
-# popup_timeout - milliseconds before a popup hides itself. low urgency
-#                 drains in half the time; critical stays until
+# popup_timeout - milliseconds before a popup hides itself, used when
+#                 the notification does not ask for a length of its own.
+#                 a sender's expire_timeout wins: 0 keeps the banner up
+#                 until dismissed, any positive value is honoured as-is.
+#                 when the sender defers (-1), this applies — low urgency
+#                 drains in half the time, critical stays until
 #                 dismissed. default 5000
 # position - where banners appear: "topRight" or "topCenter".
 #            default "topRight"
