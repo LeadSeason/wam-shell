@@ -487,6 +487,10 @@ function getHarvestConfig() {
         collapseOffDays: get("collapse_off_days", false),
         // while screen sharing, mask entry details on the panel
         hideWhenScreenSharing: get("hide_when_screen_sharing", true),
+        // banner every timer start/pause, wherever it happened (this
+        // shell, the web app, the phone). Critical urgency: it waits
+        // to be dismissed
+        notify: get("notify", true),
     }
 }
 
@@ -756,9 +760,19 @@ function getOsdConfig() {
         timeout = 2000
     }
 
+    // distance from the anchored edge. 140 clears the message composer
+    // of a bottom-docked chat app (slack, discord), which a 60px pill
+    // sat right on top of; "center" ignores it
+    let margin = get("margin", 140)
+    if (typeof margin !== "number" || margin < 0) {
+        console.error(`Config "osd.margin" must be a number >= 0, got "${margin}"`)
+        margin = 140
+    }
+
     return {
         enabled: get("enabled", true),
         position: position as "bottom" | "center" | "top",
+        margin,
         timeout,
         // per-trigger toggles
         volume: get("volume", true),
