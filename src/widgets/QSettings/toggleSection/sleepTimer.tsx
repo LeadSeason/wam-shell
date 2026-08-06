@@ -118,14 +118,24 @@ export function SleepTimerWidget({
                     {/* a paneRow button like Start and the preset chips:
                     the right edges align by construction (a Gtk.Switch
                     has its own geometry, and is invisible unstyled) */}
+                    {/* reminder mode always rings (a silent reminder is
+                    no reminder): show the box checked and locked while
+                    it is on, instead of claiming the alarm is off. The
+                    stored preference is left alone, so unchecking
+                    reminder returns to whatever the user picked */}
                     <button
                         cssClasses={["paneRow", "trailingBtn"]}
-                        tooltipText={"Play the alarm when the timer reaches 0"}
+                        sensitive={reminderOnly.as(r => !r)}
+                        tooltipText={reminderOnly.as(r =>
+                            r
+                                ? "Reminder only always rings the alarm"
+                                : "Play the alarm when the timer reaches 0",
+                        )}
                         onClicked={() => setAlarmEnabled(!alarmEnabled.get())}
                     >
                         <image
-                            iconName={alarmEnabled.as(v =>
-                                v ? "checkbox-checked-symbolic" : "checkbox-symbolic",
+                            iconName={createComputed([alarmEnabled, reminderOnly], (a, r) =>
+                                a || r ? "checkbox-checked-symbolic" : "checkbox-symbolic",
                             )}
                         />
                     </button>
