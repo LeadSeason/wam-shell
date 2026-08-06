@@ -19,13 +19,16 @@ import {
     startSleepTimer,
     stopAlarm,
 } from "../../../lib/sleepTimer"
+import { parseTimerInput, timerPlaceholder, uses12Hour } from "../../../lib/timerInput"
 
 // Sleep timer toggle: main click stops the ringing alarm, cancels a
 // running timer or opens the duration dropdown; the dropdown starts
-// the timer for the picked duration (presets or a custom minute
-// count) and carries the alarm on/off checkbox.
+// the timer for the picked duration (presets, a custom minute count, or
+// a clock time) and carries the alarm on/off checkbox.
 
 const PRESETS = Config.sleepTimer.presets
+// resolved once: the locale does not change under a running shell
+const TWELVE_HOUR = uses12Hour(Config.sleepTimer.timeFormat)
 
 interface dropdownProps {
     activeDropdown: Accessor<number>
@@ -74,8 +77,10 @@ export function SleepTimerWidget({
     let entry: Gtk.Entry | null = null
 
     const startCustom = () => {
-        const minutes = Number(entry?.get_text())
-        if (Number.isFinite(minutes) && minutes > 0) {
+        // a bare number is still minutes; anything with a colon is a
+        // clock time, resolved forwards (see lib/timerInput)
+        const minutes = parseTimerInput(entry?.get_text() ?? "", Date.now(), TWELVE_HOUR)
+        if (minutes !== null) {
             startSleepTimer(minutes)
             entry?.set_text("")
         }
@@ -102,8 +107,12 @@ export function SleepTimerWidget({
                             entry = self
                         }}
                         cssClasses={["textInput"]}
-                        placeholderText={"minutes"}
-                        inputPurpose={Gtk.InputPurpose.DIGITS}
+                        placeholderText={timerPlaceholder(TWELVE_HOUR)}
+                        // FREE_FORM, not DIGITS: the digits purpose asks
+                        // input methods and on-screen keyboards for a
+                        // number pad, which has no colon and no letters —
+                        // "23:30" and "11:30 pm" could not be typed
+                        inputPurpose={Gtk.InputPurpose.FREE_FORM}
                         hexpand
                         onActivate={startCustom}
                     />
