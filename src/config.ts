@@ -4,6 +4,7 @@ import toml from "toml"
 import { execAsync } from "ags/process"
 import { readFile } from "ags/file"
 import { isFile } from "./lib/utils"
+import type { TimeFormat } from "./lib/timerInput"
 
 // scss/theme/script paths resolve against the repo root. Launching from
 // another cwd breaks that; WAM_SHELL_DIR overrides when needed.
@@ -416,8 +417,21 @@ function getSleepTimerConfig() {
         return v / 100
     }
 
+    // how the entry reads and writes clock times. 24h is the default
+    // rather than the locale's choice: the shell's own strings are
+    // English and its clock is already numeric, so following the locale
+    // here would be the only place it did. "auto" opts into it.
+    let timeFormat = get("time_format", "24h")
+    if (timeFormat !== "24h" && timeFormat !== "12h" && timeFormat !== "auto") {
+        console.error(
+            `Config "sleep_timer.time_format" must be "24h", "12h" or "auto", got "${timeFormat}"`,
+        )
+        timeFormat = "24h"
+    }
+
     return {
         presets,
+        timeFormat: timeFormat as TimeFormat,
         // show the sleep timer toggle in quick settings
         enabled: get("enabled", true),
         // show the countdown on the panel while a timer runs.

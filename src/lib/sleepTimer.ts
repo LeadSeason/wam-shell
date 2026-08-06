@@ -4,6 +4,7 @@ import AstalMpris from "gi://AstalMpris?version=0.1"
 import AstalWp from "gi://AstalWp?version=0.1"
 import { createBinding, createState } from "gnim"
 import Config from "../config"
+import { parseTimerInput, uses12Hour } from "./timerInput"
 import Brightness from "./brightness"
 import CommandRegistry from "./commandRegistry"
 import {
@@ -958,9 +959,12 @@ export function formatRemaining(seconds: number): string {
 // the fire path without clicking through the UI
 CommandRegistry.get_default().register({
     name: ["sleep-timer"],
-    description: "Sleep timer: start (minutes, fractions ok), cancel, status",
-    help: `sleep-timer <minutes>
+    description: "Sleep timer: start (minutes or HH:MM), cancel, status",
+    help: `sleep-timer <minutes>|<HH:MM>
   Starts the timer; fractions work (0.1 = 6 seconds).
+  A value with a colon is a time of day, always resolved forwards:
+  07:30 means tomorrow morning if it is already past. An explicit
+  am/pm is honoured; a bare hour follows sleep_timer.time_format.
 sleep-timer cancel
   Cancels the timer, lifts the mutes and restores the dim.
 sleep-timer status
@@ -984,11 +988,23 @@ sleep-timer status
             startSleepTimer(0)
             return "cancelled"
         }
-        const minutes = Number(arg)
-        if (!Number.isFinite(minutes) || minutes <= 0)
-            return "usage: sleep-timer <minutes>|cancel|status"
+        // the same syntax the quick settings entry takes, so a keybind
+        // can say "sleep-timer 07:30" rather than working out how many
+        // minutes away that is.
+        //
+        // Rejoined, not args[0]: the request splits on whitespace, so
+        // "sleep-timer 11:30 pm" arrives as two arguments and reading
+        // only the first silently dropped the suffix — it started a
+        // timer for 11:30 in the MORNING, which is exactly the kind of
+        // wrong that is not noticed until the alarm fails to go off
+        const minutes = parseTimerInput(
+            args.join(" "),
+            Date.now(),
+            uses12Hour(Config.sleepTimer.timeFormat),
+        )
+        if (minutes === null) return "usage: sleep-timer <minutes>|<HH:MM>|cancel|status"
         startSleepTimer(minutes)
-        return `started: ${minutes} min`
+        return `started: ${Math.round(minutes)} min`
     },
 })
 
