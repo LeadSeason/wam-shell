@@ -25,8 +25,11 @@
 #     coalescing makes churn spawn counts load-dominated (measured
 #     196→66, 140→64 on identical trees). churn gates on leaks only
 #     (alive timers/signals/fds); idle measures rates.
-#   - fd count: ±1; startup.fds not gated at all (still settling at the
-#     first-ready read, measured 66..74 across identical runs)
+#   - fd count: only fdsOwned is gated (±1). The raw total is
+#     report-only everywhere: most of a gtk process's fds are gpu
+#     buffers (dmabuf, drm syncobj) held for whatever the session is
+#     drawing, and comparing the SAME commit against itself reported
+#     -12 and then +12 on that number alone
 #   - excluded entirely: qsHeader:batTimeDebounce (physical battery
 #     events, 2..17 creations across identical runs), osd:hide (OSD
 #     triggers come from the live session's WirePlumber/MPRIS), the
@@ -173,6 +176,7 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
                     or startswith("AstalBluetooth_Device:"))
                 | not))),
         fds: .process.fds,
+        fdsOwned: .process.fdsOwned,
     };
 
     def gatedFor(scenario): .metrics as $m |
@@ -204,16 +208,31 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
         if ($a|type) == "object" and ($b|type) == "object" then
             (($a|keys) + ($b|keys) | unique[]) as $k
             | diffs($a[$k]; $b[$k]; $path + [$k])
+        # a metric the OTHER leg does not report at all is a shape
+        # change (a new counter, a renamed one), not a regression: the
+        # legs run different code, so one side simply predates it.
+        # Counter keys are exempt — an absent label really is zero
+        # there, which is the point of `num` above
+        # length 2 is a scenario-level metric (scenario.name); counter
+        # maps are deeper (scenario.map.label) and keep the old rule,
+        # where an absent label genuinely means zero
+        elif ($a == null or $b == null) and ($path | length) == 2
+        then empty
         elif ($a|num) != ($b|num)
         then { path: ($path | join(".")), base: ($a|num), cur: ($b|num) }
         else empty end;
 
     def tolerance($path):
-        # startup.fds is still settling at the first-ready read
-        # (measured 66..74 across identical runs); idle/churn fds stay ±1
-        if ($path | test("^startup\\.fds$")) then 999
+        # the raw fd total is report-only in every scenario: most of
+        # the descriptors a gtk process holds are gpu buffers (dmabuf,
+        # drm syncobj) kept for whatever the session is drawing, and
+        # they swing by a dozen between two runs of IDENTICAL code
+        # (measured: the same commit compared against itself reported
+        # -12, then +12). fdsOwned excludes them and is the gated one
+        # NOTE: no apostrophes in this jq program — it is single-quoted
+        if ($path | test("\\.fdsOwned$")) then 1
+        elif ($path | test("\\.fds$")) then 999
         elif ($path | test("\\.subprocesses\\.")) then 2
-        elif ($path | test("\\.fds$")) then 1
         else 0 end;
 
     def verdict:
@@ -263,7 +282,8 @@ else
             if $seg[1] == "subprocesses" then "\($rest) spawns"
             elif $seg[1] == "timerAliveByLabel" then "timer \($rest)"
             elif $seg[1] == "signalsByName" then "signal \($rest)"
-            elif $seg[1] == "fds" then "open fds"
+            elif $seg[1] == "fdsOwned" then "open fds (excl. gpu buffers)"
+            elif $seg[1] == "fds" then "open fds (total, gpu buffers included)"
             else p end;
         .[] as $s |
         ($s.gated[] | "  \(difflabel(.path))  \(.base) → \(.cur)  (\($s.scenario))"),

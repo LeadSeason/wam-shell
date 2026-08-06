@@ -41,7 +41,11 @@ diffs the blobs of two legs.
 
 Gated (exact unless noted): subprocess spawns per binary (±2),
 alive timer sources per label, alive signal handlers per bucket,
-fd count (±1; `startup.fds` report-only).
+`fdsOwned` (±1) — file descriptors minus the gpu buffers (dmabuf, drm
+syncobj) a gtk process holds for whatever the session happens to be
+drawing. The raw `fds` total is report-only in every scenario: it moved
+by 12 in both directions when the same commit was compared against
+itself, so it can only produce false verdicts.
 
 Tolerances and exclusions exist because the session is live, and each
 one is measured, not guessed (see the comment block in compare.sh):
