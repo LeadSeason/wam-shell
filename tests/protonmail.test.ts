@@ -6,6 +6,7 @@ import {
     envelopeData,
     newArrivals,
     idleEventKind,
+    isBridgeDown,
 } from "../src/lib/protonmail"
 
 test("protonmail decodeWords: base64 and quoted-printable", () => {
@@ -85,4 +86,14 @@ test("protonmail idleEventKind: events, bye, chatter", () => {
     eq(idleEventKind("* BYE Server logging out"), "bye")
     eq(idleEventKind("* OK Still alive"), null)
     eq(idleEventKind("+ idling"), null)
+})
+
+test("protonmail isBridgeDown: refused connections only", () => {
+    // gio wording, whether it arrives as a GLib.Error or wrapped
+    eq(isBridgeDown({ message: "Could not connect to 127.0.0.1: Connection refused" }), true)
+    eq(isBridgeDown({ message: "Network is unreachable" }), true)
+    // a real fault must stay loud
+    eq(isBridgeDown({ message: "IMAP parse error" }), false)
+    eq(isBridgeDown({ auth: true }), false)
+    eq(isBridgeDown(null), false)
 })
