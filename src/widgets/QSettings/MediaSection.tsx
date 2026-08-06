@@ -20,6 +20,7 @@ import {
 } from "../../lib/mpris"
 import { sharing, enable as enableShareWatch } from "../../lib/screenShare"
 import Config from "../../config"
+import { isRtl } from "../../lib/utils"
 
 function MediaButton({
     iconName,
@@ -55,6 +56,11 @@ function Player({ player }: { player: AstalMpris.Player }) {
     const artist = createBinding(player, "artist")
     const status = createBinding(player, "playbackStatus")
     const localCover = coverState(player)
+    // an arabic/hebrew title should hug the right edge, like the rest
+    // of the shell does (see isRtl in lib/utils): the artist follows the
+    // title's direction so the two lines share an edge even when the
+    // artist name is latin
+    const rtl = createComputed([title, artist], (t, a) => isRtl(t || a || ""))
 
     // seeker: client-side clock — players that do not track Position
     // (firefox reports 0) still get a moving bar, and a user seek is
@@ -77,6 +83,9 @@ function Player({ player }: { player: AstalMpris.Player }) {
     return (
         <box
             cssClasses={["mediaPlayer"]}
+            // the rounded clip for the full-bleed art: a widget
+            // property, since gtk css has no overflow
+            overflow={Gtk.Overflow.HIDDEN}
             spacing={4}
             // keyboard up/down pages through players while hovering:
             // the card takes focus on pointer enter (never from a text
@@ -148,45 +157,44 @@ function Player({ player }: { player: AstalMpris.Player }) {
                     )}
                 </For>
             </box>
-            {/* cover-left stack: big art on the left, text + controls
-            in a column to its right */}
-            <box orientation={Gtk.Orientation.VERTICAL} spacing={4} hexpand>
-                {/* fixed height whether art exists or not: switching
-                players must not move the content under the pointer */}
-                <box cssClasses={["coverRow"]} spacing={10} hexpand>
-                    {/* the slot keeps the cover on the left: a With that
-                    resolves late (art downloads async) would otherwise
-                    append the cover AFTER the text column (on the right) */}
-                    <box cssClasses={["coverSlot"]}>
-                        {/* big cover, click focuses the player window; hidden
-                        entirely when the player has no art */}
-                        <With value={localCover}>
-                            {c =>
-                                c && (
-                                    <box cssName="button" tooltipText="Focus player window">
-                                        <Gtk.GestureClick
-                                            button={1}
-                                            onPressed={() => raisePlayer(player)}
-                                        />
-                                        <box
-                                            cssClasses={["mediaCover", "mediaCoverBig"]}
-                                            // the path comes from player metadata — escape
-                                            // quotes/backslashes before CSS interpolation
-                                            css={`
-                                                background-image: url("${c.replace(/['\\]/g, "\\$&")}");
-                                            `}
-                                        />
-                                    </box>
-                                )
-                            }
-                        </With>
-                    </box>
-                    <box
-                        orientation={Gtk.Orientation.VERTICAL}
-                        spacing={4}
-                        hexpand
-                        valign={Gtk.Align.CENTER}
-                    >
+            {/* the art IS the card: it fills the overlay, everything
+            else rides a scrim on top of it. Fixed height whether art
+            exists or not, so switching players never moves the content
+            under the pointer */}
+            <Gtk.Overlay hexpand>
+                {/* the art, sharp and full bleed, edge to edge */}
+                <box
+                    cssClasses={localCover.as(c => ["mediaBackdrop", ...(c ? [] : ["noArt"])])}
+                    css={localCover.as(c =>
+                        c ? `background-image: url("${c.replace(/['\\]/g, "\\$&")}");` : "",
+                    )}
+                    tooltipText={"Focus player window"}
+                >
+                    <Gtk.GestureClick button={1} onPressed={() => raisePlayer(player)} />
+                </box>
+                {/* what the text sits on: a dark veil that is itself
+                blurred, so its own edges feather into the artwork
+                instead of ending on a line. Clipping a blurred COPY of
+                the cover looked like a seam across the picture — the
+                blur discontinuity showed wherever the art was bright.
+                Blurring the veil instead leaves the cover untouched
+                and still lifts the text off it */}
+                <box
+                    $type="overlay"
+                    cssClasses={["mediaVeil"]}
+                    valign={Gtk.Align.END}
+                    heightRequest={128}
+                    canTarget={false}
+                />
+                <box
+                    $type="overlay"
+                    cssClasses={rtl.as(r => ["mediaScrim", ...(r ? ["rtl"] : [])])}
+                    orientation={Gtk.Orientation.VERTICAL}
+                    spacing={6}
+                    valign={Gtk.Align.FILL}
+                >
+                    <box vexpand />
+                    <box orientation={Gtk.Orientation.VERTICAL} spacing={2} hexpand>
                         {/* title/artist: click focuses the player; scroll
                         switches players anywhere on the card (card-level
                         controller) */}
@@ -205,19 +213,17 @@ function Player({ player }: { player: AstalMpris.Player }) {
                         what even two lines can't hold */}
                             <label
                                 cssClasses={["mediaTitle"]}
-                                xalign={0}
-                                widthChars={24}
-                                maxWidthChars={24}
-                                lines={2}
-                                wrap
-                                wrapMode={Pango.WrapMode.WORD_CHAR}
+                                xalign={rtl.as(r => (r ? 1 : 0))}
+                                hexpand
+                                maxWidthChars={40}
                                 ellipsize={Pango.EllipsizeMode.END}
                                 label={title.as(t => t || "Unknown title")}
                             />
                             <label
                                 cssClasses={["mediaArtist"]}
-                                xalign={0}
-                                maxWidthChars={24}
+                                xalign={rtl.as(r => (r ? 1 : 0))}
+                                hexpand
+                                maxWidthChars={40}
                                 ellipsize={Pango.EllipsizeMode.END}
                                 label={artist.as(a => a || player.identity || "")}
                             />
@@ -283,67 +289,65 @@ function Player({ player }: { player: AstalMpris.Player }) {
                             />
                         </box>
                     </box>
-                </box>
-                {/* seeker: full card width below the cover+column row —
-                a column-width scale was too short for precise seeking.
-                (the wiring is shared with the popup: bindSeekScale in
-                lib/mpris) */}
-                <box cssClasses={["mediaSeek"]} spacing={6}>
-                    {/* undo the last drag, mirroring the brightness restore
+                    {/* seeker: full card width (the wiring is shared with
+                the popup: bindSeekScale in lib/mpris) */}
+                    <box cssClasses={["mediaSeek"]} spacing={6}>
+                        {/* undo the last drag, mirroring the brightness restore
                         button; toggles between the two positions. dimmed until a
                         drag has been recorded */}
-                    <box
-                        cssName="button"
-                        cssClasses={createComputed([canSeek, revertTo], (c, r) => [
-                            "mediaSeekRevert",
-                            ...(c && r >= 0 ? [] : ["disabled"]),
-                        ])}
-                        tooltipText="Restore pre-seek position"
-                    >
-                        <Gtk.GestureClick
-                            button={1}
-                            onPressed={() => {
-                                const r = revertTo.get()
-                                if (!player.canSeek || r < 0) return
-                                // toggle: a second click seeks forward again
-                                setRevertTo(position.accessor.get())
-                                position.seekTo(r)
-                                player.position = r
-                            }}
+                        <box
+                            cssName="button"
+                            cssClasses={createComputed([canSeek, revertTo], (c, r) => [
+                                "mediaSeekRevert",
+                                ...(c && r >= 0 ? [] : ["disabled"]),
+                            ])}
+                            tooltipText="Restore pre-seek position"
+                        >
+                            <Gtk.GestureClick
+                                button={1}
+                                onPressed={() => {
+                                    const r = revertTo.get()
+                                    if (!player.canSeek || r < 0) return
+                                    // toggle: a second click seeks forward again
+                                    setRevertTo(position.accessor.get())
+                                    position.seekTo(r)
+                                    player.position = r
+                                }}
+                            />
+                            <image iconName="edit-undo-symbolic" />
+                        </box>
+                        <label
+                            cssClasses={["mediaTime"]}
+                            // pinned request: "--:--" vs "20:17" vs
+                            // "101:47" must not resize the popup
+                            widthChars={6}
+                            maxWidthChars={6}
+                            label={createComputed([position.accessor, position.known], (p, k) =>
+                                k ? formatTime(p) : "--:--",
+                            )}
                         />
-                        <image iconName="edit-undo-symbolic" />
+                        <Gtk.Scale
+                            $={self =>
+                                bindSeekScale(self, player, position, () => {
+                                    // first fire of a drag: record the pre-seek
+                                    // position for the revert button
+                                    const now = GLib.get_monotonic_time() / 1e6
+                                    if (now - lastSeekAt > 1.5) setRevertTo(position.accessor.get())
+                                    lastSeekAt = now
+                                })
+                            }
+                            hexpand
+                            sensitive={canSeek}
+                        />
+                        <label
+                            cssClasses={["mediaTime"]}
+                            widthChars={6}
+                            maxWidthChars={6}
+                            label={trackLength.as(l => (l > 0 ? formatTime(l) : "--:--"))}
+                        />
                     </box>
-                    <label
-                        cssClasses={["mediaTime"]}
-                        // pinned request: "--:--" vs "20:17" vs
-                        // "101:47" must not resize the popup
-                        widthChars={6}
-                        maxWidthChars={6}
-                        label={createComputed([position.accessor, position.known], (p, k) =>
-                            k ? formatTime(p) : "--:--",
-                        )}
-                    />
-                    <Gtk.Scale
-                        $={self =>
-                            bindSeekScale(self, player, position, () => {
-                                // first fire of a drag: record the pre-seek
-                                // position for the revert button
-                                const now = GLib.get_monotonic_time() / 1e6
-                                if (now - lastSeekAt > 1.5) setRevertTo(position.accessor.get())
-                                lastSeekAt = now
-                            })
-                        }
-                        hexpand
-                        sensitive={canSeek}
-                    />
-                    <label
-                        cssClasses={["mediaTime"]}
-                        widthChars={6}
-                        maxWidthChars={6}
-                        label={trackLength.as(l => (l > 0 ? formatTime(l) : "--:--"))}
-                    />
                 </box>
-            </box>
+            </Gtk.Overlay>
         </box>
     )
 }

@@ -5,7 +5,7 @@ import { PowerProfilesButton } from "./powerProfile"
 import { WifiButton } from "./wifi"
 import { BluetoothButton } from "./bluetooth"
 import { WiredButton } from "./wired"
-import { NightLightButton, DarkStyleButton, AirplaneModeButton } from "./miscToggles"
+import { NightLightButton, DarkStyleButton } from "./miscToggles"
 import { SleepTimerButton, SleepTimerWidget } from "./sleepTimer"
 import { VpnButton } from "./vpn"
 
@@ -39,7 +39,6 @@ export function ToggleSection({ onNavigate }: { onNavigate: (pane: string) => vo
                     <NightLightButton />
                     <DarkStyleButton />
                     <VpnButton navigate={() => onNavigate("vpn")} />
-                    <AirplaneModeButton />
                     <SleepTimerButton
                         activeDropdown={activeDropdownIndex}
                         setActiveDropdown={setActiveDropdownIndex}
