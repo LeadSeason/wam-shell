@@ -9,7 +9,11 @@ import {
     formatRemaining,
     paused,
     remaining,
+    reminderOnly,
+    restoreOnPlay,
     setAlarmEnabled,
+    setReminderOnly,
+    setRestoreOnPlay,
     startSleepTimer,
     stopAlarm,
 } from "../../../lib/sleepTimer"
@@ -121,6 +125,40 @@ export function SleepTimerWidget({
                     >
                         <image
                             iconName={alarmEnabled.as(v =>
+                                v ? "checkbox-checked-symbolic" : "checkbox-symbolic",
+                            )}
+                        />
+                    </button>
+                </box>
+                <box spacing={8}>
+                    <image iconName={"display-brightness-symbolic"} />
+                    <label label={"Undim on play"} xalign={0} hexpand />
+                    <button
+                        cssClasses={["paneRow", "trailingBtn"]}
+                        tooltipText={
+                            "Restore the brightness when media starts playing after the timer fired"
+                        }
+                        onClicked={() => setRestoreOnPlay(!restoreOnPlay.get())}
+                    >
+                        <image
+                            iconName={restoreOnPlay.as(v =>
+                                v ? "checkbox-checked-symbolic" : "checkbox-symbolic",
+                            )}
+                        />
+                    </button>
+                </box>
+                <box spacing={8}>
+                    <image iconName={"appointment-soon-symbolic"} />
+                    <label label={"Reminder only"} xalign={0} hexpand />
+                    <button
+                        cssClasses={["paneRow", "trailingBtn"]}
+                        tooltipText={
+                            "Only ring the chime at 0 — pause, mute and dim are all skipped"
+                        }
+                        onClicked={() => setReminderOnly(!reminderOnly.get())}
+                    >
+                        <image
+                            iconName={reminderOnly.as(v =>
                                 v ? "checkbox-checked-symbolic" : "checkbox-symbolic",
                             )}
                         />
