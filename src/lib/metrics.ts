@@ -207,16 +207,29 @@ function processFacts() {
     const status = readFile("/proc/self/status")
     const num = (re: RegExp) => Number(status.match(re)?.[1] ?? 0)
 
+    // two counts, because most of them are not ours: the gpu buffers
+    // (dmabuf, drm sync objects) held on this process rise and fall
+    // with what the SESSION is drawing and playing, so the total swings
+    // by a dozen between two runs of identical code — it cannot gate
+    // anything. fdsOwned drops those and counts what a leak would show
+    // up in: files, sockets, pipes, inotify, child pidfds
     let fds = 0
+    let fdsOwned = 0
     try {
         const e = Gio.File.new_for_path("/proc/self/fd").enumerate_children(
-            "standard::name",
-            Gio.FileQueryInfoFlags.NONE,
+            "standard::name,standard::symlink-target",
+            Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS,
             null,
         )
-        while (e.next_file(null)) fds++
+        for (let info = e.next_file(null); info !== null; info = e.next_file(null)) {
+            fds++
+            const target = info.get_symlink_target() ?? ""
+            if (!target.includes("dmabuf") && !target.includes("syncobj")) fdsOwned++
+        }
         e.close(null)
-        fds-- // the enumerator's own directory fd was counted too
+        // the enumerator's own directory fd was counted in both
+        fds--
+        fdsOwned--
     } catch (err) {
         console.warn("metrics: fd count failed:", err)
     }
@@ -226,6 +239,7 @@ function processFacts() {
         rssKb: num(/^VmRSS:\s+(\d+) kB/m),
         voluntaryCtxtSwitches: num(/^voluntary_ctxt_switches:\t(\d+)/m),
         fds,
+        fdsOwned,
     }
 }
 
