@@ -177,7 +177,27 @@ link_ags_js
 bash "$ROOT/scripts/install-fonts.sh"
 
 log "Installing node modules"
-(cd "$ROOT" && pnpm i)
+# same fallback as `wam update` (see pnpm_install in scripts/wam, kept
+# duplicated so wam stays a single copyable file): pnpm 11 imports
+# node:sqlite and dies on node < 22.13 before it can honour the pnpm
+# version this repo pins — but that pinned version runs on node 18+,
+# so corepack can still do the install
+if command -v pnpm >/dev/null && pnpm --version >/dev/null 2>&1; then
+    (cd "$ROOT" && pnpm i)
+else
+    PIN="$(sed -n 's/.*"packageManager": *"\(pnpm@[^"]*\)".*/\1/p' "$ROOT/package.json")"
+    NODEV="$(node -v 2>/dev/null || echo "not found")"
+    if [[ -n "$PIN" ]] && command -v corepack >/dev/null; then
+        log "pnpm cannot start on node $NODEV — using the pinned $PIN via corepack"
+        (cd "$ROOT" && corepack "$PIN" i)
+    else
+        printf '\033[1;31merror:\033[0m %s\n' "pnpm cannot run on node $NODEV.
+  pnpm 11 requires node >= 22.13; this repo pins ${PIN:-pnpm 10}, which runs on node 18+.
+  Upgrade node (arch: sudo pacman -S nodejs), or install the pinned pnpm:
+    corepack enable && corepack install --global ${PIN:-pnpm@10.28.1}" >&2
+        exit 1
+    fi
+fi
 
 log "Generating TypeScript types (@girs)"
 (cd "$ROOT" && ags types -d .)
