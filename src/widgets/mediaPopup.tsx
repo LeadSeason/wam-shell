@@ -8,6 +8,7 @@ import { For, With, createBinding, createComputed, createRoot, createState } fro
 import CommandRegistry from "../lib/requestHandler"
 import { timeoutAdd, sourceRemove } from "../lib/metrics"
 import { hideOnFocusLoss } from "../lib/popupFocus"
+import { closeOtherPopups, registerPopup } from "../lib/exclusivePopups"
 import { monitorAlive } from "../lib/utils"
 import {
     activePlayer,
@@ -249,7 +250,14 @@ let win: Astal.Window | null = null
 let rev: Gtk.Revealer | null = null
 let hideSource: number | null = null
 
+// same corner as the quick settings, the notification center and the
+// harvest popup: opening this closes those
+registerPopup("media", () => {
+    if (win?.is_visible()) hide()
+})
+
 function show() {
+    closeOtherPopups("media")
     if (hideSource !== null) {
         sourceRemove(hideSource)
         hideSource = null
