@@ -46,12 +46,47 @@ function post(summary: string, body: string, urgent: boolean) {
         null,
         (_conn, res) => {
             try {
-                Gio.DBus.session.call_finish(res)
+                const reply = Gio.DBus.session.call_finish(res)
+                // Notify returns the id the daemon filed it under
+                if (urgent) {
+                    const id = reply.deepUnpack<[number]>()[0]
+                    if (id) waiting.add(id)
+                }
             } catch (e) {
                 console.warn("Harvest notify failed:", e)
             }
         },
     )
+}
+
+// ids of the banners that wait to be dismissed (pause, stop). Starting
+// a timer answers them — "you stopped tracking" is stale the moment
+// tracking resumes — so they are closed instead of left for the user
+// to clear by hand, one per pause they ever made
+const waiting = new Set<number>()
+
+function closeWaiting() {
+    for (const id of waiting) {
+        Gio.DBus.session.call(
+            "org.freedesktop.Notifications",
+            "/org/freedesktop/Notifications",
+            "org.freedesktop.Notifications",
+            "CloseNotification",
+            new GLib.Variant("(u)", [id]),
+            null,
+            Gio.DBusCallFlags.NONE,
+            -1,
+            null,
+            // an id the user already dismissed is simply gone: the
+            // daemon ignores it, and that is not worth reporting
+            (_conn, res) => {
+                try {
+                    Gio.DBus.session.call_finish(res)
+                } catch {}
+            },
+        )
+    }
+    waiting.clear()
 }
 
 /** "Project · Task", falling back to whatever half exists */
@@ -102,5 +137,7 @@ export function notifyTimerChange(
         return
     }
     if (!Config.harvest.notify) return
+    // a start supersedes the pause/stop banners still on screen
+    if (!banner.urgent) closeWaiting()
     post(banner.summary, banner.body, banner.urgent)
 }
