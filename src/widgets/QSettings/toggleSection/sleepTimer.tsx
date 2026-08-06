@@ -1,18 +1,20 @@
 import { Gtk } from "ags/gtk4"
-import { Accessor, createComputed, Setter } from "gnim"
+import { timeout } from "ags/time"
+import { Accessor, createComputed, onCleanup, Setter } from "gnim"
 import Config from "../../../config"
+import { connect, disconnect } from "../../../lib/metrics"
 import { DropdownButton } from "./ToggleButton"
 import {
     alarmEnabled,
     alarming,
     cancelSleepTimer,
     formatRemaining,
+    notificationText,
     paused,
     remaining,
-    reminderOnly,
     restoreOnPlay,
     setAlarmEnabled,
-    setReminderOnly,
+    setNotificationText,
     setRestoreOnPlay,
     startSleepTimer,
     stopAlarm,
@@ -118,24 +120,18 @@ export function SleepTimerWidget({
                     {/* a paneRow button like Start and the preset chips:
                     the right edges align by construction (a Gtk.Switch
                     has its own geometry, and is invisible unstyled) */}
-                    {/* reminder mode always rings (a silent reminder is
-                    no reminder): show the box checked and locked while
-                    it is on, instead of claiming the alarm is off. The
-                    stored preference is left alone, so unchecking
-                    reminder returns to whatever the user picked */}
                     <button
                         cssClasses={["paneRow", "trailingBtn"]}
-                        sensitive={reminderOnly.as(r => !r)}
-                        tooltipText={reminderOnly.as(r =>
-                            r
-                                ? "Reminder only always rings the alarm"
-                                : "Play the alarm when the timer reaches 0",
-                        )}
+                        tooltipText={
+                            Config.sleepTimer.alarmOnly
+                                ? "Ring at 0 as a reminder: playback, volume and brightness are left alone"
+                                : "Play the alarm when the timer reaches 0"
+                        }
                         onClicked={() => setAlarmEnabled(!alarmEnabled.get())}
                     >
                         <image
-                            iconName={createComputed([alarmEnabled, reminderOnly], (a, r) =>
-                                a || r ? "checkbox-checked-symbolic" : "checkbox-symbolic",
+                            iconName={alarmEnabled.as(v =>
+                                v ? "checkbox-checked-symbolic" : "checkbox-symbolic",
                             )}
                         />
                     </button>
@@ -157,23 +153,34 @@ export function SleepTimerWidget({
                         />
                     </button>
                 </box>
-                <box spacing={8}>
-                    <image iconName={"appointment-soon-symbolic"} />
-                    <label label={"Reminder only"} xalign={0} hexpand />
-                    <button
-                        cssClasses={["paneRow", "trailingBtn"]}
-                        tooltipText={
-                            "Only ring the chime at 0 — pause, mute and dim are all skipped"
-                        }
-                        onClicked={() => setReminderOnly(!reminderOnly.get())}
-                    >
-                        <image
-                            iconName={reminderOnly.as(v =>
-                                v ? "checkbox-checked-symbolic" : "checkbox-symbolic",
-                            )}
-                        />
-                    </button>
-                </box>
+                {/* the note belongs to the alarm: no field without one.
+                Saved as it is typed (debounced), not on Enter — a
+                message typed and left unconfirmed must still be there
+                at 0 */}
+                <Gtk.Entry
+                    visible={alarmEnabled}
+                    $={self => {
+                        self.set_text(notificationText.get())
+                        let save: ReturnType<typeof timeout> | null = null
+                        const handler = connect(self, "changed", () => {
+                            save?.cancel()
+                            save = timeout(600, () => {
+                                save = null
+                                setNotificationText(self.get_text())
+                            })
+                        })
+                        onCleanup(() => {
+                            save?.cancel()
+                            disconnect(self, handler)
+                        })
+                    }}
+                    cssClasses={["textInput"]}
+                    placeholderText={"Reminder message"}
+                    tooltipText={
+                        "Shown as a notification when the time is up, until you dismiss it"
+                    }
+                    hexpand
+                />
             </box>
         </revealer>
     )

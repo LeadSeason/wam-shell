@@ -480,10 +480,18 @@
 #                   play always lifts the timer's mutes). like alarm,
 #                   only the default for the pill's checkbox. default
 #                   false
-# reminder - reminder mode: when the timer reaches 0 only the chime
-#            rings — nothing is paused, muted or dimmed, and it rings
-#            whether or not the alarm checkbox is on. like alarm, only
-#            the default for the pill's checkbox. default false
+# alarm_only - an alarm is a reminder: when the chime rings, nothing is
+#              paused, muted or dimmed (an alarm should not silence the
+#              machine it is waking you with). with the alarm checkbox
+#              off, the timer is a plain sleep timer again — pause,
+#              mute and dim, no sound. set false to get both at once:
+#              the sleep actions AND the chime. default true
+#              NOTE: with the alarm on, the pill also offers a text
+#              field — whatever is typed there is shown as a
+#              notification at 0, posted with critical urgency and
+#              never expiring on its own, so it stays until dismissed.
+#              no config key (it is a per-timer message, not a
+#              setting); empty, or the alarm off, = no notification
 # [sleep_timer]
 # enabled = true
 # presets = [10, 15, 20, 30, 45, 60]
@@ -494,7 +502,7 @@
 # alarm = false
 # alarm_volume = 80
 # restore_on_play = false
-# reminder = false
+# alarm_only = true
 
 # ════════════════════════════════════════════════════════════════════
 # Notifications

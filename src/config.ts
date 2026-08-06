@@ -416,8 +416,9 @@ function getSleepTimerConfig() {
         // restore the pre-dim brightness when media starts playing
         // after a fire (the mute lift on play always happens)
         restoreOnPlay: get("restore_on_play", false),
-        // reminder mode: fire = chime only, nothing paused/muted/dimmed
-        reminder: get("reminder", false),
+        // an alarm is a reminder: when it rings, nothing is paused,
+        // muted or dimmed. false = ring AND do the sleep actions
+        alarmOnly: get("alarm_only", true),
     }
 }
 
