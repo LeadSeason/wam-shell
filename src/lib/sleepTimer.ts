@@ -725,23 +725,13 @@ const streamAddedHandler = wpAudio
 // a player entering PLAYING while fired-timer mutes are live is a
 // human pressing play: the tab the timer paused cannot end while
 // paused, so firefox has no reason to move its controller to a muted
-// tab on its own — and a human pressing play wants sound. The sweeps
-// are long over by morning; this is the event-driven long tail that
-// lifts the mute from whatever they resumed, whenever that happens
-function onPlayerPlaying(p: AstalMpris.Player) {
+// tab on its own — and a human pressing play means the sleep session
+// is over. Lift EVERY mute, not just the resumed tab's: the user is
+// awake, and whatever else they touch next must have sound too. The
+// sweeps are long over by morning; this is the event-driven long tail
+function onPlayerPlaying() {
     if (mutedStreams.size === 0) return
-    const title = p.title ?? ""
-    if (title.length < 5) return
-    coveredTitles.add(title) // its future streams are covered too
-    let changed = false
-    for (const s of AstalWp.get_default()?.audio?.streams ?? []) {
-        if (!mutedStreams.has(s.id)) continue
-        if (!(s.name ?? "").includes(title)) continue
-        mutedStreams.delete(s.id)
-        changed = true
-        execAsync(["wpctl", "set-mute", String(s.id), "0"]).catch(() => {})
-    }
-    if (changed) writeState()
+    unmuteStreams()
 }
 
 const playerStatusUnsubs = new Map<AstalMpris.Player, () => void>()
@@ -757,7 +747,7 @@ function syncPlayerWatch() {
     for (const p of list) {
         if (playerStatusUnsubs.has(p)) continue
         const un = createBinding(p, "playbackStatus").subscribe(() => {
-            if (p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING) onPlayerPlaying(p)
+            if (p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING) onPlayerPlaying()
         })
         playerStatusUnsubs.set(p, un)
     }
