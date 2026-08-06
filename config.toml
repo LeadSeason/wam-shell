@@ -411,6 +411,10 @@
 #                  graphs, higher cpu cost. default 1000
 # power_profile_on_panel - show the active power profile icon in the
 #                          bar's quicksettings label. default true
+# hide_on_media_play - close the popup when a player starts playing
+#                      (pressing play in the media section, or a video
+#                      starting anywhere else). pausing leaves it open.
+#                      default true
 # show_avatar - show the avatar in the popup header. default true
 # width - popup content width in px. default 440 (the pre-config value
 #         was 520; raise it back if you liked the wide layout)
@@ -430,6 +434,7 @@
 # stats_on_panel = false
 # stats_interval = 1000
 # power_profile_on_panel = true
+# hide_on_media_play = true
 # show_avatar = true
 # avatar = ""
 # battery_full_at = 100
