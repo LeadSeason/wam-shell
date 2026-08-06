@@ -13,7 +13,7 @@ export function BluetoothButton({ navigate }: { navigate: () => void }) {
     // construction (same pattern as the wifi/wired toggles)
     return (
         <With value={createBinding(bluetooth, "adapter")}>
-            {adapter => (adapter ? <BluetoothButtonBody navigate={navigate} /> : <></>)}
+            {adapter => adapter && <BluetoothButtonBody navigate={navigate} />}
         </With>
     )
 }

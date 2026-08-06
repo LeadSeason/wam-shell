@@ -20,7 +20,7 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
     // same hotplug rebind as the toggle button (bluetooth.tsx)
     return (
         <With value={createBinding(bluetooth, "adapter")}>
-            {adapter => (adapter ? <BluetoothWidgetBody pane={pane} name={name} /> : <></>)}
+            {adapter => adapter && <BluetoothWidgetBody pane={pane} name={name} />}
         </With>
     )
 }
