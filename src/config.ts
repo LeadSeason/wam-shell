@@ -487,6 +487,10 @@ function getHarvestConfig() {
         collapseOffDays: get("collapse_off_days", false),
         // while screen sharing, mask entry details on the panel
         hideWhenScreenSharing: get("hide_when_screen_sharing", true),
+        // banner every timer start/pause, wherever it happened (this
+        // shell, the web app, the phone). Critical urgency: it waits
+        // to be dismissed
+        notify: get("notify", true),
     }
 }
 

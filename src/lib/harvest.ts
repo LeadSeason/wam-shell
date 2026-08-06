@@ -15,6 +15,7 @@
 
 export type { Entry, Project } from "./harvest/timeline"
 export { dayTimeline, startTimeLabel, formatElapsed } from "./harvest/timeline"
+export { timerBanner } from "./harvest/notify"
 export { active } from "./harvest/api"
 export {
     running,
