@@ -223,6 +223,17 @@ function getQSettingsConfig() {
         // here (or a video starting elsewhere) means the user wants to
         // watch, not to keep reading the popup
         hideOnMediaPlay: get("hide_on_media_play", true),
+        // floor for the pane area, in px. 0 = derive it from the
+        // smallest monitor, which is what keeps the popup sane on a
+        // short or heavily-scaled screen
+        minHeight: (() => {
+            const h = get("min_height", 0)
+            if (typeof h !== "number" || h < 0) {
+                console.error(`Config "quicksettings.min_height" must be a number >= 0, got "${h}"`)
+                return 0
+            }
+            return h
+        })(),
         // header avatar: absolute path to an image; empty = the login
         // avatar from AccountsService, else the OS icon. Type-guarded:
         // a non-string (avatar = 5) would crash GLib.file_test at

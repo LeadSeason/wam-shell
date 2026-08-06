@@ -184,10 +184,80 @@ window#QSettings {
     .mediaPlayer {
         border-radius: s.$radius;
         background-color: t.$base;
-        padding: s.$gap;
+        // no padding: the art runs to the card edges and the scrim
+        // carries the inset instead
+        padding: 0;
+        overflow: hidden;
         button {
             margin: 0; // gaps come from the card's box spacing
         }
+    }
+    // the cover, filling the whole card behind everything else
+    .mediaBackdrop {
+        background-color: t.$surface0;
+        background-size: cover;
+        background-position: center;
+        border-radius: s.$radius;
+        // taller than its content on purpose: the art needs a band of
+        // its own at the top, or the card is just a dark strip with a
+        // picture leaking around the edges
+        min-height: 172px;
+    }
+    // the veil behind the text. Blurring a solid-ish panel feathers
+    // its OWN edges — gtk has no gradient mask — so the dark area
+    // fades into the cover rather than stopping on a line. It sits
+    // lower than it looks: the blur bleeds it upward
+    .mediaVeil {
+        background-image: linear-gradient(
+            to bottom,
+            rgba(23, 25, 26, 0.45) 0%,
+            rgba(23, 25, 26, 0.88) 30%,
+            rgba(23, 25, 26, 0.95) 100%
+        );
+        // a wide blur is what feathers the top edge; the negative
+        // margins let it bleed past the card so the sides and bottom
+        // stay solid instead of fading away from them
+        filter: blur(16px);
+        margin: 0 -18px -18px;
+    }
+    // a track with no art: a flat panel rather than a black hole, and
+    // the scrim above still keeps the text legible
+    .mediaBackdrop.noArt {
+        background-image: linear-gradient(160deg, t.$surface1, t.$surface0 70%);
+    }
+    // everything reads off this, not off the artwork: the gradient is
+    // opaque enough at the bottom that a pale cover cannot wash out
+    // the title or the timestamps
+    .mediaScrim {
+        border-radius: s.$radius;
+        padding: s.$gap;
+
+        // the gradient cannot know what the artwork does underneath it:
+        // a shadow keeps the title readable over a busy cover (posters
+        // with their own lettering are the hard case)
+        .mediaTitle,
+        .mediaArtist {
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+        }
+        // an rtl track reads from the right: the timestamps stay in
+        // clock order (elapsed, then total) — only the text flips
+        &.rtl .mediaTitle,
+        &.rtl .mediaArtist {
+            margin-right: 2px;
+        }
+        // weighted to the bottom third, where the text actually sits:
+        // album art is often busy exactly where a title would land, so
+        // the scrim goes nearly opaque under it rather than tinting the
+        // whole card evenly
+        // a whisper of a tint only: the veil underneath carries the
+        // contrast, and a second hard gradient here would bring the
+        // edge back
+        background-image: linear-gradient(
+            to bottom,
+            rgba(23, 25, 26, 0) 0%,
+            rgba(23, 25, 26, 0.12) 45%,
+            rgba(23, 25, 26, 0.35) 100%
+        );
     }
     .mediaTitle {
         font-weight: bold;
@@ -278,16 +348,25 @@ window#QSettings {
     }
     // shared pane list design (introduced by the power mode pane):
     // a card of selectable rows — 16px icon, bold name, dim
-    // description, trailing widget. Used by every quick settings pane
-    // (classes: .paneCard, .paneRow, .paneRowName, .paneRowDesc)
+    // description, trailing widget. Used by every quick settings
+    // pane (classes: .paneCard, .paneRow, .paneRowName, .paneRowDesc,
+    // .paneSection)
     .paneCard {
         background-color: t.$base;
         border-radius: s.$radius;
         padding: 6px 12px;
     }
     .paneRow {
-        padding: 6px 8px;
+        // a list you read: rows get room, and only the current one
+        // carries a fill, so a pane reads as one highlighted thing
+        // among plain ones rather than a stack of competing cards
+        padding: 8px 10px;
         border-radius: s.$radius;
+        background-color: transparent;
+    }
+    .paneRow.active,
+    .paneRow:hover {
+        background-color: t.$surface1;
     }
     .paneRowName {
         font-weight: bold;
@@ -340,8 +419,9 @@ window#QSettings {
         }
     }
 
-    // no accent block on active rows: state reads from the row's own
-    // text/icons; the name gets just an accent cue
+    // the current row is filled (see .paneRow.active above); the name
+    // keeps the accent cue on top of it, so state reads whether or not
+    // the fill is noticed
     .paneRow.active .paneRowName {
         color: t.$accent;
     }
@@ -482,10 +562,15 @@ window#QSettings {
     // section dividers inside panes ("Paired", "Available",
     // "Connected network", "Networks", "Features"): full-size bold
     // text with a rule underneath
+    // group labels are eyebrows, not headings: they separate the rows
+    // beneath them without competing with the names in them
     .paneSection {
-        font-weight: bold;
-        color: t.$text;
-        margin: 10px 0 0 4px;
+        font-size: s.$font-small;
+        font-weight: normal;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: t.$overlay1;
+        margin: 10px 0 2px 4px;
         padding-bottom: 4px;
         border-bottom: solid 1px color.mix(t.$surface0, transparent, 40%);
     }

@@ -1,3 +1,4 @@
+import { Gtk } from "ags/gtk4"
 import { createBinding, createState, onCleanup } from "gnim"
 import { execAsync, connect, disconnect } from "../../../lib/metrics"
 import GLib from "gi://GLib?version=2.0"
@@ -63,7 +64,11 @@ export function DarkStyleButton() {
     )
 }
 
-export function AirplaneModeButton() {
+/** Airplane mode as a row inside the Wi-Fi detail: it kills every
+ *  radio, so it belongs with the networks it silences rather than as
+ *  its own tile in the grid — where it also read as just another
+ *  toggle among nine */
+export function AirplaneModeRow() {
     if (!has("nmcli")) return <></>
     const [active, setActive] = createState(false)
     // drop reads issued before the latest refresh: an older `radio all`
@@ -92,17 +97,21 @@ export function AirplaneModeButton() {
     }
 
     return (
-        <DropdownButton
-            icon={"airplane-mode-symbolic"}
-            label={"Airplane Mode"}
-            subtitle={active.as(v => (v ? "On" : "Off"))}
-            isActive={active}
-            activate={() => {
-                const next = !active.get()
-                execAsync(["nmcli", "radio", "all", next ? "off" : "on"])
-                    .then(() => setActive(next))
-                    .catch(() => {})
-            }}
-        />
+        <box cssClasses={["paneRow"]} spacing={8}>
+            <image iconName={"airplane-mode-symbolic"} pixelSize={16} />
+            <label cssClasses={["paneRowName"]} label={"Airplane mode"} xalign={0} hexpand />
+            <Gtk.Switch
+                cssClasses={["paneSwitch"]}
+                valign={Gtk.Align.CENTER}
+                active={active}
+                onNotifyActive={self => {
+                    if (self.active === active.get()) return
+                    const next = self.active
+                    execAsync(["nmcli", "radio", "all", next ? "off" : "on"])
+                        .then(() => setActive(next))
+                        .catch(() => refresh())
+                }}
+            />
+        </box>
     )
 }
