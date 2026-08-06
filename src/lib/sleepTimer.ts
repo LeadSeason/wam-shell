@@ -457,6 +457,9 @@ export function dispose() {
     for (const un of streamUnsubs.values()) un()
     streamUnsubs.clear()
     if (wpAudio && streamAddedHandler) disconnect(wpAudio, streamAddedHandler)
+    unsubPlayerWatch()
+    for (const un of playerStatusUnsubs.values()) un()
+    playerStatusUnsubs.clear()
 }
 
 // restore-on-extend state: the levels at the last fire. Persisted
@@ -691,20 +694,78 @@ function onStreamAdded(s: AstalWp.Stream) {
     }
     if (mutedStreams.size === 0 || isAlarmStream(s)) return
     if (![...mutedStreams.values()].includes(app)) return
-    if (streamHasPlayer(s, AstalWp.get_default()?.audio?.streams ?? [])) {
-        execAsync(["wpctl", "set-mute", String(s.id), "0"]).catch(() => {})
-    } else {
-        execAsync(["wpctl", "set-mute", String(s.id), "1"]).catch(() => {})
-        mutedStreams.set(s.id, app)
-        watchStream(s)
-        writeState()
-    }
+    // decide in a beat, not at birth: media.name lags node creation
+    // (the title arrives with the media-session metadata) and
+    // wireplumber's restore lands asynchronously — an instant verdict
+    // reads an empty name and mutes a tab the user just resumed
+    timeoutAdd("sleepTimer:streamAdded", GLib.PRIORITY_DEFAULT, 1000, () => {
+        const audio = AstalWp.get_default()?.audio
+        if (!audio?.streams?.some(o => o.id === s.id)) return GLib.SOURCE_REMOVE // gone again
+        if (userUnmuted.has(s.id) || mutedStreams.has(s.id)) return GLib.SOURCE_REMOVE
+        // live titles count as coverage here: a tab the user just
+        // resumed is on the bus NOW, whether or not it was at fire
+        recordCoveredTitles()
+        if (streamHasPlayer(s, audio.streams)) {
+            if (s.mute) execAsync(["wpctl", "set-mute", String(s.id), "0"]).catch(() => {})
+        } else {
+            execAsync(["wpctl", "set-mute", String(s.id), "1"]).catch(() => {})
+            mutedStreams.set(s.id, app)
+            watchStream(s)
+            writeState()
+        }
+        return GLib.SOURCE_REMOVE
+    })
 }
 
 const wpAudio = AstalWp.get_default()?.audio ?? null
 const streamAddedHandler = wpAudio
     ? connect(wpAudio, "stream-added", (_a: AstalWp.Audio, s: AstalWp.Stream) => onStreamAdded(s))
     : 0
+
+// a player entering PLAYING while fired-timer mutes are live is a
+// human pressing play: the tab the timer paused cannot end while
+// paused, so firefox has no reason to move its controller to a muted
+// tab on its own — and a human pressing play wants sound. The sweeps
+// are long over by morning; this is the event-driven long tail that
+// lifts the mute from whatever they resumed, whenever that happens
+function onPlayerPlaying(p: AstalMpris.Player) {
+    if (mutedStreams.size === 0) return
+    const title = p.title ?? ""
+    if (title.length < 5) return
+    coveredTitles.add(title) // its future streams are covered too
+    let changed = false
+    for (const s of AstalWp.get_default()?.audio?.streams ?? []) {
+        if (!mutedStreams.has(s.id)) continue
+        if (!(s.name ?? "").includes(title)) continue
+        mutedStreams.delete(s.id)
+        changed = true
+        execAsync(["wpctl", "set-mute", String(s.id), "0"]).catch(() => {})
+    }
+    if (changed) writeState()
+}
+
+const playerStatusUnsubs = new Map<AstalMpris.Player, () => void>()
+
+function syncPlayerWatch() {
+    const list = mpris.players
+    for (const [p, un] of playerStatusUnsubs) {
+        if (!list.includes(p)) {
+            un()
+            playerStatusUnsubs.delete(p)
+        }
+    }
+    for (const p of list) {
+        if (playerStatusUnsubs.has(p)) continue
+        const un = createBinding(p, "playbackStatus").subscribe(() => {
+            if (p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING) onPlayerPlaying(p)
+        })
+        playerStatusUnsubs.set(p, un)
+    }
+}
+// gnim subscribe does not fire on subscription: watch the players that
+// already exist at shell start too
+const unsubPlayerWatch = createBinding(mpris, "players").subscribe(syncPlayerWatch)
+syncPlayerWatch()
 
 // multi-player fireboxes leave tabs audible after one sweep: a player
 // can be mid-buffering (paused for an instant), racing the fire, or
