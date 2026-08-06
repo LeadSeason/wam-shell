@@ -525,16 +525,42 @@ const isAlarmStream = (s: AstalWp.Stream) =>
     ALARM_PLAYER_NAMES.has(s.description) ||
     (!!alarmSound && s.name.endsWith(GLib.path_get_basename(alarmSound)))
 
+// does this stream belong to some MPRIS player? Those streams are
+// pause's territory — muting them too would leave the app silenced
+// long after the timer (the original always-mutes bug). Stream state
+// cannot make this call: browsers keep a paused tab's stream alive in
+// "running" node state, and AstalWp doesn't populate Stream.state at
+// all (observed 0 on live streams). What does work: a browser
+// stream's media.name is its tab title, which embeds the tab's MPRIS
+// title — and for an app with a single stream, an identity↔app-name
+// match (spotify streams as "Spotify" while its title is the song)
+function streamHasPlayer(s: AstalWp.Stream, streams: AstalWp.Stream[]): boolean {
+    const name = s.name ?? ""
+    for (const p of mpris.players) {
+        const title = p.title ?? ""
+        // ≥5 chars: a degenerate title ("a", "...") must not blanket-
+        // match every stream of the session
+        if (title.length >= 5 && name.includes(title)) return true
+    }
+    const app = (s.description ?? "").toLowerCase()
+    if (app.length === 0) return false
+    if (streams.filter(o => o.description === s.description).length !== 1) return false
+    return mpris.players.some(p => {
+        const identity = (p.identity ?? "").toLowerCase()
+        return identity.length > 0 && (identity.includes(app) || app.includes(identity))
+    })
+}
+
 function muteActiveStreams() {
     const audio = AstalWp.get_default()?.audio
     if (!audio) return
-    for (const s of audio.streams ?? []) {
-        // only streams actually producing audio: a paused player's
-        // corked stream sits in IDLE, and muting it would silence the
-        // app long after the timer — the fallback is for what the
-        // pauses could not stop, not for everything with a stream
-        if (s.state !== AstalWp.NodeState.RUNNING) continue
+    const streams = audio.streams ?? []
+    for (const s of streams) {
         if (s.mute || userUnmuted.has(s.id) || isAlarmStream(s)) continue
+        // the fallback is only for what pause cannot reach: media with
+        // no MPRIS interface (e.g. the second playing firefox tab —
+        // firefox exposes a single player for one tab at a time)
+        if (streamHasPlayer(s, streams)) continue
         // wpctl, not the endpoint property: the property write races
         // (observed landing for one stream and silently not for another)
         execAsync(["wpctl", "set-mute", String(s.id), "1"]).catch(() => {})
@@ -557,11 +583,9 @@ function unmuteStreams() {
 // multi-player fireboxes leave tabs audible after one sweep: a player
 // can be mid-buffering (paused for an instant), racing the fire, or
 // re-created under a fresh bus name just after it. Re-sweep twice,
-// re-reading the player list each time, then log whatever survives.
-// The sweep is also where the mute fallback lives (streams with no
-// MPRIS interface, e.g. a firefox tab whose content process crashed):
-// by the first sweep the fire's pauses have landed and corked their
-// streams to IDLE, so only what is still genuinely playing gets muted
+// re-reading the player and stream lists each time, then log whatever
+// survives — the re-runs also catch playerless streams that appeared
+// after the fire
 let pauseSweepSource = 0
 function armPauseSweep() {
     if (pauseSweepSource) sourceRemove(pauseSweepSource)
@@ -588,10 +612,11 @@ function fire() {
     setRemaining(0)
     setPaused(false)
     pauseAllPlayers()
-    // no mute here: the pauses are async bus calls, so at this instant
-    // every stream still looks live — muting now would mute apps the
-    // pause was about to stop anyway. The sweep mutes what is still
-    // audibly RUNNING once the pauses have had time to land
+    // what has no MPRIS interface can't be paused — mute it instead.
+    // Streams covered by a player are skipped: their pause is already
+    // in flight, and muting them too would leave the app silenced
+    // long after the timer
+    muteActiveStreams()
     armPauseSweep()
     // dim to half the current brightness, never below 10%
     if (Config.sleepTimer.dim) {
