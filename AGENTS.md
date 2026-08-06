@@ -95,6 +95,22 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 - Optional pre-push gate: `pnpm perf:install-hook` (opt-in, never
   automatic). See `tests/perf/README.md` for design and limitations.
 
+## No CI
+
+- There is no CI, deliberately. The gates below are the whole story and
+  they run LOCALLY, once, at the end of a piece of work — before
+  creating the PR and/or merging, whichever comes last.
+- Do not add a GitHub Actions workflow (or any other hosted runner) back
+  in. A PR-time-only workflow was tried and removed: the
+  `pull_request` trigger silently failed to fire — no run object was
+  created at all for an opened PR, on a workflow with no path or branch
+  filters that had fired for every previous PR — so a PR could sit with
+  no checks and nothing to say so. Queued hosted runners also meant a
+  merge cancelled the very run that was meant to verify it.
+- What this means in practice: the four gates are not optional, because
+  nothing else will catch a regression. Run them and report the results
+  honestly, including the perf verdict line.
+
 ## Tests
 
 - `pnpm test` runs the unit suite: tests in `tests/*.test.ts` are bundled
