@@ -10,6 +10,7 @@ import CommandRegistry from "../../lib/requestHandler"
 import { isPinned } from "../../lib/trayPinned"
 import { refreshHyprsunset } from "../../lib/hyprsunset"
 import { hideOnFocusLoss } from "../../lib/popupFocus"
+import { closeOtherPopups, registerPopup } from "../../lib/exclusivePopups"
 
 import { createBinding, createState } from "gnim"
 import { hookPlayers } from "../../lib/mpris"
@@ -104,7 +105,14 @@ export default function QSettings() {
         })
     }
 
+    // the notification center owns the same corner: only one of them can
+    // usefully be on screen, so opening this closes that
+    registerPopup("quicksettings", () => {
+        if (win?.is_visible()) hide()
+    })
+
     function show() {
+        closeOtherPopups("quicksettings")
         // a hide may have a pending win.hide(); cancel it
         hideTimer?.cancel()
         hideTimer = null

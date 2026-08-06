@@ -2,9 +2,11 @@ import { Astal, Gtk, Gdk } from "ags/gtk4"
 import GLib from "gi://GLib?version=2.0"
 import Graphene from "gi://Graphene?version=1.0"
 import AstalNotifd from "gi://AstalNotifd?version=0.1"
+import Pango from "gi://Pango?version=1.0"
 import app from "ags/gtk4/app"
-import { For, createComputed, createRoot, createState } from "gnim"
+import { Accessor, For, createBinding, createComputed, createRoot, createState } from "gnim"
 import notifd, {
+    LOCAL_SOURCE,
     count,
     dnd,
     mutedProviders,
@@ -12,14 +14,16 @@ import notifd, {
     toggleDnd,
     toggleProviderMute,
 } from "../../lib/notifd"
-import { createBinding } from "gnim"
 import CommandRegistry from "../../lib/requestHandler"
-import { timeoutAdd, sourceRemove } from "../../lib/metrics"
+import { idleAdd, timeoutAdd, sourceRemove } from "../../lib/metrics"
 import { hideOnFocusLoss } from "../../lib/popupFocus"
+import { closeOtherPopups, registerPopup } from "../../lib/exclusivePopups"
+import { acquireClock, nowSec, relTime } from "../../lib/relTime"
 import { providers } from "../../lib/notificationProviders"
 import type { ProviderItem } from "../../lib/notificationProviders"
-import NotificationCard from "./NotificationCard"
-import ProviderCard from "./ProviderCard"
+import CenterRow from "./CenterRow"
+import { appIconFor, fromDesktop, fromItem } from "./rowData"
+import { buildFeed, FeedBlock } from "./feed"
 import { PaneEmpty } from "../PaneEmpty"
 
 const registry = CommandRegistry.get_default()
@@ -32,17 +36,24 @@ let rev: Gtk.Revealer | null = null
 let card: Gtk.Box | null = null
 let searchEntry: Gtk.Entry | null = null
 let hideSource: number | null = null
+// the shared relative-time clock, held only while the center is open:
+// rows show ages that keep counting up, and nothing should tick for a
+// window nobody is looking at
+let releaseClock: (() => void) | null = null
 
 function show() {
+    // the quick settings own the same corner; only one of them can
+    // usefully be on screen at a time
+    closeOtherPopups("notifications")
     if (hideSource !== null) {
         sourceRemove(hideSource)
         hideSource = null
     }
     // stale-while-revalidate provider inboxes on open (age-gated)
     for (const p of providers) p.refresh()
+    if (!releaseClock) releaseClock = acquireClock()
     win!.present()
     rev!.revealChild = true
-    searchEntry?.grab_focus()
 }
 
 function hide() {
@@ -50,7 +61,15 @@ function hide() {
     // the entry's text (they're separate — one doesn't follow the other)
     setQuery("")
     searchEntry?.set_text("")
+    setSearchOpen(false)
     rev!.revealChild = false
+    // let go of the clock now, not when the slide-out finishes: ages do
+    // not need to keep ticking through a 200ms fade nobody is reading,
+    // and releasing it from the delayed callback meant a reopen within
+    // that window cancelled the release entirely — leaving the timer
+    // running against a closed window until the next full close
+    releaseClock?.()
+    releaseClock = null
     if (hideSource !== null) sourceRemove(hideSource)
     hideSource = timeoutAdd("notifCenter:hide", GLib.PRIORITY_DEFAULT, 200, () => {
         hideSource = null
@@ -83,18 +102,40 @@ const sorted = persistent.as(list => [...list].sort((a, b) => b.time - a.time ||
 // createComputed over both inputs: sorted.as alone would not recompute
 // when the query changes
 const [query, setQuery] = createState("")
+// the search field is folded away until asked for. It used to be the
+// widest, tallest thing in the window and the first thing the eye
+// landed on — chrome for a job you do occasionally, sitting above the
+// content you came for every time
+const [searchOpen, setSearchOpen] = createState(false)
 
 // provider integrations (GitHub & co.): their items merge into the
 // list; a header icon per provider filters to just its items
 const [providerFilter, setProviderFilter] = createState<string | null>(null)
-// special filter value: only the local daemon's notifications
-const LOCAL_FILTER = "local"
+// special filter value: only the local daemon's notifications. Shared
+// with the mute list, so the chip's filter and its mute cannot drift
+// apart into two different spellings of "local"
+const LOCAL_FILTER = LOCAL_SOURCE
 
 interface Row {
     key: string
     time: number
+    appName: string
+    iconName: string
     desktop: AstalNotifd.Notification | null
     item: ProviderItem | null
+}
+
+// Someone is waiting on you, as opposed to telling you something. The
+// center lifts these above the feed, because a task that is due and a
+// "connection established" are not the same kind of object and a purely
+// chronological list insists that they are.
+//
+// Critical is the desktop spec's own word for it. For provider items
+// only the provider can tell — a pull request you opened and one you
+// were asked to review look identical from out here — so it says so.
+function isNeeded(r: Row): boolean {
+    if (r.desktop) return r.desktop.urgency === AstalNotifd.Urgency.CRITICAL
+    return !!r.item?.actionable
 }
 
 // built inside ensureWindow, NOT at module scope: app.tsx imports this
@@ -118,10 +159,16 @@ function buildMerged() {
                     // the time is part of the key: replaces_id makes the
                     // daemon emit a NEW Notification object with the same
                     // id but a new time, and gnim's For would otherwise
-                    // reuse the stale card (it reads state once at build)
+                    // reuse the stale row (it reads state once at build)
                     rows.push({
                         key: `desktop:${n.id}:${n.time}`,
                         time: n.time,
+                        appName: n.appName || "unknown",
+                        // resolved, not the raw hint: apps often send no
+                        // app_icon at all, and a folded group headed by
+                        // the generic fallback next to rows that resolved
+                        // theirs fine looked like two different apps
+                        iconName: appIconFor(n.appIcon, n.appName),
                         desktop: n,
                         item: null,
                     })
@@ -137,6 +184,8 @@ function buildMerged() {
                         // to get a rebuild with the image
                         key: `provider:${item.id}:${item.imagePath ?? ""}`,
                         time: item.time,
+                        appName: item.appName,
+                        iconName: item.iconName,
                         desktop: null,
                         item,
                     })
@@ -144,18 +193,25 @@ function buildMerged() {
             })
             const needle = q.trim().toLowerCase()
             const filteredRows =
-                needle === ""
-                    ? rows
-                    : rows.filter(r =>
-                          (r.desktop?.appName || r.item?.appName || "")
-                              .toLowerCase()
-                              .includes(needle),
-                      )
+                needle === "" ? rows : rows.filter(r => r.appName.toLowerCase().includes(needle))
             return filteredRows.sort((a, b) => b.time - a.time)
         },
     )
 }
-let merged: ReturnType<typeof buildMerged>
+let merged: Accessor<Row[]>
+let needsYou: Accessor<Row[]>
+let feedBlocks: Accessor<FeedBlock<Row>[]>
+
+function buildFeedBlocks(rows: Accessor<Row[]>): Accessor<FeedBlock<Row>[]> {
+    // the day dividers depend on the clock as much as on the rows: a
+    // list left open past midnight has to relabel itself
+    return createComputed([rows, nowSec], (list, now) =>
+        buildFeed(
+            list.filter(r => !isNeeded(r)),
+            now,
+        ),
+    )
+}
 
 // providers behind an interactive sign-in (YouTube): when their filter
 // is selected and they have no accounts yet, the empty state offers
@@ -219,11 +275,112 @@ function onClick(_e: Gtk.GestureClick, _: number, x: number, y: number) {
     if (!rect.contains_point(new Graphene.Point({ x, y }))) hide()
 }
 
+/** One row, wired to whichever kind of notification produced it. The
+ *  gestures differ on purpose: dismissing a desktop notification
+ *  destroys it, where a provider item has both a "not now" (hide, right
+ *  click) and a "done" (the provider's own semantics). */
+function ItemRow({ row }: { row: Row }) {
+    if (row.desktop) {
+        const n = row.desktop
+        const hasDefault = n.get_actions().some(a => a.get_id() === "default")
+        return (
+            <CenterRow
+                data={fromDesktop(n)}
+                dismissLabel="Dismiss"
+                onActivate={() => {
+                    if (hasDefault) n.invoke("default")
+                }}
+                onDismiss={() => n.dismiss()}
+                onAction={id => n.invoke(id)}
+            />
+        )
+    }
+    const item = row.item!
+    return (
+        <CenterRow
+            data={fromItem(item)}
+            dismissLabel="Mark done"
+            onActivate={() => item.activate()}
+            onDismiss={() => item.dismiss()}
+            onSecondary={() => item.hide()}
+            onAction={id => item.actions?.find(a => a.id === id)?.run()}
+        />
+    )
+}
+
+/** Dismiss one row for real — destroy the notification, or mark the
+ *  provider item done. Not the same as taking a banner off screen. */
+function dismissRow(r: Row) {
+    if (r.desktop) r.desktop.dismiss()
+    else r.item!.dismiss()
+}
+
+/** A run of notifications from one app, folded behind a single line
+ *  until asked for. Its open state is local: gnim's For rebuilds a group
+ *  when its key changes, and a group whose rows changed is a different
+ *  group — reopening it is the honest default. */
+function FeedGroup({ block }: { block: Extract<FeedBlock<Row>, { kind: "group" }> }) {
+    if (block.rows.length === 1) return <ItemRow row={block.rows[0]} />
+
+    const [open, setOpen] = createState(false)
+    return (
+        <box cssClasses={["group"]} orientation={Gtk.Orientation.VERTICAL}>
+            <button
+                cssClasses={["groupHead"]}
+                tooltipText={`${block.rows.length} from ${block.appName} — middle-click to clear them all`}
+                onClicked={() => setOpen(!open.get())}
+            >
+                {/* middle click clears the whole run, matching what it
+                does on a single row. A folded group is exactly the case
+                where clearing one at a time is tedious, and the count is
+                right there to say how many are going */}
+                <Gtk.GestureClick button={2} onReleased={() => block.rows.forEach(dismissRow)} />
+                <box spacing={8}>
+                    <image iconName={block.iconName} pixelSize={16} />
+                    <label
+                        cssClasses={["appName"]}
+                        label={block.appName}
+                        xalign={0}
+                        maxWidthChars={22}
+                        ellipsize={Pango.EllipsizeMode.END}
+                    />
+                    <label cssClasses={["count"]} label={String(block.rows.length)} />
+                    <label hexpand />
+                    {/* the newest of the folded rows: a group is worth
+                    skipping past when it is old, and without this the
+                    fold hides the one thing that says so */}
+                    <label
+                        cssClasses={["time"]}
+                        label={nowSec.as(n => relTime(block.rows[0].time, n))}
+                    />
+                    <image
+                        cssClasses={["chevron"]}
+                        iconName={open.as(o => (o ? "pan-up-symbolic" : "pan-down-symbolic"))}
+                    />
+                </box>
+            </button>
+            <revealer
+                revealChild={open}
+                transitionDuration={150}
+                transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
+            >
+                <box cssClasses={["groupRows"]} orientation={Gtk.Orientation.VERTICAL}>
+                    {block.rows.map(r => (
+                        <ItemRow row={r} />
+                    ))}
+                </box>
+            </revealer>
+        </box>
+    )
+}
+
 function ensureWindow() {
     if (win) return
     const { TOP, BOTTOM, LEFT, RIGHT } = Astal.WindowAnchor
     createRoot(() => {
         merged = buildMerged()
+        needsYou = merged.as(rows => rows.filter(isNeeded))
+        feedBlocks = buildFeedBlocks(merged)
         signInTarget = buildSignInTarget()
         clearable = buildClearable()
         providerStatus = buildProviderStatus()
@@ -266,18 +423,19 @@ function ensureWindow() {
                                 marginTop={30}
                                 marginEnd={12}
                             >
+                                {/* one row of chrome: what this window
+                                is, and the two things you do to all of
+                                it at once */}
                                 <box cssClasses={["header"]} spacing={6}>
-                                    <entry
-                                        $={self => {
-                                            searchEntry = self
-                                        }}
-                                        cssClasses={["filter", "textInput"]}
-                                        placeholderText="Filter by app…"
+                                    <label
+                                        cssClasses={["windowTitle"]}
+                                        label="Notifications"
+                                        xalign={0}
                                         hexpand
-                                        onChanged={self => setQuery(self.text)}
                                     />
                                     <button
                                         tooltipText="Do not disturb"
+                                        cssClasses={dnd.as(v => (v ? ["active"] : []))}
                                         onClicked={() => toggleDnd()}
                                     >
                                         <image
@@ -300,7 +458,7 @@ function ensureWindow() {
                                                 ? "Clear all local notifications"
                                                 : f
                                                   ? `Clear all ${f} notifications`
-                                                  : "Pick a filter to clear",
+                                                  : "Pick a source to clear",
                                         )}
                                         onClicked={() => {
                                             const f = providerFilter.get()
@@ -317,19 +475,26 @@ function ensureWindow() {
                                         <image iconName="user-trash-symbolic" />
                                     </button>
                                 </box>
-                                {/* local + provider filter icons on
-                                their own row: click to show only that
-                                source, again to go back. Static by
-                                window-build time — plain map, no
-                                reactivity needed. Right-click a provider
-                                to mute/unmute its banners */}
+                                {/* local + provider filter chips: click
+                                to show only that source, again to go
+                                back. Static by window-build time — plain
+                                map, no reactivity needed. Right-click a
+                                provider to mute/unmute its banners */}
                                 <box cssClasses={["filtersRow"]} spacing={6}>
                                     <button
-                                        cssClasses={providerFilter.as(f => [
-                                            "provider",
-                                            ...(f === LOCAL_FILTER ? ["active"] : []),
-                                        ])}
-                                        tooltipText={"Show only local notifications"}
+                                        cssClasses={createComputed(
+                                            [providerFilter, mutedProviders],
+                                            (f, m) => [
+                                                "provider",
+                                                ...(f === LOCAL_FILTER ? ["active"] : []),
+                                                ...(m.includes(LOCAL_FILTER) ? ["muted"] : []),
+                                            ],
+                                        )}
+                                        tooltipText={mutedProviders.as(m =>
+                                            m.includes(LOCAL_FILTER)
+                                                ? "Show only local notifications (right-click to unmute)"
+                                                : "Show only local notifications (right-click to mute banners)",
+                                        )}
                                         onClicked={() =>
                                             setProviderFilter(
                                                 providerFilter.get() === LOCAL_FILTER
@@ -338,12 +503,28 @@ function ensureWindow() {
                                             )
                                         }
                                     >
+                                        {/* the desktop's own notifications are a
+                                        source like any other: same right-click
+                                        mute as the providers, rather than DND
+                                        being the only way to quieten them */}
+                                        <Gtk.GestureClick
+                                            button={3}
+                                            onReleased={() => toggleProviderMute(LOCAL_FILTER)}
+                                        />
                                         <box spacing={4}>
                                             <image iconName="computer-symbolic" />
                                             {/* pending count, hidden at 0 */}
                                             <label
                                                 cssClasses={["count"]}
                                                 label={count.as(n => (n > 0 ? String(n) : ""))}
+                                            />
+                                            <image
+                                                cssClasses={["mutedBadge"]}
+                                                iconName="notifications-disabled-symbolic"
+                                                pixelSize={12}
+                                                visible={mutedProviders.as(m =>
+                                                    m.includes(LOCAL_FILTER),
+                                                )}
                                             />
                                         </box>
                                     </button>
@@ -393,7 +574,6 @@ function ensureWindow() {
                                         </button>
                                     ))}
                                 </box>
-                                <Gtk.Separator />
                                 {/* fixed-height body: switching between
                                 an empty source and a full one must not
                                 resize the card. Empty sources fill the
@@ -516,20 +696,104 @@ function ensureWindow() {
                                         <box
                                             cssClasses={["list"]}
                                             orientation={Gtk.Orientation.VERTICAL}
-                                            spacing={8}
                                         >
-                                            <For each={merged} id={r => r.key}>
-                                                {r =>
-                                                    r.desktop ? (
-                                                        <NotificationCard
-                                                            n={r.desktop}
-                                                            onDismiss={() => r.desktop!.dismiss()}
-                                                        />
-                                                    ) : (
-                                                        <ProviderCard item={r.item!} />
-                                                    )
-                                                }
-                                            </For>
+                                            {/* what is waiting on you,
+                                            above what merely happened.
+                                            Absent entirely when nothing
+                                            qualifies — an empty "Needs
+                                            you" heading is a heading
+                                            that has to be read and
+                                            dismissed every time */}
+                                            <box
+                                                cssClasses={["zone", "needs"]}
+                                                orientation={Gtk.Orientation.VERTICAL}
+                                                visible={needsYou.as(l => l.length > 0)}
+                                            >
+                                                <label
+                                                    cssClasses={["zoneTitle"]}
+                                                    label="Needs you"
+                                                    xalign={0}
+                                                />
+                                                <For each={needsYou} id={r => r.key}>
+                                                    {r => <ItemRow row={r} />}
+                                                </For>
+                                            </box>
+                                            <box
+                                                cssClasses={["zone", "feed"]}
+                                                orientation={Gtk.Orientation.VERTICAL}
+                                                visible={feedBlocks.as(b => b.length > 0)}
+                                            >
+                                                <box cssClasses={["zoneHeader"]} spacing={6}>
+                                                    <label
+                                                        cssClasses={["zoneTitle"]}
+                                                        label="Feed"
+                                                        xalign={0}
+                                                        hexpand
+                                                    />
+                                                    <button
+                                                        cssClasses={searchOpen.as(o =>
+                                                            o ? ["search", "active"] : ["search"],
+                                                        )}
+                                                        tooltipText="Filter by app"
+                                                        onClicked={() => {
+                                                            const next = !searchOpen.get()
+                                                            setSearchOpen(next)
+                                                            if (!next) {
+                                                                // closing it must also drop the
+                                                                // filter, or the list stays
+                                                                // narrowed by a field nobody
+                                                                // can see
+                                                                setQuery("")
+                                                                searchEntry?.set_text("")
+                                                                return
+                                                            }
+                                                            // the entry lives inside a revealer
+                                                            // that has not expanded yet, and an
+                                                            // unmapped widget cannot take focus
+                                                            idleAdd(
+                                                                "notifCenter:focusSearch",
+                                                                GLib.PRIORITY_DEFAULT_IDLE,
+                                                                () => {
+                                                                    searchEntry?.grab_focus()
+                                                                    return GLib.SOURCE_REMOVE
+                                                                },
+                                                            )
+                                                        }}
+                                                    >
+                                                        <image iconName="system-search-symbolic" />
+                                                    </button>
+                                                </box>
+                                                <revealer
+                                                    revealChild={searchOpen}
+                                                    transitionDuration={150}
+                                                    transitionType={
+                                                        Gtk.RevealerTransitionType.SLIDE_DOWN
+                                                    }
+                                                >
+                                                    <entry
+                                                        $={self => {
+                                                            searchEntry = self
+                                                        }}
+                                                        cssClasses={["filter", "textInput"]}
+                                                        placeholderText="Filter by app…"
+                                                        hexpand
+                                                        onChanged={self => setQuery(self.text)}
+                                                    />
+                                                </revealer>
+                                                <For each={feedBlocks} id={b => b.key}>
+                                                    {b =>
+                                                        b.kind === "divider" ? (
+                                                            <label
+                                                                cssClasses={["dayDivider"]}
+                                                                label={b.label}
+                                                                xalign={0}
+                                                            />
+                                                        ) : (
+                                                            <FeedGroup block={b} />
+                                                        )
+                                                    }
+                                                </For>
+                                            </box>
                                         </box>
                                     </Gtk.ScrolledWindow>
                                 </box>

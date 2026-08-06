@@ -2,159 +2,88 @@
 @use "../conf.scss" as s;
 @use "sass:color";
 
-// Shared notification card (Marble-style): dimmed header with app icon +
-// name + time + dismiss, thumbnail left, summary/body right.
-// Widget classes: .notification (card), .critical / .low (urgency),
-// .rtl (RTL summary — larger, brighter body), .appName/.time (header),
-// .image (thumbnail), .summary/.body, .actions, .dismiss, .filter (the
-// center's app-filter entry).
-.notification {
-    background: t.$base;
+// Notifications, in two surfaces that deliberately do not look alike.
+//
+// A banner (.toast, in window.NotificationPopups) is read in the second
+// it takes to decide whether to care: one card, one line of headline, a
+// countdown along its bottom edge. Several from one app fold into a
+// single card with a count. A center row (.centerRow, in
+// window.Notifications) is browsed: no card at all, a hairline between
+// rows, artwork and a body worth reading, and paint only where the
+// pointer is.
+//
+// Widget classes — banner: .popups (stack), .popup (row), .toast (card),
+// .toastBody, .timeoutBar (countdown), .thumb. Center: .notifications
+// (window card), .header, .windowTitle, .filtersRow, .zone/.needs/.feed,
+// .zoneTitle, .zoneHeader, .dayDivider, .group/.groupHead/.groupRows,
+// .centerRow, .art. Shared within a row: .appName, .appIcon, .summary,
+// .body, .time, .actions, .dismiss, .count, .critical/.low (urgency),
+// .rtl.
+
+// ---------------------------------------------------------------- type
+//
+// One scale for both surfaces, so a notification reads the same wherever
+// it is drawn. The app name is a caption, not a heading: it labels the
+// line beside it and gets out of the way.
+@mixin app-name {
+    font-size: s.$font-small;
+    color: t.$subtext0;
+}
+
+@mixin headline {
+    font-weight: 600;
     color: t.$text;
-    border-radius: s.$radius;
-    padding: 10px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
 
-    &.critical {
-        // straight urgency rail: square left corners so the spine runs
-        // straight from top to bottom
-        border-radius: 0 s.$radius s.$radius 0;
-        border-left: solid 4px t.$red;
-        .summary {
-            color: t.$red;
-        }
-        .time {
-            color: t.$red;
-        }
-    }
-    &.low {
-        .summary,
-        .appName {
-            color: t.$subtext0;
-        }
-    }
-    // Arabic in the shell's mono Nerd Font is unreadable and renders
-    // optically smaller: give RTL bodies a proper Arabic UI face,
-    // slightly larger with raised contrast
-    &.rtl .body {
-        font-family: "Noto Kufi Arabic", "DejaVu Sans", sans-serif;
-        font-size: 1.05em;
-        color: t.$subtext1;
-    }
+@mixin secondary {
+    color: t.$subtext0;
+}
 
-    .appName,
-    .time {
-        font-size: s.$font-small;
-        color: t.$subtext0;
-        // same slot height as the dismiss button it swaps with on
-        // hover — the header (and card) must not jiggle
-        min-height: 20px;
-    }
+// Arabic renders optically smaller and thinner than Latin at the same
+// point size, and the shell's UI face has no Arabic of its own — it
+// would fall through to whatever fontconfig picks, which need not match
+// between the headline and the line under it. Naming the face keeps a
+// card's two lines in one typeface, a touch larger, with the contrast
+// raised to compensate for the lighter strokes.
+@mixin rtl-text {
+    font-family: "Noto Sans Arabic UI", "Noto Kufi Arabic", sans-serif;
+    font-size: 1.05em;
+}
 
-    button.dismiss {
-        // strip the theme's built-in button minimum (~24px): the slot
-        // must match the timestamp's 20px floor or the card jiggles
-        // when hover swaps them
-        min-height: 0;
-        min-width: 0;
-        padding: 0;
-    }
-    .summary {
-        font-weight: bold;
-    }
-    .body {
-        font-size: 1em;
-        color: t.$subtext0;
-    }
-    .image {
-        background: t.$surface0;
-        border-radius: s.$radius;
-    }
-    // hidden until the card is hovered (swaps with the timestamp via the
-    // card's motion controller — CSS :hover is unreliable on layer-shell
-    // surfaces)
+// action buttons and the hover dismiss — the same button in both
+// surfaces, so it behaves the same in both
+@mixin row-buttons {
     button {
         border-radius: s.$radius;
         border: solid 2px transparent;
         padding: 1px 6px;
+
         &:hover {
             background-color: t.$accent20;
             border: solid 2px t.$accent20;
         }
     }
-    // action buttons (app actions, provider buttons like todoist's
-    // done/postpone/dismiss): a resting background so they read as
-    // buttons — the generic rule above only paints on hover
+
+    button.dismiss {
+        // strip the theme's button minimum (~24px): this slot swaps with
+        // the timestamp, and a taller button makes the row jiggle on
+        // every hover
+        min-height: 0;
+        min-width: 0;
+        padding: 0;
+    }
+
+    // a resting background so they read as buttons — the rule above only
+    // paints on hover, which leaves an untouched action row looking like
+    // plain text
     .actions button {
         background: t.$surface0;
+        padding: 2px 8px;
     }
 }
 
-// Notification center window.
-window.Notifications {
-    background: transparent;
+// ------------------------------------------------------- banner: toast
 
-    .notifications {
-        background: t.$crust;
-        color: t.$text;
-        border-radius: s.$radius;
-        border: solid 2px color.mix(t.$surface0, transparent, 60%);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        padding: 8px;
-    }
-
-    .header,
-    .filtersRow {
-        button {
-            border-radius: s.$radius;
-            border: solid 2px transparent;
-            padding: 1px 6px;
-            &:hover {
-                background-color: t.$accent20;
-                border: solid 2px t.$accent20;
-            }
-        }
-        // provider filter icons: dimmed until selected
-        button.provider {
-            opacity: 0.45;
-            &.active {
-                opacity: 1;
-                background-color: t.$accent40;
-                border: solid 2px t.$accent40;
-            }
-            // muted providers (no banners): extra-dimmed
-            &.muted {
-                opacity: 0.25;
-            }
-            // pending-count badge next to the icon
-            .count {
-                font-size: s.$font-small;
-                color: t.$subtext0;
-            }
-        }
-    }
-
-    .header {
-        padding: 0 4px 4px;
-    }
-
-    .filtersRow {
-        padding: 0 4px 2px;
-
-        // bigger click targets for the filter icons
-        button {
-            padding: 4px 10px;
-        }
-    }
-
-    .list {
-        padding-top: 8px;
-    }
-}
-
-// Transient popup banners: the shared card plus a thin countdown bar at
-// the bottom edge (.timeoutBar — its css `color` is what the cairo draw
-// picks up). Hovering a banner freezes every countdown.
 window.NotificationPopups {
     background: transparent;
 
@@ -162,15 +91,370 @@ window.NotificationPopups {
         background: transparent;
     }
 
-    .timeoutBar {
-        color: t.$accent;
-        margin: 3px 2px 0;
+    .toast {
+        background: t.$base;
+        color: t.$text;
+        border-radius: 12px;
+        // no padding here: the body carries its own, so the countdown
+        // can sit against the card's bottom edge
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        border: solid 1px color.mix(t.$surface0, transparent, 45%);
+
+        @include row-buttons;
+
+        .toastBody {
+            padding: 10px 12px 8px;
+        }
+        // a banner that never expires draws no countdown, so the body
+        // has to close the gap the bar was filling
+        &.untimed .toastBody {
+            padding-bottom: 11px;
+        }
+        // the spine takes some of the gutter back, so the body gives
+        // most of its own left padding up and the icons across the stack
+        // stay close to a common line
+        &.critical .toastBody {
+            padding-left: 6px;
+        }
+
+        // the countdown, along the bottom edge. Its css `color` is what
+        // the cairo draw picks up — the widget paints nothing itself.
+        // Inset to the body's own text column and stopped short of the
+        // bottom: a full-bleed bar would run into the corner radius,
+        // and squaring the card off to accommodate it is what made the
+        // shadow read as a rectangle around a rounded card
+        .timeoutBar {
+            color: t.$accent;
+            margin: 0 12px 8px;
+            border-radius: 999px;
+        }
+
+        .appIcon {
+            margin-top: 1px;
+        }
+        .appName {
+            @include app-name;
+        }
+        // how many banners from this app this card stands for
+        .count {
+            font-size: s.$font-small;
+            color: t.$crust;
+            background: t.$overlay0;
+            border-radius: 999px;
+            padding: 0 6px;
+        }
+        .summary {
+            @include headline;
+        }
+        .body {
+            @include secondary;
+        }
+        .time {
+            font-size: s.$font-small;
+            color: t.$overlay1;
+        }
+        &.rtl {
+            .summary,
+            .body {
+                @include rtl-text;
+            }
+            .body {
+                color: t.$subtext1;
+            }
+        }
+
+        .thumb {
+            background: t.$surface0;
+            border-radius: 8px;
+        }
+
+        // the folded banners, dealt out under the card that stands for
+        // them: indented so the header still reads as their heading
+        .drawer {
+            margin-left: 16px;
+        }
+
+        // Urgency, quietly. The old card turned the whole headline red
+        // for a critical notification, which made "42 packages can be
+        // upgraded" look like a kernel panic. The spine says it instead:
+        // present, unmissable in a stack, and not shouting.
+        // an inset pill, not a border: the card keeps the same 12px
+        // silhouette as every other banner, so urgency is carried by the
+        // mark and by colour rather than by being a different shape
+        .spine {
+            min-width: 3px;
+            background: t.$red;
+            border-radius: 999px;
+            margin: 9px 0 9px 8px;
+        }
+
+        &.critical .timeoutBar {
+            color: t.$red;
+        }
+        &.low {
+            .appName,
+            .summary {
+                color: t.$subtext0;
+            }
+        }
     }
 
-    .notification.critical + .timeoutBar {
-        color: t.$red;
-        // flush with the card's bottom and left edges: the bar and the
-        // urgency rail join into a continuous ⌐
-        margin: 0 2px 0 0;
+}
+
+// ------------------------------------------------------- center: inbox
+
+window.Notifications {
+    background: transparent;
+
+    .notifications {
+        background: t.$crust;
+        color: t.$text;
+        border-radius: 14px;
+        border: solid 2px color.mix(t.$surface0, transparent, 60%);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        padding: 10px 8px 8px;
+    }
+
+    .header {
+        padding: 0 6px 6px;
+
+        .windowTitle {
+            font-size: 1.15em;
+            font-weight: 700;
+        }
+
+        button {
+            border-radius: s.$radius;
+            border: solid 2px transparent;
+            padding: 3px 7px;
+
+            &:hover {
+                background-color: t.$accent20;
+                border: solid 2px t.$accent20;
+            }
+            // do-not-disturb is a MODE, not a command: while it is on the
+            // button has to look pressed, or the only way to tell is to
+            // notice which icon it happens to be showing
+            &.active {
+                background-color: t.$accent40;
+                border: solid 2px t.$accent40;
+            }
+            &:disabled {
+                opacity: 0.35;
+            }
+        }
+    }
+
+    .filtersRow {
+        padding: 0 6px 8px;
+
+        button {
+            border-radius: 999px;
+            border: solid 2px transparent;
+            padding: 3px 10px;
+
+            &:hover {
+                background-color: t.$accent20;
+                border: solid 2px t.$accent20;
+            }
+        }
+        // provider chips: dimmed until selected
+        button.provider {
+            opacity: 0.5;
+            &.active {
+                opacity: 1;
+                background-color: t.$accent40;
+                border: solid 2px t.$accent40;
+            }
+            // muted providers (no banners): extra-dimmed
+            &.muted {
+                opacity: 0.28;
+            }
+            .count {
+                font-size: s.$font-small;
+                color: t.$subtext0;
+            }
+        }
+    }
+
+    // ---- zones
+    //
+    // "Needs you" over "Feed" is the whole point of the window: one
+    // list, two kinds of thing in it, and a purely chronological order
+    // insisted they were the same kind. The headings are small and
+    // lettered wide — a label for a region, not a title competing with
+    // the notifications under it.
+    .zoneTitle {
+        font-size: s.$font-small;
+        font-weight: 700;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: t.$subtext0;
+        padding: 0 6px;
+        margin-bottom: 4px;
+    }
+
+    .zone {
+        margin-bottom: 10px;
+    }
+
+    .zoneHeader {
+        padding-right: 4px;
+
+        // a square target, not a letterbox: `padding: 0 5px` gave it no
+        // vertical padding at all, so the button collapsed to the icon's
+        // own height and the magnifier came out pinched inside a narrow
+        // pill. Equal padding on all four sides, and a floor under both
+        // dimensions so it stays square whatever the icon measures
+        button.search {
+            border-radius: s.$radius;
+            border: solid 2px transparent;
+            padding: 4px;
+            min-width: 20px;
+            min-height: 20px;
+            opacity: 0.6;
+
+            &:hover {
+                opacity: 1;
+                background-color: t.$accent20;
+            }
+            &.active {
+                opacity: 1;
+                background-color: t.$accent40;
+            }
+        }
+    }
+
+    // things needing a reply sit on a faint accent wash, so the zone
+    // reads as a place and not just as a heading someone wrote above
+    // some rows
+    .needs .centerRow {
+        background: t.$accent10;
+        border-radius: 10px;
+        margin-bottom: 3px;
+
+        &:hover {
+            background: t.$accent20;
+        }
+    }
+
+    .filter {
+        margin: 0 4px 6px;
+    }
+
+    .dayDivider {
+        font-size: s.$font-small;
+        color: t.$overlay1;
+        padding: 10px 6px 4px;
+    }
+
+    // ---- rows
+
+    .centerRow {
+        padding: 7px 8px;
+        border-radius: 8px;
+
+        @include row-buttons;
+
+        // the row is not a card. Hover is the only paint it gets, which
+        // is what keeps a list of twelve from reading as banding
+        &:hover {
+            background: t.$surface050;
+        }
+
+        .appIcon {
+            margin-top: 1px;
+        }
+        .appName {
+            @include app-name;
+            // matches the dismiss button it swaps with on hover, so the
+            // row height never changes under the pointer
+            min-height: 20px;
+        }
+        .time {
+            font-size: s.$font-small;
+            color: t.$overlay1;
+            min-height: 20px;
+        }
+        .summary {
+            @include headline;
+        }
+        .body {
+            @include secondary;
+        }
+        &.rtl {
+            .summary,
+            .body {
+                @include rtl-text;
+            }
+            .body {
+                color: t.$subtext1;
+            }
+        }
+
+        .art {
+            background: t.$surface0;
+            border-radius: 8px;
+            margin-top: 4px;
+        }
+
+        // same restraint as the banner: an inset mark, not a red
+        // headline, and not a shape change either
+        .spine {
+            min-width: 3px;
+            background: t.$red;
+            border-radius: 999px;
+            margin: 2px 8px 2px 0;
+        }
+        &.low {
+            .appName,
+            .summary {
+                color: t.$subtext0;
+            }
+        }
+    }
+
+    // hairlines between siblings, not around each row: the separation
+    // belongs BETWEEN items, and a border on every row would draw twice
+    // as many lines as there are gaps
+    .feed .group:not(:first-child) {
+        border-top: solid 1px color.mix(t.$surface0, transparent, 45%);
+    }
+
+    // ---- folded runs
+
+    .groupHead {
+        padding: 7px 8px;
+        border-radius: 8px;
+
+        &:hover {
+            background: t.$surface050;
+        }
+
+        .appName {
+            @include app-name;
+        }
+        .time {
+            font-size: s.$font-small;
+            color: t.$overlay1;
+        }
+        // how many are folded away — the reason the row is worth a click
+        .count {
+            font-size: s.$font-small;
+            color: t.$crust;
+            background: t.$overlay0;
+            border-radius: 999px;
+            padding: 0 6px;
+        }
+        .chevron {
+            opacity: 0.5;
+        }
+    }
+
+    // folded rows are indented under their heading, so an open group
+    // reads as belonging to it rather than as more of the feed
+    .groupRows {
+        margin-left: 10px;
+        border-left: solid 1px color.mix(t.$surface0, transparent, 45%);
     }
 }
