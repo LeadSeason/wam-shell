@@ -111,10 +111,19 @@ window.NotificationPopups {
             padding-bottom: 11px;
         }
         // the spine takes some of the gutter back, so the body gives
-        // most of its own left padding up and the icons across the stack
-        // stay close to a common line
+        // most of its own padding up on that side and the icons across
+        // the stack stay close to a common line.
+        //
+        // Spelled out per direction because gtk css has no logical
+        // properties (no padding-inline-start): a mirrored card puts the
+        // spine on the RIGHT, so a bare padding-left took the gutter off
+        // the wrong side and left the spine crowding the icon
         &.critical .toastBody {
             padding-left: 6px;
+        }
+        &.critical.rtl .toastBody {
+            padding-left: 12px;
+            padding-right: 6px;
         }
 
         // the countdown, along the bottom edge. Its css `color` is what
@@ -169,10 +178,10 @@ window.NotificationPopups {
         }
 
         // the folded banners, dealt out under the card that stands for
-        // them: indented so the header still reads as their heading
-        .drawer {
-            margin-left: 16px;
-        }
+        // them. The indent is a marginStart on the widget, not css:
+        // gtk_widget_set_margin_start follows the text direction, where
+        // a css margin-left does not, and a mirrored drawer indented
+        // from the left hangs off the wrong edge of its own header
 
         // Urgency, quietly. The old card turned the whole headline red
         // for a critical notification, which made "42 packages can be
@@ -451,10 +460,19 @@ window.Notifications {
         }
     }
 
-    // folded rows are indented under their heading, so an open group
-    // reads as belonging to it rather than as more of the feed
+    // Folded rows are indented under their heading, so an open group
+    // reads as belonging to it rather than as more of the feed.
+    //
+    // The indent itself is a marginStart on the widget (direction-aware,
+    // unlike a css margin-left). The rule down the side cannot move to a
+    // widget prop, so it is spelled out per direction — gtk css has no
+    // border-inline-start, and on a mirrored row the line belongs on the
+    // side the text starts from
     .groupRows {
-        margin-left: 10px;
         border-left: solid 1px color.mix(t.$surface0, transparent, 45%);
+    }
+    .groupRows.rtl {
+        border-left: none;
+        border-right: solid 1px color.mix(t.$surface0, transparent, 45%);
     }
 }
