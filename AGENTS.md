@@ -16,7 +16,68 @@
   provider in the center's header. New providers (ProtonMail) need no
   center changes. Google providers share the OAuth stack in
   `src/lib/googleAuth.ts` (embedded desktop client, per-account tokens,
-  `google.env`/env override).
+  `google.env`/env override). A provider can mark an item `actionable`
+  (someone is waiting on YOU: a review request, a task now due) to lift
+  it into the center's "Needs you" zone — only the provider can tell,
+  since a PR you opened and one you were asked to review look identical
+  from outside.
+
+## Notifications: two surfaces, one shape
+
+The banner and the notification center are **deliberately separate
+components**, not one card reused. They answer different questions: a
+banner is read in the second it takes to decide whether to care, a
+center row is browsed. Sharing one card made banners as tall as list
+rows (four of them walled off the side of the screen) and made the
+center a stack of identical slabs. Don't re-merge them.
+
+- `widgets/notifications/rowData.ts` — the one normalised shape both
+  surfaces render (`fromDesktop`, `fromItem`). Derive fields HERE, not
+  in a widget: the two cards drifted apart precisely because each
+  re-derived its own, and only one of them learned to drop a summary
+  that just repeats the app name.
+- `widgets/notifications/Toast.tsx` — the banner. Countdown along the
+  bottom edge; several banners from one app fold into one card that
+  opens on hover.
+- `widgets/notifications/CenterRow.tsx` — the center row. Not a card:
+  hairlines between rows, paint only on hover.
+- `widgets/notifications/feed.ts` — the center's day dividers and
+  per-app folding, kept GTK-free so it can be tested directly. Note it
+  folds only CONSECUTIVE runs (reordering a chronological list would be
+  a lie), where the banner stack's `groupPopups` folds by app outright.
+- `lib/relTime.ts` — relative ages, plus a refcounted clock the center
+  holds only while it is open.
+- `lib/exclusivePopups.ts` — how panels that own the same screen corner
+  close each other. A new corner-owning popup is one `registerPopup`
+  plus one `closeOtherPopups` call; the closer must be safe to call when
+  already closed.
+
+Three rules that are easy to regress:
+
+- **A sender's `expire_timeout` wins**, per the freedesktop spec: `0`
+  means the banner stays until dismissed, any positive value is honoured
+  as-is. `[notifications] popup_timeout` applies only when the sender
+  defers (`-1`), and urgency only decides within that fallback. The
+  shell ignored the field entirely until it was fixed; don't reintroduce
+  a blanket duration.
+- **Criticals are never folded away or evicted.** A burst of ordinary
+  banners must not push one out of the stack, and grouping must not hide
+  one behind whichever banner arrived last — they carry no timeout, so
+  hiding one hides it indefinitely.
+- **Day and month names are deliberately English**, spelled out in
+  `relTime.ts` rather than taken from `%A`/`%B`. Those follow the
+  locale, and every other string the shell draws is English, so the
+  center's dividers read "Today / Yesterday / tisdag / måndag" —
+  switching language partway down the list. If real localisation ever
+  lands, these belong in it; reverting them to `%A` only restores the
+  half-translated version.
+
+GTK has no logical CSS properties (no `padding-inline-start`), so
+anything that must mirror uses direction-aware widget props
+(`marginStart`) or an explicit `.rtl` variant. When setting a direction,
+set it on the widget that actually needs it: GTK does **not** push an
+explicitly set direction down to children that never had one, so setting
+it on an ancestor silently does nothing.
 - The clock popover is a Google Calendar (`src/lib/gcal.ts`,
   `[calendar]`): OAuth installed-app flow over loopback (the project
   ships a desktop client; `google.env`/env vars override it), one
