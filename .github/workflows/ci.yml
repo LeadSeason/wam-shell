@@ -74,8 +74,14 @@ jobs:
         run: |
           useradd -m builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
-      - name: Install paru-bin (AUR helper, mirrors scripts/setup.sh)
-        run: su builder -c "cd /tmp && git clone https://aur.archlinux.org/paru-bin.git && cd paru-bin && makepkg -si --noconfirm"
+      # paru, not paru-bin: the -bin package ships a binary linked
+      # against whatever libalpm existed when its maintainer built it,
+      # so it dies with "libalpm.so.15: cannot open shared object file"
+      # every time pacman bumps the soname and the rebuild lags. The
+      # source package is built here against the container's own
+      # libalpm, which cannot mismatch.
+      - name: Install paru (AUR helper, mirrors scripts/setup.sh)
+        run: su builder -c "cd /tmp && git clone https://aur.archlinux.org/paru.git && cd paru && makepkg -si --noconfirm"
       # Package list mirrors AUR_LIBS in scripts/setup.sh, plus
       # aylurs-gtk-shell (pinned release tarball) for the ags CLI.
       - name: Install ags + astal typelibs from the AUR
