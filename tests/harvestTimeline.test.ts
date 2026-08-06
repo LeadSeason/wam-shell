@@ -1,5 +1,5 @@
 import { test, eq } from "./framework"
-import { dayTimeline, startTimeLabel } from "../src/lib/harvest"
+import { dayTimeline, startTimeLabel, timerBanner } from "../src/lib/harvest"
 import type { Entry } from "../src/lib/harvest"
 
 const entry = (over: Partial<Entry>): Entry => ({
@@ -78,4 +78,25 @@ test("startTimeLabel: 24h and 12h clocks, manual entries", () => {
     eq(startTimeLabel(entry({ startedTime: "3:00pm" })), "15:00")
     eq(startTimeLabel(entry({ startedTime: "12:00am" })), "00:00")
     eq(startTimeLabel(entry({})), "")
+})
+
+test("timerBanner: start, pause and stop transitions", () => {
+    const a = entry({ id: 1, projectName: "Acme", taskName: "Dev" })
+    const b = entry({ id: 2, projectName: "Beta", taskName: "Ops" })
+    // nothing running, nothing started: not a transition
+    eq(timerBanner(null, null, null), null)
+    // started (and a switch reads as starting the new one)
+    eq(timerBanner(null, a, null)?.summary, "Harvest timer started")
+    eq(timerBanner(null, a, null)?.body, "Acme · Dev")
+    eq(timerBanner(a, b, null)?.body, "Beta · Ops")
+    // stopped vs paused is decided by the paused entry
+    eq(timerBanner(a, null, null)?.summary, "Harvest timer stopped")
+    eq(timerBanner(a, null, a)?.summary, "Harvest timer paused")
+    // starting slides past, stopping waits to be dismissed
+    eq(timerBanner(null, a, null)?.urgent, false)
+    eq(timerBanner(a, b, null)?.urgent, false)
+    eq(timerBanner(a, null, a)?.urgent, true)
+    eq(timerBanner(a, null, null)?.urgent, true)
+    // a half-labelled entry doesn't produce a dangling separator
+    eq(timerBanner(null, entry({ projectName: "Solo", taskName: "" }), null)?.body, "Solo")
 })

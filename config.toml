@@ -228,6 +228,13 @@
 #           viewers can't tell a timer is running. set false to disable
 #           the mask entirely — the screen-share monitor (pw-dump) then
 #           never starts. default true
+# notify - post a notification whenever a timer starts, pauses or
+#          stops, wherever it happened: this shell, the harvest web app
+#          or the phone. Starting is an acknowledgement — low urgency,
+#          transient (slides away, kept out of the center's history).
+#          Pausing and stopping are the ones that cost tracked time
+#          when missed: critical urgency and no expiry, so they stay on
+#          screen until dismissed. default true
 # [harvest]
 # enabled = false
 # on_panel = true
@@ -238,6 +245,7 @@
 # work_days = ""
 # collapse_off_days = false
 # hide_when_screen_sharing = true
+# notify = true
 
 # [calendar] - Google Calendar in the clock popover: days with events
 #              get a mark on the month grid, and an agenda (schedule

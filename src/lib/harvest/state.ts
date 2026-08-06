@@ -3,6 +3,7 @@ import { createState } from "gnim"
 import { timeoutAdd, sourceRemove } from "../metrics"
 import { Entry, Project, dayTimeline, liveSeconds, todaySeconds } from "./timeline"
 import { accountMode } from "./account"
+import { notifyTimerChange } from "./notify"
 
 // gnim states + the today map everything derives from, and the elapsed
 // ticker. No HTTP: sync.ts pushes server data in, widgets read out
@@ -69,6 +70,9 @@ function sameEntry(a: Entry | null, b: Entry | null): boolean {
 export function adoptRunning(entry: Entry | null) {
     const prev = running.get()
     if (sameEntry(prev, entry)) return
+    // read the pause before adopting clears it: it is what tells a
+    // pause apart from a stop
+    const pausedEntry = paused.get()
     setRunning(entry)
     if (entry) {
         // a timer running means nothing is paused anymore
@@ -81,6 +85,8 @@ export function adoptRunning(entry: Entry | null) {
         disarmTicker()
     }
     if (prev?.id !== entry?.id) refreshDayTotal()
+    // last: a banner must never be what breaks the state update
+    notifyTimerChange(prev, entry, pausedEntry)
 }
 
 let stoppedTodaySec = 0
