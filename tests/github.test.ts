@@ -1,5 +1,12 @@
 import { test, eq } from "./framework"
-import { reasonLabel, typeLabel, webUrl, threadData, newArrivals } from "../src/lib/github"
+import {
+    reasonLabel,
+    typeLabel,
+    webUrl,
+    threadData,
+    newArrivals,
+    bannerCandidates,
+} from "../src/lib/github"
 
 test("github reasonLabel: known reasons and fallback", () => {
     eq(reasonLabel("mention"), "Mentioned")
@@ -76,4 +83,25 @@ test("github newArrivals: only ids absent from the previous list", () => {
     eq(newArrivals(prev, next), ["github:3"])
     eq(newArrivals(prev, prev), [])
     eq(newArrivals([], next).length, 2)
+})
+
+test("github bannerCandidates: unseen and recent only", () => {
+    const now = 1_700_000_000
+    const fresh = { id: "github:1", time: now - 60 }
+    const old = { id: "github:2", time: now - 72 * 3600 }
+    const known = { id: "github:3", time: now - 60 }
+    const seen = new Set(["github:3"])
+    eq(
+        bannerCandidates([fresh, old, known], seen, now).map(i => i.id),
+        ["github:1"],
+    )
+    // a restart is not a baseline any more: an empty store still
+    // banners what is recent (only the first run ever absorbs, and
+    // that is decided by the store's absence, not by this helper)
+    eq(
+        bannerCandidates([fresh, old], new Set(), now).map(i => i.id),
+        ["github:1"],
+    )
+    // everything seen: silence
+    eq(bannerCandidates([fresh], new Set(["github:1"]), now).length, 0)
 })

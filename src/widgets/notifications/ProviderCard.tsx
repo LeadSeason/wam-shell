@@ -7,12 +7,34 @@ import { createState } from "gnim"
 import { ProviderItem } from "../../lib/notificationProviders"
 import { isRtl } from "../../lib/utils"
 
-// Gtk.Picture can never be shrunk below its texture's natural size by
-// width/height-request, so scale the image data itself (2x for hidpi)
-function loadTexture(path: string, size: number): Gdk.Texture | null {
+// the thumbnail slot, in logical pixels
+const THUMB_W = 192
+const THUMB_H = 108
+
+// Gtk.Picture asks for its texture's NATURAL size wherever the
+// container has room — width/height-request only raise the minimum,
+// they never cap. A youtube thumb (640x480 from the feed) therefore
+// made a ~500px card, and four banners ran off the screen. So the
+// pixbuf itself is scaled to exactly the slot: cover-scale, then
+// centre-crop to the slot's aspect so a 4:3 thumb fills the 16:9 box
+// instead of letterboxing. No 2x variant — a texture carries no scale
+// factor in gtk4, so a 2x one would simply ask for a 2x-tall row
+function loadTexture(path: string, width: number, height: number): Gdk.Texture | null {
     try {
-        const pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, size, size, true)
-        return Gdk.Texture.new_for_pixbuf(pixbuf)
+        const [, srcW, srcH] = GdkPixbuf.Pixbuf.get_file_info(path)
+        if (!srcW || !srcH) return null
+        const scale = Math.max(width / srcW, height / srcH)
+        const pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+            path,
+            Math.ceil(srcW * scale),
+            Math.ceil(srcH * scale),
+            true,
+        )
+        const cropW = Math.min(width, pixbuf.get_width())
+        const cropH = Math.min(height, pixbuf.get_height())
+        const x = Math.max(0, Math.floor((pixbuf.get_width() - cropW) / 2))
+        const y = Math.max(0, Math.floor((pixbuf.get_height() - cropH) / 2))
+        return Gdk.Texture.new_for_pixbuf(pixbuf.new_subpixbuf(x, y, cropW, cropH))
     } catch {
         return null
     }
@@ -43,10 +65,7 @@ export default function ProviderCard({
     const activate = onActivate ?? (() => item.activate())
     const hideItem = onHide ?? (() => item.hide())
     const time = GLib.DateTime.new_from_unix_local(item.time)?.format("%H:%M") ?? ""
-    // YouTube thumbs render at 192x108; scale the data, not the
-    // widget (Picture won't shrink). 640 = the standard size, so no
-    // forced upscale
-    const thumb = item.imagePath ? loadTexture(item.imagePath, 640) : null
+    const thumb = item.imagePath ? loadTexture(item.imagePath, THUMB_W, THUMB_H) : null
     // the whole card aligns by the summary's base direction (RTL titles
     // read from the right, like NotificationCard's)
     const rtl = isRtl(item.summary || item.appName)
@@ -127,15 +146,14 @@ export default function ProviderCard({
                         halign={Gtk.Align.START}
                         overflow={Gtk.Overflow.HIDDEN}
                     >
-                        {/* pinned on the Picture too: the 640px texture's
-                        natural width otherwise inflates the slot past its
-                        request and leaves dead space beside the image */}
+                        {/* the texture is already exactly the slot, so
+                        these only guard a thumb that failed to crop */}
                         <Gtk.Picture
                             paintable={thumb}
                             contentFit={Gtk.ContentFit.COVER}
                             canShrink={true}
-                            widthRequest={192}
-                            heightRequest={108}
+                            widthRequest={THUMB_W}
+                            heightRequest={THUMB_H}
                         />
                     </box>
                 )}

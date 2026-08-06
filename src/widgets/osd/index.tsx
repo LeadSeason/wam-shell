@@ -36,7 +36,10 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
     const margin =
         Config.osd.position === "center"
             ? {}
-            : { [Config.osd.position === "bottom" ? "marginBottom" : "marginTop"]: 60 }
+            : {
+                  [Config.osd.position === "bottom" ? "marginBottom" : "marginTop"]:
+                      Config.osd.margin,
+              }
 
     let win: Astal.Window
     let rev: Gtk.Revealer
