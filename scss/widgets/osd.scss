@@ -11,15 +11,15 @@ window.OSDWindow {
     .OSD {
         background: color.mix(t.$crust, transparent, 90%);
         color: t.$text;
-        border-radius: calc(s.$radius * 2);
+        border-radius: calc(s.$radius * 2.5);
         border: solid 2px color.mix(t.$surface0, transparent, 60%);
-        padding: 10px 16px;
+        padding: 14px 22px;
         margin: 8px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 
         // icon size is styled here, not in the widget
         image {
-            -gtk-icon-size: 20px;
+            -gtk-icon-size: 28px;
         }
     }
 
@@ -27,9 +27,9 @@ window.OSDWindow {
     // sized in % from the widget — so min-width/min-height fully
     // control its size from css
     .osdBar {
-        min-width: 10em;
-        min-height: 8px;
-        border-radius: 4px;
+        min-width: 11em;
+        min-height: 11px;
+        border-radius: 6px;
         background-color: t.$surface0;
         background-image: linear-gradient(to right, t.$accent, t.$accent);
         background-repeat: no-repeat;
@@ -41,7 +41,30 @@ window.OSDWindow {
     // caps lock state tint
     .osdOn { color: t.$green; }
     .osdOff { color: t.$subtext0; }
+
+    // Whether the label is a caption or the content depends on whether
+    // there is a bar next to it.
+    //
+    // Volume, microphone and brightness draw a bar: the bar IS the
+    // value and the label ("42%") is a readout beside it, so it stays
+    // small — and mono, because a percentage that changes while you
+    // hold a key would otherwise shuffle its own width.
+    //
+    // Layout and lock keys have no bar. There the label is the entire
+    // payload, and a blanket rule was setting it at 0.85em — the one
+    // thing the OSD exists to tell you, rendered smaller than body text.
     label {
         font-size: s.$font-small;
+    }
+    .osd-volume label,
+    .osd-microphone label,
+    .osd-brightness label {
+        font-family: s.$font-mono;
+        font-size: 1em;
+    }
+    .osd-layout label,
+    .osd-lockKeys label {
+        font-size: 1.4em;
+        font-weight: 600;
     }
 }
