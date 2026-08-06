@@ -423,6 +423,16 @@
 #                      (pressing play in the media section, or a video
 #                      starting anywhere else). pausing leaves it open.
 #                      default true
+# audio_meter - draw a playback level bar under the default output
+#               device in the audio pane, so you can see how loud the
+#               sound actually is against the volume you set. reading a
+#               level needs a capture client (a gstreamer pipeline on
+#               the sink's monitor), which runs only while that pane is
+#               open. default true
+# mic_meter - the same level bar under the default input device in the
+#             audio pane. this one opens the microphone while the Input
+#             pane is on screen (and only then) — set false to keep the
+#             output meter without the shell ever listening. default true
 # min_height - the popup never shrinks below this many px when you
 #              switch to a short pane (vpn, wired), so navigating
 #              settles it instead of yanking it. 0 (default) derives
@@ -449,6 +459,8 @@
 # stats_interval = 1000
 # power_profile_on_panel = true
 # hide_on_media_play = true
+# audio_meter = true
+# mic_meter = true
 # min_height = 0
 # show_avatar = true
 # avatar = ""

@@ -19,6 +19,7 @@ import { SliderSection } from "./SliderSection"
 import { MediaSection, setQsVisible } from "./MediaSection"
 import { WifiWidget, WifiSwitch } from "./toggleSection/wifi"
 import { AirplaneModeRow } from "./toggleSection/miscToggles"
+import { AudioPane } from "./toggleSection/audioPane"
 import { WiredWidget, WiredSwitch } from "./toggleSection/wired"
 import { BluetoothWidget, BtSwitch } from "./toggleSection/bluetooth"
 import { PowerProfilesWidget } from "./toggleSection/powerProfile"
@@ -81,6 +82,8 @@ export default function QSettings() {
     const { TOP, BOTTOM, LEFT, RIGHT } = Astal.WindowAnchor
     let win: Astal.Window
     let contentBox: Gtk.Box
+    // every pane that scrolls internally, so they can be reset on switch
+    const paneScrollers: Gtk.ScrolledWindow[] = []
     let revealer: Gtk.Revealer
     const [pane, setPane] = createState("main")
     const toggleSection = ToggleSection({ onNavigate: setPane })
@@ -134,7 +137,7 @@ export default function QSettings() {
     registry.register({
         name: ["qsPane"],
         description: "Open QuickSettings on a specific pane",
-        help: `qsPane <main|wifi|bluetooth|wired|vpn|powerprofiles>
+        help: `qsPane <main|wifi|bluetooth|wired|vpn|powerprofiles|audioOutput|audioInput>
   Shows the popup and switches to that pane — bind it in the
   compositor to open straight into wifi, or drive it from a script.
   An unknown name lands on main.`,
@@ -261,7 +264,24 @@ export default function QSettings() {
                             $={self => {
                                 self.visibleChildName = "main"
                                 // subscribe callbacks receive no value, read it
-                                pane.subscribe(() => (self.visibleChildName = pane.get()))
+                                pane.subscribe(() => {
+                                    self.visibleChildName = pane.get()
+
+                                    // a pane opens at its top: gtk scrolls
+                                    // to whatever it decides to focus, which
+                                    // landed the audio pane on its last
+                                    // section with the rest above the fold.
+                                    // Only while the popup is up: hide()
+                                    // resets the pane right after win.hide(),
+                                    // and touching an adjustment then forces
+                                    // a re-layout that re-commits the layer
+                                    // surface — the compositor keeps drawing
+                                    // the last frame, which is the ghost pane
+                                    // that stayed on screen after closing
+                                    if (!win?.is_visible()) return
+                                    for (const sw of paneScrollers)
+                                        sw.get_vadjustment()?.set_value(0)
+                                })
                             }}
                             transitionType={Gtk.StackTransitionType.SLIDE_LEFT_RIGHT}
                             transitionDuration={200}
@@ -276,7 +296,7 @@ export default function QSettings() {
                             >
                                 {/* header (battery, power, …) only on the main pane */}
                                 <HeaderSection />
-                                <SliderSection />
+                                <SliderSection navigate={setPane} />
                                 {toggleSection.widget}
                                 {/* tray always above the player */}
                                 {!Config.tray.onPanel && (
@@ -300,6 +320,7 @@ export default function QSettings() {
                                 not as its own tile in the grid */}
                                 <AirplaneModeRow />
                                 <Gtk.ScrolledWindow
+                                    $={self => paneScrollers.push(self)}
                                     vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
                                     hscrollbarPolicy={Gtk.PolicyType.NEVER}
                                     propagateNaturalHeight
@@ -319,12 +340,48 @@ export default function QSettings() {
                                     trailing={<BtSwitch />}
                                 />
                                 <Gtk.ScrolledWindow
+                                    $={self => paneScrollers.push(self)}
                                     vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
                                     hscrollbarPolicy={Gtk.PolicyType.NEVER}
                                     propagateNaturalHeight
                                     maxContentHeight={MAX_PANE_HEIGHT}
                                 >
                                     <BluetoothWidget pane={pane} name="bluetooth" />
+                                </Gtk.ScrolledWindow>
+                            </box>
+                            {/* one pane per direction: a card's sink and
+                            source share a description, so a combined
+                            list read as two identical rows */}
+                            <box
+                                $type="named"
+                                name="audioOutput"
+                                orientation={Gtk.Orientation.VERTICAL}
+                            >
+                                <PaneHeader title="Output" onBack={() => setPane("main")} />
+                                <Gtk.ScrolledWindow
+                                    $={self => paneScrollers.push(self)}
+                                    vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                                    hscrollbarPolicy={Gtk.PolicyType.NEVER}
+                                    propagateNaturalHeight
+                                    maxContentHeight={MAX_PANE_HEIGHT}
+                                >
+                                    <AudioPane direction="output" pane={pane} name="audioOutput" />
+                                </Gtk.ScrolledWindow>
+                            </box>
+                            <box
+                                $type="named"
+                                name="audioInput"
+                                orientation={Gtk.Orientation.VERTICAL}
+                            >
+                                <PaneHeader title="Input" onBack={() => setPane("main")} />
+                                <Gtk.ScrolledWindow
+                                    $={self => paneScrollers.push(self)}
+                                    vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                                    hscrollbarPolicy={Gtk.PolicyType.NEVER}
+                                    propagateNaturalHeight
+                                    maxContentHeight={MAX_PANE_HEIGHT}
+                                >
+                                    <AudioPane direction="input" pane={pane} name="audioInput" />
                                 </Gtk.ScrolledWindow>
                             </box>
                             <box $type="named" name="wired" orientation={Gtk.Orientation.VERTICAL}>
@@ -356,6 +413,7 @@ export default function QSettings() {
                                 No propagateNaturalHeight, so the stack
                                 keeps sizing to main */}
                                 <Gtk.ScrolledWindow
+                                    $={self => paneScrollers.push(self)}
                                     vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
                                     hscrollbarPolicy={Gtk.PolicyType.NEVER}
                                     propagateNaturalHeight

@@ -42,7 +42,9 @@ window#QSettings {
     }
 
     scale {
-        padding: .2em .6em;
+        // the trough is deliberately thin; the padding is what stays
+        // grabbable, and keeps the row the same height it always was
+        padding: .45em .6em;
         trough {
             border-radius: 7px;
             border: 1px solid t.$surface1;
@@ -67,7 +69,7 @@ window#QSettings {
 
     .volHigh {
         scale {
-            padding: .2em .6em;
+            padding: .45em .6em;
             trough {
                 border-radius: 7px;
                 border: 1px solid t.$red30;
@@ -159,6 +161,12 @@ window#QSettings {
         to { transform: rotate(360deg); }
     }
 
+    // sliders that carry the device name overlaid inside them: the bar
+    // has to be tall enough to hold text, so these keep the height the
+    // sliders had before they were slimmed
+    .namedSlider scale trough {
+        min-height: 16px;
+    }
     // device name overlaid on the volume sliders
     .deviceName {
         font-size: s.$font-small;
@@ -187,7 +195,9 @@ window#QSettings {
         // no padding: the art runs to the card edges and the scrim
         // carries the inset instead
         padding: 0;
-        overflow: hidden;
+        // clipping the art to the rounded corners is a widget property
+        // (Gtk.Overflow.HIDDEN on the card box), not css: gtk has no
+        // overflow property and errors on one
         button {
             margin: 0; // gaps come from the card's box spacing
         }
@@ -355,6 +365,100 @@ window#QSettings {
         background-color: t.$base;
         border-radius: s.$radius;
         padding: 6px 12px;
+    }
+    // --- audio pane ---------------------------------------------
+    // the volume slider gets its own full-width line under the row it
+    // belongs to: sharing a line with the icon, the mute button and the
+    // routing chevron left ~200px for a 0-150% range
+    .audioSliderRow {
+        margin: 2px 10px 6px;
+    }
+    // past 100% pipewire amplifies rather than raises, and will clip:
+    // the fill and the number warn before it does, orange first, red
+    // where it almost certainly is distorting
+    .audioHeat.over {
+        scale trough highlight {
+            background-color: t.$peach;
+        }
+        .audioPercent {
+            color: t.$peach;
+        }
+    }
+    .audioHeat.hot {
+        scale trough highlight {
+            background-color: t.$red;
+        }
+        .audioPercent {
+            color: t.$red;
+        }
+    }
+    .audioPercent {
+        font-size: s.$font-small;
+        color: t.$subtext0;
+    }
+    // the percentage is a number you can type into, so it has to look
+    // like one without becoming a permanent input box in every row:
+    // plain text at rest, a framed field only while it is being edited
+    .percentEntry {
+        font-size: s.$font-small;
+        color: t.$subtext0;
+
+        &:hover {
+            color: t.$text;
+        }
+        text {
+            background-color: t.$surface0;
+            color: t.$text;
+            border-radius: 4px;
+            padding: 0 2px;
+            min-height: 0;
+        }
+        selection {
+            background-color: t.$accent;
+            color: t.$base;
+        }
+    }
+    // the playback level, under the volume it is being played at: a
+    // thin bar, deliberately quieter than the slider above it, because
+    // it is something to glance at rather than something to aim
+    .audioMeter {
+        min-height: 4px;
+        margin-top: 5px;
+
+        trough {
+            background-color: t.$surface1;
+            border-radius: 2px;
+            min-height: 4px;
+        }
+        block.filled {
+            background-color: t.$teal;
+            border-radius: 2px;
+            min-height: 4px;
+        }
+        // the same warning the slider uses, on the level rather than the
+        // setting: approaching full scale is where output starts to clip
+        &.over block.filled {
+            background-color: t.$peach;
+        }
+        &.hot block.filled {
+            background-color: t.$red;
+        }
+    }
+    // the options a row unfolds: capped and scrolled on their own, so a
+    // card with seven profiles does not move the pane under the pointer
+    .audioExpandList {
+        margin: 0 6px 6px 26px;
+    }
+    .audioDefaultTag {
+        font-size: s.$font-small;
+        color: t.$accent;
+    }
+    .audioRoute {
+        opacity: 0.6;
+        margin: 0 2px;
+    }
+    .audioRow:hover .audioRoute {
+        opacity: 1;
     }
     .paneRow {
         // a list you read: rows get room, and only the current one
@@ -834,7 +938,9 @@ window#QSettings {
     }
 
     arrow {
-        min-height: s.$slider-height;
+        // an icon box, not a slider: sized on its own so the sliders can
+        // get thinner without shrinking the dropdown arrows with them
+        min-height: 16px;
         min-width: 16px;
         &.none {
             -gtk-icon-source: -gtk-icontheme('open-menu-symbolic');

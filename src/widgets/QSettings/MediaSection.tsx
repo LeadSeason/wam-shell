@@ -83,6 +83,9 @@ function Player({ player }: { player: AstalMpris.Player }) {
     return (
         <box
             cssClasses={["mediaPlayer"]}
+            // the rounded clip for the full-bleed art: a widget
+            // property, since gtk css has no overflow
+            overflow={Gtk.Overflow.HIDDEN}
             spacing={4}
             // keyboard up/down pages through players while hovering:
             // the card takes focus on pointer enter (never from a text
