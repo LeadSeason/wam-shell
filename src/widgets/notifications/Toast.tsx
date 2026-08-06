@@ -2,7 +2,7 @@ import { Gtk, Gdk } from "ags/gtk4"
 import GdkPixbuf from "gi://GdkPixbuf?version=2.0"
 import Graphene from "gi://Graphene?version=1.0"
 import Pango from "gi://Pango?version=1.0"
-import { Accessor, onCleanup } from "gnim"
+import { Accessor, createState, onCleanup } from "gnim"
 import { rtlAlign, safeMarkup } from "../../lib/utils"
 import { relTime, nowSec } from "../../lib/relTime"
 import type { RowData } from "./rowData"
@@ -160,6 +160,35 @@ export default function Toast({
         card = null
     })
 
+    // Swipe a banner aside to dismiss it.
+    //
+    // The card follows the pointer and fades as it goes, so the gesture
+    // shows its own threshold rather than making you guess it. Released
+    // short of the threshold it springs back, which is the only way a
+    // drag can be abandoned safely — a banner that vanished on any
+    // stray movement would be worse than no gesture at all.
+    const [dragX, setDragX] = createState(0)
+    // a drag that got going suppresses the click on release: without
+    // this, letting go after swiping would ALSO activate the
+    // notification and open whatever it points at
+    let dragged = false
+    // How far the swipe actually got, remembered from drag-update.
+    //
+    // drag-end's own offset cannot be used: claiming the sequence
+    // re-anchors the gesture, so the end reports the distance since the
+    // claim (~30px) rather than the total (~240px), and the card would
+    // spring back from a swipe that plainly crossed the threshold. The
+    // visual half worked perfectly throughout, which is exactly why this
+    // needed testing rather than reading.
+    let lastOffset = 0
+
+    /** the swipe has to cross this much of the card's own width to
+     *  count. A fraction, not a fixed distance, so it scales with
+     *  notifications.popup_width */
+    const DISMISS_FRACTION = 0.3
+    /** below this the pointer is just wobbling during a click */
+    const SLOP = 6
+
     return (
         <box
             $={self => {
@@ -174,6 +203,14 @@ export default function Toast({
                 // the padding the bar was providing
                 ...(timed ? [] : ["untimed"]),
             ]}
+            css={dragX.as(x =>
+                x === 0
+                    ? ""
+                    : `transform: translateX(${Math.round(x)}px); opacity: ${Math.max(
+                          0.15,
+                          1 - Math.abs(x) / 260,
+                      ).toFixed(2)};`,
+            )}
             // deliberately NOT overflow:HIDDEN. Clipping was the obvious
             // way to keep the full-bleed countdown inside the card's
             // rounded corners, but gtk clips to the square allocation:
@@ -181,6 +218,35 @@ export default function Toast({
             // came out as a rectangular halo around a rounded card. The
             // bar is inset in css instead, so it never reaches a corner
         >
+            <Gtk.GestureDrag
+                button={1}
+                onDragBegin={() => {
+                    dragged = false
+                    lastOffset = 0
+                }}
+                onDragUpdate={(g, ox, oy) => {
+                    // a press that started on a button belongs to the
+                    // button, and a mostly-vertical movement is not a
+                    // swipe — leave both alone
+                    if (pressOnButton) return
+                    if (Math.abs(ox) < SLOP || Math.abs(oy) > Math.abs(ox)) return
+                    dragged = true
+                    // take the sequence so the click gesture underneath
+                    // stops tracking it
+                    g.set_state(Gtk.EventSequenceState.CLAIMED)
+                    lastOffset = ox
+                    setDragX(ox)
+                }}
+                onDragEnd={() => {
+                    const width = card?.get_width() ?? 0
+                    if (dragged && width > 0 && Math.abs(lastOffset) > width * DISMISS_FRACTION) {
+                        onDismiss()
+                        return
+                    }
+                    setDragX(0)
+                }}
+            />
+
             <Gtk.GestureClick
                 button={1}
                 onPressed={(_g, _n, x, y) => {
@@ -191,7 +257,9 @@ export default function Toast({
                     })
                 }}
                 onReleased={() => {
-                    if (!pressOnButton) onActivate()
+                    // a swipe ends in a release too: activating here
+                    // would open the notification you just threw away
+                    if (!pressOnButton && !dragged) onActivate()
                 }}
             />
             {/* right or middle click anywhere dismisses */}
