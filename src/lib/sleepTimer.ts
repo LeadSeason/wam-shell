@@ -525,22 +525,37 @@ const isAlarmStream = (s: AstalWp.Stream) =>
     ALARM_PLAYER_NAMES.has(s.description) ||
     (!!alarmSound && s.name.endsWith(GLib.path_get_basename(alarmSound)))
 
-// does this stream belong to some MPRIS player? Those streams are
-// pause's territory — muting them too would leave the app silenced
-// long after the timer (the original always-mutes bug). Stream state
-// cannot make this call: browsers keep a paused tab's stream alive in
-// "running" node state, and AstalWp doesn't populate Stream.state at
-// all (observed 0 on live streams). What does work: a browser
-// stream's media.name is its tab title, which embeds the tab's MPRIS
-// title — and for an app with a single stream, an identity↔app-name
-// match (spotify streams as "Spotify" while its title is the song)
-function streamHasPlayer(s: AstalWp.Stream, streams: AstalWp.Stream[]): boolean {
-    const name = s.name ?? ""
+// every title some MPRIS player wore during this fire session.
+// Firefox exposes ONE player that hops to whichever tab is playing:
+// the tab paused a sweep ago is no longer on the bus, and checking
+// only live titles muted a tab whose pause had already landed
+// (observed: resuming it after the timer played back dead quiet).
+// Cleared at each fire — coverage is a per-session fact
+const coveredTitles = new Set<string>()
+
+function recordCoveredTitles() {
     for (const p of mpris.players) {
-        const title = p.title ?? ""
+        const t = p.title ?? ""
         // ≥5 chars: a degenerate title ("a", "...") must not blanket-
         // match every stream of the session
-        if (title.length >= 5 && name.includes(title)) return true
+        if (t.length >= 5) coveredTitles.add(t)
+    }
+}
+
+// does this stream belong to some MPRIS player, now or earlier in the
+// session? Those streams are pause's territory — muting them too
+// would leave the app silenced long after the timer (the original
+// always-mutes bug). Stream state cannot make this call: browsers
+// keep a paused tab's stream alive in "running" node state, and
+// AstalWp doesn't populate Stream.state at all (observed 0 on live
+// streams). What does work: a browser stream's media.name is its tab
+// title, which embeds the tab's MPRIS title — and for an app with a
+// single stream, an identity↔app-name match (spotify streams as
+// "Spotify" while its title is the song)
+function streamHasPlayer(s: AstalWp.Stream, streams: AstalWp.Stream[]): boolean {
+    const name = s.name ?? ""
+    for (const title of coveredTitles) {
+        if (name.includes(title)) return true
     }
     const app = (s.description ?? "").toLowerCase()
     if (app.length === 0) return false
@@ -555,7 +570,29 @@ function muteActiveStreams() {
     const audio = AstalWp.get_default()?.audio
     if (!audio) return
     const streams = audio.streams ?? []
+    recordCoveredTitles()
+    let changed = false
     for (const s of streams) {
+        // hand a muted stream back to pause: when the hopping player
+        // reached it and the pause landed, it is silent twice over —
+        // drop our mute, or a manual resume days later starts dead
+        // quiet (the mute otherwise only lifts on cancel/alarm stop)
+        if (mutedStreams.has(s.id)) {
+            const pausedCover = mpris.players.some(p => {
+                const t = p.title ?? ""
+                return (
+                    t.length >= 5 &&
+                    (s.name ?? "").includes(t) &&
+                    p.playbackStatus !== AstalMpris.PlaybackStatus.PLAYING
+                )
+            })
+            if (pausedCover) {
+                mutedStreams.delete(s.id)
+                changed = true
+                execAsync(["wpctl", "set-mute", String(s.id), "0"]).catch(() => {})
+            }
+            continue
+        }
         if (s.mute || userUnmuted.has(s.id) || isAlarmStream(s)) continue
         // the fallback is only for what pause cannot reach: media with
         // no MPRIS interface (e.g. the second playing firefox tab —
@@ -565,10 +602,12 @@ function muteActiveStreams() {
         // (observed landing for one stream and silently not for another)
         execAsync(["wpctl", "set-mute", String(s.id), "1"]).catch(() => {})
         mutedStreams.add(s.id)
+        changed = true
         watchStream(s)
     }
-    // a restart must be able to unmute what we just muted
-    if (mutedStreams.size > 0) writeState()
+    // a restart must be able to unmute what we just muted (or stop
+    // trying to unmute what pause took over)
+    if (changed) writeState()
 }
 
 function unmuteStreams() {
@@ -582,10 +621,13 @@ function unmuteStreams() {
 
 // multi-player fireboxes leave tabs audible after one sweep: a player
 // can be mid-buffering (paused for an instant), racing the fire, or
-// re-created under a fresh bus name just after it. Re-sweep twice,
+// re-created under a fresh bus name just after it — and firefox's
+// hopping player pauses only one tab per pass, moving to the next
+// playing tab once the previous pause lands. Re-sweep three times,
 // re-reading the player and stream lists each time, then log whatever
 // survives — the re-runs also catch playerless streams that appeared
-// after the fire
+// after the fire, and give the mute→pause handback a tick after the
+// last cascading pause
 let pauseSweepSource = 0
 function armPauseSweep() {
     if (pauseSweepSource) sourceRemove(pauseSweepSource)
@@ -593,7 +635,7 @@ function armPauseSweep() {
     pauseSweepSource = timeoutAdd("sleepTimer:pauseSweep", GLib.PRIORITY_DEFAULT, 1500, () => {
         pauseAllPlayers()
         muteActiveStreams()
-        if (++sweep < 2) return GLib.SOURCE_CONTINUE
+        if (++sweep < 3) return GLib.SOURCE_CONTINUE
         pauseSweepSource = 0
         const left = mpris.players.filter(
             p => p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING,
@@ -611,6 +653,7 @@ function fire() {
     deadline = null
     setRemaining(0)
     setPaused(false)
+    coveredTitles.clear() // coverage is per fire session
     pauseAllPlayers()
     // what has no MPRIS interface can't be paused — mute it instead.
     // Streams covered by a player are skipped: their pause is already
