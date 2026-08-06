@@ -8,53 +8,15 @@ import Brightness from "../../lib/brightness"
 import hyprsunset, { setOutdoorEnabled, OUTDOOR_GAMMA } from "../../lib/hyprsunset"
 import { Accessor, For, Setter, With, createBinding, createComputed, createState } from "gnim"
 import { qsVisible } from "./MediaSection"
+import { PercentEntry } from "./PercentEntry"
 import { createIconResolver } from "../../lib/appIcon"
 
 interface VolSliderProps {
     maxValue?: number
     endpoint: AstalWp.Endpoint
-    expanded: Accessor<number>
-    setExpanded: Setter<number>
-    dropdownIndex: number
-}
-
-function DeviceList({
-    endpoints,
-    collapse,
-}: {
-    endpoints: Accessor<AstalWp.Endpoint[]>
-    collapse: () => void
-}) {
-    return (
-        <box orientation={Gtk.Orientation.VERTICAL}>
-            <For each={endpoints}>
-                {ep => (
-                    <box
-                        cssName={"button"}
-                        cssClasses={createBinding(ep, "isDefault").as(d => (d ? ["active"] : []))}
-                    >
-                        <Gtk.GestureClick
-                            button={1}
-                            onPressed={() => {
-                                // astal's set_is_default doesn't switch the
-                                // default, wpctl does
-                                execAsync(["wpctl", "set-default", ep.id.toString()]).catch(e =>
-                                    console.warn(e),
-                                )
-                                collapse()
-                            }}
-                        />
-                        <label
-                            label={ep.description || ep.name}
-                            xalign={0}
-                            maxWidthChars={30}
-                            ellipsize={Pango.EllipsizeMode.END}
-                        />
-                    </box>
-                )}
-            </For>
-        </box>
-    )
+    /** the chevron opens the audio pane, which owns devices, app
+     *  volumes, routing and card profiles */
+    onOpen: () => void
 }
 
 // one row per application with playback streams (grouped by app):
@@ -133,33 +95,10 @@ function AppRow({
     )
 }
 
-function AppStreams({ streams }: { streams: Accessor<AstalWp.Stream[] | null> }) {
-    const resolveIcon = createIconResolver(
-        Gtk.IconTheme.get_for_display(Gdk.Display.get_default()!),
-    )
-    const groups = streams.as(list => {
-        const m = new Map<string, AstalWp.Stream[]>()
-        for (const s of list ?? []) {
-            const key = s.description || s.name
-            if (!m.has(key)) m.set(key, [])
-            m.get(key)!.push(s)
-        }
-        return [...m.entries()].map(([description, members]) => ({ description, members }))
-    })
-    return (
-        <box orientation={Gtk.Orientation.VERTICAL} visible={groups.as(g => g.length > 0)}>
-            <label cssClasses={["dropdownSection"]} xalign={0} label={"Applications"} />
-            <For each={groups}>{g => <AppRow g={g} resolveIcon={resolveIcon} />}</For>
-        </box>
-    )
-}
-
 function VolSlider({
     maxValue: maxValue = 1.5,
     endpoint: endpoint,
-    expanded: expanded,
-    setExpanded: setExpanded,
-    dropdownIndex: dropdownIndex,
+    onOpen: onOpen,
 }: VolSliderProps) {
     const volume = createBinding(endpoint, "volume")
     const deviceName = (
@@ -246,23 +185,10 @@ function VolSlider({
                     value={volume}
                 />
             </overlay>
-            <label
-                widthChars={5}
-                maxWidthChars={5}
-                label={volume.as(v => `${Math.floor(v * 100)}%`)}
-            />
-            <box cssName="button" tooltipText={"Change device"}>
-                <Gtk.GestureClick
-                    button={1}
-                    onPressed={() => {
-                        setExpanded(expanded.get() === dropdownIndex ? 0 : dropdownIndex)
-                    }}
-                />
-                <image
-                    iconName={expanded.as(v =>
-                        v === dropdownIndex ? "pan-up-symbolic" : "pan-down-symbolic",
-                    )}
-                />
+            <PercentEntry value={volume} onCommit={v => endpoint.set_volume(v)} max={maxValue} />
+            <box cssName="button" tooltipText={"Devices, app volumes and routing"}>
+                <Gtk.GestureClick button={1} onPressed={() => onOpen()} />
+                <image iconName={"go-next-symbolic"} />
             </box>
         </box>
     )
@@ -365,7 +291,7 @@ function BrightnessSlider() {
     )
 }
 
-export function SliderSection() {
+export function SliderSection({ navigate }: { navigate: (pane: string) => void }) {
     const wp = AstalWp.get_default()
 
     // wireplumber absent or audio not connected: brightness still works
@@ -377,60 +303,41 @@ export function SliderSection() {
         )
     const { audio } = wp
 
-    const [expanded, setExpanded] = createState(0)
-
-    // closed popup = collapsed dropdowns next open, like the toggle
-    // section's reset on hide
-    qsVisible.subscribe(() => {
-        if (!qsVisible.get()) setExpanded(0)
-    })
-
     const speakers = createBinding(audio, "speakers").as(s => s ?? [])
     const microphones = createBinding(audio, "microphones").as(m => m ?? [])
 
     return (
-        <box cssClasses={["paneCard"]} orientation={Gtk.Orientation.VERTICAL}>
+        // with device names on, the name is drawn INSIDE the trough, and
+        // the slim default bar cannot hold a line of text. The whole
+        // group opts back into the taller bar rather than just the two
+        // sliders carrying names: three rows in one card should be the
+        // same height as each other
+        <box
+            cssClasses={
+                Config.quicksettings.showDeviceNames ? ["paneCard", "namedSlider"] : ["paneCard"]
+            }
+            orientation={Gtk.Orientation.VERTICAL}
+        >
             <With value={createBinding(wp, "defaultSpeaker")}>
                 {speaker =>
                     speaker && (
-                        <VolSlider
-                            endpoint={speaker}
-                            expanded={expanded}
-                            setExpanded={setExpanded}
-                            dropdownIndex={1}
-                        />
+                        <VolSlider endpoint={speaker} onOpen={() => navigate("audioOutput")} />
                     )
                 }
             </With>
-            <revealer revealChild={expanded.as(v => v === 1)}>
-                {/* the inset crust card is what reads as "a pane" inside
-                the sliders' base card (base-on-base would be invisible) */}
-                <box cssClasses={["dropdownCard"]} orientation={Gtk.Orientation.VERTICAL}>
-                    <label cssClasses={["dropdownSection"]} xalign={0} label={"Output Devices"} />
-                    <DeviceList endpoints={speakers} collapse={() => setExpanded(0)} />
-                    <AppStreams streams={createBinding(audio, "streams")} />
-                </box>
-            </revealer>
+
             <With value={createBinding(wp, "defaultMicrophone")}>
                 {microphone =>
                     microphone && (
                         <VolSlider
                             endpoint={microphone}
                             maxValue={1}
-                            expanded={expanded}
-                            setExpanded={setExpanded}
-                            dropdownIndex={2}
+                            onOpen={() => navigate("audioInput")}
                         />
                     )
                 }
             </With>
-            <revealer revealChild={expanded.as(v => v === 2)}>
-                <box cssClasses={["dropdownCard"]} orientation={Gtk.Orientation.VERTICAL}>
-                    <label cssClasses={["dropdownSection"]} xalign={0} label={"Input Devices"} />
-                    <DeviceList endpoints={microphones} collapse={() => setExpanded(0)} />
-                    <AppStreams streams={createBinding(audio, "recorders")} />
-                </box>
-            </revealer>
+
             <BrightnessSlider />
         </box>
     )
