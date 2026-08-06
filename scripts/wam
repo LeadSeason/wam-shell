@@ -20,6 +20,35 @@ die() {
     exit 1
 }
 
+# `pnpm i`, but survivable when the user's pnpm cannot run on their node.
+# pnpm 11 needs node >= 22.13 (it imports node:sqlite) and dies at
+# startup on anything older with an ERR_UNKNOWN_BUILTIN_MODULE stack
+# trace — before it ever reads the pnpm version this repo pins. That pin
+# runs fine on node 18+, so corepack can do the install even when the
+# pnpm on PATH cannot; only when both routes fail is it the user's turn
+pnpm_install() {
+    local pin
+    pin="$(sed -n 's/.*"packageManager": *"\(pnpm@[^"]*\)".*/\1/p' "$ROOT/package.json")"
+
+    if command -v pnpm >/dev/null && pnpm --version >/dev/null 2>&1; then
+        (cd "$ROOT" && pnpm i) && return 0
+        die "pnpm i failed — see the output above"
+    fi
+
+    local nodev
+    nodev="$(node -v 2>/dev/null || echo "not found")"
+    if [[ -n "$pin" ]] && command -v corepack >/dev/null; then
+        log "pnpm cannot start on node $nodev — retrying with the pinned $pin via corepack"
+        (cd "$ROOT" && corepack "$pin" i) && return 0
+    fi
+
+    die "pnpm cannot run on node $nodev.
+  pnpm 11 requires node >= 22.13; this repo pins ${pin:-pnpm 10}, which runs on node 18+.
+  Fix either side:
+    - upgrade node (arch: sudo pacman -S nodejs), or
+    - install the pinned pnpm: corepack enable && corepack install --global ${pin:-pnpm@10.28.1}"
+}
+
 usage() {
     cat <<EOF
 usage: wam <command>
@@ -123,7 +152,7 @@ cmd_update() {
         log "The config template changed in this update — see what's new: wam config diff"
     fi
     log "pnpm i"
-    (cd "$ROOT" && pnpm i)
+    pnpm_install
     if systemctl --user is-active "$SERVICE" &>/dev/null; then
         log "Restarting the service"
         systemctl --user restart "$SERVICE"
