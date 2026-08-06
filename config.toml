@@ -411,6 +411,10 @@
 #                  graphs, higher cpu cost. default 1000
 # power_profile_on_panel - show the active power profile icon in the
 #                          bar's quicksettings label. default true
+# hide_on_media_play - close the popup when a player starts playing
+#                      (pressing play in the media section, or a video
+#                      starting anywhere else). pausing leaves it open.
+#                      default true
 # show_avatar - show the avatar in the popup header. default true
 # width - popup content width in px. default 440 (the pre-config value
 #         was 520; raise it back if you liked the wide layout)
@@ -430,6 +434,7 @@
 # stats_on_panel = false
 # stats_interval = 1000
 # power_profile_on_panel = true
+# hide_on_media_play = true
 # show_avatar = true
 # avatar = ""
 # battery_full_at = 100
@@ -470,6 +475,23 @@
 # alarm_volume - the volume the sink is raised to while the alarm
 #                rings, as a percentage (100 = full). only raises,
 #                never lowers a louder sink. default 80
+# restore_on_play - when media starts playing after the timer fired,
+#                   also restore the pre-dim brightness (starting to
+#                   play always lifts the timer's mutes). like alarm,
+#                   only the default for the pill's checkbox. default
+#                   false
+# alarm_only - an alarm is a reminder: when the chime rings, nothing is
+#              paused, muted or dimmed (an alarm should not silence the
+#              machine it is waking you with). with the alarm checkbox
+#              off, the timer is a plain sleep timer again — pause,
+#              mute and dim, no sound. set false to get both at once:
+#              the sleep actions AND the chime. default true
+#              NOTE: with the alarm on, the pill also offers a text
+#              field — whatever is typed there is shown as a
+#              notification at 0, posted with critical urgency and
+#              never expiring on its own, so it stays until dismissed.
+#              no config key (it is a per-timer message, not a
+#              setting); empty, or the alarm off, = no notification
 # [sleep_timer]
 # enabled = true
 # presets = [10, 15, 20, 30, 45, 60]
@@ -479,6 +501,8 @@
 # dim_floor = 0.1
 # alarm = false
 # alarm_volume = 80
+# restore_on_play = false
+# alarm_only = true
 
 # ════════════════════════════════════════════════════════════════════
 # Notifications
