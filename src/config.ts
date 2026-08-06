@@ -219,6 +219,10 @@ function getQSettingsConfig() {
         })(),
         // the power profile icon in the bar's quicksettings label
         powerProfileOnPanel: get("power_profile_on_panel", true),
+        // close the popup when a player starts playing: pressing play
+        // here (or a video starting elsewhere) means the user wants to
+        // watch, not to keep reading the popup
+        hideOnMediaPlay: get("hide_on_media_play", true),
         // header avatar: absolute path to an image; empty = the login
         // avatar from AccountsService, else the OS icon. Type-guarded:
         // a non-string (avatar = 5) would crash GLib.file_test at
@@ -409,6 +413,12 @@ function getSleepTimerConfig() {
         alarm: get("alarm", false),
         // the volume the sink is raised to while the alarm rings
         alarmVolume: percent("alarm_volume", 80),
+        // restore the pre-dim brightness when media starts playing
+        // after a fire (the mute lift on play always happens)
+        restoreOnPlay: get("restore_on_play", false),
+        // an alarm is a reminder: when it rings, nothing is paused,
+        // muted or dimmed. false = ring AND do the sleep actions
+        alarmOnly: get("alarm_only", true),
     }
 }
 

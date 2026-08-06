@@ -1,15 +1,21 @@
 import { Gtk } from "ags/gtk4"
-import { Accessor, createComputed, Setter } from "gnim"
+import { timeout } from "ags/time"
+import { Accessor, createComputed, onCleanup, Setter } from "gnim"
 import Config from "../../../config"
+import { connect, disconnect } from "../../../lib/metrics"
 import { DropdownButton } from "./ToggleButton"
 import {
     alarmEnabled,
     alarming,
     cancelSleepTimer,
     formatRemaining,
+    notificationText,
     paused,
     remaining,
+    restoreOnPlay,
     setAlarmEnabled,
+    setNotificationText,
+    setRestoreOnPlay,
     startSleepTimer,
     stopAlarm,
 } from "../../../lib/sleepTimer"
@@ -116,7 +122,11 @@ export function SleepTimerWidget({
                     has its own geometry, and is invisible unstyled) */}
                     <button
                         cssClasses={["paneRow", "trailingBtn"]}
-                        tooltipText={"Play the alarm when the timer reaches 0"}
+                        tooltipText={
+                            Config.sleepTimer.alarmOnly
+                                ? "Ring at 0 as a reminder: playback, volume and brightness are left alone"
+                                : "Play the alarm when the timer reaches 0"
+                        }
                         onClicked={() => setAlarmEnabled(!alarmEnabled.get())}
                     >
                         <image
@@ -126,6 +136,51 @@ export function SleepTimerWidget({
                         />
                     </button>
                 </box>
+                <box spacing={8}>
+                    <image iconName={"display-brightness-symbolic"} />
+                    <label label={"Undim on play"} xalign={0} hexpand />
+                    <button
+                        cssClasses={["paneRow", "trailingBtn"]}
+                        tooltipText={
+                            "Restore the brightness when media starts playing after the timer fired"
+                        }
+                        onClicked={() => setRestoreOnPlay(!restoreOnPlay.get())}
+                    >
+                        <image
+                            iconName={restoreOnPlay.as(v =>
+                                v ? "checkbox-checked-symbolic" : "checkbox-symbolic",
+                            )}
+                        />
+                    </button>
+                </box>
+                {/* the note belongs to the alarm: no field without one.
+                Saved as it is typed (debounced), not on Enter — a
+                message typed and left unconfirmed must still be there
+                at 0 */}
+                <Gtk.Entry
+                    visible={alarmEnabled}
+                    $={self => {
+                        self.set_text(notificationText.get())
+                        let save: ReturnType<typeof timeout> | null = null
+                        const handler = connect(self, "changed", () => {
+                            save?.cancel()
+                            save = timeout(600, () => {
+                                save = null
+                                setNotificationText(self.get_text())
+                            })
+                        })
+                        onCleanup(() => {
+                            save?.cancel()
+                            disconnect(self, handler)
+                        })
+                    }}
+                    cssClasses={["textInput"]}
+                    placeholderText={"Reminder message"}
+                    tooltipText={
+                        "Shown as a notification when the time is up, until you dismiss it"
+                    }
+                    hexpand
+                />
             </box>
         </revealer>
     )

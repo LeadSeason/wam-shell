@@ -1,10 +1,14 @@
 name: CI
 
+# PR-time only: the default pull_request types include "synchronize",
+# which re-runs the workflow on every push to an open PR's branch —
+# not wanted here. Iteration is verified by the local gates
+# (AGENTS.md); this runs once when the PR is opened (or on demand via
+# workflow_dispatch / a reopen).
 on:
-  push:
-    branches:
-      - master
   pull_request:
+    types: [opened, reopened, ready_for_review]
+  workflow_dispatch:
 
 permissions:
   contents: read

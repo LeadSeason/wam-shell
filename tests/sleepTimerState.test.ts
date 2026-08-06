@@ -19,7 +19,10 @@ test("sleepTimerState: serialize/parse round-trips", () => {
         ),
         { ...base, paused: true, pausedSeconds: 420, dim: { pre: 0.7, to: 0.35 } },
     )
-    eq(parse(serialize({ ...base, mutedStreams: [183, 186] }))!.mutedStreams, [183, 186])
+    eq(
+        parse(serialize({ ...base, mutedStreams: [[183, "Firefox"], [186, "mpv"]] }))!.mutedStreams,
+        [[183, "Firefox"], [186, "mpv"]],
+    )
 })
 
 test("sleepTimerState: parse rejects malformed input", () => {
@@ -36,7 +39,16 @@ test("sleepTimerState: parse rejects malformed input", () => {
     eq(parse(JSON.stringify({ deadline: null, pid: "bash" }))!.pid, 0)
     // mutedStreams defaults to [] when absent (files predating the field)
     eq(parse(JSON.stringify({ deadline: null }))!.mutedStreams, [])
-    eq(parse(JSON.stringify({ deadline: null, mutedStreams: [1, "x", 2] }))!.mutedStreams, [1, 2])
+    // bare ids (the pre-pair format) adopt with an unknown app; junk
+    // entries drop
+    eq(parse(JSON.stringify({ deadline: null, mutedStreams: [1, "x", 2] }))!.mutedStreams, [
+        [1, ""],
+        [2, ""],
+    ])
+    eq(parse(JSON.stringify({ deadline: null, mutedStreams: [[3, "Firefox"], [4, 9]] }))!.mutedStreams, [
+        [3, "Firefox"],
+        [4, ""],
+    ])
 })
 
 test("sleepTimerState decide: empty and owned", () => {
