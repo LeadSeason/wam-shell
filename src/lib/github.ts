@@ -7,6 +7,8 @@ import { loadCredentials } from "./credentials"
 import { timeoutAddSeconds, sourceRemove, trackHttp } from "./metrics"
 import { Provider, ProviderItem, registerProvider } from "./notificationProviders"
 import { addProviderPopup } from "./notifd"
+import { writeFileAtomic } from "./atomicWrite"
+import { isFile } from "./utils"
 
 // GitHub notifications provider for the notification center (REST API).
 // The unread inbox merges into the center's list: click opens the
@@ -114,6 +116,21 @@ export function newArrivals(prev: { id: string }[], next: { id: string }[]): str
     return next.filter(i => !prevIds.has(i.id)).map(i => i.id)
 }
 
+const BANNER_HORIZON_SEC = 48 * 3600
+
+/** threads the seen store has never carried, still inside the banner
+ *  horizon. The horizon is what keeps a healing inbox quiet: threads
+ *  that resurface after an outage (or a token finally working again)
+ *  are old, and old threads never banner */
+export function bannerCandidates<T extends { id: string; time: number }>(
+    next: T[],
+    seenIds: Set<string>,
+    nowSec: number,
+    horizonSec = BANNER_HORIZON_SEC,
+): T[] {
+    return next.filter(i => !seenIds.has(i.id) && i.time >= nowSec - horizonSec)
+}
+
 // ---------------------------------------------------------------- http
 
 const session = new Soup.Session({ timeout: 20 })
@@ -183,7 +200,44 @@ let authFailed = false
 let pollTimer = 0
 // stays false until the first successful fetch lands: that fetch is the
 // baseline and never banners
-let baselineDone = false
+// Banners have to survive restarts. A per-process baseline (what this
+// used to be) swallowed every thread that arrived while the shell was
+// down, and between a 15-minute poll and a shell that restarts on
+// updates or logout, that is nearly all of them — the provider filled
+// the center and never once banged the screen. The memory is a
+// persisted seen store instead (same shape as youtube's, cap 200):
+// the first run ever absorbs the inbox silently, and after that any
+// thread the store has not seen banners, as long as it is recent
+// enough that an inbox healing after an outage cannot replay history
+const seenPath = `${Config.instanceCacheDir}/github-seen.json`
+const seen = new Set<string>()
+// no store on disk = never ran before: absorb, don't banner
+let firstEverRun = true
+
+function loadSeen() {
+    if (!isFile(seenPath)) return
+    firstEverRun = false
+    try {
+        const data = JSON.parse(new TextDecoder().decode(GLib.file_get_contents(seenPath)[1]))
+        if (Array.isArray(data?.seen)) for (const id of data.seen) seen.add(String(id))
+    } catch (e) {
+        console.warn("GitHub: failed reading seen store:", e)
+    }
+}
+loadSeen()
+
+function remember(ids: string[]) {
+    for (const id of ids) seen.add(id)
+    try {
+        GLib.mkdir_with_parents(Config.instanceCacheDir, 0o755)
+    } catch (e) {
+        console.warn("GitHub: failed writing seen store:", e)
+        return
+    }
+    writeFileAtomic(seenPath, JSON.stringify({ seen: [...seen].slice(-200) })).catch(e =>
+        console.warn("GitHub: failed writing seen store:", e),
+    )
+}
 
 // locally hidden threads (right-click "dismiss"): session-only, no
 // service call — filtered out of every poll so they don't reappear
@@ -230,19 +284,17 @@ function applyThreads(rawList: any[]) {
     }
     // newest first, same as the center's desktop list
     mapped.sort((a, b) => b.time - a.time)
-    const prev = items.get()
     setItems(mapped)
-    if (!baselineDone) {
-        // the first fetch after startup is the baseline: bannering the
-        // whole backlog would spam the screen
-        baselineDone = true
+    const fresh = bannerCandidates(mapped, seen, Date.now() / 1000)
+    // remember everything on screen, bannered or not: a thread that
+    // aged out of the horizon must not banner if it is touched later
+    remember(mapped.map(i => i.id))
+    if (firstEverRun) {
+        firstEverRun = false
         return
     }
     if (!popupsEnabled()) return
-    for (const id of newArrivals(prev, mapped)) {
-        const item = mapped.find(i => i.id === id)
-        if (item) addProviderPopup(item)
-    }
+    for (const item of fresh) addProviderPopup(item)
 }
 
 // surfaced in the center's empty state while unhealthy
