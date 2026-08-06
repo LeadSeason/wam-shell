@@ -4,7 +4,7 @@ import { createBinding, createComputed, For } from "gnim"
 import AstalHyprland from "gi://AstalHyprland"
 import Config from "../../config"
 import Sway from "../../lib/sway"
-import { popups } from "../../lib/notifd"
+import { groupPopups, popups } from "../../lib/notifd"
 import PopupRow from "./PopupRow"
 
 // Transient notification banners. One window per monitor; content only
@@ -50,7 +50,16 @@ export default function NotificationPopups({ gdkMonitor }: { gdkMonitor: Gdk.Mon
     // expiry live in lib/notifd), so this rebuild is cheap and lossless —
     // parallel rows on unfocused windows would double-render and fight
     // over hover freeze
-    const rows = createComputed([popups, isFocused], (list, focused) => (focused ? list : []))
+    //
+    // Newest first. The controller appends arrivals, so its own order
+    // puts the newest at the bottom, which reads backwards once several
+    // banners are up: the one that just arrived is the one being read
+    //
+    // Then folded per app, so a chatty app costs one card rather than
+    // one card per message, and criticals lead (see groupPopups)
+    const groups = createComputed([popups, isFocused], (list, focused) =>
+        focused ? groupPopups([...list].reverse()) : [],
+    )
 
     return (
         <window
@@ -65,8 +74,8 @@ export default function NotificationPopups({ gdkMonitor }: { gdkMonitor: Gdk.Mon
             visible={visible}
         >
             <box cssClasses={["popups"]} orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-                <For each={rows} id={e => e.key}>
-                    {e => <PopupRow entry={e} />}
+                <For each={groups} id={g => g.key}>
+                    {g => <PopupRow group={g.entries} />}
                 </For>
             </box>
         </window>

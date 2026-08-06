@@ -26,6 +26,12 @@ export interface ProviderItem {
     // an id (the banner consumes "dismiss" so the item survives in the
     // center)
     actions?: { id: string; label: string; run(): void }[]
+    // someone is waiting on YOU for this one: a review request, an
+    // assignment, a task that is due. The center lifts these into its
+    // "Needs you" zone above the feed. Only the provider can tell —
+    // a PR you authored and a PR you were asked to review are the same
+    // shape from the outside. Absent/false = it belongs in the feed
+    actionable?: boolean
     hide(): void // session-scoped: out of the center, no service-side call
     dismiss(): void // "mark done" — the provider's done semantics
     activate(): void // primary click: open + whatever "read" means here

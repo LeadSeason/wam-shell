@@ -1,6 +1,6 @@
 import { Gtk } from "ags/gtk4"
 import GLib from "gi://GLib?version=2.0"
-import { onCleanup } from "gnim"
+import { createState, onCleanup } from "gnim"
 import { idleAdd } from "../../lib/metrics"
 import Config from "../../config"
 import {
@@ -11,31 +11,28 @@ import {
     removePopup,
     setPopupHovered,
 } from "../../lib/notifd"
-import NotificationCard from "./NotificationCard"
-import ProviderCard from "./ProviderCard"
+import Toast from "./Toast"
+import { fromDesktop, fromItem } from "./rowData"
 
 // Pure view over the popup controller in lib/notifd: the countdown,
 // expiry and hover-freeze live there, so rows like this one can be
 // destroyed and rebuilt on monitor focus switches without consequence.
-// Renders either card kind: desktop notifications (daemon) and provider
-// items (GitHub & co.) share the same countdown/revealer machinery
-export default function PopupRow({ entry }: { entry: PopupEntry }) {
-    function drawBar(self: Gtk.DrawingArea, cr: any, w: number, h: number) {
-        const c = self.get_color()
-        const t = popupTimer(entry.key)
-        const frac = !t || t.duration === 0 ? 1 : Math.max(0, t.remaining / t.duration)
-        // track
-        cr.setSourceRGBA(c.red, c.green, c.blue, 0.18)
-        cr.rectangle(0, 0, w, h)
-        cr.fill()
-        // remaining
-        if (frac > 0.005) {
-            cr.setSourceRGBA(c.red, c.green, c.blue, 0.95)
-            cr.rectangle(0, 0, w * frac, h)
-            cr.fill()
-        }
-    }
+// What is left here is the wiring — which gesture means what for each
+// kind of notification — while the banner itself takes one normalised
+// shape and never branches on where it came from.
 
+/**
+ * One banner.
+ *
+ * @param group every live banner this card stands for, newest first.
+ *        Usually one; more when several arrived from the same app and
+ *        were folded together. The card shows group[0] and the whole
+ *        group shares its fate — dismissing the card dismisses all of
+ *        them, because dismissing "Syncthing ×3" and getting Syncthing
+ *        ×2 back would be a card that refuses to go away
+ */
+export default function PopupRow({ group }: { group: PopupEntry[] }) {
+    const entry = group[0]
     // hovering ANY banner freezes every countdown: if a banner above the
     // hovered one expired mid-interaction, the stack would shift and yank
     // the hovered banner out from under the pointer
@@ -44,6 +41,7 @@ export default function PopupRow({ entry }: { entry: PopupEntry }) {
         if (h === hovered) return
         hovered = h
         setPopupHovered(h)
+        setOpen(h)
     }
     // row destroyed while hovered (dismissed from center, replaced by a
     // burst, ...) must not leak the freeze count
@@ -55,20 +53,81 @@ export default function PopupRow({ entry }: { entry: PopupEntry }) {
     })
 
     let rev: Gtk.Revealer | null = null
-    let area: Gtk.DrawingArea | null = null
 
     // the banner slides in only when it is new — a row rebuilt on a
     // monitor switch appears instantly (0ms transition)
     const t = popupTimer(entry.key)
     const young = t !== null && GLib.get_monotonic_time() / 1000 - t.addedAt < POPUP_SLIDE_IN_MS
 
-    // controller state changes: redraw the bar, collapse when expiring
+    // 1 -> 0 as the banner drains. A banner that never expires (critical)
+    // holds at 1, which the bar draws as a full edge
+    const countdownFor = (key: string) =>
+        popupTimerVersion.as(() => {
+            const timer = popupTimer(key)
+            return !timer || timer.duration === 0
+                ? 1
+                : Math.max(0, timer.remaining / timer.duration)
+        })
+    const countdown = countdownFor(entry.key)
+
+    // a folded group opens on hover. The badge alone said how many were
+    // behind the card without offering any way to read them, which is
+    // the one thing a count is no substitute for. Hovering already
+    // freezes every countdown, so the drawer cannot drain while it is
+    // open
+    const [open, setOpen] = createState(false)
+
+    // collapse when the controller says this one is expiring
     const unsub = popupTimerVersion.subscribe(() => {
-        const timer = popupTimer(entry.key)
-        if (timer?.expiring && rev) rev.revealChild = false
-        area?.queue_draw()
+        if (popupTimer(entry.key)?.expiring && rev) rev.revealChild = false
     })
     onCleanup(unsub)
+
+    // Every card answers for itself, the header card included.
+    //
+    // The header used to dismiss the whole group, on the theory that
+    // dismissing "Syncthing ×3" and being handed Syncthing ×2 is a card
+    // that refuses to leave. That reasoning does not survive the drawer:
+    // reaching the header means hovering it, hovering opens the drawer,
+    // so by the time anything can be clicked the header is not standing
+    // in for the others any more — they are right there underneath it,
+    // and taking them with it destroys notifications nobody acted on.
+    //
+    // Removing a banner is not dismissing its notification either: it
+    // only ends its time on screen, and it stays in the center.
+    const handlers = (p: PopupEntry) => ({
+        onActivate: () => {
+            removePopup(p.key)
+            if (p.desktop) {
+                if (p.desktop.get_actions().some(a => a.get_id() === "default"))
+                    p.desktop.invoke("default")
+            } else {
+                p.item!.activate()
+            }
+        },
+        onDismiss: () => {
+            removePopup(p.key)
+            if (p.desktop) p.desktop.dismiss()
+            else p.item!.dismiss()
+        },
+        onAction: (id: string) => {
+            removePopup(p.key)
+            if (p.desktop) {
+                p.desktop.invoke(id)
+                return
+            }
+            // every action closes the banner; "dismiss" is consumed here
+            // so the item survives in the center rather than being
+            // marked done
+            if (id === "dismiss") return
+            p.item!.actions?.find(a => a.id === id)?.run()
+        },
+    })
+
+    const data = entry.desktop ? fromDesktop(entry.desktop) : fromItem(entry.item!)
+    // a banner with no timer draws no countdown: a bar pinned at full
+    // that never moves reads as a stalled progress indicator
+    const timedFor = (key: string) => (popupTimer(key)?.duration ?? 0) !== 0
 
     return (
         <revealer
@@ -88,54 +147,47 @@ export default function PopupRow({ entry }: { entry: PopupEntry }) {
             <box
                 cssClasses={["popup"]}
                 orientation={Gtk.Orientation.VERTICAL}
+                spacing={6}
                 // fixed width: content-driven sizing made the whole stack
-                // resize on every arrival/expiry
+                // resize on every arrival and expiry
                 widthRequest={Config.notifications.popupWidth}
             >
                 <Gtk.EventControllerMotion
                     onEnter={() => hover(true)}
                     onLeave={() => hover(false)}
                 />
-                {entry.desktop ? (
-                    <NotificationCard
-                        n={entry.desktop}
-                        onDismiss={() => {
-                            removePopup(entry.key)
-                            entry.desktop!.dismiss()
-                        }}
-                        onActivate={() => removePopup(entry.key)}
-                    />
-                ) : (
-                    <ProviderCard
-                        item={entry.item!}
-                        onDismiss={() => {
-                            removePopup(entry.key)
-                            entry.item!.dismiss()
-                        }}
-                        onActivate={() => {
-                            removePopup(entry.key)
-                            entry.item!.activate()
-                        }}
-                        onHide={() => removePopup(entry.key)}
-                        // every action closes the banner; "dismiss" is
-                        // consumed so the item survives in the center
-                        onAction={id => {
-                            removePopup(entry.key)
-                            return id === "dismiss"
-                        }}
-                    />
-                )}
-                <Gtk.DrawingArea
-                    $={self => {
-                        area = self
-                        // heightRequest doesn't reach DrawingArea here
-                        // (h=0 in the draw func) — set content size
-                        self.set_content_height(3)
-                        self.set_draw_func(drawBar)
-                    }}
-                    cssClasses={["timeoutBar"]}
-                    hexpand
+                <Toast
+                    data={data}
+                    countdown={countdown}
+                    timed={timedFor(entry.key)}
+                    count={group.length}
+                    {...handlers(entry)}
                 />
+                {/* the rest of the group, dealt out on hover. Indented
+                so the card above still reads as the one that stands for
+                them */}
+                {group.length > 1 && (
+                    <revealer
+                        revealChild={open}
+                        transitionDuration={150}
+                        transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
+                    >
+                        <box
+                            cssClasses={["drawer"]}
+                            orientation={Gtk.Orientation.VERTICAL}
+                            spacing={6}
+                        >
+                            {group.slice(1).map(p => (
+                                <Toast
+                                    data={p.desktop ? fromDesktop(p.desktop) : fromItem(p.item!)}
+                                    countdown={countdownFor(p.key)}
+                                    timed={timedFor(p.key)}
+                                    {...handlers(p)}
+                                />
+                            ))}
+                        </box>
+                    </revealer>
+                )}
             </box>
         </revealer>
     )

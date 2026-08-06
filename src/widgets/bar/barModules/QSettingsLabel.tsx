@@ -269,6 +269,7 @@ function Battery() {
             <image iconName={batIcon} />
             {Config.quicksettings.showBatteryPercentage && (
                 <label
+                    cssClasses={["batteryPercent"]}
                     marginStart={5}
                     label={createBinding(bat, "percentage").as(v => `${Math.floor(v * 100)}%`)}
                 />
