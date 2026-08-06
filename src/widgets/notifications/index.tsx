@@ -41,9 +41,20 @@ let hideSource: number | null = null
 // window nobody is looking at
 let releaseClock: (() => void) | null = null
 
+// Registered at module scope, guarded on visibility: the window is
+// built lazily, and every other popup opening calls this whether or not
+// the center is up.
+//
+// Missing this call is why exclusion only worked one way — the center
+// closed the quick settings, but opening the quick settings could not
+// close the center, because nothing had ever registered it.
+registerPopup("notifications", () => {
+    if (win?.is_visible()) hide()
+})
+
 function show() {
-    // the quick settings own the same corner; only one of them can
-    // usefully be on screen at a time
+    // the other corner-owning popups: only one of them can usefully be
+    // on screen at a time
     closeOtherPopups("notifications")
     if (hideSource !== null) {
         sourceRemove(hideSource)

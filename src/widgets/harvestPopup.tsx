@@ -6,6 +6,7 @@ import { createRoot, createState } from "gnim"
 import CommandRegistry from "../lib/requestHandler"
 import { timeoutAdd, sourceRemove } from "../lib/metrics"
 import { hideOnFocusLoss } from "../lib/popupFocus"
+import { closeOtherPopups, registerPopup } from "../lib/exclusivePopups"
 import { monitorAlive } from "../lib/utils"
 import * as Harvest from "../lib/harvest"
 import Config from "../config"
@@ -101,7 +102,14 @@ let win: Astal.Window | null = null
 let rev: Gtk.Revealer | null = null
 let hideSource: number | null = null
 
+// the quick settings, the notification center and the other bar popups
+// all open over the same corner: only one of them can usefully be up
+registerPopup("harvest", () => {
+    if (win?.is_visible()) hide()
+})
+
 function show() {
+    closeOtherPopups("harvest")
     if (hideSource !== null) {
         sourceRemove(hideSource)
         hideSource = null
