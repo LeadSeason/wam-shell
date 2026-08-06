@@ -2,14 +2,20 @@ import Gdk from "gi://Gdk?version=4.0"
 import Sway, { Node } from "../../../lib/sway"
 import Config from "../../../config"
 import { createIconResolver } from "../../../lib/appIcon"
-import { Accessor, For, With, createBinding, createComputed, onCleanup } from "gnim"
+import { Accessor, For, With, createBinding, createComputed, createRoot, onCleanup } from "gnim"
 import { Gtk } from "ags/gtk4"
 import GObject from "ags/gobject"
 
 // per-workspace icon-box memo: keyed by workspace id, value is the last
-// built box + the icon list it was built from. Lets a focus/title-only
-// tree change skip rebuilding every workspace's icons.
-const wsIconCache = new Map<number, { key: string; box: Gtk.Box }>()
+// built box + the icon list it was built from, plus the dispose for the
+// root scope it was built in. Lets a focus/title-only tree change skip
+// rebuilding every workspace's icons.
+const wsIconCache = new Map<number, { key: string; box: Gtk.Box; dispose: () => void }>()
+
+function evictCache(id: number) {
+    wsIconCache.get(id)?.dispose()
+    wsIconCache.delete(id)
+}
 
 function focus_workspace(sway: Sway, ws: any) {
     sway.message(`mouse_warping output; workspace number ${ws.num}; mouse_warping container`)
@@ -95,7 +101,7 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
     // destroyed widgets
     const cacheKeys = new Set<number>()
     onCleanup(() => {
-        for (const id of cacheKeys) wsIconCache.delete(id)
+        for (const id of cacheKeys) evictCache(id)
     })
 
     const swayWorkspacesList = createComputed(
@@ -128,7 +134,7 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
         const current = new Set(swayWorkspacesList.get().map(ws => ws.id))
         for (const id of [...cacheKeys]) {
             if (!current.has(id)) {
-                wsIconCache.delete(id)
+                evictCache(id)
                 cacheKeys.delete(id)
             }
         }
@@ -184,21 +190,30 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
                         const key = iconNames.join("\u0000")
                         const cached = wsIconCache.get(workspace.id)
                         if (cached && cached.key === key) return cached.box
-                        const box = (
-                            <box
-                                cssClasses={createBinding(sway, "wss").as(wss =>
-                                    wss.find(ws => ws.id === workspace.id)?.urgent
-                                        ? ["urgent"]
-                                        : [],
-                                )}
-                                $={self => {
-                                    iconNames.forEach(name => {
-                                        self.append((<image iconName={name} />) as Gtk.Widget)
-                                    })
-                                }}
-                            />
-                        ) as Gtk.Box
-                        wsIconCache.set(workspace.id, { key, box })
+                        // this runs off a reactive recompute, not inside any
+                        // component's tracked scope — jsx() can't register the
+                        // cssClasses binding's cleanup without one. createRoot
+                        // gives the box its own scope, disposed on cache eviction.
+                        let box!: Gtk.Box
+                        const dispose = createRoot(d => {
+                            box = (
+                                <box
+                                    cssClasses={createBinding(sway, "wss").as(wss =>
+                                        wss.find(ws => ws.id === workspace.id)?.urgent
+                                            ? ["urgent"]
+                                            : [],
+                                    )}
+                                    $={self => {
+                                        iconNames.forEach(name => {
+                                            self.append((<image iconName={name} />) as Gtk.Widget)
+                                        })
+                                    }}
+                                />
+                            ) as Gtk.Box
+                            return d
+                        })
+                        evictCache(workspace.id)
+                        wsIconCache.set(workspace.id, { key, box, dispose })
                         cacheKeys.add(workspace.id)
                         return box
                     })
