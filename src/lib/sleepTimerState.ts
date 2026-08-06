@@ -10,9 +10,11 @@ export interface SleepTimerState {
     // set by fire() so a restart still knows the pre-dim level
     dim: { pre: number; to: number } | null
     // sink-input streams muted at fire (the MPRIS-invisible audio
-    // fallback): a restart must still be able to unmute what the
-    // previous shell muted, or the streams stay muted forever
-    mutedStreams: number[]
+    // fallback), as [id, application name] pairs: a restart must still
+    // be able to unmute what the previous shell muted, and when the
+    // stream is gone by then, the app name is what lets the heal
+    // machinery lift wireplumber's persisted app-wide mute
+    mutedStreams: [number, string][]
     // owning shell's PID: how a starting shell tells a live owner from
     // a crashed one — a dead pid means the file is abandoned (0 =
     // unknown)
@@ -38,9 +40,16 @@ export function parse(text: string): SleepTimerState | null {
             paused: s.paused === true,
             pausedSeconds: typeof s.pausedSeconds === "number" ? s.pausedSeconds : 0,
             dim,
-            // absent in files predating the field
+            // absent in files predating the field; bare ids (the
+            // pre-pair format) adopt with an unknown app — unmutable
+            // by id, just not healable
             mutedStreams: Array.isArray(s.mutedStreams)
-                ? s.mutedStreams.filter((id: unknown) => typeof id === "number")
+                ? s.mutedStreams.flatMap((e: unknown): [number, string][] => {
+                      if (typeof e === "number") return [[e, ""]]
+                      if (Array.isArray(e) && typeof e[0] === "number")
+                          return [[e[0], typeof e[1] === "string" ? e[1] : ""]]
+                      return []
+                  })
                 : [],
             pid: typeof s.pid === "number" ? s.pid : 0,
         }

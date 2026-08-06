@@ -5,7 +5,8 @@ import AstalWp from "gi://AstalWp?version=0.1"
 import { createBinding, createState } from "gnim"
 import Config from "../config"
 import Brightness from "./brightness"
-import { timeoutAdd, timeoutAddSeconds, sourceRemove, execAsync } from "./metrics"
+import CommandRegistry from "./commandRegistry"
+import { timeoutAdd, timeoutAddSeconds, sourceRemove, execAsync, connect, disconnect } from "./metrics"
 import { writeFileAtomic } from "./atomicWrite"
 import { SleepTimerState, serialize, parse, decide } from "./sleepTimerState"
 
@@ -405,7 +406,7 @@ function loadState() {
     // adopted: we are the owner now — restore the muted set too, so a
     // later stop/cancel can still unmute what the previous shell muted.
     // Leave the claim file behind by writing state under the original path
-    for (const id of state?.mutedStreams ?? []) mutedStreams.add(id)
+    for (const [id, app] of state?.mutedStreams ?? []) mutedStreams.set(id, app)
     console.log(`sleepTimer: adopted "${decision}" state from a previous shell`)
     writeState()
 }
@@ -455,6 +456,7 @@ export function dispose() {
     // only the watchers come down
     for (const un of streamUnsubs.values()) un()
     streamUnsubs.clear()
+    if (wpAudio && streamAddedHandler) disconnect(wpAudio, streamAddedHandler)
 }
 
 // restore-on-extend state: the levels at the last fire. Persisted
@@ -500,10 +502,46 @@ function pauseAllPlayers() {
 // process, no MediaSession): nothing on D-Bus can pause them, but
 // their audio still streams. The fallback is a sink-input mute at
 // fire — only streams we muted are restored, user unmutes win, and
-// streams that appear later get muted on the next sweep
-const mutedStreams = new Set<number>()
+// streams that appear later get muted on the next sweep.
+// id → application name: the app name is the wireplumber restore key
+// (see the heal machinery below), recorded at mute time because the
+// stream may be gone by the time the unmute comes around
+const mutedStreams = new Map<number, string>()
 const userUnmuted = new Set<number>()
 const streamUnsubs = new Map<number, () => void>()
+
+// wireplumber persists every stream mute/volume change app-wide —
+// ~/.local/state/wireplumber/stream-properties keys on
+// application.name, and a raw pw-cli set-param is persisted all the
+// same (both verified live). Muting one firefox tab's stream thus
+// saves "Firefox: muted", and EVERY future firefox stream is born
+// muted — browsers recreate a tab's stream on pause/resume, so the tab
+// the timer paused resumes dead quiet even though its own stream was
+// never touched. Unmuting a live stream of the app rewrites the key;
+// when our unmute finds the stream already gone, the app is recorded
+// here and healed by unmuting its next stream at birth. Cache-dir
+// persisted: the wireplumber state survives reboots, so this debt must
+// survive them too
+const healPath = `${Config.instanceCacheDir}/sleep-heal.json`
+
+function loadHealApps(): Set<string> {
+    try {
+        const v = JSON.parse(new TextDecoder().decode(GLib.file_get_contents(healPath)[1]))
+        if (Array.isArray(v)) return new Set(v.filter((a): a is string => typeof a === "string"))
+    } catch {} // absent or malformed: no debt
+    return new Set()
+}
+
+const healApps = loadHealApps()
+
+function writeHealApps() {
+    try {
+        GLib.mkdir_with_parents(Config.instanceCacheDir, 0o755)
+    } catch (e) {
+        console.warn("sleepTimer: failed writing heal state:", e)
+    }
+    queueIo("heal state", () => writeFileAtomic(healPath, JSON.stringify([...healApps])))
+}
 
 function watchStream(s: AstalWp.Stream) {
     if (streamUnsubs.has(s.id)) return
@@ -601,7 +639,7 @@ function muteActiveStreams() {
         // wpctl, not the endpoint property: the property write races
         // (observed landing for one stream and silently not for another)
         execAsync(["wpctl", "set-mute", String(s.id), "1"]).catch(() => {})
-        mutedStreams.add(s.id)
+        mutedStreams.set(s.id, s.description ?? "")
         changed = true
         watchStream(s)
     }
@@ -611,13 +649,62 @@ function muteActiveStreams() {
 }
 
 function unmuteStreams() {
-    for (const id of mutedStreams) execAsync(["wpctl", "set-mute", String(id), "0"]).catch(() => {})
+    const live = new Set((AstalWp.get_default()?.audio?.streams ?? []).map(s => s.id))
+    let healChanged = false
+    for (const [id, app] of mutedStreams) {
+        if (live.has(id)) {
+            // unmuting the live stream also rewrites wireplumber's
+            // persisted app key back to unmuted
+            execAsync(["wpctl", "set-mute", String(id), "0"]).catch(() => {})
+        } else if (app) {
+            // the stream died while muted: wireplumber's saved app-wide
+            // mute outlives it — heal on the app's next stream
+            healApps.add(app)
+            healChanged = true
+        }
+    }
     mutedStreams.clear()
     userUnmuted.clear()
     for (const un of streamUnsubs.values()) un()
     streamUnsubs.clear()
+    if (healChanged) writeHealApps()
     writeState()
 }
+
+// new-stream watcher, all three duties born of the wireplumber
+// restore key (a new stream of an app we muted starts muted, whoever
+// it belongs to):
+// 1. heal debt from a past session: the app's first new stream is
+//    unmuted at birth, once — that rewrites the saved key
+// 2. a covered tab resumed while our mutes are live (its old stream
+//    died with the pause; pressing play makes a fresh one, born
+//    muted): covered is pause's territory — unmute it
+// 3. an uncovered newcomer while our mutes are live: it inherits the
+//    mute anyway — adopt it so the session-end unmute lifts it too
+function onStreamAdded(s: AstalWp.Stream) {
+    const app = s.description ?? ""
+    if (healApps.has(app)) {
+        healApps.delete(app)
+        writeHealApps()
+        execAsync(["wpctl", "set-mute", String(s.id), "0"]).catch(() => {})
+        return
+    }
+    if (mutedStreams.size === 0 || isAlarmStream(s)) return
+    if (![...mutedStreams.values()].includes(app)) return
+    if (streamHasPlayer(s, AstalWp.get_default()?.audio?.streams ?? [])) {
+        execAsync(["wpctl", "set-mute", String(s.id), "0"]).catch(() => {})
+    } else {
+        execAsync(["wpctl", "set-mute", String(s.id), "1"]).catch(() => {})
+        mutedStreams.set(s.id, app)
+        watchStream(s)
+        writeState()
+    }
+}
+
+const wpAudio = AstalWp.get_default()?.audio ?? null
+const streamAddedHandler = wpAudio
+    ? connect(wpAudio, "stream-added", (_a: AstalWp.Audio, s: AstalWp.Stream) => onStreamAdded(s))
+    : 0
 
 // multi-player fireboxes leave tabs audible after one sweep: a player
 // can be mid-buffering (paused for an instant), racing the fire, or
@@ -736,5 +823,36 @@ export function formatRemaining(seconds: number): string {
     const s = seconds % 60
     return `${m}:${s.toString().padStart(2, "0")}`
 }
+
+// request command: the QS dropdown is the everyday entry point, but a
+// scriptable one is needed for compositor keybinds and for exercising
+// the fire path without clicking through the UI
+CommandRegistry.get_default().register({
+    name: ["sleep-timer"],
+    description: "Sleep timer: start (minutes, fractions ok), cancel, status",
+    help: `sleep-timer <minutes>
+  Starts the timer; fractions work (0.1 = 6 seconds).
+sleep-timer cancel
+  Cancels the timer, lifts the mutes and restores the dim.
+sleep-timer status
+  One line: remaining=<s> paused=<bool> alarming=<bool>`,
+    main: args => {
+        const arg = args[0] ?? ""
+        if (arg === "status")
+            return `remaining=${remaining.get()} paused=${paused.get()} alarming=${alarming.get()}`
+        if (foreignOwned) return "another shell instance owns the timer"
+        if (arg === "cancel" || arg === "0") {
+            // startSleepTimer(0), not cancelSleepTimer: only the former
+            // also restores a fired timer's dim
+            startSleepTimer(0)
+            return "cancelled"
+        }
+        const minutes = Number(arg)
+        if (!Number.isFinite(minutes) || minutes <= 0)
+            return "usage: sleep-timer <minutes>|cancel|status"
+        startSleepTimer(minutes)
+        return `started: ${minutes} min`
+    },
+})
 
 loadState()
