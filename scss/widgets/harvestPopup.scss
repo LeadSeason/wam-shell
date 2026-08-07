@@ -154,9 +154,14 @@ window.HarvestPopup {
                 border-left: solid 3px t.$harvest;
                 padding-left: 8px;
             }
-            &.running .rowTime {
-                color: t.$harvest;
-                font-weight: bold;
+            // The running row is inert on purpose — a running entry
+            // cannot be edited — but it should not READ as disabled.
+            // The generic :disabled rule dimmed it to 35%, greying out
+            // the one row you are most likely to be looking at, and the
+            // timestamp was tinted orange on top of that. The spine says
+            // which row is running; neither of those has to say it again
+            &.running button.rowBody:disabled {
+                opacity: 1;
             }
             &.paused .rowTime {
                 color: t.$yellow;
