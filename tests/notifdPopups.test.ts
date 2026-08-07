@@ -1,6 +1,12 @@
 import { test, eq } from "./framework"
 import AstalNotifd from "gi://AstalNotifd?version=0.1"
-import { capPopups, groupPopups, popupDuration, PopupEntry } from "../src/lib/notifd"
+import {
+    capPopups,
+    groupPopups,
+    popupDuration,
+    staleArrivalKeys,
+    PopupEntry,
+} from "../src/lib/notifd"
 
 const entry = (key: string, critical = false): PopupEntry => ({
     key,
@@ -139,4 +145,14 @@ test("groupPopups: anonymous senders are never folded together", () => {
 
 test("groupPopups: empty in, empty out", () => {
     eq(groupPopups([]), [])
+})
+
+test("staleArrivalKeys: forget apps with nothing left on screen", () => {
+    // the tally exists to survive the MAX_POPUPS cap, so it must be
+    // dropped the moment an app's burst is over — otherwise the next
+    // arrival resumes a stale total instead of starting at one
+    eq(staleArrivalKeys(["syncthing", "signal"], ["signal"]), ["syncthing"])
+    eq(staleArrivalKeys(["syncthing"], ["syncthing"]), [])
+    eq(staleArrivalKeys([], ["signal"]), [])
+    eq(staleArrivalKeys(["a", "b"], []), ["a", "b"])
 })
