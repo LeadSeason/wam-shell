@@ -125,6 +125,17 @@ export default class Brightness extends GObject.Object {
         let last = this.#screen
         let burstStart = -1
         this.#screenHandler = connect(this, "notify::screen", () => {
+            // The gamma-dim path seeds `dim` from an async daemon read
+            // that lands AFTER this object was constructed, so #screen
+            // and `last` above were both the 1.0 default. That seeding
+            // change is not a user action: recording it made `previous`
+            // a 100% nobody set, and the restore gesture then took a
+            // 60%-gamma laptop to full brightness. Adopt the value and
+            // move on — the real pre-change level is whatever it seeds to
+            if (this.#useGammaDim && !hyprsunset.initialReadDone.get()) {
+                last = this.#screen
+                return
+            }
             if (Math.abs(this.#screen - last) < eps) return
             if (this.#settleSource === 0) burstStart = last
             if (this.#settleSource !== 0) sourceRemove(this.#settleSource)

@@ -16,21 +16,38 @@ export function NightLightButton() {
     // `gsettings get` plus a `pgrep`, and those are async now (they used
     // to block the main loop at import). They answer after this widget
     // is built, so a snapshot here read "no backend" and hid the toggle
-    // for the whole session on a gnome-settings-daemon desktop
+    // for the whole session on a gnome-settings-daemon desktop.
+    //
+    // Inside a box of its own, which is what keeps it in the right CELL.
+    // gnim's append() forwards a Fragment's later children straight to
+    // the parent's appendChild — for the FlowBox that is
+    // gtk_flow_box_insert(box, child, -1) — and does not remember where
+    // the Fragment sat. A bare `With` therefore dropped the card past
+    // Sleep Timer at the end of the grid the moment the probe answered,
+    // reflowing the two-column layout under the user. The box holds the
+    // slot and the late append lands inside it.
+    //
+    // Its visibility is bound, and that is not optional: the FlowBox is
+    // homogeneous, so an empty-but-visible box would hold a full blank
+    // cell on every session without a night light backend — where the
+    // bare `<></>` the other unavailable toggles return contributes no
+    // child at all.
     return (
-        <With value={tempBackend}>
-            {backend =>
-                backend !== "none" && (
-                    <DropdownButton
-                        icon={"night-light-symbolic"}
-                        label={"Night Light"}
-                        subtitle={hyprsunset.nightLight.as(v => (v ? "On" : "Off"))}
-                        isActive={hyprsunset.nightLight}
-                        activate={() => setNightLightEnabled(!hyprsunset.nightLight.get())}
-                    />
-                )
-            }
-        </With>
+        <box visible={tempBackend.as(b => b !== "none")}>
+            <With value={tempBackend}>
+                {backend =>
+                    backend !== "none" && (
+                        <DropdownButton
+                            icon={"night-light-symbolic"}
+                            label={"Night Light"}
+                            subtitle={hyprsunset.nightLight.as(v => (v ? "On" : "Off"))}
+                            isActive={hyprsunset.nightLight}
+                            activate={() => setNightLightEnabled(!hyprsunset.nightLight.get())}
+                        />
+                    )
+                }
+            </With>
+        </box>
     )
 }
 

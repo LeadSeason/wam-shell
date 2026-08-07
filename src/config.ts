@@ -902,25 +902,16 @@ function getPanelsConfig(): PanelConfig[] {
 
 /**
  * Where the pending-updates daemon (extra/pending-updates-daemon) writes
- * its package list: next to the shell cache, same resolution as
- * GLib.get_user_cache_dir(). Never /tmp — a predictable world-writable
- * path is a symlink/planted-content hazard.
- */
-function pendingUpdatesPath(instanceName: string): string {
-    return `${GLib.get_user_cache_dir()}/${instanceName}/system_updates`
-}
-
-/**
- * The file's presence is the cheap startup signal, before the daemon
- * probe below can answer.
+ * its package list. Never /tmp — a predictable world-writable path is a
+ * symlink/planted-content hazard.
  *
- * @returns
- * - false → update file missing
- * - string → absolute path to the update file
+ * Derived from instanceCacheDir rather than recomposing
+ * GLib.get_user_cache_dir() again: two independent definitions of the
+ * same path drift, and the one that drifts here monitors a file nothing
+ * writes, with no error anywhere to say so.
  */
-function getPendingUpdateDaemonStatus(instanceName: string): false | string {
-    const updateFile = pendingUpdatesPath(instanceName)
-    return isFile(updateFile) ? updateFile : false
+function pendingUpdatesPath(cacheDir: string): string {
+    return `${cacheDir}/system_updates`
 }
 
 export default class Config {
@@ -939,15 +930,6 @@ export default class Config {
     static instanceSrcDir = instanceSrcDir
     static osIcon = getOsIcon()
     static desktopSession = getDesktopSession()
-    // where the daemon writes, whether or not it exists yet: the widget
-    // monitors this path, so a daemon that starts after the shell is
-    // picked up rather than needing a restart
-    static pendingUpdatesPath = pendingUpdatesPath(this.instanceName)
-    // file-based default; the exact daemon state (a systemctl probe)
-    // resolves asynchronously after class init so it can't block startup.
-    // Read the `pendingUpdates` ACCESSOR below rather than this static
-    // in anything built at startup — see the note on the probe
-    static pendingUpdates = getPendingUpdateDaemonStatus(this.instanceName)
     static updatesThreshold = (() => {
         const v = configData.arch_updates_threshold
         if (v === undefined) return 50
@@ -983,6 +965,10 @@ export default class Config {
     static todoist = getTodoistConfig()
     static protonmail = getProtonmailConfig()
     static instanceCacheDir = `${GLib.get_user_cache_dir()}/${this.instanceName}`
+    // where the daemon writes, whether or not it exists yet: the widget
+    // monitors this path, so a daemon that starts after the shell is
+    // picked up rather than needing a restart
+    static pendingUpdatesPath = pendingUpdatesPath(this.instanceCacheDir)
     static cacheFile = `${this.instanceCacheDir}/cache.json`
 
     static cssPath = `${this.instanceCacheDir}/style.css`
@@ -990,34 +976,61 @@ export default class Config {
 }
 
 /**
- * The pending-updates daemon's list, as a state rather than a static.
+ * Whether the updates widget should exist: is the pending-updates daemon
+ * the thing producing that list?
  *
- * The probe below is async — it must not block the main loop during
- * class init, which is what the old synchronous version did. But
- * `main()` runs on `activate`, before a subprocess can possibly
- * complete, so ANY widget built at startup reads the file-based default
- * and never sees the correction: a stale list next to a stopped daemon
- * kept the updates pill on the bar, which is exactly what the probe
- * exists to prevent. Bind this instead of reading `Config.pendingUpdates`.
+ * THREE states, and each one is load-bearing:
  *
- * false = no list to show; a string = the absolute path to it.
+ * - `null` — the probe has not answered. Render nothing. Seeding this
+ *   from the file's existence instead meant a machine with a stale list
+ *   and a stopped daemon built the widget, revealed a wrong count, and
+ *   then tore it down when the probe landed: a wrong number flashing
+ *   onto the bar at every login.
+ * - `true` — show it. Note this does NOT require the file to exist yet.
+ *   That is the whole point: the daemon and the shell start together and
+ *   the daemon's first `checkupdates` takes seconds, so gating on the
+ *   file meant the widget was never built, its file monitor never
+ *   installed, and a machine with pending updates showed nothing for the
+ *   entire session.
+ * - `false` — a daemon that is genuinely not running. Its leftover list
+ *   is stale and must not be advertised.
  */
-const [pendingUpdates, setPendingUpdates] = createState<false | string>(Config.pendingUpdates)
+const [pendingUpdates, setPendingUpdates] = createState<boolean | null>(null)
 export { pendingUpdates }
 
-// Correct both once the real daemon state is known. The static is kept
-// in step for non-reactive readers; the accessor is what the UI follows.
-execAsync(["systemctl", "--user", "is-active", "pending-updates-daemon.service"])
-    .then(status => {
-        const resolved =
-            status.trim() === "active" ? getPendingUpdateDaemonStatus(Config.instanceName) : false
-        Config.pendingUpdates = resolved
-        setPendingUpdates(resolved)
-    })
-    .catch(() => {
-        Config.pendingUpdates = false
-        setPendingUpdates(false)
-    })
+/**
+ * `systemctl is-active` exits non-zero for "inactive", so execAsync's
+ * rejection covers two very different answers and we have to tell them
+ * apart: it rejects with STDERR, which is empty when systemctl ran and
+ * simply reported the unit down, and non-empty when systemctl itself
+ * could not answer (no user bus, no service manager).
+ *
+ * That distinction matters because treating every rejection as "not
+ * running" hides a working pill on any session without a systemd user
+ * manager — a TTY/greeter exec, a container, or a list refreshed by cron
+ * instead of the unit. When we cannot ask, the file on disk is the best
+ * evidence there is, so trust it.
+ */
+function probeUpdatesDaemon() {
+    let probe: Promise<string>
+    try {
+        probe = execAsync(["systemctl", "--user", "is-active", "pending-updates-daemon.service"])
+    } catch (e) {
+        // no systemctl at all: Gio.Subprocess.new throws rather than
+        // rejecting, so this never reaches the .catch below
+        setPendingUpdates(isFile(Config.pendingUpdatesPath))
+        return
+    }
+    probe
+        .then(() => setPendingUpdates(true))
+        .catch((e: unknown) => {
+            const stderr = String((e as { message?: string })?.message ?? "").trim()
+            if (stderr === "") return setPendingUpdates(false) // answered: not running
+            console.warn(`Updates: could not ask systemd (${stderr}); trusting the list on disk`)
+            setPendingUpdates(isFile(Config.pendingUpdatesPath))
+        })
+}
+probeUpdatesDaemon()
 
 // Re-read the theme key from the config file so theme changes apply
 // on reloadStyle without a restart.

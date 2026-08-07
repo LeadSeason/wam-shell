@@ -38,8 +38,30 @@ test("cache: unparseable content is reported and falls back", () => {
     eq(reported !== null, true, "the parse error is reported")
 })
 
-test("cache: an empty file is no cache and reports nothing", () => {
+
+// Per-field validation, not just the container shape: the cast is
+// compile-time only, and SwayGaps binds these into typed GObject
+// properties where a null or a string throws out of the property system.
+test("cache: a bad field is dropped, not passed through", () => {
+    const reported: unknown[] = []
+    const push = (e: unknown) => reported.push(e)
+
+    eq(parseCacheData('{"gapsSize":null}', push).gapsSize, undefined, "null gapsSize")
+    eq(parseCacheData('{"gapsSize":"10"}', push).gapsSize, undefined, "string gapsSize")
+    eq(parseCacheData('{"gaps":"true"}', push).gaps, undefined, "string gaps")
+    eq(parseCacheData('{"lastSave":"x"}', push).lastSave, 0, "string lastSave defaults")
+    eq(reported.length, 4, "each bad field is reported")
+})
+
+test("cache: good fields survive alongside a bad one", () => {
+    const data = parseCacheData('{"lastSave":7,"gaps":true,"gapsSize":null}')
+    eq(data.lastSave, 7, "lastSave")
+    eq(data.gaps, true, "gaps")
+    eq(data.gapsSize, undefined, "the bad field alone is dropped")
+})
+
+test("cache: an empty file is reported so the log can explain a reset", () => {
     let reported: unknown = null
     eq(parseCacheData("", e => (reported = e)).lastSave, 0, "falls back")
-    eq(reported, null, "an empty file is not a malformed one")
+    eq(reported !== null, true, "empty is broken, not silently absent")
 })

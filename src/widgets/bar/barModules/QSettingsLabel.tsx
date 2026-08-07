@@ -338,12 +338,27 @@ function ButtonLabel() {
             {Config.quicksettings.powerProfileOnPanel && powerProfile()}
             {vpnIndicator()}
             {bat.isPresent && <Battery />}
-            {/* bound, not read once: the daemon probe in config.ts is
-            async and lands AFTER this widget is built, so reading the
+            {/* Bound, not read once: the daemon probe in config.ts is
+            async and lands AFTER this widget is built, so reading a
             static here left a stale package list on the bar next to a
-            stopped daemon. `With` also keeps ArchUpdates (and its file
-            monitor) unconstructed on machines that have no daemon */}
-            <With value={pendingUpdates}>{file => file !== false && <Updates />}</With>
+            stopped daemon. `null` is "still probing" and renders
+            nothing, so nothing flashes on and off at login either.
+
+            Wrapped in its OWN box, and that is not decoration. gnim's
+            append() forwards a Fragment's later children straight to the
+            parent's appendChild — Gtk.Box.vfunc_add_child, which appends
+            at the END — and does not remember where the Fragment sat. A
+            bare `With` here therefore drops the pill to the right of the
+            tray-attention dot the moment the probe answers, instead of
+            between the battery and the dot. Inside a box of its own the
+            box holds the slot and the late append lands in it. */}
+            {/* visibility bound too: the parent box carries spacing={12},
+            and GTK counts an empty-but-visible child as a child — so an
+            unconditionally visible wrapper would leave a 12px hole in the
+            cluster on every machine without the daemon */}
+            <box visible={pendingUpdates.as(active => active === true)}>
+                <With value={pendingUpdates}>{active => active === true && <Updates />}</With>
+            </box>
 
             {/* Dot shown when a nested tray item needs attention */}
             {!Config.tray.onPanel && (

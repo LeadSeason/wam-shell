@@ -161,6 +161,11 @@ export function anyPopupHovered(): boolean {
 // last is gone) — a tick per row would die on every monitor switch
 let tickSource: number | null = null
 
+/** a countdown that can still move (criticals never drain) */
+const draining = () => [...timers.values()].some(t => t.duration !== 0 && !t.expiring)
+/** a banner inside its 220ms collapse window */
+const collapsing = () => [...timers.values()].some(t => t.expiring)
+
 function ensurePopupTick() {
     if (tickSource !== null) return
     let last = GLib.get_monotonic_time() / 1000 // us -> ms
@@ -183,14 +188,27 @@ function ensurePopupTick() {
                     })
                 }
             }
-            // only when a countdown actually moved. A critical banner
-            // has duration 0 and never drains, so the loop above skips
-            // it — and an unconditional bump meant one un-dismissed
-            // critical kept every popupTimerVersion subscriber
-            // recomputing five times a second, indefinitely
-            if (moved) bumpTimerVersion()
+            // A bump is what PopupRow watches, for two different things:
+            // to redraw a countdown that moved, and to collapse a banner
+            // whose `expiring` is set. The collapse cue is why this is
+            // not just `moved` — a row rebuilt inside the 220ms window
+            // (monitor hotplug, group re-fold) gets no further movement
+            // to ride on and would vanish instead of collapsing.
+            //
+            // But it is not unconditional either: a critical banner has
+            // duration 0 and never drains, and bumping anyway kept every
+            // subscriber recomputing five times a second for as long as
+            // one sat un-dismissed.
+            if (moved || collapsing()) bumpTimerVersion()
         }
-        if (popupsState.get().length === 0) {
+        // Stop once nothing left can move. Gating only the BUMP still
+        // left this 200ms source waking the main loop forever behind a
+        // critical, which is most of what the tick actually costs.
+        // Computed outside the hover branch on purpose: hovering freezes
+        // countdowns, it must not decide whether the tick lives.
+        // ensurePopupTick runs on every admission, so a later drainable
+        // banner simply starts it again.
+        if (popupsState.get().length === 0 || !(draining() || collapsing())) {
             tickSource = null
             return GLib.SOURCE_REMOVE
         }
