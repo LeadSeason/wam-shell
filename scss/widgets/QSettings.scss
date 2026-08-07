@@ -212,6 +212,32 @@ window#QSettings {
         // its own at the top, or the card is just a dark strip with a
         // picture leaking around the edges
         min-height: 172px;
+        // the window sets a blanket transition-duration, and .smallArt
+        // below swaps this box's margin: animating that makes gtk
+        // measure the box at every interpolated step, each one reporting
+        // a negative minimum ("reported min width -26, but sizes must be
+        // >= 0", once per frame, in both directions). The class toggle
+        // has to be instant — and it has to be set HERE, not on
+        // .smallArt, or removing the class animates on the way back
+        transition-duration: 0s;
+    }
+    // art too small for the card (isSmallCover): a blur reads as a
+    // deliberately soft backdrop where a sharp 4x upscale just reads as
+    // broken. Same trick as the veil below — the blur feathers the box's
+    // OWN edges, so the art has to start outside the rounded clip or the
+    // corners show the card through a vignette. min-height buys back
+    // exactly what the negative margins spend, so the card does not
+    // change height when a player switches between big and small art
+    $art-bleed: 14px;
+    .mediaBackdrop.smallArt {
+        filter: blur(5px);
+        margin: -$art-bleed;
+        // what gtk measures is the css minimum PLUS the margins, so the
+        // box has to carry at least what the bleed spends or it measures
+        // negative and warns. Both land back on what the card had: width
+        // 28 - 28 = 0, height 200 - 28 = 172
+        min-width: 2 * $art-bleed;
+        min-height: 172px + 2 * $art-bleed;
     }
     // the veil behind the text. Blurring a solid-ish panel feathers
     // its OWN edges — gtk has no gradient mask — so the dark area

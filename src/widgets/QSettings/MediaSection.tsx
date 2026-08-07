@@ -18,6 +18,7 @@ import {
     raisePlayer,
     scrollActivePlayer,
 } from "../../lib/mpris"
+import { isSmallCover } from "../../lib/coverArt"
 import { sharing, enable as enableShareWatch } from "../../lib/screenShare"
 import Config from "../../config"
 import { isRtl } from "../../lib/utils"
@@ -164,7 +165,16 @@ function Player({ player }: { player: AstalMpris.Player }) {
             <Gtk.Overlay hexpand>
                 {/* the art, sharp and full bleed, edge to edge */}
                 <box
-                    cssClasses={localCover.as(c => ["mediaBackdrop", ...(c ? [] : ["noArt"])])}
+                    cssClasses={localCover.as(c => [
+                        "mediaBackdrop",
+                        ...(c ? [] : ["noArt"]),
+                        // a player that only ever hands over a thumbnail
+                        // (chromium caps its mpris art at 150px, and
+                        // lib/browserArt could not find the page): there
+                        // are no pixels left to recover, so soften it
+                        // rather than show a hard 4x upscale
+                        ...(c && isSmallCover(c) ? ["smallArt"] : []),
+                    ])}
                     css={localCover.as(c =>
                         c ? `background-image: url("${c.replace(/['\\]/g, "\\$&")}");` : "",
                     )}

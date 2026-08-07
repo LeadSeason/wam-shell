@@ -1,3 +1,4 @@
+import GdkPixbuf from "gi://GdkPixbuf?version=2.0"
 import Gio from "gi://Gio?version=2.0"
 import GLib from "gi://GLib?version=2.0"
 import Soup from "gi://Soup?version=3.0"
@@ -19,9 +20,65 @@ const inFlight = new Map<string, Promise<string>>()
 const MAX_COVER_BYTES = 10 * 1024 * 1024
 const session = new Soup.Session({ timeout: 10 })
 
+// bumped when artCandidates learns a bigger size: the cache is keyed by
+// url, so without this every track already seen would keep serving the
+// small copy until the week-long TTL got round to it. The file NAME
+// keeps the cover- prefix so pruneCache still collects the old ones.
+const CACHE_GEN = "2"
+
 function cachePath(url: string): string {
-    const hash = GLib.compute_checksum_for_string(GLib.ChecksumType.MD5, url, -1)
+    const hash = GLib.compute_checksum_for_string(GLib.ChecksumType.MD5, `${CACHE_GEN}:${url}`, -1)
     return `${Config.instanceCacheDir}/cover-${hash}`
+}
+
+/** the same art, biggest first, with the player's own url last.
+ *
+ *  Players hand over whatever thumbnail their notification popup
+ *  wanted — 300px is typical. The quick settings backdrop is ~440
+ *  logical px wide and the laptop panel runs at 1.25, so that art is
+ *  upscaled past 3x and looks it. Where the cdn encodes the size in
+ *  the url we can just ask for the large one instead.
+ *
+ *  Every rewrite is a guess (maxresdefault exists only when the
+ *  uploader supplied a big enough source, and size tokens change over
+ *  the years), so the original always stays on the list as the
+ *  fallback rather than being replaced. */
+export function artCandidates(url: string): string[] {
+    const out: string[] = []
+    const add = (u: string) => {
+        if (u !== url && !out.includes(u)) out.push(u)
+    }
+
+    // youtube: .../vi/<id>/<name>.jpg. maxres is 1280 wide but 404s on
+    // plenty of videos, sd (640) is the safe second try
+    const yt = url.match(
+        /^(https?:\/\/[^/]*(?:ytimg|youtube)\.com\/vi(?:_webp)?\/[^/]+\/)[^/?#]+(\.\w+)([?#].*)?$/,
+    )
+    if (yt) {
+        const [, base, ext, query = ""] = yt
+        for (const n of ["maxresdefault", "sddefault", "hqdefault"])
+            add(`${base}${n}${ext}${query}`)
+    }
+
+    // spotify: the 8 hex digits after ab67616d are the size class —
+    // 00004851 is 64px, 00001e02 300px, 0000b273 640px
+    add(url.replace(/^(https?:\/\/i\.scdn\.co\/image\/ab67616d)[0-9a-f]{8}/, "$10000b273"))
+
+    // apple music: the thumb service renders any .../<w>x<h>bb.jpg
+    if (url.includes("mzstatic.com/")) add(url.replace(/\/\d+x\d+(\w*\.\w+)$/, "/1000x1000$1"))
+
+    // deezer, same idea: /<w>x<h>-000000-80-0-0.jpg
+    if (url.includes("dzcdn.net/")) add(url.replace(/\/\d+x\d+-/, "/1000x1000-"))
+
+    // last.fm: dropping the /64s/ /174s/ size segment serves the
+    // original upload
+    add(url.replace(/^(https?:\/\/[^/]*lastfm[^/]*\/i\/u\/)[^/]+\//, "$1"))
+
+    // cover art archive: <n>-250.jpg and <n>-500.jpg are thumbnails
+    if (url.includes("coverartarchive.org/")) add(url.replace(/-(?:250|500)(\.\w+)$/, "-1200$1"))
+
+    out.push(url)
+    return out
 }
 
 function fetchCover(url: string): Promise<Uint8Array> {
@@ -53,20 +110,49 @@ function fetchCover(url: string): Promise<Uint8Array> {
     })
 }
 
+// try each candidate until one comes back an image. The list always
+// ends with the url the player gave us, so a cdn that has stopped
+// speaking our size tokens still lands on the art it does have.
+function fetchLargest(urls: string[]): Promise<Uint8Array> {
+    return fetchCover(urls[0]).catch(e => {
+        if (urls.length === 1) throw e
+        return fetchLargest(urls.slice(1))
+    })
+}
+
 /** download url into the cover cache; resolves the cached path.
  *  The write is tmp+rename atomic (writeFileAtomic): a killed download
  *  must not leave a truncated file behind that the cache then treats
- *  as valid forever. */
+ *  as valid forever. Cached under the url the PLAYER reported, not the
+ *  candidate that won: which rewrite succeeds must not change where a
+ *  track's art lives, or the next play re-downloads it. */
 export function downloadCover(url: string): Promise<string> {
     const path = cachePath(url)
     if (isFile(path)) return Promise.resolve(path)
     const pending = inFlight.get(url)
     if (pending) return pending
-    const promise = fetchCover(url)
+    const promise = fetchLargest(artCandidates(url))
         .then(data => writeFileAtomic(path, data).then(() => path))
         .finally(() => inFlight.delete(url))
     inFlight.set(url, promise)
     return promise
+}
+
+// the quick settings backdrop is ~440 logical px wide, and the laptop
+// panel runs at 1.25 — under this the art is being upscaled hard enough
+// to see, and no rewrite or lookup found anything better
+const SHARP_MIN_WIDTH = 400
+
+/** true when this cover is too small for the backdrop to show sharp.
+ *  get_file_info reads the header only: no decode, no texture. */
+export function isSmallCover(uri: string): boolean {
+    if (!uri.startsWith("file://")) return false
+    try {
+        const [format, width] = GdkPixbuf.Pixbuf.get_file_info(uri.slice(7))
+        return format !== null && width > 0 && width < SHARP_MIN_WIDTH
+    } catch {
+        return false
+    }
 }
 
 export function coverFile(url: string): string {
