@@ -8,6 +8,7 @@ import {
     monthGrid,
     isVisible,
     isoWeekNumber,
+    dayLabel,
 } from "../src/lib/gcal"
 
 // local ms for readability: d(31, 10) = the 31st of this month at 10:00
@@ -245,4 +246,21 @@ test("gcal isoWeekNumber: ISO-8601 week numbers", () => {
     eq(isoWeekNumber(d(2026, 7, 3)), 32)
     // 2021-01-01 (Fri) is week 53 of 2020
     eq(isoWeekNumber(d(2021, 0, 1)), 53)
+})
+
+// The weekday is spelled out in English rather than taken from %a,
+// which follows the locale — "Today" and "Tomorrow" never can, so the
+// agenda otherwise switched language two rows in ("tis, 05.08.2026").
+// Same rule, and now the same list, as the center's day dividers.
+test("gcal dayLabel: relative names, then an English weekday", () => {
+    eq(dayLabel("2026-08-07", "2026-08-07"), "Today")
+    eq(dayLabel("2026-08-08", "2026-08-07"), "Tomorrow")
+    // 2026-08-05 is a Wednesday
+    eq(dayLabel("2026-08-05", "2026-08-07"), "Wed, 05.08.2026")
+    // month rollover: the "tomorrow" comparison has to survive it
+    eq(dayLabel("2026-09-01", "2026-08-31"), "Tomorrow")
+    // 2026-01-04 is a Sunday — the Monday-first list's last entry
+    eq(dayLabel("2026-01-04", "2026-08-07"), "Sun, 04.01.2026")
+    // 2026-01-05 is a Monday — its first
+    eq(dayLabel("2026-01-05", "2026-08-07"), "Mon, 05.01.2026")
 })
