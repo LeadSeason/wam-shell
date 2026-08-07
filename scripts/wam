@@ -80,6 +80,10 @@ usage: wam <command>
   logs [-f]        the shell's log, from wherever this start method put
                    it: the journal under autostart, $LOG_DIR/shell.log
                    after 'wam start'. -f follows
+  report           one paste-ready block for a bug report: versions,
+                   status, the options you set, and a bounded slice of
+                   the log — with paths, usernames, emails and tokens
+                   redacted. [--lines N] [--file [PATH]] [--copy]
   status           install, runtime and autostart state at a glance
   version          installed commit of the shell
 EOF
@@ -618,7 +622,9 @@ cmd_status() {
     if running; then
         printf 'shell:     running (instance %s)\n' "$INSTANCE"
     else
-        printf 'shell:     not running\n'
+        # a crash looks exactly like a clean stop from here, and nothing
+        # used to point at the log that knows the difference
+        printf 'shell:     not running (stopped unexpectedly? the log says why: wam report)\n'
     fi
     printf 'autostart: %s / %s\n' \
         "$(systemctl --user is-enabled "$SERVICE" 2>&1 || true)" \
@@ -631,14 +637,27 @@ cmd_status() {
 # user on autostart who went looking for shell.log found a stale file
 # from the last manual start, or none — which is how a workspace-click
 # failure sat unread in the journal.
+#
+# Prints "journal" or a path. The journal is authoritative whenever the
+# unit is what is running: active first, then merely enabled (so this
+# still resolves after a crash, which is exactly when it is wanted).
+# `wam logs` and `wam report` share it so they can never disagree about
+# which log a user is being shown.
+log_location() {
+    if systemctl --user is-active "$SERVICE" &>/dev/null || service_enabled; then
+        printf 'journal\n'
+    else
+        printf '%s\n' "$LOG_DIR/shell.log"
+    fi
+}
+
 cmd_logs() {
     local follow=0
     [[ "${1:-}" == "-f" || "${1:-}" == "--follow" ]] && follow=1
 
-    # the journal is authoritative whenever the unit is what is running:
-    # active first, then merely enabled (so `wam logs` still works after
-    # a crash, which is exactly when it is wanted)
-    if systemctl --user is-active "$SERVICE" &>/dev/null || service_enabled; then
+    local src
+    src="$(log_location)"
+    if [[ "$src" == "journal" ]]; then
         log "journal: $SERVICE"
         if ((follow)); then
             journalctl --user -u "$SERVICE" -f
@@ -648,15 +667,227 @@ cmd_logs() {
         return
     fi
 
-    local file="$LOG_DIR/shell.log"
-    [[ -f "$file" ]] || die "no logs: autostart is off and $file does not exist
+    [[ -f "$src" ]] || die "no logs: autostart is off and $src does not exist
   start the shell with 'wam start', or enable autostart and use the journal"
-    log "file: $file"
+    log "file: $src"
     if ((follow)); then
-        tail -f "$file"
+        tail -f "$src"
     else
-        cat "$file"
+        cat "$src"
     fi
+}
+
+# --- report ---------------------------------------------------------------------
+
+# How much log the report carries: the last REPORT_TAIL lines, plus the
+# first REPORT_HEAD. The head is not symmetry — app.tsx prints the
+# instance path, cache dir, desktop session and workspaces at startup,
+# and those four lines answer half the questions a bug report raises.
+# They sit at the TOP of a long log, so a plain tail drops exactly them.
+REPORT_HEAD=20
+REPORT_TAIL=200
+REPORT_CONFIG_LINES=120
+
+# Everything a user pastes into a public issue goes through this.
+# The shell's own logging is already careful — the HTTP integrations log
+# status codes and never response bodies, and gcal strips the query
+# string before logging a URL — so what is left to scrub is identity
+# rather than secrets: $HOME and the username in every path, the emails
+# in a calendar hide-list, and any token shape a fork might print.
+# Matched on the value's shape, since that is what repeats; a key=value
+# rule catches the rest without having to know the key names.
+redact() {
+    local user user_esc home_esc
+    local -a args=()
+
+    # sed's s|| delimiter and its metacharacters, escaped out of $HOME
+    home_esc="${HOME//\\/\\\\}"
+    home_esc="${home_esc//|/\\|}"
+    home_esc="${home_esc//&/\\&}"
+    [[ -n "${HOME:-}" ]] && args+=(-e "s|${home_esc}|~|g")
+
+    # the username alone, for the paths that are not under $HOME
+    # (/run/user/1000/… is a uid, but ags names sockets after the user).
+    # Skipped when it is short enough to appear inside ordinary words —
+    # a user called "ags" would otherwise shred every line of the log
+    user="${USER:-$(id -un 2>/dev/null || true)}"
+    if [[ ${#user} -ge 4 ]]; then
+        user_esc="$(printf '%s' "$user" | sed 's/[][\.*^$|&/]/\\&/g')"
+        args+=(-e "s|\\b${user_esc}\\b|<user>|g")
+    fi
+
+    # IP addresses arrive from places nobody plans for — a tray tooltip
+    # that reports a server's listen address puts the user's LAN (and
+    # sometimes public) address in the log. The two addresses that are
+    # diagnostic rather than identifying survive: the ProtonMail bridge
+    # is configured as 127.0.0.1, and a listener on 0.0.0.0 is a fact
+    # about the app, not the user. They ride out the sweep as markers.
+    sed -E "${args[@]}" \
+        -e 's/\b127\.0\.0\.1\b/@@LOOPBACK@@/g' \
+        -e 's/\b0\.0\.0\.0\b/@@ANY@@/g' \
+        -e 's/\b([0-9]{1,3}\.){3}[0-9]{1,3}\b/<ip>/g' \
+        -e 's/@@LOOPBACK@@/127.0.0.1/g' \
+        -e 's/@@ANY@@/0.0.0.0/g' \
+        -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/<email>/g' \
+        -e 's/\b(gh[pousr]_)[A-Za-z0-9]{10,}/\1<redacted>/g' \
+        -e 's/\b(ya29\.|1\/\/)[A-Za-z0-9._~+/-]{10,}/\1<redacted>/g' \
+        -e 's/\b([Bb]earer )[A-Za-z0-9._~+/-]{10,}={0,2}/\1<redacted>/g' \
+        -e 's/\b([A-Za-z_]*(token|password|passwd|secret|api[_-]?key))("?[[:space:]]*[:=][[:space:]]*"?)[^"'"'"',}[:space:]]{6,}/\1\3<redacted>/gI'
+}
+
+field() { printf '%-12s %s\n' "$1" "$2"; }
+
+# Version lines for everything that has ever been the answer to "why
+# does it not start": ags and the compositor for the shell itself, node
+# and pnpm because `wam install` fails on the node/pnpm mismatch often
+# enough to have its own fallback path in pnpm_install()
+report_env() {
+    field "wam-shell:" "$(cmd_version 2>/dev/null || echo "unknown")"
+    field "ags:" "$(ags --version 2>/dev/null || echo "not found")"
+    field "distro:" "$(sed -n 's/^PRETTY_NAME="\?\([^"]*\)"\?/\1/p' /etc/os-release 2>/dev/null || echo "unknown")"
+    field "kernel:" "$(uname -sr 2>/dev/null || echo "unknown")"
+    field "compositor:" "$(compositor_version)"
+    field "session:" "${XDG_CURRENT_DESKTOP:-?} / ${DESKTOP_SESSION:-?} / ${XDG_SESSION_TYPE:-?}"
+    field "node:" "$(node -v 2>/dev/null || echo "not found")"
+    field "pnpm:" "$(pnpm --version 2>/dev/null || echo "not found")"
+}
+
+compositor_version() {
+    local v=""
+    if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]] && command -v hyprctl >/dev/null; then
+        v="$(hyprctl version 2>/dev/null | head -1 || true)"
+    elif [[ -n "${SWAYSOCK:-}" ]] && command -v swaymsg >/dev/null; then
+        v="$(swaymsg -t get_version -r 2>/dev/null |
+            grep -oE '"human_readable"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4 || true)"
+    fi
+    printf '%s\n' "${v:-${XDG_CURRENT_DESKTOP:-unknown}}"
+}
+
+# The options the user actually SET — the non-comment lines of the
+# active config. Not a diff against the template: the template is 34k of
+# commented defaults, and what a maintainer needs is the short list of
+# what was changed. `wam config diff` remains the other direction (which
+# template options a config predates).
+report_config() {
+    local f values n
+    f="$(active_config_file)"
+    if [[ ! -f "$f" ]]; then
+        echo "no config file — running on defaults"
+        return
+    fi
+    field "file:" "$f"
+    values="$(grep -vE '^[[:space:]]*(#|$)' "$f" || true)"
+    if [[ -z "$values" ]]; then
+        echo "(nothing set — the file is all comments, so: defaults)"
+        return
+    fi
+    n="$(printf '%s\n' "$values" | wc -l)"
+    if ((n > REPORT_CONFIG_LINES)); then
+        printf '%s\n' "$values" | head -n "$REPORT_CONFIG_LINES"
+        printf '… %s more line(s) — full file: wam config show\n' "$((n - REPORT_CONFIG_LINES))"
+    else
+        printf '%s\n' "$values"
+    fi
+}
+
+report_log() {
+    local lines="$1" src tmp total
+    src="$(log_location)"
+    tmp="$(mktemp "${TMPDIR:-/tmp}/wam-report.XXXXXX")" || die "could not create a temp file"
+
+    if [[ "$src" == "journal" ]]; then
+        field "source:" "journal, $SERVICE, this boot"
+        journalctl --user -u "$SERVICE" -b --no-pager >"$tmp" 2>/dev/null || true
+    else
+        field "source:" "$src"
+        [[ -f "$src" ]] && { cat "$src" >"$tmp" 2>/dev/null || true; }
+    fi
+
+    total="$(wc -l <"$tmp")"
+    if ((total == 0)); then
+        echo "(empty — nothing logged since this start method last ran)"
+    elif ((total <= REPORT_HEAD + lines)); then
+        cat "$tmp"
+    else
+        head -n "$REPORT_HEAD" "$tmp"
+        printf '\n… %s line(s) omitted (all of it: wam logs) …\n\n' "$((total - REPORT_HEAD - lines))"
+        tail -n "$lines" "$tmp"
+    fi
+    rm -f "$tmp"
+}
+
+report_body() {
+    local lines="$1"
+    printf 'wam-shell report — generated %s\n' "$(date -Is 2>/dev/null || date)"
+    printf 'redacted: home paths, username, emails, token-shaped values\n'
+    printf '\n--- environment ---\n'
+    report_env
+    printf '\n--- status ---\n'
+    cmd_status
+    printf '\n--- config (options set) ---\n'
+    report_config
+    printf '\n--- log (head %s + tail %s) ---\n' "$REPORT_HEAD" "$lines"
+    report_log "$lines"
+}
+
+# The whole point is that a user can answer "what does your log say?"
+# with one command and one paste. So: fenced for GitHub, bounded so it
+# fits in a comment, redacted so nobody has to read it first, and its
+# own progress notes go to stderr — `wam report > file` must produce the
+# block and nothing else.
+cmd_report() {
+    local lines="$REPORT_TAIL" out="" copy=0
+    while (($#)); do
+        case "$1" in
+            --lines | -n)
+                shift
+                [[ "${1:-}" =~ ^[0-9]+$ ]] || die "--lines wants a number, got '${1:-}'"
+                lines="$1"
+                ;;
+            --file)
+                if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then
+                    out="$2"
+                    shift
+                else
+                    out="$LOG_DIR/wam-report.txt"
+                fi
+                ;;
+            --copy) copy=1 ;;
+            *) die "usage: wam report [--lines N] [--file [PATH]] [--copy]" ;;
+        esac
+        shift
+    done
+
+    local body
+    body="$(
+        printf '```text\n'
+        report_body "$lines" 2>&1 | redact
+        printf '```\n'
+    )"
+
+    if [[ -n "$out" ]]; then
+        mkdir -p "$(dirname "$out")"
+        printf '%s\n' "$body" >"$out"
+        log "Report written to $out" >&2
+    else
+        printf '%s\n' "$body"
+    fi
+
+    if ((copy)); then
+        if command -v wl-copy >/dev/null; then
+            printf '%s\n' "$body" | wl-copy
+            log "Copied to the clipboard" >&2
+        elif command -v xclip >/dev/null; then
+            printf '%s\n' "$body" | xclip -selection clipboard
+            log "Copied to the clipboard" >&2
+        else
+            log "WARNING: --copy needs wl-copy (wl-clipboard) or xclip — neither is installed" >&2
+        fi
+    fi
+
+    [[ -z "$out" ]] && ((!copy)) &&
+        log "Paste the block above into the issue. Larger slice: wam report --lines 500" >&2
+    return 0
 }
 
 cmd_version() {
@@ -703,6 +934,10 @@ case "${1:-}" in
     logs)
         shift
         cmd_logs "$@"
+        ;;
+    report)
+        shift
+        cmd_report "$@"
         ;;
     version) cmd_version ;;
     help | -h | --help)
