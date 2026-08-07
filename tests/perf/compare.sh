@@ -32,7 +32,11 @@
 #     -12 and then +12 on that number alone
 #   - excluded entirely: qsHeader:batTimeDebounce (physical battery
 #     events, 2..17 creations across identical runs), osd:hide (OSD
-#     triggers come from the live session's WirePlumber/MPRIS), the
+#     triggers come from the live session's WirePlumber/MPRIS),
+#     osd:layerRuleWait (a one-shot 2s startup bound on the hyprland
+#     layer rule — whether it is still ALIVE when the startup scenario
+#     samples is a race against how fast hyprctl answered, measured
+#     1 and then 0 comparing a commit against itself), the
 #     AstalTray_TrayItem:*/Gtk_GestureClick:* signal buckets (they
 #     scale with the live session's real tray items) and the
 #     AstalBluetooth_Device:* buckets (they scale with whatever
@@ -168,7 +172,8 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
     def gatedCounters: {
         timerAliveByLabel: (.timers.byLabel
             | with_entries(select(.key != "qsHeader:batTimeDebounce"
-                and .key != "osd:hide"))
+                and .key != "osd:hide"
+                and .key != "osd:layerRuleWait"))
             | with_entries(.value = .value.alive)),
         signalsByName: (.signals.byName
             | with_entries(select(.key
@@ -193,6 +198,7 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
         http: .metrics.http,
         batteryTimer: .metrics.timers.byLabel["qsHeader:batTimeDebounce"],
         osdTimer: .metrics.timers.byLabel["osd:hide"],
+        osdLayerRuleTimer: .metrics.timers.byLabel["osd:layerRuleWait"],
         traySignals: (.metrics.signals.byName
             | with_entries(select(.key
                 | startswith("AstalTray_TrayItem:") or startswith("Gtk_GestureClick:")))),
