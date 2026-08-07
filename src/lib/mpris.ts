@@ -4,10 +4,11 @@ import GioUnix from "gi://GioUnix?version=2.0"
 import GLib from "gi://GLib?version=2.0"
 import { Gtk } from "ags/gtk4"
 import { Accessor, createBinding, createComputed, createState, onCleanup } from "gnim"
-import { connect, disconnect, execAsync, timeoutAdd, sourceRemove } from "./metrics"
+import { connect, disconnect, execAsync, idleAdd, timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
 import { hyprDispatch } from "./hyprDispatch"
 import { downloadCover } from "./coverArt"
+import { isBrowserThumb, recoverBrowserArt } from "./browserArt"
 
 // Shared MPRIS state + helpers, used by the QS media section and the
 // panel media widget/popup.
@@ -338,6 +339,7 @@ export function dispose() {
  *  The binding subscription is tied to the calling component's scope. */
 export function coverState(player: AstalMpris.Player): Accessor<string> {
     const cover = createBinding(player, "coverArt")
+    const title = createBinding(player, "title")
     const [local, setLocal] = createState("")
 
     const update = () => {
@@ -355,9 +357,58 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
             })
             .catch(e => console.warn("cover download failed:", e))
     }
-    const unsub = cover.subscribe(update)
-    onCleanup(unsub)
+
+    // chromium hands over art it already downscaled to 150px, so there
+    // is no bigger version to ask a cdn for — but its history db knows
+    // which page is playing, and a youtube one names the full-size
+    // thumbnail. The small copy is already on screen by now (update
+    // above ran first): this only ever swaps in something better, and a
+    // miss leaves what is there.
+    const recover = () => {
+        const artUrl = cover.get()
+        if (!artUrl || !isBrowserThumb(artUrl)) return
+        const forTitle = title.get()
+        // the pair we resolved for must still be the pair on screen when
+        // the lookup and the download come back
+        const stale = () => cover.get() !== artUrl || title.get() !== forTitle
+        recoverBrowserArt(forTitle)
+            .then(found => {
+                if (!found || stale()) return
+                return downloadCover(found).then(path => {
+                    if (!stale()) setLocal(`file://${path}`)
+                })
+            })
+            .catch(e => console.warn("browser art recovery failed:", e))
+    }
+
+    // one mpris metadata update arrives as a separate notify per
+    // property, in no guaranteed order: recovering off the first of them
+    // would look the NEW art up under the OUTGOING title and briefly
+    // show the previous track's cover. Coalescing onto one idle pass
+    // lets the whole dict land before anything is looked up.
+    let pending = 0
+    const scheduleRecover = () => {
+        if (pending) return
+        pending = idleAdd("mpris:artRecover", GLib.PRIORITY_DEFAULT_IDLE, () => {
+            pending = 0
+            recover()
+            return GLib.SOURCE_REMOVE
+        })
+    }
+
+    onCleanup(cover.subscribe(update))
     update()
+
+    // opted out: no title subscription and no idle sources at all, not
+    // just a lookup that returns early
+    if (Config.media.recoverBrowserArt) {
+        onCleanup(cover.subscribe(scheduleRecover))
+        onCleanup(title.subscribe(scheduleRecover))
+        onCleanup(() => {
+            if (pending) sourceRemove(pending)
+        })
+        scheduleRecover()
+    }
     return local
 }
 
