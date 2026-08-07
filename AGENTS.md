@@ -156,6 +156,34 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 - Optional pre-push gate: `pnpm perf:install-hook` (opt-in, never
   automatic). See `tests/perf/README.md` for design and limitations.
 
+## Reading a crash
+
+- `coredumpctl` backtraces are useless by default here — every frame is
+  `??? () at /usr/lib/libgtk-4.so.1`. Arch/CachyOS ship the URL files but
+  nothing exports them, so gdb never fetches symbols:
+
+  ```sh
+  export DEBUGINFOD_URLS="https://debuginfod.archlinux.org https://debuginfod.cachyos.org"
+  coredumpctl debug <PID> --debugger=gdb \
+      --debugger-arguments="-batch -iex 'set debuginfod enabled on' -ex 'bt 16'"
+  ```
+
+  The first run downloads a few hundred MB and takes minutes; after that
+  it is cached and instant. Do this BEFORE theorising about a crash.
+- Applied to the two gjs segfaults of 2026-08-06, this put both in
+  `gtk_synthesize_crossing_events` (gtkmain.c:1299) — GTK generating
+  pointer enter/leave events and walking a widget's parent — reached from
+  `gdk_surface_handle_event`. Not a drawing crash. An earlier guess that
+  blamed a negative `cairo_arc` radius was wrong about these two; that
+  radius guard is still correct on its own terms (a negative radius is
+  undefined), it just was not what killed the shell.
+- The lead that leaves: crossing-event synthesis running over a widget
+  tree that changed underneath it. Banner rows are destroyed from inside
+  gesture handlers (`removePopup` during a click), which is the shape
+  that produces this. Not proven, and a 210-round hover/expiry/dismiss
+  soak did not reproduce it, so nothing has been changed on the strength
+  of it.
+
 ## Typecheck gate
 
 - `pnpm typecheck` is the fifth gate, run with the other four. It is
