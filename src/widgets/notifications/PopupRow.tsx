@@ -6,6 +6,7 @@ import Config from "../../config"
 import {
     POPUP_SLIDE_IN_MS,
     PopupEntry,
+    popupArrivals,
     popupTimer,
     popupTimerVersion,
     removePopup,
@@ -160,7 +161,10 @@ export default function PopupRow({ group }: { group: PopupEntry[] }) {
                     data={data}
                     countdown={countdown}
                     timed={timedFor(entry.key)}
-                    count={group.length}
+                    // what the app has RAISED this burst, not what
+                    // survived the cap: ten arrivals read "10", where
+                    // group.length silently topped out at MAX_POPUPS
+                    count={popupArrivals(entry)}
                     {...handlers(entry)}
                 />
                 {/* the rest of the group, dealt out on hover. Indented
