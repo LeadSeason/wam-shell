@@ -143,6 +143,7 @@ export function popupTimer(key: string): PopupTimer | null {
 export function removePopup(key: string) {
     if (timers.delete(key)) bumpTimerVersion()
     setPopups(popupsState.get().filter(p => p.key !== key))
+    forgetFinishedApps()
 }
 
 // hovering ANY banner freezes every countdown: if a banner above the
@@ -222,6 +223,40 @@ export interface PopupGroup {
 
 function popupAppName(p: PopupEntry): string {
     return (p.desktop?.appName || p.item?.appName || "").toLowerCase()
+}
+
+// How many banners an app has actually raised during the current burst,
+// which is NOT the same as how many are on screen.
+//
+// The group badge used to count live entries, so it silently capped at
+// MAX_POPUPS: ten arrivals from one app read "4", and the number meant
+// "how many we kept" rather than "how many happened" — the one thing a
+// count on a folded card exists to say.
+//
+// The tally is per app and lives only as long as that app has a banner
+// up: once its last one leaves the screen the burst is over, and the
+// next arrival starts again at one rather than resuming a stale total.
+const arrivals = new Map<string, number>()
+
+/** apps we are still counting for that have no banner left on screen */
+export function staleArrivalKeys(tracked: string[], live: string[]): string[] {
+    const alive = new Set(live)
+    return tracked.filter(app => !alive.has(app))
+}
+
+function forgetFinishedApps() {
+    const live = popupsState
+        .get()
+        .filter(p => !p.critical)
+        .map(popupAppName)
+    for (const app of staleArrivalKeys([...arrivals.keys()], live)) arrivals.delete(app)
+}
+
+/** the number the folded card shows. Criticals never fold, so they
+ *  always stand for exactly themselves */
+export function popupArrivals(p: PopupEntry): number {
+    if (p.critical) return 1
+    return arrivals.get(popupAppName(p)) ?? 1
 }
 
 /**
@@ -314,10 +349,16 @@ function addPopup(
         addedAt: GLib.get_monotonic_time() / 1000,
         expiring: false,
     })
-    setPopups(capPopups([...current, { ...entry, critical }], MAX_POPUPS))
+    const admitted: PopupEntry = { ...entry, critical }
+    if (!critical) {
+        const app = popupAppName(admitted)
+        arrivals.set(app, (arrivals.get(app) ?? 0) + 1)
+    }
+    setPopups(capPopups([...current, admitted], MAX_POPUPS))
     // prune entries of popups the cap just dropped
     const live = new Set(popupsState.get().map(p => p.key))
     for (const key of timers.keys()) if (!live.has(key)) timers.delete(key)
+    forgetFinishedApps()
     bumpTimerVersion()
     ensurePopupTick()
     return true
