@@ -621,7 +621,7 @@
 #           the duration for the pills you DRIVE (volume, microphone,
 #           brightness); the ones that just announce a state get a
 #           fraction of it, since they are read in a glance: layout
-#           45%, lock keys 60% (900ms and 1200ms at the default)
+#           30%, lock keys 60% (600ms and 1200ms at the default)
 # timeout_volume, timeout_microphone, timeout_brightness,
 # timeout_layout, timeout_lock_keys -
 #           pin one kind's duration in milliseconds instead of
@@ -633,7 +633,7 @@
 # position = "bottom"
 # margin = 140
 # timeout = 2000
-# timeout_layout = 900
+# timeout_layout = 600
 # timeout_lock_keys = 1200
 # volume = true
 # microphone = true
