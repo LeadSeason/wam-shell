@@ -147,6 +147,9 @@ export default function HarvestTimer({
     const cssClasses = createComputed([Harvest.running, Harvest.paused, masked], (r, p, m) => [
         "harvest",
         ...(m ? ["sharing"] : []),
+        // running was only ever implied by the absence of the other two,
+        // so it could not be styled at all
+        ...(r && !m ? ["running"] : []),
         ...(p && !r ? ["paused"] : []),
         ...(r || p ? [] : ["idle"]),
     ])
