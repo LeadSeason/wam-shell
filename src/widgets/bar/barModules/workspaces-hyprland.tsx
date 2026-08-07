@@ -1,6 +1,6 @@
 import Gdk from "gi://Gdk?version=4.0"
 import AstalHyprland from "gi://AstalHyprland?version=0.1"
-import { execAsync } from "../../../lib/metrics"
+import { hyprDispatch } from "../../../lib/hyprDispatch"
 import Config from "../../../config"
 import { createIconResolver } from "../../../lib/appIcon"
 import { For, createBinding, createState, onCleanup } from "gnim"
@@ -93,14 +93,18 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
                         <button
                             cssName={"workspace"}
                             cssClasses={focused}
-                            // hyprland 0.55+ only speaks lua dispatch; astal's
-                            // workspace.focus() still uses the legacy syntax
+                            // astal's workspace.focus() uses the legacy
+                            // syntax, which 0.56 rejects — but the lua
+                            // form 0.56 wants does not exist before
+                            // 0.55, so send whichever this Hyprland
+                            // understands. See lib/hyprDispatch: this
+                            // hard-coded the lua form and clicking a
+                            // workspace did nothing on older releases
                             onClicked={() =>
-                                execAsync([
-                                    "hyprctl",
-                                    "dispatch",
-                                    `hl.dsp.focus({workspace="${workspace.id}"})`,
-                                ]).catch(e => console.error(e))
+                                hyprDispatch(`hl.dsp.focus({workspace="${workspace.id}"})`, [
+                                    "workspace",
+                                    String(workspace.id),
+                                ]).catch(e => console.error("workspace focus:", e))
                             }
                         >
                             <box>
