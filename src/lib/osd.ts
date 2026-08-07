@@ -132,6 +132,11 @@ if (wp) {
 const brightness = Brightness.get_default()
 disposers.push(
     createBinding(brightness, "screen").subscribe(() => {
+        // the gamma-dim seed is an async daemon read, not a keypress:
+        // it lands whenever startup gets out of the way, which on a slow
+        // cold login is past the 1.5s grace below — and then popped a
+        // brightness banner nobody asked for. The flag says which it is
+        if (!hyprsunset.initialReadDone.get()) return
         // the other reader of this flag, and the reason the watch does
         // not need to run while the quick settings are closed: refresh
         // when brightness actually changes. Async, so THIS osd still

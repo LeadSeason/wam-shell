@@ -142,7 +142,12 @@ install_wam_script() {
     return 1
 }
 
-running() { ags list 2>/dev/null | grep -qx "$INSTANCE"; }
+# -F, not a regex: INSTANCE is user-supplied now, and `instance_name =
+# "wam[2]"` as a pattern matches the literal "wam2" instead — reporting a
+# running shell as stopped, so `start` launches a duplicate. An
+# unbalanced bracket makes grep exit 2 outright, read here as "not
+# running", with the same result
+running() { ags list 2>/dev/null | grep -qxF "$INSTANCE"; }
 service_enabled() { systemctl --user is-enabled "$SERVICE" &>/dev/null; }
 
 start_detached() {
@@ -984,14 +989,61 @@ cmd_version() {
 resolve_instance_paths() {
     local f name=""
     f="$(active_config_file)"
-    if [[ -f "$f" ]]; then
+    # `-f` is existence, not readability, and this runs under `set -e`
+    # with `pipefail`: a config the user can stat but not read (one once
+    # edited via sudo, an unreadable mount) made sed exit 2, failed the
+    # assignment, and killed the script BEFORE the dispatch below — every
+    # subcommand, `wam report` included, dying on "sed: can't read". The
+    # name is best-effort; anything unreadable simply falls back.
+    if [[ -r "$f" ]]; then
         name="$(sed -n \
             -e 's/^[[:space:]]*instance_name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
             -e "s/^[[:space:]]*instance_name[[:space:]]*=[[:space:]]*'\([^']*\)'.*/\1/p" \
-            "$f" | tail -1)"
+            "$f" 2>/dev/null | tail -1)" || name=""
     fi
     INSTANCE="${name:-wam-shell}"
-    LOG_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/$INSTANCE"
+
+    # The config is only a GUESS at the running shell's identity: sed
+    # reads a key the shell itself may never have seen (a TOML syntax
+    # error anywhere in the file makes config.ts fall back to every
+    # default, instance_name included), and it reads the CURRENT config
+    # where the running shell read the one in force when it started —
+    # so renaming the instance used to make `wam stop` address a name
+    # nothing answers to, silently orphaning the shell while `restart`
+    # launched a second one beside it.
+    #
+    # `ags list` is the ground truth for what is actually running. When
+    # exactly one instance is up and it is not the one we guessed, adopt
+    # it: that is the shell the user means, whichever of the two ways we
+    # guessed wrong.
+    local live
+    live="$(ags list 2>/dev/null || true)"
+    if [[ -n "$live" ]] && ! printf '%s\n' "$live" | grep -qxF "$INSTANCE"; then
+        if [[ "$(printf '%s\n' "$live" | grep -c .)" -eq 1 ]]; then
+            local only
+            only="$(printf '%s\n' "$live" | head -1)"
+            log "config says instance \"$INSTANCE\", but \"$only\" is the one running — using it" >&2
+            INSTANCE="$only"
+        fi
+    fi
+
+    # GLib.get_user_cache_dir() IGNORES a non-absolute XDG_CACHE_HOME and
+    # falls back to ~/.cache; match that rather than composing a relative
+    # path, which start_detached would then mkdir in one directory and
+    # redirect into another (from inside `cd "$ROOT"`), losing the log
+    # and the shell with it
+    local cache="${XDG_CACHE_HOME:-}"
+    [[ "$cache" == /* ]] || cache="$HOME/.cache"
+    LOG_DIR="$cache/$INSTANCE"
+
+    # A shell started by systemd does not inherit an XDG_CACHE_HOME
+    # exported from a shell rc, so it writes to ~/.cache/<instance> while
+    # a terminal-run wam resolves the exported path. When ours does not
+    # exist and the plain one does, the plain one is where the shell
+    # actually is.
+    if [[ ! -d "$LOG_DIR" && -d "$HOME/.cache/$INSTANCE" ]]; then
+        LOG_DIR="$HOME/.cache/$INSTANCE"
+    fi
 }
 resolve_instance_paths
 
