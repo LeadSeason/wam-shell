@@ -1,22 +1,34 @@
 import { Gtk } from "ags/gtk4"
+import { createComputed } from "gnim"
 import { count, dnd } from "../../../lib/notifd"
+import { providers } from "../../../lib/notificationProviders"
+import type { ProviderItem } from "../../../lib/notificationProviders"
 import CommandRegistry from "../../../lib/requestHandler"
 
 const registry = CommandRegistry.get_default()
 
-// The panel bell, with a count of what is waiting.
+// The panel bell, with a count of everything waiting in the centre — the
+// local daemon's notifications plus every provider's items. A bell
+// reading "2" while the centre holds thirty-four is not a summary of
+// anything.
 //
-// The count is the LOCAL daemon's, not a total across the providers.
-// Two reasons: the providers each keep their own chip and count inside
-// the center, so a single number on the panel would be answering a
-// question nobody asked; and summing them here is not actually
-// available — this widget is built at startup, before the provider
-// modules have registered, so a computed over the registry would close
-// over an empty list forever (the same trap the center works around by
-// building its window lazily).
+// The total is built HERE, inside the component, and that is the whole
+// trick. Providers register when app.tsx imports them; the bar is
+// constructed later, inside app.start(). By the time this function runs
+// the registry is final — verified rather than assumed: four providers
+// were present at bar build. A computed spread at MODULE scope would
+// close over an empty list forever, which is the trap the centre avoids
+// by building its window lazily, and the reason this widget first
+// shipped counting the local daemon alone.
 export default function Notify() {
     const icon = dnd.as(v =>
         v ? "notifications-disabled-symbolic" : "preferences-system-notifications-symbolic",
+    )
+
+    // muted providers still count: muting stops their banners, it does
+    // not mean their items stopped waiting in the centre
+    const total = createComputed([count, ...providers.map(p => p.items)], (local, ...lists) =>
+        lists.reduce((n: number, l) => n + ((l as ProviderItem[])?.length ?? 0), local as number),
     )
 
     return (
@@ -32,8 +44,8 @@ export default function Notify() {
                 should look like an empty bell, not like a readout */}
             <label
                 cssClasses={["Badge"]}
-                label={count.as(n => String(n))}
-                visible={count.as(n => n > 0)}
+                label={total.as(n => String(n))}
+                visible={total.as(n => n > 0)}
                 // without this the label fills the box's full height and
                 // the pill stretches the whole depth of the bar; centred,
                 // it hugs its own text
