@@ -161,12 +161,49 @@ export function refreshHyprsunset() {
         })
 }
 
+// The watch that keeps gamma/temperature in step with changes made
+// OUTSIDE the shell (someone running hyprsunset from a terminal).
+//
+// It used to be armed at import and run for the whole session: two
+// `hyprctl` subprocesses every 30 seconds, about 5,760 spawns a day, to
+// refresh a value with exactly two readers — the quick settings sliders,
+// which only exist while that popup is open, and the brightness OSD,
+// which reads it at the moment a key is pressed. Neither needed a timer
+// running at 3am.
+//
+// Refcounted, like relTime's clock: the quick settings hold it while
+// they are on screen, which is the only time an external change has
+// anywhere to show up live. The OSD covers its own read by refreshing
+// when brightness changes, so the flag self-corrects at the one other
+// place it is looked at.
 let watchSource = 0
-if (Config.desktopSession === "hyprland")
-    watchSource = timeoutAdd("hyprsunset:watch", GLib.PRIORITY_DEFAULT, 30000, () => {
+let watchHolders = 0
+
+export function acquireHyprsunsetWatch(): () => void {
+    if (Config.desktopSession !== "hyprland") return () => {}
+    watchHolders++
+    if (!watchSource) {
+        // fresh immediately rather than up to 30s late: the caller is
+        // opening a window that shows this value
         refreshHyprsunset()
-        return GLib.SOURCE_CONTINUE
-    })
+        watchSource = timeoutAdd("hyprsunset:watch", GLib.PRIORITY_DEFAULT, 30000, () => {
+            refreshHyprsunset()
+            return GLib.SOURCE_CONTINUE
+        })
+    }
+    let released = false
+    return () => {
+        // a double release would strand the timer running forever
+        if (released) return
+        released = true
+        watchHolders--
+        if (watchHolders <= 0 && watchSource) {
+            sourceRemove(watchSource)
+            watchSource = 0
+            watchHolders = 0
+        }
+    }
+}
 
 // convention for lib modules with long-lived sources (see AGENTS.md)
 export function dispose() {

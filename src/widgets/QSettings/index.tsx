@@ -8,7 +8,7 @@ import Tray from "./tray"
 import Config from "../../config"
 import CommandRegistry from "../../lib/requestHandler"
 import { isPinned } from "../../lib/trayPinned"
-import { refreshHyprsunset } from "../../lib/hyprsunset"
+import { acquireHyprsunsetWatch } from "../../lib/hyprsunset"
 import { hideOnFocusLoss } from "../../lib/popupFocus"
 import { closeOtherPopups, registerPopup } from "../../lib/exclusivePopups"
 
@@ -89,12 +89,16 @@ export default function QSettings() {
     const [pane, setPane] = createState("main")
     const toggleSection = ToggleSection({ onNavigate: setPane })
     let hideTimer: ReturnType<typeof timeout> | null = null
+    // held only while the popup is on screen (see show/hide)
+    let releaseHyprsunset: (() => void) | null = null
 
     function hide() {
         // For some reason it does'nt want to play the animation, Setting
         // timeout to 0 for this reason
         revealer.set_reveal_child(false)
         setQsVisible(false)
+        releaseHyprsunset?.()
+        releaseHyprsunset = null
         // give some time for the animation to play.
         hideTimer?.cancel()
         hideTimer = timeout(50, () => {
@@ -116,9 +120,12 @@ export default function QSettings() {
         // a hide may have a pending win.hide(); cancel it
         hideTimer?.cancel()
         hideTimer = null
-        // the sliders should reflect external hyprsunset changes now,
-        // not whenever the 30s watch happens to tick next
-        refreshHyprsunset()
+        // The sliders reflect external hyprsunset changes while they are
+        // on screen — acquiring refreshes immediately and then keeps the
+        // watch running, so a change made elsewhere shows up live rather
+        // than only at open. Released on hide: nothing polls hyprsunset
+        // while the popup is closed and nobody can see the value.
+        if (!releaseHyprsunset) releaseHyprsunset = acquireHyprsunsetWatch()
         setQsVisible(true)
         win.present()
         revealer.set_reveal_child(true)
