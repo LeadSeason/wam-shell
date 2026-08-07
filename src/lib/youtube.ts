@@ -206,6 +206,42 @@ function thumbPath(videoId: string): string {
     return `${thumbsDir}/${videoId}.jpg`
 }
 
+// Thumbnails are keyed by video id and nothing ever revisits them: a
+// video leaves the displayed list within days and its file stays
+// forever. Left alone this was the shell's only unbounded on-disk
+// growth — a few hundred subscriptions swept hourly, ~30-80 KB apiece.
+// `wam update --force` does not help either, and must not: the cache
+// dir's other tenants are state, not artefacts.
+//
+// So the same one-shot TTL sweep coverArt.ts does, for the same reason.
+// A month is generous next to LIST_HORIZON_SEC (30 days, the point past
+// which an upload stops being listable at all) — anything older than
+// that cannot be on screen, and a re-listed video simply re-downloads.
+const THUMB_TTL_SEC = 30 * 86_400
+
+function pruneThumbs() {
+    const dir = Gio.File.new_for_path(thumbsDir)
+    dir.enumerate_children_async(
+        "standard::name,time::modified",
+        Gio.FileQueryInfoFlags.NONE,
+        GLib.PRIORITY_LOW,
+        null,
+        (_d, res) => {
+            try {
+                const iter = dir.enumerate_children_finish(res)
+                const cutoff = GLib.get_real_time() / 1_000_000 - THUMB_TTL_SEC
+                let info: Gio.FileInfo | null
+                while ((info = iter.next_file(null)) !== null) {
+                    if (info.get_attribute_uint64("time::modified") > cutoff) continue
+                    GLib.unlink(`${thumbsDir}/${info.get_name()}`)
+                }
+            } catch {
+                /* no thumbs dir yet: nothing to prune */
+            }
+        },
+    )
+}
+
 // binary fetch (the shared googleRequest is JSON-shaped); best-effort
 function fetchThumb(videoId: string, url: string, done: () => void) {
     const path = thumbPath(videoId)
@@ -644,6 +680,7 @@ export function init() {
     loadSeen()
     loadChannelsCache()
     GLib.mkdir_with_parents(thumbsDir, 0o755)
+    pruneThumbs()
     // registered unconditionally: a user who started signed in, lost
     // the account mid-session (chain stopped at zero accounts), and
     // signs back in must resume polling too
