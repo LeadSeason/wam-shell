@@ -156,6 +156,27 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 - Optional pre-push gate: `pnpm perf:install-hook` (opt-in, never
   automatic). See `tests/perf/README.md` for design and limitations.
 
+## Typecheck gate
+
+- `pnpm typecheck` is the fifth gate, run with the other four. It is
+  DELIBERATELY scoped: it filters `tsc` output down to `src/lib`,
+  `src/config.ts` and `tests`, because a plain run is drowned by things
+  that are not this codebase's fault — the generated `@girs` typings
+  declare the same symbols across every gtk/gdk/soup version, gnim ships
+  `.ts` sources rather than `.d.ts` (scoping by tsconfig pulls its whole
+  codebase in), and the ags/gnim JSX prop typings are incomplete, so
+  `src/widgets` carries ~97 errors for things like `onChanged` on an
+  `<entry>` that are documented and work at runtime.
+- Do not "fix" those widget errors with casts to widen the scope. Casting
+  to make a gate green makes the code worse and hides the next real one.
+  If the JSX typings improve upstream, widen `COVERED` in
+  `scripts/typecheck.sh` instead.
+- It is worth having: its first run found `Gio.Bus.unwatch_name` (there
+  is no `Gio.Bus`, so `dispose()` would have thrown) and three no-arg
+  calls to a gnim state setter, which set the state to `undefined` — and
+  because gnim skips notification when the value has not changed, every
+  bump after the first was silently dropped.
+
 ## No CI
 
 - There is no CI, deliberately. The gates below are the whole story and

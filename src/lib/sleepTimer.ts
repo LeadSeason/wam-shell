@@ -599,8 +599,10 @@ function watchStream(s: AstalWp.Stream) {
 // path as its name
 const ALARM_PLAYER_NAMES = new Set(["pw-play", "paplay", "canberra-gtk-play", "ffplay"])
 const isAlarmStream = (s: AstalWp.Stream) =>
-    ALARM_PLAYER_NAMES.has(s.description) ||
-    (!!alarmSound && s.name.endsWith(GLib.path_get_basename(alarmSound)))
+    // both are nullable on the wire: a stream with neither is simply
+    // not the alarm, rather than a null dereference
+    ALARM_PLAYER_NAMES.has(s.description ?? "") ||
+    (!!alarmSound && (s.name ?? "").endsWith(GLib.path_get_basename(alarmSound)))
 
 // every title some MPRIS player wore during this fire session.
 // Firefox exposes ONE player that hops to whichever tab is playing:

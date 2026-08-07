@@ -3,6 +3,7 @@
     "start": "bash scripts/start.sh",
     "debug": "GTK_DEBUG=interactive ags run app.tsx",
     "setup": "bash scripts/setup.sh",
+    "typecheck": "bash scripts/typecheck.sh",
     "test": "bash tests/run.sh",
     "test:smoke": "bash tests/smoke.sh",
     "test:perf": "bash tests/perf/run.sh",

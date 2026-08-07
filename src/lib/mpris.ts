@@ -53,6 +53,10 @@ const isEligible = (p: AstalMpris.Player) =>
  *  createComputed caches dep values with a falsy check, and an empty
  *  [] cached at startup (players load async) is truthy and never
  *  refreshes without a subscriber. use players.get().filter(isEligible) */
+// bumped with an explicit value, never bumpElig(): a no-arg call sets
+// the state to undefined, and gnim skips the notification when the value
+// has not changed — so the FIRST bump fired and every one after it was
+// silently dropped, leaving eligiblePlayers stuck on a stale list
 const [eligVersion, bumpElig] = createState(0)
 export const eligiblePlayers = createComputed([players, eligVersion], list =>
     list.filter(isEligible),
@@ -223,7 +227,7 @@ function syncPlayers() {
         }
         hookedPlayers.set(p, entries)
     }
-    bumpElig()
+    bumpElig(eligVersion.get() + 1)
 }
 const unsubSyncPlayers = players.subscribe(syncPlayers)
 // gnim subscribe does not fire on subscription: hook the players that
@@ -287,7 +291,7 @@ let lastPlaying: AstalMpris.Player | null = null
 const unsubPick = players.subscribe(pick)
 hookPlayers(p => {
     const status = createBinding(p, "playbackStatus").subscribe(() => {
-        bumpElig()
+        bumpElig(eligVersion.get() + 1)
         if (p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING) {
             lastPlaying = p
             // a newly playing player always takes over, even from a
@@ -304,7 +308,7 @@ hookPlayers(p => {
         pick()
     })
     const title = createBinding(p, "title").subscribe(() => {
-        bumpElig()
+        bumpElig(eligVersion.get() + 1)
         pick()
     })
     return () => {
