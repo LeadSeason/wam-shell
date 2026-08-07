@@ -488,6 +488,10 @@ export function dispose() {
         sourceRemove(pauseSweepSource)
         pauseSweepSource = 0
     }
+    // a verdict scheduled a beat ago must not land after teardown and
+    // mute a stream on a module that is no longer running
+    for (const src of streamAddedSources) sourceRemove(src)
+    streamAddedSources.clear()
     // stream mutes are user-visible state (like the dim): left as-is,
     // only the watchers come down
     for (const un of streamUnsubs.values()) un()
@@ -755,8 +759,14 @@ function onStreamAdded(s: AstalWp.Stream) {
     // decide in a beat, not at birth: media.name lags node creation
     // (the title arrives with the media-session metadata) and
     // wireplumber's restore lands asynchronously — an instant verdict
-    // reads an empty name and mutes a tab the user just resumed
-    timeoutAdd("sleepTimer:streamAdded", GLib.PRIORITY_DEFAULT, 1000, () => {
+    // reads an empty name and mutes a tab the user just resumed.
+    //
+    // Tracked, unlike every other source in this module: a stream added
+    // in the second before dispose() would otherwise fire afterwards and
+    // mute it, on a module that is supposed to be torn down. There can
+    // be several in flight (one per new stream), hence a set
+    const src = timeoutAdd("sleepTimer:streamAdded", GLib.PRIORITY_DEFAULT, 1000, () => {
+        streamAddedSources.delete(src)
         const audio = AstalWp.get_default()?.audio
         if (!audio?.streams?.some(o => o.id === s.id)) return GLib.SOURCE_REMOVE // gone again
         if (userUnmuted.has(s.id) || mutedStreams.has(s.id)) return GLib.SOURCE_REMOVE
@@ -773,7 +783,11 @@ function onStreamAdded(s: AstalWp.Stream) {
         }
         return GLib.SOURCE_REMOVE
     })
+    streamAddedSources.add(src)
 }
+
+// pending onStreamAdded verdicts, so dispose() can cancel them
+const streamAddedSources = new Set<number>()
 
 const wpAudio = AstalWp.get_default()?.audio ?? null
 const streamAddedHandler = wpAudio
