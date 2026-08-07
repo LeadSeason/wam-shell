@@ -39,6 +39,15 @@ all you need from then on:
 - `wam logs [-f]` — the shell's log from wherever this start method put
   it: the journal under autostart, `~/.cache/wam-shell/shell.log` after
   `wam start`. `-f` follows.
+- `wam report` — **what to paste when reporting a bug.** One fenced
+  block with the versions (wam-shell, ags, compositor, distro, node),
+  `wam status`, the options you set in your config, and a bounded slice
+  of the log: its first 20 lines (the startup banner a plain tail would
+  drop) plus the last 200. Home paths, your username, email addresses,
+  IP addresses and token-shaped values are redacted on the way out, so
+  it is safe to paste without reading it first. `--lines N` for a bigger
+  slice, `--file [PATH]` to write it out instead, `--copy` for the
+  clipboard.
 - `wam start` / `stop` / `restart` / `force-start` — lifecycle for the
   running shell. `force-start` kills EVERY ags instance first — the
   fix for "some stale instance holds the bus name".
