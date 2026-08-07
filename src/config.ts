@@ -818,7 +818,7 @@ function getOsdConfig() {
         volume: 1,
         microphone: 1,
         brightness: 1,
-        layout: 0.45,
+        layout: 0.3,
         lockKeys: 0.6,
     }
     const perKind = (kind: string, key: string) => {
