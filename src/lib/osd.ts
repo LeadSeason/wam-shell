@@ -39,10 +39,54 @@ const disposers: (() => void)[] = []
 
 type OsdKind = "volume" | "microphone" | "brightness" | "layout" | "lockKeys"
 
+// ------------------------------------------------- layer-rule gating
+//
+// Hyprland matches layer rules when a layer surface is CREATED, so the
+// no_anim rule below has to be installed before the OSD is first shown
+// — otherwise the first pill of the session replays its last frame as a
+// ghost on hide, which is the whole artifact the rule exists to remove.
+//
+// Applying it asynchronously is what keeps two hyprctl spawns off the
+// startup path, and that is worth keeping; it just means a keypress can
+// beat it. So the first show waits for the rule instead of racing it.
+//
+// Bounded, and deliberately so: if hyprctl hangs or never answers, an
+// OSD with a ghost frame is a far better outcome than an OSD that never
+// appears again. The wait ends either way.
+const LAYER_RULE_WAIT_MS = 2000
+const gatesOnLayerRule = Config.desktopSession === "hyprland" && Config.osd.enabled
+
+let layerRuleSettled = !gatesOnLayerRule
+let layerRuleTimeout = 0
+// at most ONE held show, always the newest: replaying a volume level
+// from before the rule landed would announce a value the user has
+// already moved past
+let pendingShow: (() => void) | null = null
+
+function settleLayerRule() {
+    if (layerRuleSettled) return
+    layerRuleSettled = true
+    if (layerRuleTimeout) {
+        sourceRemove(layerRuleTimeout)
+        layerRuleTimeout = 0
+    }
+    const queued = pendingShow
+    pendingShow = null
+    queued?.()
+}
+
 function show(c: Omit<OsdContent, "kind">, kind: OsdKind) {
     if (!Config.osd.enabled) return
     if (!Config.osd[kind]) return
     if (Date.now() < graceUntil) return
+    if (!layerRuleSettled) {
+        pendingShow = () => present(c, kind)
+        return
+    }
+    present(c, kind)
+}
+
+function present(c: Omit<OsdContent, "kind">, kind: OsdKind) {
     setContent({ ...c, kind })
     setVisible(true)
     if (hideSource !== null) sourceRemove(hideSource)
@@ -181,12 +225,23 @@ if (Config.osd.enabled && Config.osd.layout) {
 // ghost on hide — disable animations for our namespace. lua configs
 // (hyprland 0.55+) need eval, legacy hyprlang takes keyword.
 //
-// Fire-and-forget, and async on purpose: nothing reads the result, and
-// these were two synchronous fork+exec+waits on the startup path (see
-// the same change in lib/hyprsunset.ts). The rule only has to be in
-// place before the first OSD is SHOWN, which is a keypress away at the
-// earliest — not before the first frame.
-if (Config.desktopSession === "hyprland" && Config.osd.enabled) {
+// Async on purpose: these were two synchronous fork+exec+waits on the
+// startup path (see the same change in lib/hyprsunset.ts). But not
+// fire-and-forget — the rule has to be in place before the first layer
+// surface is created, so show() waits on it (see the gating above).
+// lua configs (hyprland 0.55+) need eval, legacy hyprlang takes keyword.
+if (gatesOnLayerRule) {
+    layerRuleTimeout = timeoutAdd(
+        "osd:layerRuleWait",
+        GLib.PRIORITY_DEFAULT,
+        LAYER_RULE_WAIT_MS,
+        () => {
+            layerRuleTimeout = 0
+            console.warn("osd: layer rule still not applied; showing anyway")
+            settleLayerRule()
+            return GLib.SOURCE_REMOVE
+        },
+    )
     execAsync([
         "hyprctl",
         "eval",
@@ -194,6 +249,9 @@ if (Config.desktopSession === "hyprland" && Config.osd.enabled) {
     ])
         .catch(() => execAsync(["hyprctl", "keyword", "layerrule", "noanim, osd"]))
         .catch(e => console.warn("osd: could not disable layer animations:", e))
+        // settled either way: a failed apply is still an answer, and the
+        // OSD must not be held hostage to it
+        .finally(settleLayerRule)
 }
 
 // caps/num lock. GDK4 reports the state on the keyboard device
@@ -247,6 +305,12 @@ export function dispose() {
         sourceRemove(hideSource)
         hideSource = null
     }
+    if (layerRuleTimeout) {
+        sourceRemove(layerRuleTimeout)
+        layerRuleTimeout = 0
+    }
+    // a show held for the rule must not fire against a torn-down module
+    pendingShow = null
     for (const d of disposers) d()
     disposers.length = 0
 }
