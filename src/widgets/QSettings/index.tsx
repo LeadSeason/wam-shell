@@ -72,10 +72,10 @@ function smallestMonitorHeight(): number {
 }
 
 const SCREEN_HEIGHT = smallestMonitorHeight()
-// the floor a pane never shrinks below: switching to a short pane
-// should settle the popup, not yank it
-const MIN_PANE_HEIGHT =
-    Config.quicksettings.minHeight || Math.min(520, Math.round(SCREEN_HEIGHT * 0.45))
+// Only a fallback now: the real floor is the main pane's measured
+// height (paneFloor below), and this stands in for the window or two
+// before anything can be measured
+const FALLBACK_PANE_HEIGHT = Math.min(520, Math.round(SCREEN_HEIGHT * 0.45))
 // a long list scrolls inside its own pane rather than growing the popup
 const MAX_PANE_HEIGHT = Math.min(520, Math.round(SCREEN_HEIGHT * 0.5))
 
@@ -86,7 +86,31 @@ export default function QSettings() {
     // every pane that scrolls internally, so they can be reset on switch
     const paneScrollers: Gtk.ScrolledWindow[] = []
     let revealer: Gtk.Revealer
+    let paneStack: Gtk.Stack | null = null
+    let mainPane: Gtk.Box | null = null
     const [pane, setPane] = createState("main")
+
+    // The floor a short pane (wired, vpn) is held at, so navigating
+    // settles the popup instead of yanking the floor out. It is the main
+    // pane's OWN height, measured: a constant could only approximate it,
+    // and every px it overshot by became dead space under the last card
+    // whenever main came in shorter than the guess — which it does with
+    // no player and no tray. Measured per switch rather than once, so
+    // the media card coming and going is already accounted for.
+    //
+    // Cached: measuring is reliable while main is the stack's current
+    // child (the common main -> pane switch), less so once it has been
+    // switched away from, so keep the last good number. The popup always
+    // opens on main, so by the first pane -> pane switch there is one.
+    let mainHeight = 0
+    function paneFloor(): number {
+        const measured = mainPane?.measure(Gtk.Orientation.VERTICAL, Config.quicksettings.width)
+        const natural = measured?.[1] ?? 0
+        if (natural > 0) mainHeight = natural
+        // an explicit min_height is a floor the user asked for, not a
+        // ceiling on what the main pane actually needs
+        return Math.max(mainHeight || FALLBACK_PANE_HEIGHT, Config.quicksettings.minHeight)
+    }
     const toggleSection = ToggleSection({ onNavigate: setPane })
     let hideTimer: ReturnType<typeof timeout> | null = null
     // held only while the popup is on screen (see show/hide)
@@ -127,6 +151,12 @@ export default function QSettings() {
         // while the popup is closed and nobody can see the value.
         if (!releaseHyprsunset) releaseHyprsunset = acquireHyprsunsetWatch()
         setQsVisible(true)
+        // hide() resets the pane to main while the window is hidden, where
+        // the switch deliberately does not touch layout (ghost frame, see
+        // the pane subscription) — so the floor from the pane that was
+        // open is still on the stack. Drop it here: main always sizes to
+        // its own content, and this is the one moment a re-layout is free.
+        if (paneStack) paneStack.heightRequest = -1
         win.present()
         revealer.set_reveal_child(true)
     }
@@ -258,14 +288,12 @@ export default function QSettings() {
                         widthRequest={Config.quicksettings.width}
                     >
                         <stack
-                            // never shorter than this: panes size to
-                            // their own content, but a short one
-                            // (wired, vpn) collapsing the popup to a
-                            // third of its height reads as the floor
-                            // being pulled out. Roughly the main
-                            // pane's own height, so opening a pane
-                            // holds the size you started from
-                            heightRequest={MIN_PANE_HEIGHT}
+                            // No heightRequest here: a floor on the stack
+                            // is a floor on the MAIN pane too, and main is
+                            // the one pane that should always size to its
+                            // own content. The floor is applied per switch
+                            // below, to the short panes it was added for.
+                            //
                             // each pane sizes to its own content: with
                             // vhomogeneous every pane inherited the
                             // tallest one, so a long wifi list left the
@@ -277,10 +305,15 @@ export default function QSettings() {
                             // is applied before the named children exist, which makes
                             // Gtk warn about a missing child
                             $={self => {
+                                paneStack = self
                                 self.visibleChildName = "main"
                                 // subscribe callbacks receive no value, read it
                                 pane.subscribe(() => {
-                                    self.visibleChildName = pane.get()
+                                    const target = pane.get()
+                                    // measure BEFORE the switch, while main
+                                    // is still the current child
+                                    const floor = target === "main" ? -1 : paneFloor()
+                                    self.visibleChildName = target
 
                                     // a pane opens at its top: gtk scrolls
                                     // to whatever it decides to focus, which
@@ -293,7 +326,12 @@ export default function QSettings() {
                                     // surface — the compositor keeps drawing
                                     // the last frame, which is the ghost pane
                                     // that stayed on screen after closing
+                                    // — which is also why the floor is only
+                                    // committed here: setting heightRequest
+                                    // while hidden re-commits the surface
+                                    // the same way. show() clears it instead
                                     if (!win?.is_visible()) return
+                                    self.heightRequest = floor
                                     for (const sw of paneScrollers)
                                         sw.get_vadjustment()?.set_value(0)
                                 })
@@ -304,6 +342,7 @@ export default function QSettings() {
                             <box
                                 $type="named"
                                 name="main"
+                                $={ref => (mainPane = ref)}
                                 orientation={Gtk.Orientation.VERTICAL}
                                 // uniform rhythm: 8px between the cards
                                 // (sections are cards now — no separators)
