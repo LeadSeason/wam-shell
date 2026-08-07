@@ -93,7 +93,11 @@ export function dayBucket(time: number, nowSec: number): string {
 // days since the epoch in LOCAL time — subtracting two of these compares
 // calendar days without any timezone arithmetic of our own
 function dayNumber(dt: GLib.DateTime): number {
-    return Math.floor((dt.to_unix() + dt.get_utc_offset() / 1_000_000) / DAY)
+    // get_utc_offset returns a GLib.TimeSpan (microseconds, gint64).
+    // gjs marshals it as a plain number, but the typings keep it a
+    // distinct type, so the arithmetic needs saying out loud
+    const offsetSeconds = (dt.get_utc_offset() as unknown as number) / 1_000_000
+    return Math.floor((dt.to_unix() + offsetSeconds) / DAY)
 }
 
 // ------------------------------------------------------- the live clock

@@ -78,11 +78,11 @@ test("sleepTimerState decide: dim-only after a pre-restart fire", () => {
     const now = 1_000_000
     eq(
         decide(
-            { deadline: null, paused: false, pausedSeconds: 0, dim: { pre: 0.7, to: 0.35 } },
+            { deadline: null, paused: false, pausedSeconds: 0, dim: { pre: 0.7, to: 0.35 }, mutedStreams: [], pid: 0 },
             now,
         ),
         "dim-only",
     )
     // no deadline and no dim is nothing
-    eq(decide({ deadline: null, paused: false, pausedSeconds: 0, dim: null }, now), "empty")
+    eq(decide({ deadline: null, paused: false, pausedSeconds: 0, dim: null, mutedStreams: [], pid: 0 }, now), "empty")
 })

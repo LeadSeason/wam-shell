@@ -68,10 +68,11 @@ interface YtChannel {
 // natural unique id: it dedupes the same upload across accounts. A
 // channel's "latest 3 uploads" can be years old for quiet channels —
 // list and banners bound themselves by time instead (below)
-export function playlistVideoData(
-    raw: any,
-):
-    | (Omit<ProviderItem, "dismiss" | "activate"> & { imageUrl: string | null; videoId: string })
+export function playlistVideoData(raw: any):
+    | (Omit<ProviderItem, "dismiss" | "activate" | "hide"> & {
+          imageUrl: string | null
+          videoId: string
+      })
     | null {
     const s = raw?.snippet
     const videoId = s?.resourceId?.videoId

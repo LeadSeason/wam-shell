@@ -395,7 +395,10 @@ export function dispose() {
         agentObjectId = 0
     }
     if (watchId) {
-        Gio.Bus.unwatch_name(watchId)
+        // Gio.Bus does not exist — the free function does. This threw
+        // the moment dispose() was ever called; nothing calls it yet,
+        // which is why it sat here unnoticed until tsc ran
+        Gio.bus_unwatch_name(watchId)
         watchId = 0
     }
     // armed prompt timeouts are 30s-bounded and self-removing; just

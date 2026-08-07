@@ -176,7 +176,7 @@ export function parseFetchEnvelopes(text: string): Envelope[] {
 }
 
 // the data half of a ProviderItem; actions are attached by the module
-export function envelopeData(env: Envelope): Omit<ProviderItem, "dismiss" | "activate"> {
+export function envelopeData(env: Envelope): Omit<ProviderItem, "dismiss" | "activate" | "hide"> {
     return {
         id: `protonmail:${env.uid}`,
         provider: "protonmail",

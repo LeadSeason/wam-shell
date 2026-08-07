@@ -18,5 +18,5 @@ export function isPinned(item: AstalTray.TrayItem): boolean {
     const tooltip = item.tooltip_markup
     if (!tooltip) return false
     const lower = tooltip.toLowerCase()
-    return pinned.some(entry => entry !== "" && lower.includes(entry.toLowerCase()))
+    return pinned.some((entry: string) => entry !== "" && lower.includes(entry.toLowerCase()))
 }
