@@ -93,58 +93,68 @@ function VolumeRow({
             cssClasses={heat.as(h => ["audioHeat", ...h])}
         >
             <box spacing={8} hexpand>
-                <overlay hexpand>
-                    <Gtk.GestureDrag
-                        button={1}
-                        onDragBegin={(gesture, x) => {
-                            dragWidth = gesture.get_widget()?.get_width() ?? 200
-                            dragStart = clamp((x / dragWidth) * max)
-                            onChange(dragStart)
-                        }}
-                        onDragUpdate={(_g, dx) =>
-                            onChange(clamp(dragStart + (dx / dragWidth) * max * DAMP))
-                        }
+                {/* the slider and the level share ONE column, so the
+                level is exactly as wide as the control it reports on.
+                As sibling ROWS they were not: the level's trailing
+                spacer was a guess at the percent column's width and
+                missed it by 5px on the right and 11px on the left,
+                which is most of why a readout read as a second slider */}
+                <box orientation={Gtk.Orientation.VERTICAL} hexpand>
+                    <overlay hexpand>
+                        <Gtk.GestureDrag
+                            button={1}
+                            onDragBegin={(gesture, x) => {
+                                dragWidth = gesture.get_widget()?.get_width() ?? 200
+                                dragStart = clamp((x / dragWidth) * max)
+                                onChange(dragStart)
+                            }}
+                            onDragUpdate={(_g, dx) =>
+                                onChange(clamp(dragStart + (dx / dragWidth) * max * DAMP))
+                            }
+                        />
+                        <Gtk.EventControllerScroll
+                            flags={Gtk.EventControllerScrollFlags.VERTICAL}
+                            onScroll={(_s, _dx, dy) => {
+                                // 1% a notch: the whole point of this row is
+                                // setting a value, not sweeping through one
+                                onChange(clamp(value.get() - dy / 100))
+                                return true
+                            }}
+                        />
+                        <slider canTarget={false} hexpand max={max} value={value} />
+                    </overlay>
+                    {/* the level, in the slider's own heat language:
+                    what is coming out, under what was asked for */}
+                    <Gtk.LevelBar
+                        // the bar is normalised over a 60dB floor, so these
+                        // are -3dBFS and -0.6dBFS: where output is close
+                        // enough to full scale to actually clip. Warning any
+                        // earlier would light up on ordinary loud music,
+                        // which peaks near -6dBFS all the time
+                        cssClasses={(meter?.level ?? ZERO).as(v => [
+                            "audioMeter",
+                            ...(v > 0.99 ? ["hot"] : v > 0.95 ? ["over"] : []),
+                        ])}
+                        hexpand
+                        visible={meter?.visible ?? false}
+                        valign={Gtk.Align.CENTER}
+                        mode={Gtk.LevelBarMode.CONTINUOUS}
+                        minValue={0}
+                        maxValue={1}
+                        value={meter?.level ?? ZERO}
                     />
-                    <Gtk.EventControllerScroll
-                        flags={Gtk.EventControllerScrollFlags.VERTICAL}
-                        onScroll={(_s, _dx, dy) => {
-                            // 1% a notch: the whole point of this row is
-                            // setting a value, not sweeping through one
-                            onChange(clamp(value.get() - dy / 100))
-                            return true
-                        }}
+                </box>
+                {/* aligned to the SLIDER, not to the column: the level
+                sits below the slider and would otherwise pull the
+                percent down to the pair's midpoint */}
+                <box valign={Gtk.Align.START}>
+                    <PercentEntry
+                        value={value}
+                        onCommit={onChange}
+                        max={max}
+                        extraClasses={["audioPercent"]}
                     />
-                    <slider canTarget={false} hexpand max={max} value={value} />
-                </overlay>
-                <PercentEntry
-                    value={value}
-                    onCommit={onChange}
-                    max={max}
-                    extraClasses={["audioPercent"]}
-                />
-            </box>
-            {/* the level, sharing the slider's width and its heat
-            language: what is coming out, under what was asked for.
-            The trailing spacer keeps it off the percent column */}
-            <box spacing={8} hexpand visible={meter?.visible ?? false}>
-                <Gtk.LevelBar
-                    // the bar is normalised over a 60dB floor, so these
-                    // are -3dBFS and -0.6dBFS: where output is close
-                    // enough to full scale to actually clip. Warning any
-                    // earlier would light up on ordinary loud music,
-                    // which peaks near -6dBFS all the time
-                    cssClasses={(meter?.level ?? ZERO).as(v => [
-                        "audioMeter",
-                        ...(v > 0.99 ? ["hot"] : v > 0.95 ? ["over"] : []),
-                    ])}
-                    hexpand
-                    valign={Gtk.Align.CENTER}
-                    mode={Gtk.LevelBarMode.CONTINUOUS}
-                    minValue={0}
-                    maxValue={1}
-                    value={meter?.level ?? ZERO}
-                />
-                <label widthChars={5} maxWidthChars={5} label={""} />
+                </box>
             </box>
         </box>
     )
@@ -172,6 +182,14 @@ const EXPAND_CAP = 168
 /** what an expandable row unfolds into. Capped and scrollable on its
  *  own: a card with seven profiles used to push the whole pane, so
  *  picking one meant chasing the list as it scrolled away.
+ *
+ *  Rows inside it need `hexpand` on their label. maxWidthChars caps a
+ *  label's NATURAL request, and a horizontal box hands each child
+ *  exactly its natural width unless the child expands — so without it
+ *  the cap became the allocation and the text ellipsized at 30
+ *  characters with half the row still empty. In a VERTICAL box (the
+ *  two-line rows above) the child gets the full cross-axis width
+ *  already, which is why those clip only when they genuinely run out.
  *
  *  A ScrolledWindow with propagateNaturalHeight measures its child ONCE
  *  and never revisits it, and a `For` appends its rows after
@@ -291,6 +309,7 @@ function AppRow({
                         <label
                             cssClasses={["paneRowName"]}
                             label={stream.description || stream.name}
+                            tooltipText={stream.description || stream.name}
                             xalign={0}
                             hexpand
                             maxWidthChars={22}
@@ -364,7 +383,9 @@ function AppRow({
                                 <label
                                     cssClasses={["paneRowName"]}
                                     label={ep.description || ep.name}
+                                    tooltipText={ep.description || ep.name}
                                     xalign={0}
+                                    hexpand
                                     maxWidthChars={30}
                                     ellipsize={Pango.EllipsizeMode.END}
                                 />
@@ -403,6 +424,10 @@ function DeviceRow({
     const portInfo = audioPorts.as(m => m.get(endpoint.serial) ?? null)
     const routes = portInfo.as(i => i?.ports ?? [])
     const activePort = portInfo.as(i => i?.active ?? null)
+    const portLabel = createComputed([portInfo, activePort], (info, active) => {
+        const port = info?.ports.find(x => x.name === active)
+        return port?.description ?? (role === "input" ? "Microphone" : "Output")
+    })
     return (
         <box orientation={Gtk.Orientation.VERTICAL}>
             <box
@@ -428,6 +453,7 @@ function DeviceRow({
                         <label
                             cssClasses={["paneRowName"]}
                             label={endpoint.description || endpoint.name}
+                            tooltipText={endpoint.description || endpoint.name}
                             xalign={0}
                             hexpand
                             maxWidthChars={26}
@@ -446,10 +472,8 @@ function DeviceRow({
                     not read once: plugging headphones in changes it */}
                     <label
                         cssClasses={["paneRowDesc"]}
-                        label={createComputed([portInfo, activePort], (info, active) => {
-                            const port = info?.ports.find(x => x.name === active)
-                            return port?.description ?? (role === "input" ? "Microphone" : "Output")
-                        })}
+                        label={portLabel}
+                        tooltipText={portLabel}
                         xalign={0}
                         maxWidthChars={28}
                         ellipsize={Pango.EllipsizeMode.END}
@@ -506,7 +530,9 @@ function DeviceRow({
                                 <label
                                     cssClasses={["paneRowName"]}
                                     label={port.description}
+                                    tooltipText={port.description}
                                     xalign={0}
+                                    hexpand
                                     maxWidthChars={30}
                                     ellipsize={Pango.EllipsizeMode.END}
                                 />
@@ -549,6 +575,7 @@ function CardRow({
                     <label
                         cssClasses={["paneRowName"]}
                         label={device.description || `Card ${device.id}`}
+                        tooltipText={device.description || `Card ${device.id}`}
                         xalign={0}
                         maxWidthChars={26}
                         ellipsize={Pango.EllipsizeMode.END}
@@ -556,6 +583,7 @@ function CardRow({
                     <label
                         cssClasses={["paneRowDesc"]}
                         label={activeLabel}
+                        tooltipText={activeLabel}
                         xalign={0}
                         maxWidthChars={30}
                         ellipsize={Pango.EllipsizeMode.END}
@@ -586,7 +614,9 @@ function CardRow({
                                 <label
                                     cssClasses={["paneRowName"]}
                                     label={profile.description}
+                                    tooltipText={profile.description}
                                     xalign={0}
+                                    hexpand
                                     maxWidthChars={30}
                                     ellipsize={Pango.EllipsizeMode.END}
                                 />
