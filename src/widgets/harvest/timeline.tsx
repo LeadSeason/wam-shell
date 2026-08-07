@@ -5,6 +5,7 @@ import { Accessor, For, With, createComputed, createState, onCleanup } from "gni
 import { connect } from "../../lib/metrics"
 import * as Harvest from "../../lib/harvest"
 import { entryLabel, parseDuration, SelectorButton } from "./shared"
+import { PaneEmpty } from "../PaneEmpty"
 
 // the day timeline: per-row inline editors (notes, hours, project/task
 // reassignment, delete) and the day browser header
@@ -479,12 +480,16 @@ export function Timeline() {
                     <image iconName="go-next-symbolic" />
                 </button>
             </box>
-            <label
-                cssClasses={["dim"]}
-                xalign={0}
-                visible={entries.as(e => e.length === 0)}
-                label={"No entries"}
-            />
+            {/* the same empty state the notification centre and the
+            quick settings panes use, rather than a bare label against
+            the left edge of an otherwise blank card */}
+            <box visible={entries.as(e => e.length === 0)}>
+                <PaneEmpty
+                    icon="harvest-symbolic"
+                    title="No entries"
+                    hint="Start a timer, or add one with + New entry"
+                />
+            </box>
             <Gtk.ScrolledWindow
                 vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
                 hscrollbarPolicy={Gtk.PolicyType.NEVER}
