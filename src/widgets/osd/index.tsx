@@ -56,6 +56,15 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
                 sourceRemove(hideSource)
                 hideSource = null
             }
+            // One window serves every kind, and a GtkWindow keeps the
+            // size it was last allocated — across hide/show too. So the
+            // narrow "Swedish" pill inherited the width of the volume
+            // pill that preceded it (bar and all) and drew as a slab of
+            // empty background. Dropping back to -1 asks for the
+            // natural size of whatever is in there NOW; the CENTER
+            // aligns below keep the pill honest even in the frame
+            // before the surface catches up.
+            win.set_default_size(-1, -1)
             win.present()
             rev.revealChild = true
         } else {
@@ -101,13 +110,15 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
                 $={self => {
                     rev = self
                 }}
+                halign={Gtk.Align.CENTER}
+                valign={Gtk.Align.CENTER}
                 revealChild={false}
                 transitionType={Gtk.RevealerTransitionType.CROSSFADE}
                 transitionDuration={200}
             >
                 <box
                     cssClasses={content.as(c => ["OSD", `osd-${c.kind}`])}
-                    spacing={10}
+                    spacing={8}
                     canTarget={false}
                 >
                     <image

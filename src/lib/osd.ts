@@ -90,7 +90,11 @@ function present(c: Omit<OsdContent, "kind">, kind: OsdKind) {
     setContent({ ...c, kind })
     setVisible(true)
     if (hideSource !== null) sourceRemove(hideSource)
-    hideSource = timeoutAdd("osd:hide", GLib.PRIORITY_DEFAULT, Config.osd.timeout, () => {
+    // the duration belongs to the kind, not the widget: a layout pill
+    // that replaces a volume pill must take the layout timeout with it,
+    // so this reads the map on every present rather than at startup
+    const ms = Config.osd.timeouts[kind] ?? Config.osd.timeout
+    hideSource = timeoutAdd("osd:hide", GLib.PRIORITY_DEFAULT, ms, () => {
         hideSource = null
         setVisible(false)
         return GLib.SOURCE_REMOVE
