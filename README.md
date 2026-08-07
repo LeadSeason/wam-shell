@@ -16,10 +16,13 @@ curl -fsSL https://raw.githubusercontent.com/LeadSeason/wam-shell/master/scripts
 or from a clone: `scripts/wam install` (extra args go to
 `scripts/setup.sh`, e.g. `--source`).
 
-Install clones the repo into `~/.local/share/wam-shell` and installs
+Install clones the repo into `~/.local/share/wam-shell` and symlinks
 the `wam` command itself into `~/.local/bin`. Everything runs from
 those two spots, so **the original clone can be deleted** — `wam` is
-all you need from then on:
+all you need from then on. Because it is a link rather than a copy,
+`wam update` moves the command itself forward with the shell; an
+install from before this was true is converted to a link on its next
+update:
 
 - `wam install` — dependencies (ags + astal libraries, AUR helper on
   Arch, `--source` build otherwise), the Nerd Fonts the shell uses
