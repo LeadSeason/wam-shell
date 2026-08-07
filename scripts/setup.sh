@@ -18,11 +18,21 @@ for arg in "$@"; do
     esac
 done
 
-ASTAL_DIR="${ASTAL_DIR:-$HOME/.cache/wam-shell/build/astal}"
+# Build trees for the --source path, under the cache dir rather than in
+# the user's own project directory (i3ipc used to default to ~/Dev).
+# XDG_CACHE_HOME is honoured, and only when absolute — GLib ignores a
+# relative one, so matching that keeps every path in the project
+# agreeing about where the cache is.
+#
+# A cache wipe loses these and the next --source run re-clones. That is
+# the intended trade: both are --depth 1 checkouts of upstream, cheap to
+# recreate, and cache is where regenerable things belong.
+CACHE_HOME="${XDG_CACHE_HOME:-}"
+[[ "$CACHE_HOME" == /* ]] || CACHE_HOME="$HOME/.cache"
+BUILD_DIR="$CACHE_HOME/wam-shell/build"
+ASTAL_DIR="${ASTAL_DIR:-$BUILD_DIR/astal}"
 ASTAL_REPO="https://github.com/Aylur/astal.git"
-# alongside astal, not in ~/Dev: a source install must not drop a
-# third-party clone into the user's own project directory
-I3IPC_DIR="${I3IPC_DIR:-$HOME/.cache/wam-shell/build/i3ipc-glib}"
+I3IPC_DIR="${I3IPC_DIR:-$BUILD_DIR/i3ipc-glib}"
 I3IPC_REPO="https://github.com/acrisci/i3ipc-glib.git"
 PREFIX=/usr/local
 GIR_DIR="$PREFIX/lib/girepository-1.0"
