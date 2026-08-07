@@ -801,6 +801,37 @@ function getOsdConfig() {
         timeout = 2000
     }
 
+    // How long a pill stays up depends on what it is telling you.
+    //
+    // Volume and brightness are DRIVEN: you hold the key and watch the
+    // bar, and every step restarts the timer anyway — the timeout is
+    // only how long it lingers after you stop, so it can afford to be
+    // generous. A layout or lock-key pill is an ANNOUNCEMENT: one word,
+    // read in a glance, already known by the time it fades. Leaving
+    // those up for the same two seconds is just an obstacle over the
+    // window you just switched language to type into.
+    //
+    // Expressed as fractions of `timeout` rather than fixed values, so
+    // a user who raises the base still gets the shorter ones shorter —
+    // and any kind can be pinned outright with its own key.
+    const scale: Record<string, number> = {
+        volume: 1,
+        microphone: 1,
+        brightness: 1,
+        layout: 0.45,
+        lockKeys: 0.6,
+    }
+    const perKind = (kind: string, key: string) => {
+        const scaled = Math.round(timeout * scale[kind])
+        const v = get(`timeout_${key}`, null)
+        if (v === null || v === undefined) return scaled
+        if (typeof v !== "number" || v <= 0) {
+            console.error(`Config "osd.timeout_${key}" must be a positive number, got "${v}"`)
+            return scaled
+        }
+        return v
+    }
+
     // distance from the anchored edge. 140 clears the message composer
     // of a bottom-docked chat app (slack, discord), which a 60px pill
     // sat right on top of; "center" ignores it
@@ -815,6 +846,14 @@ function getOsdConfig() {
         position: position as "bottom" | "center" | "top",
         margin,
         timeout,
+        // per-trigger durations, keyed by OSD kind (see the note above)
+        timeouts: {
+            volume: perKind("volume", "volume"),
+            microphone: perKind("microphone", "microphone"),
+            brightness: perKind("brightness", "brightness"),
+            layout: perKind("layout", "layout"),
+            lockKeys: perKind("lockKeys", "lock_keys"),
+        },
         // per-trigger toggles
         volume: get("volume", true),
         microphone: get("microphone", true),
