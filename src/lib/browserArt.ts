@@ -68,6 +68,19 @@ function sqlLiteral(s: string): string {
     return `'${s.replace(/'/g, "''")}'`
 }
 
+/** a track title as a LIKE pattern fragment: % and _ are wildcards, so
+ *  a title carrying either widens the match instead of narrowing it —
+ *  "lo_fi beats" would also find "lo-fi beats - …". Escaped with a
+ *  backslash, which sqlite only honours when ESCAPE says so (there is
+ *  no default escape character), hence LIKE_ESCAPE below. */
+export function escapeLike(s: string): string {
+    return s.replace(/[\\%_]/g, m => `\\${m}`)
+}
+
+// sqlite reads no escapes inside string literals, so this really is one
+// backslash by the time LIKE sees it
+const LIKE_ESCAPE = String.raw` ESCAPE '\'`
+
 /** the full-size art url for a track a chromium browser is playing, or
  *  "" when its page is not in any history db (or is not youtube).
  *
@@ -83,12 +96,20 @@ export function recoverBrowserArt(title: string): Promise<string> {
 
     // youtube stores the video title verbatim as the page title, so an
     // equality match is the common case; the LIKE catches the sites
-    // that append their own suffix to it. Newest visit wins: the same
-    // video watched twice is still the same art either way.
+    // that append their own suffix to it.
+    //
+    // An exact hit outranks a suffix one, and only then does the newest
+    // visit win: ORDER BY on the recency alone lets a loose LIKE match
+    // beat the row whose title IS the track, purely by being opened
+    // more recently. (sqlite scores the comparison as 1/0.) Among rows
+    // that tie, the same video watched twice carries the same art
+    // either way.
+    const exact = sqlLiteral(title)
+    const suffix = sqlLiteral(`${escapeLike(title)} - %`)
     const q =
         "SELECT url FROM urls WHERE url LIKE '%youtube.com/watch?v=%' AND " +
-        `(title = ${sqlLiteral(title)} OR title LIKE ${sqlLiteral(`${title} - %`)}) ` +
-        "ORDER BY last_visit_time DESC LIMIT 1;"
+        `(title = ${exact} OR title LIKE ${suffix}${LIKE_ESCAPE}) ` +
+        `ORDER BY (title = ${exact}) DESC, last_visit_time DESC LIMIT 1;`
 
     return dbs
         .reduce(
