@@ -1,0 +1,46 @@
+Manual harnesses. Neither is a gate — nothing here runs in `pnpm test`,
+because both drive the real compositor and the real notification daemon
+on the machine you are sitting at.
+
+They exist because two things in this shell cannot be checked any other
+way, and both were shipped unverified once already for want of them.
+
+    soak.sh [seconds]        default 1800
+
+Hammers the notification paths that surround the one crash we have never
+reproduced: bursts from one app (grouping, the drawer), singles from
+several (the cap), a critical (never expires), an RTL card, hovering the
+stack open and closed, panel toggling, and natural expiry — which is
+where the revealer collapse happens. Reports the round it died in, if it
+does, so a crash is attributable rather than merely observed. Writes to
+$SOAK_LOG (default /tmp/wam-shell-soak.txt).
+
+210 rounds clean on 2026-08-07.
+
+    pointer.py <dx> [steps] [hold_ms]
+
+Synthesises a left-button drag through /dev/uinput, for the banner's
+drag-to-dismiss. There is no pointer-injection tool installed —
+ydotool and wlrctl are absent and wtype is keyboard-only — so this
+creates a virtual relative pointer itself, the same way ydotool does,
+and destroys it on the way out. Requires membership of the `input`
+group; you have it.
+
+Position the cursor first, since the device is relative-only:
+
+    hyprctl dispatch "hl.dsp.cursor.move({x=5200,y=300})"
+    python3 tests/manual/pointer.py 600 15 150
+
+Two things that will waste your time otherwise:
+
+- Hyprland 0.56 parses `hyprctl dispatch` arguments as LUA. The familiar
+  `hyprctl dispatch movecursor X Y` is a syntax error that prints only to
+  stderr and silently does nothing, which looks exactly like a pointer
+  grab by a fullscreen app.
+- libinput acceleration decelerates a slow synthetic drag hard. Drag fast
+  and far when testing a distance threshold; a 240-unit drag over two
+  seconds travels far less than 240px on screen.
+
+To measure a widget without screenshotting it, compare layer geometry
+before and after: `hyprctl layers -j`. The banner drawer opening on hover
+is 85px -> 249px.
