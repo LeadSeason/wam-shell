@@ -5,7 +5,7 @@ import { createBinding } from "gnim"
 import { exec, timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
 import Brightness from "./brightness"
-import hyprsunset, { OUTDOOR_GAMMA } from "./hyprsunset"
+import hyprsunset, { OUTDOOR_GAMMA, refreshHyprsunset } from "./hyprsunset"
 import { ensureLayoutSource, ensureLockSource, layoutOsdText, lockKeyState } from "./kbLayout"
 
 // OSD state and triggers. Widgets read `content`/`visible`; triggers
@@ -132,6 +132,12 @@ if (wp) {
 const brightness = Brightness.get_default()
 disposers.push(
     createBinding(brightness, "screen").subscribe(() => {
+        // the other reader of this flag, and the reason the watch does
+        // not need to run while the quick settings are closed: refresh
+        // when brightness actually changes. Async, so THIS osd still
+        // uses the previous value and the next one is correct — which
+        // beats the old behaviour of being up to 30s stale
+        refreshHyprsunset()
         const outdoor = hyprsunset.outdoor.get()
         show(
             {

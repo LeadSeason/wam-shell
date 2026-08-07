@@ -236,8 +236,15 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
         else 0 end;
 
     def verdict:
-        if ((.base - .cur) | if . < 0 then -. else . end) > tolerance(.path)
-        then "gated"
+        # Direction matters. Every gated counter is a resource count —
+        # alive timers, signal handlers, fds, subprocess spawns — so
+        # MORE is a regression and FEWER is the improvement you were
+        # trying to make. Comparing the absolute difference gated both
+        # equally, which meant deleting a timer failed the gate that
+        # exists to stop you adding one.
+        # NOTE: no apostrophes in this jq program — it is single-quoted
+        if (.cur - .base) > tolerance(.path) then "gated"
+        elif (.base - .cur) > tolerance(.path) then "improved"
         else "tolerated" end;
 
     (per_scenario($base)) as $b | (per_scenario($cur)) as $c |
@@ -246,6 +253,7 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
         {
             scenario: $s,
             gated: [$d[] | select(verdict == "gated")],
+            improved: [$d[] | select(verdict == "improved")],
             tolerated: [$d[] | select(verdict == "tolerated")],
             reported: { base: ($b[$s]|reported), current: ($c[$s]|reported) },
         } ]
@@ -287,6 +295,7 @@ else
             else p end;
         .[] as $s |
         ($s.gated[] | "  \(difflabel(.path))  \(.base) → \(.cur)  (\($s.scenario))"),
+        ($s.improved[] | "  - \(difflabel(.path))  \(.base) → \(.cur)  (\($s.scenario), improvement)"),
         ($s.tolerated[] | "  ~ \(difflabel(.path))  \(.base) → \(.cur)  (\($s.scenario), within environment tolerance)")
     '
     echo ""
