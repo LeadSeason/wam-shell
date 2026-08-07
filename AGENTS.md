@@ -226,6 +226,21 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 - What this means in practice: all five are not optional, because nothing
   else will catch a regression. Run them and report the results honestly,
   including the perf verdict line.
+- They cover TYPESCRIPT, and only TypeScript. Prettier globs
+  `src/**/*.{ts,tsx}`; typecheck covers `src/lib`, `src/config.ts` and
+  `tests`; the unit suite is gjs modules; smoke and perf start and
+  measure the shell. A change confined to `scripts/`, `*.md`,
+  `config.toml` or the systemd unit is invisible to every one of them —
+  running the set there proves nothing and spends minutes of perf
+  measurement on a live desktop to say so.
+- Verify those the way that actually tests them. For a shell script:
+  `bash -n` for syntax, then exercise it in a sandbox — redirect `HOME`
+  and `WAM_HOME` at a temp tree, put a stub for anything slow or
+  destructive (`pnpm`) first on `PATH`, and drive the real branches. The
+  `wam update` self-refresh was checked that way: a fake install running
+  from `~/.local/bin/wam` replaced its own file mid-run and the inode
+  changed underneath it, which is the whole reason it writes through a
+  temp file and a rename rather than in place.
 
 ## Tests
 

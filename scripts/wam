@@ -13,6 +13,7 @@ SERVICE="wam-shell.service"
 UNIT_DIR="$HOME/.config/systemd/user"
 LOG_DIR="$HOME/.cache/wam-shell"
 INSTANCE="wam-shell"
+WAM_BIN="$HOME/.local/bin/wam"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() {
@@ -89,6 +90,22 @@ require_install() {
         die "not installed — clone the repo and run: bash scripts/wam install"
 }
 
+# Writes $WAM_BIN through a temp file and a RENAME, never in place:
+# `wam update` is normally running from that very path, and bash reads a
+# script incrementally — overwriting the file underneath it feeds the
+# running shell a spliced mix of old and new bytes. A rename swaps the
+# directory entry and leaves the running process on the old inode.
+install_wam_script() {
+    local tmp
+    mkdir -p "$(dirname "$WAM_BIN")" || return 1
+    tmp="$(mktemp "$(dirname "$WAM_BIN")/.wam.XXXXXX")" || return 1
+    if install -m 755 "$ROOT/scripts/wam" "$tmp" && mv -f "$tmp" "$WAM_BIN"; then
+        return 0
+    fi
+    rm -f "$tmp"
+    return 1
+}
+
 running() { ags list 2>/dev/null | grep -qx "$INSTANCE"; }
 service_enabled() { systemctl --user is-enabled "$SERVICE" &>/dev/null; }
 
@@ -124,8 +141,7 @@ cmd_install() {
     bash "$ROOT/scripts/setup.sh" "$@"
 
     log "Installing wam into ~/.local/bin (a copy — independent of any clone)"
-    mkdir -p "$HOME/.local/bin"
-    install -m 755 "$ROOT/scripts/wam" "$HOME/.local/bin/wam"
+    install_wam_script || die "could not install $WAM_BIN"
     case ":$PATH:" in
         *":$HOME/.local/bin:"*) ;;
         *) log "NOTE: ~/.local/bin is not on PATH" ;;
@@ -204,6 +220,19 @@ cmd_update() {
     if [[ -n "$(git -C "$ROOT" diff --name-only "$prev"..HEAD -- config.toml)" ]]; then
         log "The config template changed in this update — see what's new: wam config diff"
     fi
+    # The installed wam is a COPY, so without this it stays frozen at
+    # whatever version installed it and never grows a subcommand: `wam
+    # logs` shipped, users updated, and it was still not in their
+    # --help because their wam was months old. A symlink already
+    # tracks the repo and is left alone.
+    if [[ -f "$WAM_BIN" && ! -L "$WAM_BIN" ]] && ! cmp -s "$ROOT/scripts/wam" "$WAM_BIN"; then
+        if install_wam_script; then
+            log "Updated $WAM_BIN — new commands apply from the next run"
+        else
+            log "WARNING: could not refresh $WAM_BIN — run: wam install"
+        fi
+    fi
+
     log "pnpm i"
     pnpm_install
     if systemctl --user is-active "$SERVICE" &>/dev/null; then
@@ -577,8 +606,12 @@ cmd_status() {
     if [[ -L "$HOME/.local/bin/wam" ]]; then
         printf 'wam:       %s -> %s (symlink)\n' \
             "$HOME/.local/bin/wam" "$(readlink "$HOME/.local/bin/wam")"
-    elif [[ -f "$HOME/.local/bin/wam" ]]; then
-        printf 'wam:       %s\n' "$HOME/.local/bin/wam"
+    elif [[ -f "$WAM_BIN" ]]; then
+        if cmp -s "$ROOT/scripts/wam" "$WAM_BIN" 2>/dev/null; then
+            printf 'wam:       %s\n' "$WAM_BIN"
+        else
+            printf 'wam:       %s (STALE — refresh with: wam update)\n' "$WAM_BIN"
+        fi
     else
         printf 'wam:       not installed (~/.local/bin/wam missing)\n'
     fi
@@ -672,6 +705,9 @@ case "${1:-}" in
         cmd_logs "$@"
         ;;
     version) cmd_version ;;
+    help | -h | --help)
+        usage
+        ;;
     "")
         usage
         ;;
