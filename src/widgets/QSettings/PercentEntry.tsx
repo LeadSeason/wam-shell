@@ -1,5 +1,6 @@
 import Gtk from "gi://Gtk?version=4.0"
 import { Accessor, onCleanup } from "gnim"
+import { connect, disconnect } from "../../lib/metrics"
 
 /**
  * A volume percentage you can type into: click the number, enter a
@@ -58,8 +59,12 @@ export function PercentEntry({
                 self.text = text.get()
                 // editing ends on Enter, on Escape, and on focus loss.
                 // Escape restores the old text before this fires, so
-                // parsing it back is a no-op rather than a special case
-                self.connect("notify::editing", () => {
+                // parsing it back is a no-op rather than a special case.
+                //
+                // Through lib/metrics like every other handler in the
+                // shell (AGENTS.md): a raw self.connect is invisible to
+                // the leak detector, and this was the only one left
+                const editHandler = connect(self, "notify::editing", () => {
                     if (!self.editing) {
                         commit(self)
                         return
@@ -72,6 +77,7 @@ export function PercentEntry({
                     // appending to whatever was already there
                     self.select_region(0, -1)
                 })
+                onCleanup(() => disconnect(self, editHandler))
             }}
         >
             {/* one click, not two: the default double-click to edit is

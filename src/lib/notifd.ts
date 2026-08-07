@@ -169,8 +169,10 @@ function ensurePopupTick() {
         const dt = now - last
         last = now
         if (!anyPopupHovered() && dt > 0) {
+            let moved = false
             for (const [key, t] of timers) {
                 if (t.duration === 0 || t.expiring) continue
+                moved = true
                 t.remaining -= dt
                 if (t.remaining <= 0) {
                     t.expiring = true
@@ -181,7 +183,12 @@ function ensurePopupTick() {
                     })
                 }
             }
-            bumpTimerVersion()
+            // only when a countdown actually moved. A critical banner
+            // has duration 0 and never drains, so the loop above skips
+            // it — and an unconditional bump meant one un-dismissed
+            // critical kept every popupTimerVersion subscriber
+            // recomputing five times a second, indefinitely
+            if (moved) bumpTimerVersion()
         }
         if (popupsState.get().length === 0) {
             tickSource = null

@@ -54,8 +54,20 @@ export function relTime(time: number, nowSec: number): string {
 // If the shell ever grows real localisation, these belong in it
 // alongside "Needs you", "Feed" and the rest — not reverted to %A,
 // which would only restore the half-translated version.
-const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-const MONTHS = [
+//
+// Exported because the same split showed up in the clock popover's
+// agenda ("Today / Tomorrow / tis, 05.08.2026"), which reached for %a
+// rather than for these. One list, one language.
+export const WEEKDAYS = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+]
+export const MONTHS = [
     "January",
     "February",
     "March",

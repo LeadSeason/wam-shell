@@ -1,4 +1,4 @@
-import { exec, execAsync, timeoutAdd, sourceRemove } from "./metrics"
+import { execAsync, timeoutAdd, sourceRemove } from "./metrics"
 import { createState } from "gnim"
 import GLib from "gi://GLib?version=2.0"
 import Config from "../config"
@@ -24,38 +24,26 @@ const [dim, setDim] = createState(1) // gamma fraction, 0.05..1
 // preferred; then gammastep (works on wlroots like sway); gsettings
 // only when gnome-settings-daemon actually runs — on sway the schema
 // often exists as a dependency but changes nothing.
+//
+// Backend detection and the initial daemon read are both ASYNC, which
+// is the whole point of this block. This module sits in app.tsx's
+// import graph, so the four `exec` calls it used to make at import were
+// four synchronous fork+exec+waits blocking the main loop before the
+// first frame — the exact cost config.ts and harvest/sync.ts each went
+// out of their way to move off this path. Nothing needs an answer
+// synchronously: the states carry sensible defaults and the only
+// readers (the quick settings sliders, the brightness OSD) come along
+// much later.
 type TempBackend = "hyprctl" | "gsettings" | "gammastep" | "none"
 const GSCHEMA = "org.gnome.settings-daemon.plugins.color"
-export const tempBackend: TempBackend = (() => {
-    if (Config.desktopSession === "hyprland") return "hyprctl"
-    if (GLib.find_program_in_path("gammastep")) return "gammastep"
-    try {
-        exec(`gsettings get ${GSCHEMA} night-light-enabled`)
-        exec("pgrep -x gnome-settings-daemon")
-        return "gsettings"
-    } catch {}
-    return "none"
-})()
 
-// init from the running daemon so the slider matches reality
-if (tempBackend === "hyprctl") {
-    try {
-        const gamma = Number(exec("hyprctl hyprsunset gamma"))
-        if (!isNaN(gamma) && gamma > 0) {
-            if (gamma > 100) setOutdoor(true)
-            else setDim(gamma / 100)
-        }
-        const temp = Number(exec("hyprctl hyprsunset temperature"))
-        if (!isNaN(temp)) setNightLight(temp <= 5000)
-    } catch {
-        // daemon not running, keep defaults
-    }
-} else if (tempBackend === "gsettings") {
-    try {
-        const enabled = exec(`gsettings get ${GSCHEMA} night-light-enabled`).trim()
-        setNightLight(enabled === "true")
-    } catch {}
-}
+// A STATE, not a plain value, and for the same reason config.ts's
+// pendingUpdates is one: the gsettings probe below answers AFTER the
+// quick settings have been built, and the night light toggle decides
+// whether it exists at all from this. Read once, it would have been
+// "none" forever on a gnome-settings-daemon session.
+const [tempBackend, setTempBackend] = createState<TempBackend>("none")
+export { tempBackend }
 
 function currentTemp(): number {
     if (nightLight.get()) return Config.hyprsunset.nightTemp
@@ -68,7 +56,7 @@ let lastTempApply = 0
 function applyTemp() {
     lastTempApply = Date.now()
     const nl = nightLight.get()
-    switch (tempBackend) {
+    switch (tempBackend.get()) {
         case "hyprctl":
             execAsync(["hyprctl", "hyprsunset", "temperature", String(currentTemp())]).catch(
                 () => {},
@@ -159,6 +147,40 @@ export function refreshHyprsunset() {
         .finally(() => {
             watchRunning = false
         })
+}
+
+// Backend detection, and the initial read on hyprland.
+//
+// Down HERE rather than up with the state it writes, because
+// refreshHyprsunset closes over `watchRunning`, `lastApply` and
+// `lastTempApply` — three `let`s declared between the two. Under ES
+// module semantics reading those from above is a temporal-dead-zone
+// ReferenceError; it happens not to bite today only because the
+// bundler rewrites module-scope `let` to `var`, which hoists as
+// `undefined` instead (checked: the module still imports cleanly with
+// the call up there). That is the bundler's choice to make, not a
+// property of this file, so the declarations come first.
+if (Config.desktopSession === "hyprland") {
+    setTempBackend("hyprctl")
+    // the same two reads the 30s watch makes, and its guards are
+    // already correct for a cold start (nothing has been applied yet),
+    // so this is a call rather than a second copy of them
+    refreshHyprsunset()
+} else if (GLib.find_program_in_path("gammastep")) {
+    setTempBackend("gammastep")
+} else {
+    // the schema existing proves nothing on sway, where it is often
+    // pulled in as a dependency and changes nothing — the daemon has to
+    // actually be running, hence the pgrep alongside it
+    Promise.all([
+        execAsync(`gsettings get ${GSCHEMA} night-light-enabled`),
+        execAsync("pgrep -x gnome-settings-daemon"),
+    ])
+        .then(([enabled]) => {
+            setTempBackend("gsettings")
+            setNightLight(enabled.trim() === "true")
+        })
+        .catch(() => {}) // stays "none"
 }
 
 // The watch that keeps gamma/temperature in step with changes made
