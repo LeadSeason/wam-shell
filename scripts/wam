@@ -73,6 +73,9 @@ usage: wam <command>
                    template on first run), print its path, print it,
                    list template options your file predates (diff),
                    rewrite it as latest template + your values (sync)
+  logs [-f]        the shell's log, from wherever this start method put
+                   it: the journal under autostart, $LOG_DIR/shell.log
+                   after 'wam start'. -f follows
   status           install, runtime and autostart state at a glance
   version          installed commit of the shell
 EOF
@@ -539,6 +542,40 @@ cmd_status() {
         "$(systemctl --user is-active "$SERVICE" 2>&1 || true)"
 }
 
+# The shell logs to two different places depending on how it was
+# started, and nothing used to say which: `wam start` redirects into
+# $LOG_DIR/shell.log, while the systemd unit inherits the journal. A
+# user on autostart who went looking for shell.log found a stale file
+# from the last manual start, or none — which is how a workspace-click
+# failure sat unread in the journal.
+cmd_logs() {
+    local follow=0
+    [[ "${1:-}" == "-f" || "${1:-}" == "--follow" ]] && follow=1
+
+    # the journal is authoritative whenever the unit is what is running:
+    # active first, then merely enabled (so `wam logs` still works after
+    # a crash, which is exactly when it is wanted)
+    if systemctl --user is-active "$SERVICE" &>/dev/null || service_enabled; then
+        log "journal: $SERVICE"
+        if ((follow)); then
+            journalctl --user -u "$SERVICE" -f
+        else
+            journalctl --user -u "$SERVICE" -b --no-pager
+        fi
+        return
+    fi
+
+    local file="$LOG_DIR/shell.log"
+    [[ -f "$file" ]] || die "no logs: autostart is off and $file does not exist
+  start the shell with 'wam start', or enable autostart and use the journal"
+    log "file: $file"
+    if ((follow)); then
+        tail -f "$file"
+    else
+        cat "$file"
+    fi
+}
+
 cmd_version() {
     if [[ ! -d "$ROOT/.git" ]]; then
         echo "wam-shell: not installed"
@@ -577,6 +614,10 @@ case "${1:-}" in
         cmd_config "$@"
         ;;
     status) cmd_status ;;
+    logs)
+        shift
+        cmd_logs "$@"
+        ;;
     version) cmd_version ;;
     "")
         usage

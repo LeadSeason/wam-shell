@@ -22,6 +22,7 @@ import "./todoist.test"
 import "./protonmail.test"
 import "./sleepTimerState.test"
 import "./vpn.test"
+import "./hyprDispatch.test"
 import { summary } from "./framework"
 
 summary()
