@@ -186,7 +186,7 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 
 ## Typecheck gate
 
-- `pnpm typecheck` is the fifth gate, run with the other four. It is
+- `pnpm typecheck` is one of the five gates (see No CI). It is
   DELIBERATELY scoped: it filters `tsc` output down to `src/lib`,
   `src/config.ts` and `tests`, because a plain run is drowned by things
   that are not this codebase's fault — the generated `@girs` typings
@@ -207,9 +207,15 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 
 ## No CI
 
-- There is no CI, deliberately. The gates below are the whole story and
-  they run LOCALLY, once, at the end of a piece of work — before
-  creating the PR and/or merging, whichever comes last.
+- There is no CI, deliberately. Five gates are the whole story, and they
+  run LOCALLY, once, at the end of a piece of work — before creating the
+  PR and/or merging, whichever comes last:
+
+      prettier --check "src/**/*.{ts,tsx}"
+      pnpm typecheck
+      pnpm test
+      pnpm test:smoke
+      pnpm perf
 - Do not add a GitHub Actions workflow (or any other hosted runner) back
   in. A PR-time-only workflow was tried and removed: the
   `pull_request` trigger silently failed to fire — no run object was
@@ -217,9 +223,9 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   filters that had fired for every previous PR — so a PR could sit with
   no checks and nothing to say so. Queued hosted runners also meant a
   merge cancelled the very run that was meant to verify it.
-- What this means in practice: the four gates are not optional, because
-  nothing else will catch a regression. Run them and report the results
-  honestly, including the perf verdict line.
+- What this means in practice: all five are not optional, because nothing
+  else will catch a regression. Run them and report the results honestly,
+  including the perf verdict line.
 
 ## Tests
 
