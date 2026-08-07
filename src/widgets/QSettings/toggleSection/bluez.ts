@@ -84,7 +84,11 @@ function resolveAdapterPath() {
         null,
         (_conn, res) => {
             try {
-                const [objects] = Gio.DBus.system.call_finish(res) as [GLib.Variant]
+                // call_finish returns the reply as ONE tuple variant, not
+                // an unpacked array: destructuring it threw TypeError on
+                // every call, so this lookup never ran and the adapter
+                // path stayed at the /org/bluez/hci0 guess below.
+                const objects = Gio.DBus.system.call_finish(res).get_child_value(0)
                 const n = objects.n_children()
                 for (let i = 0; i < n; i++) {
                     const entry = objects.get_child_value(i)
