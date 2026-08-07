@@ -236,22 +236,33 @@ function TimelineRow({
         })
     }
 
-    // The resume/delete pair is kept ALLOCATED and merely made
-    // invisible, rather than visible-toggled. Toggling visibility takes
-    // them out of the layout, so the row re-flowed every time the
-    // pointer touched it — the body button gained their width back and
-    // the whole row shifted under the cursor. They still give up the
-    // slot when the confirm pair replaces them, which is built to the
-    // same footprint.
     const actionsShown = createComputed(
         [hovered, confirming],
         (h, c) => !entry.isRunning && h && !c,
     )
+    // The action strip is an Overlay child, so it is never MEASURED:
+    // the row spends its whole width on the entry title instead of
+    // reserving ~90px for buttons that are hidden most of the time.
+    // That also settles the layout shift for free — an unmeasured
+    // child cannot re-flow the row when it appears.
+    //
+    // can-target is bound to the same state that paints it. An
+    // invisible-but-present button still answers the pointer: it
+    // swallowed clicks meant for the row body and popped its tooltip
+    // over what looked like empty space. gtk_widget_pick stops at a
+    // non-targetable widget without descending, so one binding here
+    // covers every button inside.
+    const actionsLive = createComputed([actionsShown, confirming], (a, c) => a || c)
 
-    const cssClasses = isPaused.as(p => [
+    const cssClasses = createComputed([isPaused, hovered], (p, h) => [
         "todayRow",
         ...(entry.isRunning ? ["running"] : []),
         ...(p ? ["paused"] : []),
+        // hover paint lives on the ROW, not on the body button: the
+        // strip sits on top of the body, so a tint that followed the
+        // body alone left the strip's backdrop mismatched wherever the
+        // pointer happened to be. Running rows are inert and stay flat
+        ...(h && !entry.isRunning ? ["hovered"] : []),
     ])
 
     return (
@@ -260,108 +271,128 @@ function TimelineRow({
                 onEnter={() => setHovered(true)}
                 onLeave={() => setHovered(false)}
             />
-            <box spacing={6}>
-                <label
-                    cssClasses={["rowTime"]}
-                    widthChars={5}
-                    xalign={0}
-                    visible={time !== ""}
-                    label={time}
-                />
-                <button
-                    cssClasses={["rowBody"]}
-                    hexpand
-                    sensitive={!entry.isRunning}
-                    tooltipText={
-                        entry.isRunning ? entryLabel(entry) : `${entryLabel(entry)}\nclick to edit`
-                    }
-                    onClicked={() => {
-                        if (!expanded.get()) setEditorBuilt(true)
-                        setExpanded(!expanded.get())
-                    }}
-                >
-                    <box>
-                        <box orientation={Gtk.Orientation.VERTICAL} hexpand>
-                            <label
-                                xalign={0}
-                                useMarkup
-                                maxWidthChars={32}
-                                ellipsize={Pango.EllipsizeMode.END}
-                                label={`<span alpha="60%">${esc(`${entry.clientName} — ${entry.projectName} · `)}</span><b>${esc(entry.taskName)}</b>`}
-                            />
-                            <label
-                                cssClasses={["rowNotes"]}
-                                xalign={0}
-                                maxWidthChars={40}
-                                ellipsize={Pango.EllipsizeMode.END}
-                                visible={expanded.as(e => entry.notes !== "" && !e)}
-                                label={entry.notes}
-                            />
-                        </box>
-                        <label
-                            cssClasses={["dim"]}
-                            label={Harvest.formatElapsed(entry.hours * 3600)}
-                        />
-                    </box>
-                </button>
-                <button
-                    cssClasses={["resumeNow"]}
-                    valign={Gtk.Align.START}
-                    visible={confirming.as(c => !c)}
-                    opacity={actionsShown.as(v => (v ? 1 : 0))}
-                    sensitive={createComputed([actionsShown, Harvest.busy], (v, b) => v && !b)}
-                    tooltipText={startToday ? "Start today" : "Resume"}
-                    onClicked={() => {
-                        if (startToday) {
-                            Harvest.startTimer(
-                                entry.projectId,
-                                entry.taskId,
-                                entry.notes || undefined,
-                            )
-                            onStarted?.()
-                        } else {
-                            Harvest.resumeEntry(entry)
-                        }
-                    }}
-                >
-                    <image iconName="media-playback-start-symbolic" />
-                </button>
-                <button
-                    cssClasses={["rowDelete"]}
-                    valign={Gtk.Align.START}
-                    visible={confirming.as(c => !c)}
-                    opacity={actionsShown.as(v => (v ? 1 : 0))}
-                    sensitive={actionsShown}
-                    tooltipText={"Delete entry"}
-                    onClicked={() => setConfirming(true)}
-                >
-                    <image iconName="user-trash-symbolic" />
-                </button>
-                {/* same footprint as the resume+delete pair it replaces:
-                identical button padding and 6px spacing, no layout shift */}
-                <box spacing={6} visible={confirming}>
+            <Gtk.Overlay>
+                <box spacing={6}>
+                    <label
+                        cssClasses={["rowTime"]}
+                        widthChars={5}
+                        xalign={0}
+                        visible={time !== ""}
+                        label={time}
+                    />
                     <button
-                        cssClasses={["confirm"]}
-                        valign={Gtk.Align.START}
-                        sensitive={Harvest.busy.as(b => !b)}
-                        tooltipText={"Confirm delete"}
+                        cssClasses={["rowBody"]}
+                        hexpand
+                        sensitive={!entry.isRunning}
+                        tooltipText={
+                            entry.isRunning
+                                ? entryLabel(entry)
+                                : `${entryLabel(entry)}\nclick to edit`
+                        }
                         onClicked={() => {
-                            Harvest.deleteEntry(entry)
-                            setConfirming(false)
+                            if (!expanded.get()) setEditorBuilt(true)
+                            setExpanded(!expanded.get())
                         }}
                     >
-                        <image iconName="object-select-symbolic" />
-                    </button>
-                    <button
-                        cssClasses={["cancel"]}
-                        valign={Gtk.Align.START}
-                        tooltipText={"Cancel"}
-                        onClicked={() => setConfirming(false)}
-                    >
-                        <image iconName="window-close-symbolic" />
+                        <box>
+                            <box orientation={Gtk.Orientation.VERTICAL} hexpand>
+                                {/* maxWidthChars caps the label's NATURAL
+                                request, which is all that keeps a long
+                                title from widening the 480px popup. It
+                                does NOT cap what is drawn: an ellipsizing
+                                label lays out at its ALLOCATED width, and
+                                halign defaults to FILL, so the text runs
+                                to the row's edge either way */}
+                                <label
+                                    xalign={0}
+                                    useMarkup
+                                    maxWidthChars={32}
+                                    ellipsize={Pango.EllipsizeMode.END}
+                                    label={`<span alpha="60%">${esc(`${entry.clientName} — ${entry.projectName} · `)}</span><b>${esc(entry.taskName)}</b>`}
+                                />
+                                <label
+                                    cssClasses={["rowNotes"]}
+                                    xalign={0}
+                                    maxWidthChars={40}
+                                    ellipsize={Pango.EllipsizeMode.END}
+                                    visible={expanded.as(e => entry.notes !== "" && !e)}
+                                    label={entry.notes}
+                                />
+                            </box>
+                            <label
+                                cssClasses={["dim"]}
+                                label={Harvest.formatElapsed(entry.hours * 3600)}
+                            />
+                        </box>
                     </button>
                 </box>
-            </box>
+                {/* anchored to the trailing edge, out of the layout */}
+                <box
+                    $type="overlay"
+                    // the whole strip fades, backdrop included — an
+                    // opaque backdrop behind zero-opacity buttons is
+                    // just a grey block sitting on the hours
+                    cssClasses={actionsLive.as(v => (v ? ["rowActions", "on"] : ["rowActions"]))}
+                    spacing={6}
+                    halign={Gtk.Align.END}
+                    valign={Gtk.Align.FILL}
+                    canTarget={actionsLive}
+                >
+                    <button
+                        cssClasses={["resumeNow"]}
+                        valign={Gtk.Align.CENTER}
+                        visible={confirming.as(c => !c)}
+                        sensitive={Harvest.busy.as(b => !b)}
+                        tooltipText={startToday ? "Start today" : "Resume"}
+                        onClicked={() => {
+                            if (startToday) {
+                                Harvest.startTimer(
+                                    entry.projectId,
+                                    entry.taskId,
+                                    entry.notes || undefined,
+                                )
+                                onStarted?.()
+                            } else {
+                                Harvest.resumeEntry(entry)
+                            }
+                        }}
+                    >
+                        <image iconName="media-playback-start-symbolic" />
+                    </button>
+                    <button
+                        cssClasses={["rowDelete"]}
+                        valign={Gtk.Align.CENTER}
+                        visible={confirming.as(c => !c)}
+                        tooltipText={"Delete entry"}
+                        onClicked={() => setConfirming(true)}
+                    >
+                        <image iconName="user-trash-symbolic" />
+                    </button>
+                    {/* the confirm pair replaces the two above in place */}
+                    <box spacing={6} visible={confirming}>
+                        <button
+                            cssClasses={["confirm"]}
+                            valign={Gtk.Align.CENTER}
+                            sensitive={Harvest.busy.as(b => !b)}
+                            tooltipText={"Confirm delete"}
+                            onClicked={() => {
+                                Harvest.deleteEntry(entry)
+                                setConfirming(false)
+                            }}
+                        >
+                            <image iconName="object-select-symbolic" />
+                        </button>
+                        <button
+                            cssClasses={["cancel"]}
+                            valign={Gtk.Align.CENTER}
+                            tooltipText={"Cancel"}
+                            onClicked={() => setConfirming(false)}
+                        >
+                            <image iconName="window-close-symbolic" />
+                        </button>
+                    </box>
+                </box>
+            </Gtk.Overlay>
             <revealer revealChild={expanded}>
                 <box orientation={Gtk.Orientation.VERTICAL} spacing={6}>
                     {/* latched on first expand: not built for rows the

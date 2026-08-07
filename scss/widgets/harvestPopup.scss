@@ -2,6 +2,14 @@
 @use "../conf.scss" as s;
 @use "sass:color";
 
+// What a timeline row actually LOOKS like, flattened. The tokens the
+// row is built from are translucent ($surface050 over the popup's
+// $crust, plus $accent20 on hover), and anything drawn on top of a row
+// has to match the composite rather than re-apply the same token — the
+// action strip does exactly that.
+$rowBg: color.mix(t.$surface0, t.$crust, 50%);
+$rowBgHover: color.mix(t.$accent, $rowBg, 20%);
+
 window.HarvestPopup {
     background: transparent;
 
@@ -129,15 +137,51 @@ window.HarvestPopup {
             background-color: t.$surface050;
             border: solid 2px t.$accent20;
 
-            // the row body is the notes-editor toggle, not a visible button
+            // the row body is the notes-editor toggle, not a visible
+            // button — and it never paints its own hover, because the
+            // action strip sits ON TOP of it. A tint that stopped at the
+            // body's edge left the strip's backdrop mismatched, and the
+            // body loses :hover the moment the pointer reaches a button.
+            // The row wears the hover state instead (.hovered, below)
             button.rowBody {
                 background-color: transparent;
                 border: none;
                 margin: 0;
                 padding: 2px 4px;
+            }
+            &.hovered {
+                background-color: $rowBgHover;
+            }
 
-                &:hover {
-                    background-color: t.$accent20;
+            // The resume/delete strip is an Overlay child: unmeasured,
+            // anchored to the trailing edge, drawn over the title. It
+            // needs an OPAQUE backdrop — the shared button style is
+            // $surface050, half transparent, so the entry title read
+            // straight through the icons — and the backdrop has to be
+            // the composite the row shows underneath it, hence the two
+            // literals above rather than the translucent tokens.
+            //
+            // Left edge fades instead of cutting: a hard line landing
+            // mid-word looks like a clipping bug. The fade is to the
+            // same colour at zero alpha, not to `transparent`, which
+            // interpolates through black.
+            .rowActions {
+                opacity: 0;
+                transition: opacity 120ms ease-out;
+                padding-left: 28px;
+                background-image: linear-gradient(
+                    to right,
+                    color.change($rowBgHover, $alpha: 0) 0%,
+                    $rowBgHover 28px,
+                    $rowBgHover 100%
+                );
+
+                &.on {
+                    opacity: 1;
+                }
+
+                button {
+                    margin: 0;
                 }
             }
 
@@ -188,8 +232,15 @@ window.HarvestPopup {
             label {
                 color: t.$harvest;
             }
+            // a WASH, not a fill: the label is $harvest, so an 85%
+            // harvest background — which is what this was — put orange
+            // text on orange. The border carries the hover instead
             &:hover {
-                background-color: color.mix(t.$harvest, transparent, 85%);
+                background-color: color.mix(t.$harvest, transparent, 18%);
+                border-color: t.$harvest;
+            }
+            &:active {
+                background-color: color.mix(t.$harvest, transparent, 30%);
                 border-color: t.$harvest;
             }
         }
