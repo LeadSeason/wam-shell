@@ -167,7 +167,7 @@ function getTrayConfig() {
         console.error(`Config "tray.always_on_panel" must be a list of app ids`)
         alwaysOnPanel = []
     }
-    alwaysOnPanel = alwaysOnPanel.filter(id => typeof id === "string" && id !== "")
+    alwaysOnPanel = alwaysOnPanel.filter((id: unknown) => typeof id === "string" && id !== "")
 
     return {
         onPanel: get("on_panel", false),
