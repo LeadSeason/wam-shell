@@ -30,6 +30,15 @@ all you need from then on:
 - `wam update` — `git fetch` + fast-forward merge (the branch's
   upstream when set, `origin/master` otherwise) + `pnpm i`, all in
   `~/.local/share/wam-shell`. Restarts the systemd service when active.
+- `wam update --force` — for when the above refuses because the tree has
+  diverged. Stashes any local changes (they are recoverable, and the
+  discarded HEAD is printed so a reset undoes the whole thing),
+  hard-resets to the remote, and drops the cached stylesheet so it is
+  rebuilt. Cached *state* — seen markers, sleep timer, calendar and
+  YouTube data — is left alone.
+- `wam logs [-f]` — the shell's log from wherever this start method put
+  it: the journal under autostart, `~/.cache/wam-shell/shell.log` after
+  `wam start`. `-f` follows.
 - `wam start` / `stop` / `restart` / `force-start` — lifecycle for the
   running shell. `force-start` kills EVERY ags instance first — the
   fix for "some stale instance holds the bus name".
