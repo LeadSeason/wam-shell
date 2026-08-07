@@ -171,7 +171,24 @@ const EXPAND_CAP = 168
 
 /** what an expandable row unfolds into. Capped and scrollable on its
  *  own: a card with seven profiles used to push the whole pane, so
- *  picking one meant chasing the list as it scrolled away */
+ *  picking one meant chasing the list as it scrolled away.
+ *
+ *  A ScrolledWindow with propagateNaturalHeight measures its child ONCE
+ *  and never revisits it, and a `For` appends its rows after
+ *  construction — so the box is empty at the only moment the
+ *  ScrolledWindow ever looks at it, and the row opens onto one row or
+ *  none. queue_resize does not dislodge it; measuring the content
+ *  ourselves does.
+ *
+ *  That measurement is driven by `open` alone, so no call site has to
+ *  know any of the above: by the time a row is opened the For has long
+ *  since appended, and a list built already-open is caught by the idle
+ *  pass. `contents` is a refinement, not a requirement — it covers a
+ *  list that changes WHILE the row is open, like the port list after a
+ *  pactl refresh. A discriminated union was tried first and does not
+ *  survive the JSX layer: gnim maps component props through Omit, which
+ *  collapses a union to its common keys, so the requirement vanished at
+ *  exactly the call sites that needed it. */
 function ExpandList({
     open,
     children,
@@ -182,13 +199,7 @@ function ExpandList({
     children: Gtk.Widget
     /** cap the list and scroll inside it */
     scroll?: boolean
-    /** the list this wraps. Required whenever `scroll` is on: a
-     *  ScrolledWindow with propagateNaturalHeight measures its child
-     *  ONCE and never revisits it, and a `For` appends its rows after
-     *  construction — so the box is empty at the only moment the
-     *  ScrolledWindow ever looks at it, and the row opens onto one row
-     *  or none. queue_resize does not dislodge it. Measuring the
-     *  content ourselves and setting an explicit height does */
+    /** an optional extra trigger, for content that changes while open */
     contents?: Accessor<unknown[]>
 }) {
     let sw: Gtk.ScrolledWindow | null = null
@@ -197,17 +208,15 @@ function ExpandList({
         const [, nat] = children.measure(Gtk.Orientation.VERTICAL, -1)
         sw.minContentHeight = Math.min(EXPAND_CAP, nat)
     }
-    if (scroll && contents) {
-        // the list is usually already populated when the row is built,
-        // so a change subscription alone would never fire — measure once
-        // the For has appended, then on every change and every open
+    if (scroll) {
+        // a row built already-open never fires the open subscription
         let first: number | null = idleAdd("audio:expandList", GLib.PRIORITY_DEFAULT_IDLE, () => {
             first = null
             remeasure()
             return GLib.SOURCE_REMOVE
         })
-        onCleanup(contents.subscribe(remeasure))
         onCleanup(open.subscribe(remeasure))
+        if (contents) onCleanup(contents.subscribe(remeasure))
         // a row destroyed before the idle runs (the pane rebuilds on
         // every device change) must not measure a dead widget
         onCleanup(() => {
