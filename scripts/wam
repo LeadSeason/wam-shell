@@ -11,9 +11,11 @@ REPO_URL="https://github.com/LeadSeason/wam-shell.git"
 ROOT="$WAM_HOME"
 SERVICE="wam-shell.service"
 UNIT_DIR="$HOME/.config/systemd/user"
-LOG_DIR="$HOME/.cache/wam-shell"
-INSTANCE="wam-shell"
 WAM_BIN="$HOME/.local/bin/wam"
+# Defaults only. Both are re-derived from the config and the XDG env
+# just before dispatch — see resolve_instance_paths() at the bottom.
+INSTANCE="wam-shell"
+LOG_DIR="$HOME/.cache/wam-shell"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() {
@@ -194,6 +196,12 @@ cmd_install() {
 # gcal-events, github-seen, youtube-seen/-channels/-thumbs and the
 # sleep-* files live there too, and dropping those marks every seen
 # notification unread again and forgets a running sleep timer.
+#
+# $LOG_DIR is the shell's real cache dir (resolve_instance_paths), not a
+# guess at it: while it was hardcoded to ~/.cache/wam-shell this swept a
+# directory the shell never wrote to on any machine with XDG_CACHE_HOME
+# set or a renamed instance, and reported "Cleared 0 cached build
+# file(s)" while the stale stylesheet --force exists to drop survived.
 CACHED_BUILD=(style.css style.css.map style.src active-theme.scss)
 
 clear_build_cache() {
@@ -952,6 +960,40 @@ cmd_version() {
 }
 
 # --- dispatch -------------------------------------------------------------------
+
+# The shell derives its instance name and its cache directory from the
+# config and the environment; wam hardcoded both, and every place the
+# two disagreed was a command that silently did nothing:
+#
+#   - `instance_name` names the ags instance and the bus name, so with a
+#     renamed instance `wam stop` / `restart` / `status` addressed one
+#     that does not exist — reporting "not running" for a running shell.
+#   - the cache dir is GLib.get_user_cache_dir()/<instance>, which is
+#     $XDG_CACHE_HOME when that is set, NOT $HOME/.cache. `wam update
+#     --force` swept the wrong directory (see CACHED_BUILD) and `wam
+#     logs` / `wam report --file` pointed at a path nothing had written.
+#
+# Resolved here rather than at the top of the file because it needs
+# active_config_file(), and after `usage`'s callers so the help text
+# quotes the real paths. Parsed with sed rather than a toml reader: this
+# is one flat top-level string key, and wam has to stay a single file
+# with no dependencies beyond git and coreutils. Comment lines cannot
+# match (the pattern is anchored past leading whitespace only), and the
+# last assignment wins — which is the shape `wam config sync` produces,
+# an all-comments template with the user's real values appended.
+resolve_instance_paths() {
+    local f name=""
+    f="$(active_config_file)"
+    if [[ -f "$f" ]]; then
+        name="$(sed -n \
+            -e 's/^[[:space:]]*instance_name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+            -e "s/^[[:space:]]*instance_name[[:space:]]*=[[:space:]]*'\([^']*\)'.*/\1/p" \
+            "$f" | tail -1)"
+    fi
+    INSTANCE="${name:-wam-shell}"
+    LOG_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/$INSTANCE"
+}
+resolve_instance_paths
 
 case "${1:-}" in
     install)
