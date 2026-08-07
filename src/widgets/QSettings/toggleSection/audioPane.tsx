@@ -3,7 +3,8 @@ import Gdk from "gi://Gdk?version=4.0"
 import Pango from "gi://Pango?version=1.0"
 import AstalWp from "gi://AstalWp?version=0.1"
 import { Accessor, createBinding, createComputed, createState, For, onCleanup, With } from "gnim"
-import { execAsync } from "../../../lib/metrics"
+import GLib from "gi://GLib?version=2.0"
+import { execAsync, idleAdd, sourceRemove } from "../../../lib/metrics"
 import { createIconResolver } from "../../../lib/appIcon"
 import { PercentEntry } from "../PercentEntry"
 import { audioPorts, refreshPorts, setPort } from "../../../lib/audioPorts"
@@ -166,6 +167,8 @@ function MuteButton({ node }: { node: AstalWp.Node }) {
     )
 }
 
+const EXPAND_CAP = 168
+
 /** what an expandable row unfolds into. Capped and scrollable on its
  *  own: a card with seven profiles used to push the whole pane, so
  *  picking one meant chasing the list as it scrolled away */
@@ -173,25 +176,55 @@ function ExpandList({
     open,
     children,
     scroll = true,
+    contents,
 }: {
     open: Accessor<boolean>
     children: Gtk.Widget
-    /** cap the list and scroll inside it. Only for content that exists
-     *  when the row is built: a ScrolledWindow with propagateNaturalHeight
-     *  measures its child once, and a list that fills in later (the port
-     *  list waits on pactl) stays stuck at the zero height it was
-     *  measured at — the row opens onto nothing */
+    /** cap the list and scroll inside it */
     scroll?: boolean
+    /** the list this wraps. Required whenever `scroll` is on: a
+     *  ScrolledWindow with propagateNaturalHeight measures its child
+     *  ONCE and never revisits it, and a `For` appends its rows after
+     *  construction — so the box is empty at the only moment the
+     *  ScrolledWindow ever looks at it, and the row opens onto one row
+     *  or none. queue_resize does not dislodge it. Measuring the
+     *  content ourselves and setting an explicit height does */
+    contents?: Accessor<unknown[]>
 }) {
+    let sw: Gtk.ScrolledWindow | null = null
+    const remeasure = () => {
+        if (!sw) return
+        const [, nat] = children.measure(Gtk.Orientation.VERTICAL, -1)
+        sw.minContentHeight = Math.min(EXPAND_CAP, nat)
+    }
+    if (scroll && contents) {
+        // the list is usually already populated when the row is built,
+        // so a change subscription alone would never fire — measure once
+        // the For has appended, then on every change and every open
+        let first: number | null = idleAdd("audio:expandList", GLib.PRIORITY_DEFAULT_IDLE, () => {
+            first = null
+            remeasure()
+            return GLib.SOURCE_REMOVE
+        })
+        onCleanup(contents.subscribe(remeasure))
+        onCleanup(open.subscribe(remeasure))
+        // a row destroyed before the idle runs (the pane rebuilds on
+        // every device change) must not measure a dead widget
+        onCleanup(() => {
+            if (first !== null) sourceRemove(first)
+        })
+    }
     return (
         <revealer revealChild={open}>
             {scroll ? (
                 <Gtk.ScrolledWindow
+                    $={self => {
+                        sw = self
+                    }}
                     cssClasses={["audioExpandList"]}
                     vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
                     hscrollbarPolicy={Gtk.PolicyType.NEVER}
-                    propagateNaturalHeight
-                    maxContentHeight={168}
+                    maxContentHeight={EXPAND_CAP}
                 >
                     {children}
                 </Gtk.ScrolledWindow>
@@ -279,7 +312,7 @@ function AppRow({
                     onChange={v => (stream.volume = v)}
                 />
             </box>
-            <ExpandList open={open}>
+            <ExpandList open={open} contents={speakers}>
                 <box orientation={Gtk.Orientation.VERTICAL} cssClasses={["audioRouteList"]}>
                     <label
                         cssClasses={["paneSection"]}
@@ -523,7 +556,7 @@ function CardRow({
                     <image iconName={open.as(o => (o ? "pan-up-symbolic" : "pan-down-symbolic"))} />
                 </box>
             </box>
-            <ExpandList open={open}>
+            <ExpandList open={open} contents={profiles}>
                 <box orientation={Gtk.Orientation.VERTICAL} cssClasses={["audioRouteList"]}>
                     <For each={profiles}>
                         {profile => (
