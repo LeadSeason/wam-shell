@@ -617,7 +617,15 @@
 #          default 140, which clears the message composer of a
 #          bottom-docked chat app (the old fixed 60 sat on top of
 #          slack's input). ignored when position = "center"
-# timeout - milliseconds before the OSD hides. default 2000
+# timeout - milliseconds before the OSD hides. default 2000. this is
+#           the duration for the pills you DRIVE (volume, microphone,
+#           brightness); the ones that just announce a state get a
+#           fraction of it, since they are read in a glance: layout
+#           45%, lock keys 60% (900ms and 1200ms at the default)
+# timeout_volume, timeout_microphone, timeout_brightness,
+# timeout_layout, timeout_lock_keys -
+#           pin one kind's duration in milliseconds instead of
+#           deriving it from timeout
 # volume, microphone, brightness, layout, lock_keys -
 #           per-trigger toggles. default true
 # [osd]
@@ -625,6 +633,8 @@
 # position = "bottom"
 # margin = 140
 # timeout = 2000
+# timeout_layout = 900
+# timeout_lock_keys = 1200
 # volume = true
 # microphone = true
 # brightness = true
