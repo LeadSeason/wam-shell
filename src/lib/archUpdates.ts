@@ -2,6 +2,7 @@ import GObject, { register, getter } from "ags/gobject"
 import Gio from "gi://Gio?version=2.0"
 import { monitorFile, readFileAsync } from "ags/file"
 import Config from "../config"
+import { isFile } from "./utils"
 
 @register({ GTypeName: "ArchUpdates" })
 export default class ArchUpdates extends GObject.Object {
@@ -48,6 +49,14 @@ export default class ArchUpdates extends GObject.Object {
         // report on — an empty one
         const updatesFile = Config.pendingUpdatesPath
 
+        const publish = (updates: string, num: number) => {
+            this.#updates = updates
+            this.#updatesNum = num
+            this.notify("updates")
+            this.notify("updates-num")
+            this.notify("overthreshold")
+        }
+
         const updatesFileUpdate = async (path: string) => {
             // the daemon swaps the file atomically via mv; a momentary
             // missing/unreadable file (before the first write lands) must
@@ -56,17 +65,23 @@ export default class ArchUpdates extends GObject.Object {
             try {
                 v = await readFileAsync(path)
             } catch (e) {
-                // also the ordinary "not written yet" case, so this is
-                // a debug note rather than a warning
-                console.log("archUpdates: no update list yet:", e)
+                // Two very different things end up here, and collapsing
+                // them is how a count went stale in silence: the file
+                // simply not being there is the ordinary state before
+                // the daemon's first write AND after its list is
+                // cleared, so publish zero and say nothing. Anything
+                // else is a real read failure worth a warning — and
+                // returning early there keeps the last good count rather
+                // than blanking the bar over a transient error.
+                if (!isFile(path)) {
+                    publish("", 0)
+                    return
+                }
+                console.warn("archUpdates: could not read the update list:", e)
                 return
             }
-            this.#updates = v
             // count non-empty lines (robust to a missing trailing newline)
-            this.#updatesNum = v.split(/\r\n|\r|\n/).filter(line => line.trim() !== "").length
-            this.notify("updates")
-            this.notify("updates-num")
-            this.notify("overthreshold")
+            publish(v, v.split(/\r\n|\r|\n/).filter(line => line.trim() !== "").length)
         }
         updatesFileUpdate(updatesFile)
 

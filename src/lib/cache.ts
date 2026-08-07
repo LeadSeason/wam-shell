@@ -39,7 +39,13 @@ const cacheFile = Config.cacheFile
  */
 export function parseCacheData(raw: string, onError?: (e: unknown) => void): cacheType {
     const fallback: cacheType = { lastSave: 0 }
-    if (!raw) return fallback
+    // an empty file is broken, not absent: it used to reach JSON.parse
+    // and log the path, and going quiet here meant the user's saved gaps
+    // reset with nothing in the log — nothing for `wam report` to carry
+    if (!raw) {
+        onError?.(new Error("the cache file is empty"))
+        return fallback
+    }
     let parsed: unknown
     try {
         parsed = JSON.parse(raw)
@@ -52,9 +58,31 @@ export function parseCacheData(raw: string, onError?: (e: unknown) => void): cac
         onError?.(new Error(`expected an object, got ${parsed === null ? "null" : typeof parsed}`))
         return fallback
     }
-    const data = parsed as cacheType
-    if (data.lastSave === undefined) data.lastSave = 0
-    return data
+    // Per FIELD, not just the container. The cast is compile-time only,
+    // and this file is user-writable and survives updates: a gapsSize of
+    // null or "10" sailed through the shape check and reached SwayGaps,
+    // whose @getter(Number) marshals it into a numeric GObject property
+    // (throwing out of the property system when the slider binds it) and
+    // whose applyGaps would send `gaps inner all set null` over sway IPC.
+    // A bad field is no field — the consumer's own default takes over.
+    const raw_ = parsed as Record<string, unknown>
+    const out: cacheType = { lastSave: num(raw_.lastSave, onError, "lastSave") ?? 0 }
+    const gaps = raw_.gaps
+    if (gaps !== undefined) {
+        if (typeof gaps === "boolean") out.gaps = gaps
+        else onError?.(new Error(`"gaps" must be a boolean, got ${typeof gaps}`))
+    }
+    const gapsSize = num(raw_.gapsSize, onError, "gapsSize")
+    if (gapsSize !== undefined) out.gapsSize = gapsSize
+    return out
+}
+
+// a finite number, or undefined (reporting anything present but wrong)
+function num(v: unknown, onError: ((e: unknown) => void) | undefined, key: string) {
+    if (v === undefined) return undefined
+    if (typeof v === "number" && Number.isFinite(v)) return v
+    onError?.(new Error(`"${key}" must be a finite number, got ${v === null ? "null" : typeof v}`))
+    return undefined
 }
 
 function getCacheData(): cacheType {

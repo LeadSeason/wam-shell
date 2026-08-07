@@ -254,7 +254,8 @@ function pruneThumbs() {
                     }
                     if (batch.length === 0) {
                         iter.close_async(GLib.PRIORITY_LOW, null, null)
-                        if (removed > 0) console.log(`YouTube: pruned ${removed} stale thumbnail(s)`)
+                        if (removed > 0)
+                            console.log(`YouTube: pruned ${removed} stale thumbnail(s)`)
                         return
                     }
                     for (const info of batch) {
