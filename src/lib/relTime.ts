@@ -67,7 +67,9 @@ export const WEEKDAYS = [
     "Saturday",
     "Sunday",
 ]
-export const MONTHS = [
+// module-private: relTime and dayBucket are its only readers. It was
+// exported alongside WEEKDAYS speculatively and nothing ever imported it
+const MONTHS = [
     "January",
     "February",
     "March",

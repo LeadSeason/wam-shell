@@ -6,6 +6,7 @@ import { For, createComputed, createState } from "gnim"
 import * as Gcal from "../../../lib/gcal"
 import Config from "../../../config"
 import { connect } from "../../../lib/metrics"
+import { WEEKDAYS } from "../../../lib/relTime"
 
 // one shared poll for every bar (one per monitor previously): the date
 // changes once a day and the time once a second, so a single 1s source
@@ -16,11 +17,12 @@ const now = createPoll(["", ""] as [string, string], 1000, () => {
     return [dt.format("%H:%M:%S")!, dt.format("%d.%m.%Y")!] as [string, string]
 })
 
-// weekday initials, Monday first, locale-aware (2024-01-01 was a Monday)
-const WEEKDAYS = Array.from(
-    { length: 7 },
-    (_, i) => GLib.DateTime.new_local(2024, 1, 1 + i, 12, 0, 0).format("%a") ?? "",
-)
+// Weekday initials, Monday first. From relTime's list rather than %a,
+// which follows the LOCALE — this grid sits directly above an agenda
+// whose "Today"/"Tomorrow" never can, so a locale-formatted header put
+// two languages in one popover, which is the split relTime.ts documents
+// at length. Same list, one language.
+const WEEKDAY_HEADERS = WEEKDAYS.map(d => d.slice(0, 3))
 
 interface GridCell extends Gcal.GridDay {
     today: boolean
@@ -134,7 +136,7 @@ function CalendarPopover() {
             </box>
             <box homogeneous>
                 {Config.calendar.weekNumbers && <label cssClasses={["calWeek"]} label="" />}
-                {WEEKDAYS.map(w => (
+                {WEEKDAY_HEADERS.map(w => (
                     <label cssClasses={["weekday"]} label={w} />
                 ))}
             </box>

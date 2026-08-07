@@ -352,7 +352,11 @@ function ButtonLabel() {
             tray-attention dot the moment the probe answers, instead of
             between the battery and the dot. Inside a box of its own the
             box holds the slot and the late append lands in it. */}
-            <box>
+            {/* visibility bound too: the parent box carries spacing={12},
+            and GTK counts an empty-but-visible child as a child — so an
+            unconditionally visible wrapper would leave a 12px hole in the
+            cluster on every machine without the daemon */}
+            <box visible={pendingUpdates.as(active => active === true)}>
                 <With value={pendingUpdates}>{active => active === true && <Updates />}</With>
             </box>
 
