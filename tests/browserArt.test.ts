@@ -1,7 +1,7 @@
 import GdkPixbuf from "gi://GdkPixbuf?version=2.0"
 import GLib from "gi://GLib?version=2.0"
 import { test, eq } from "./framework"
-import { artForWatchUrl, isBrowserThumb } from "../src/lib/browserArt"
+import { artForWatchUrl, escapeLike, isBrowserThumb } from "../src/lib/browserArt"
 import { isSmallCover } from "../src/lib/coverArt"
 
 const TMP = GLib.getenv("WAM_TEST_TMP")!
@@ -35,6 +35,24 @@ test("artForWatchUrl: anything that is not a watch url yields nothing", () => {
     eq(artForWatchUrl(""), "")
     eq(artForWatchUrl("https://anime.nexus/watch/019f325e/a-novice-seeker"), "")
     eq(artForWatchUrl("https://www.youtube.com/results?search_query=v=abc"), "")
+})
+
+test("escapeLike: wildcards in a track title stop being wildcards", () => {
+    // unescaped, "lo_fi beats - %" also matches "lo-fi beats - Mix",
+    // and a decoy visited more recently would win the ORDER BY
+    eq(escapeLike("lo_fi beats"), "lo\\_fi beats")
+    eq(escapeLike("100% Real"), "100\\% Real")
+})
+
+test("escapeLike: the escape character escapes itself", () => {
+    // otherwise a title carrying a backslash would consume the
+    // character after it and match something else entirely
+    eq(escapeLike("AC\\DC"), "AC\\\\DC")
+})
+
+test("escapeLike: a title with no metacharacters is untouched", () => {
+    eq(escapeLike("Some Ordinary Title"), "Some Ordinary Title")
+    eq(escapeLike(""), "")
 })
 
 // a real header read, since that is the whole point of isSmallCover
