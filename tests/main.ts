@@ -1,5 +1,6 @@
 // Test entry point. The bundler needs static imports, so every new
 // tests/*.test.ts must be registered here.
+import "./framework.test"
 import "./utils.test"
 import "./relTime.test"
 import "./feed.test"
