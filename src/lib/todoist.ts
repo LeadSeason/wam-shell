@@ -109,7 +109,7 @@ export function dueLabel(due: any, nowMs: number): string {
 export function taskData(
     raw: any,
     nowMs: number,
-): Omit<ProviderItem, "dismiss" | "activate"> | null {
+): Omit<ProviderItem, "dismiss" | "activate" | "hide"> | null {
     const id = raw?.id
     const content = raw?.content
     if (!id || !content || !isTimed(raw?.due)) return null

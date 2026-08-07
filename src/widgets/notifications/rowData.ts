@@ -82,7 +82,7 @@ function distinct(text: string, ...against: string[]): string {
 export function fromDesktop(n: AstalNotifd.Notification): RowData {
     const image = n.get_image()
     const appName = n.get_app_name() || "unknown"
-    const appIcon = appIconFor(n.get_app_icon(), n.get_app_name())
+    const appIcon = appIconFor(n.get_app_icon(), n.get_app_name() ?? "")
     const summary = distinct(n.get_summary(), appName)
     return {
         appName,

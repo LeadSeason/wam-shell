@@ -106,7 +106,7 @@ export function webUrl(subjectUrl: string | null, repoHtmlUrl: string): string {
 
 // the data half of a ProviderItem; actions are attached by the module
 // (they close over the poll state). null = unusable thread shape
-export function threadData(raw: any): Omit<ProviderItem, "dismiss" | "activate"> | null {
+export function threadData(raw: any): Omit<ProviderItem, "dismiss" | "activate" | "hide"> | null {
     const id = raw?.id
     const repo = raw?.repository?.full_name
     const title = raw?.subject?.title
