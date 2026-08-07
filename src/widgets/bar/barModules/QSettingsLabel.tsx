@@ -13,7 +13,7 @@ import vpnStatus from "../../../lib/vpn"
 import Brightness from "../../../lib/brightness"
 import { alarming } from "../../../lib/sleepTimer"
 import { execAsync, timeoutAdd, sourceRemove } from "../../../lib/metrics"
-import Config from "../../../config"
+import Config, { pendingUpdates } from "../../../config"
 
 const registry = CommandRegistry.get_default()
 
@@ -338,7 +338,12 @@ function ButtonLabel() {
             {Config.quicksettings.powerProfileOnPanel && powerProfile()}
             {vpnIndicator()}
             {bat.isPresent && <Battery />}
-            {Config.pendingUpdates && <Updates />}
+            {/* bound, not read once: the daemon probe in config.ts is
+            async and lands AFTER this widget is built, so reading the
+            static here left a stale package list on the bar next to a
+            stopped daemon. `With` also keeps ArchUpdates (and its file
+            monitor) unconstructed on machines that have no daemon */}
+            <With value={pendingUpdates}>{file => file !== false && <Updates />}</With>
 
             {/* Dot shown when a nested tray item needs attention */}
             {!Config.tray.onPanel && (
