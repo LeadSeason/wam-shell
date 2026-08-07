@@ -1,5 +1,5 @@
 import { Gtk } from "ags/gtk4"
-import { createBinding, createState, onCleanup } from "gnim"
+import { createBinding, createState, onCleanup, With } from "gnim"
 import { execAsync, connect, disconnect } from "../../../lib/metrics"
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
@@ -12,16 +12,25 @@ import hyprsunset, { setNightLightEnabled, tempBackend } from "../../../lib/hypr
 const has = (bin: string) => GLib.find_program_in_path(bin) !== null
 
 export function NightLightButton() {
-    // no night light backend (hyprctl, gsettings or gammastep)
-    if (tempBackend === "none") return <></>
+    // Bound, not read once: detecting the gsettings backend costs a
+    // `gsettings get` plus a `pgrep`, and those are async now (they used
+    // to block the main loop at import). They answer after this widget
+    // is built, so a snapshot here read "no backend" and hid the toggle
+    // for the whole session on a gnome-settings-daemon desktop
     return (
-        <DropdownButton
-            icon={"night-light-symbolic"}
-            label={"Night Light"}
-            subtitle={hyprsunset.nightLight.as(v => (v ? "On" : "Off"))}
-            isActive={hyprsunset.nightLight}
-            activate={() => setNightLightEnabled(!hyprsunset.nightLight.get())}
-        />
+        <With value={tempBackend}>
+            {backend =>
+                backend !== "none" && (
+                    <DropdownButton
+                        icon={"night-light-symbolic"}
+                        label={"Night Light"}
+                        subtitle={hyprsunset.nightLight.as(v => (v ? "On" : "Off"))}
+                        isActive={hyprsunset.nightLight}
+                        activate={() => setNightLightEnabled(!hyprsunset.nightLight.get())}
+                    />
+                )
+            }
+        </With>
     )
 }
 

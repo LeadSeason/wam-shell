@@ -5,6 +5,7 @@ import { isFile } from "./utils"
 import { writeFileAtomic } from "./atomicWrite"
 import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { GoogleAccount, createGoogleAuth, googleRequest } from "./googleAuth"
+import { WEEKDAYS } from "./relTime"
 
 // Google Calendar for the clock popover (Calendar API v3, read-only).
 // Multiple calendars of the account are merged into one event list; the
@@ -296,13 +297,24 @@ export function isoWeekNumber(d: Date): number {
     return 1 + Math.round((date.getTime() - firstThursday.getTime()) / (7 * 86_400_000))
 }
 
-// "Today" / "Tomorrow" / "Tue, 05.08.2026" for a day key
+// "Today" / "Tomorrow" / "Tue, 05.08.2026" for a day key.
+//
+// The weekday comes from relTime's list rather than from %a, which
+// follows the LOCALE — and "Today" and "Tomorrow" above never can, so
+// this agenda read "Today / Tomorrow / tis, 05.08.2026", switching
+// language two rows in. Same reasoning, and now the same list, as the
+// notification center's day dividers
 export function dayLabel(day: string, today: string): string {
     if (day === today) return "Today"
     const [ty, tm, td] = today.split("-").map(Number)
     if (day === dayKey(new Date(ty, tm - 1, td + 1).getTime())) return "Tomorrow"
     const [y, m, dd] = day.split("-").map(Number)
-    return GLib.DateTime.new_local(y, m, dd, 0, 0, 0).format("%a, %d.%m.%Y") ?? day
+    const date = new Date(y, m - 1, dd)
+    if (Number.isNaN(date.getTime())) return day
+    // getDay() is 0=Sunday; WEEKDAYS is Monday-first
+    const weekday = WEEKDAYS[(date.getDay() + 6) % 7].slice(0, 3)
+    const pad = (n: number) => String(n).padStart(2, "0")
+    return `${weekday}, ${pad(dd)}.${pad(m)}.${y}`
 }
 
 // the popover's schedule view: days with events from `fromDay` onward,

@@ -2,7 +2,7 @@ import GLib from "gi://GLib?version=2.0"
 import AstalWp from "gi://AstalWp?version=0.1"
 import { createState } from "gnim"
 import { createBinding } from "gnim"
-import { exec, timeoutAdd, sourceRemove } from "./metrics"
+import { execAsync, timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
 import Brightness from "./brightness"
 import hyprsunset, { OUTDOOR_GAMMA, refreshHyprsunset } from "./hyprsunset"
@@ -175,14 +175,20 @@ if (Config.osd.enabled && Config.osd.layout) {
 // the layer close/resize animation replays the OSD's last frame as a
 // ghost on hide — disable animations for our namespace. lua configs
 // (hyprland 0.55+) need eval, legacy hyprlang takes keyword.
+//
+// Fire-and-forget, and async on purpose: nothing reads the result, and
+// these were two synchronous fork+exec+waits on the startup path (see
+// the same change in lib/hyprsunset.ts). The rule only has to be in
+// place before the first OSD is SHOWN, which is a keypress away at the
+// earliest — not before the first frame.
 if (Config.desktopSession === "hyprland" && Config.osd.enabled) {
-    try {
-        exec(`hyprctl eval 'hl.layer_rule({ match = { namespace = "osd" }, no_anim = true })'`)
-    } catch {
-        try {
-            exec(`hyprctl keyword layerrule "noanim, osd"`)
-        } catch {}
-    }
+    execAsync([
+        "hyprctl",
+        "eval",
+        `hl.layer_rule({ match = { namespace = "osd" }, no_anim = true })`,
+    ])
+        .catch(() => execAsync(["hyprctl", "keyword", "layerrule", "noanim, osd"]))
+        .catch(e => console.warn("osd: could not disable layer animations:", e))
 }
 
 // caps/num lock. GDK4 reports the state on the keyboard device
