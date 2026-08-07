@@ -5,6 +5,7 @@ import { Accessor, For, With, createComputed, createState, onCleanup } from "gni
 import { connect } from "../../lib/metrics"
 import * as Harvest from "../../lib/harvest"
 import { entryLabel, parseDuration, SelectorButton } from "./shared"
+import { PaneEmpty } from "../PaneEmpty"
 
 // the day timeline: per-row inline editors (notes, hours, project/task
 // reassignment, delete) and the day browser header
@@ -235,6 +236,18 @@ function TimelineRow({
         })
     }
 
+    // The resume/delete pair is kept ALLOCATED and merely made
+    // invisible, rather than visible-toggled. Toggling visibility takes
+    // them out of the layout, so the row re-flowed every time the
+    // pointer touched it — the body button gained their width back and
+    // the whole row shifted under the cursor. They still give up the
+    // slot when the confirm pair replaces them, which is built to the
+    // same footprint.
+    const actionsShown = createComputed(
+        [hovered, confirming],
+        (h, c) => !entry.isRunning && h && !c,
+    )
+
     const cssClasses = isPaused.as(p => [
         "todayRow",
         ...(entry.isRunning ? ["running"] : []),
@@ -294,11 +307,9 @@ function TimelineRow({
                 <button
                     cssClasses={["resumeNow"]}
                     valign={Gtk.Align.START}
-                    visible={createComputed(
-                        [hovered, confirming],
-                        (h, c) => !entry.isRunning && h && !c,
-                    )}
-                    sensitive={Harvest.busy.as(b => !b)}
+                    visible={confirming.as(c => !c)}
+                    opacity={actionsShown.as(v => (v ? 1 : 0))}
+                    sensitive={createComputed([actionsShown, Harvest.busy], (v, b) => v && !b)}
                     tooltipText={startToday ? "Start today" : "Resume"}
                     onClicked={() => {
                         if (startToday) {
@@ -318,10 +329,9 @@ function TimelineRow({
                 <button
                     cssClasses={["rowDelete"]}
                     valign={Gtk.Align.START}
-                    visible={createComputed(
-                        [hovered, confirming],
-                        (h, c) => !entry.isRunning && h && !c,
-                    )}
+                    visible={confirming.as(c => !c)}
+                    opacity={actionsShown.as(v => (v ? 1 : 0))}
+                    sensitive={actionsShown}
                     tooltipText={"Delete entry"}
                     onClicked={() => setConfirming(true)}
                 >
@@ -479,12 +489,16 @@ export function Timeline() {
                     <image iconName="go-next-symbolic" />
                 </button>
             </box>
-            <label
-                cssClasses={["dim"]}
-                xalign={0}
-                visible={entries.as(e => e.length === 0)}
-                label={"No entries"}
-            />
+            {/* the same empty state the notification centre and the
+            quick settings panes use, rather than a bare label against
+            the left edge of an otherwise blank card */}
+            <box visible={entries.as(e => e.length === 0)}>
+                <PaneEmpty
+                    icon="harvest-symbolic"
+                    title="No entries"
+                    hint="Start a timer, or add one with + New entry"
+                />
+            </box>
             <Gtk.ScrolledWindow
                 vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
                 hscrollbarPolicy={Gtk.PolicyType.NEVER}
