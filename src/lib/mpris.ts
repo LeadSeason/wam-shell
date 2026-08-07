@@ -6,6 +6,7 @@ import { Gtk } from "ags/gtk4"
 import { Accessor, createBinding, createComputed, createState, onCleanup } from "gnim"
 import { connect, disconnect, execAsync, timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
+import { hyprDispatch } from "./hyprDispatch"
 import { downloadCover } from "./coverArt"
 
 // Shared MPRIS state + helpers, used by the QS media section and the
@@ -181,12 +182,11 @@ export function raisePlayer(player: AstalMpris.Player) {
         return player.raise() // a no-op for these, but costs nothing
     }
     if (Config.desktopSession === "hyprland") {
-        // lua dispatcher syntax (hyprland >= 0.55): the old
-        // "focuswindow class:..." form is rejected by the new parser
-        execAsync([
-            "hyprctl",
-            "dispatch",
-            `hl.dsp.focus({ window = "class:^(?i)${wmClass}$" })`,
+        // both grammars, because which one works depends on the
+        // Hyprland version — see lib/hyprDispatch
+        hyprDispatch(`hl.dsp.focus({ window = "class:^(?i)${wmClass}$" })`, [
+            "focuswindow",
+            `class:^(?i)${wmClass}$`,
         ]).catch(e => console.warn("raisePlayer:", e))
     } else if (Config.desktopSession === "sway" || Config.desktopSession === "i3") {
         const msg = Config.desktopSession === "sway" ? "swaymsg" : "i3-msg"
