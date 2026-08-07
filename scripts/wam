@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # wam — manage the wam-shell install: dependencies, updates, the running
 # shell, and autostart. `wam install` clones the repo into WAM_HOME
-# (~/.local/share/wam-shell) and copies this script into ~/.local/bin:
+# (~/.local/share/wam-shell) and symlinks this script into ~/.local/bin:
 # after that the original clone can be deleted — update, lifecycle and
-# autostart all work from the installed copy.
+# autostart all work from WAM_HOME, and the link follows every update.
 set -euo pipefail
 
 WAM_HOME="${WAM_HOME:-$HOME/.local/share/wam-shell}"
@@ -55,7 +55,7 @@ usage() {
 usage: wam <command>
 
   install          clone into $WAM_HOME, install
-                   dependencies + fonts there, and install wam itself into
+                   dependencies + fonts there, and symlink wam itself into
                    ~/.local/bin — the invoking clone can then be deleted
                    (extra args are passed to scripts/setup.sh, e.g. --source)
   update [--force] git fetch + fast-forward merge (upstream when set,
@@ -94,11 +94,41 @@ require_install() {
         die "not installed — clone the repo and run: bash scripts/wam install"
 }
 
-# Writes $WAM_BIN through a temp file and a RENAME, never in place:
-# `wam update` is normally running from that very path, and bash reads a
-# script incrementally — overwriting the file underneath it feeds the
-# running shell a spliced mix of old and new bytes. A rename swaps the
-# directory entry and leaves the running process on the old inode.
+# The PATH entry is a SYMLINK into WAM_HOME, and that is the whole point:
+# a copy has to be kept in sync, and keeping it in sync needs code in the
+# copy, which the copies that need it most do not have. `wam logs` sat
+# unreachable for users who had updated for weeks; the refresh that fixed
+# it could not reach the very installs it was written for, because they
+# predated it — the first hop out was always going to be manual. A link
+# has no such state: `wam update` moves the repo and the thing on PATH is
+# the new version in the same instant.
+#
+# What it trades: delete WAM_HOME and this dangles into "command not
+# found" rather than a script that says "not installed". `wam status`
+# names that case rather than leaving it to be discovered.
+#
+# Created under a temp name and RENAMED over the destination, never
+# written in place: `wam update` normally runs from that very path, and
+# bash reads a script incrementally, so overwriting the file underneath
+# it feeds the running shell a spliced mix of old and new bytes. A
+# rename swaps the directory entry and leaves the running process on its
+# original inode. mktemp -u only reserves a name — if something wins the
+# race to create it, ln fails and the caller falls back to a copy.
+link_wam_script() {
+    local tmp dir
+    dir="$(dirname "$WAM_BIN")"
+    mkdir -p "$dir" || return 1
+    tmp="$(mktemp -u "$dir/.wam.XXXXXX")" || return 1
+    if ln -s "$ROOT/scripts/wam" "$tmp" 2>/dev/null && mv -fT "$tmp" "$WAM_BIN" 2>/dev/null; then
+        return 0
+    fi
+    rm -f "$tmp"
+    return 1
+}
+
+# The fallback for the rare filesystem that cannot hold a symlink, and
+# the path every pre-symlink install is still on. Same rename dance, for
+# the same reason.
 install_wam_script() {
     local tmp
     mkdir -p "$(dirname "$WAM_BIN")" || return 1
@@ -144,8 +174,11 @@ cmd_install() {
 
     bash "$ROOT/scripts/setup.sh" "$@"
 
-    log "Installing wam into ~/.local/bin (a copy — independent of any clone)"
-    install_wam_script || die "could not install $WAM_BIN"
+    log "Linking wam into ~/.local/bin (a symlink into $ROOT, so it follows every update)"
+    if ! link_wam_script; then
+        log "Could not symlink — installing a copy instead (kept in sync by wam update)"
+        install_wam_script || die "could not install $WAM_BIN"
+    fi
     case ":$PATH:" in
         *":$HOME/.local/bin:"*) ;;
         *) log "NOTE: ~/.local/bin is not on PATH" ;;
@@ -224,16 +257,22 @@ cmd_update() {
     if [[ -n "$(git -C "$ROOT" diff --name-only "$prev"..HEAD -- config.toml)" ]]; then
         log "The config template changed in this update — see what's new: wam config diff"
     fi
-    # The installed wam is a COPY, so without this it stays frozen at
-    # whatever version installed it and never grows a subcommand: `wam
-    # logs` shipped, users updated, and it was still not in their
-    # --help because their wam was months old. A symlink already
-    # tracks the repo and is left alone.
-    if [[ -f "$WAM_BIN" && ! -L "$WAM_BIN" ]] && ! cmp -s "$ROOT/scripts/wam" "$WAM_BIN"; then
-        if install_wam_script; then
-            log "Updated $WAM_BIN — new commands apply from the next run"
-        else
-            log "WARNING: could not refresh $WAM_BIN — run: wam install"
+    # A symlinked wam is already the new version — the merge above moved
+    # it. A COPY is the old design and the reason this block exists at
+    # all: it stays frozen at whatever version installed it and never
+    # grows a subcommand, so `wam logs` shipped and users who updated
+    # still had no `logs` in their --help. Convert it, once, and the
+    # problem is retired rather than patched every release. Only when the
+    # link cannot be made does it fall back to refreshing the copy.
+    if [[ -f "$WAM_BIN" && ! -L "$WAM_BIN" ]]; then
+        if link_wam_script; then
+            log "Replaced the copy at $WAM_BIN with a symlink into $ROOT — it follows every update from now on"
+        elif ! cmp -s "$ROOT/scripts/wam" "$WAM_BIN"; then
+            if install_wam_script; then
+                log "Updated $WAM_BIN — new commands apply from the next run"
+            else
+                log "WARNING: could not refresh $WAM_BIN — run: wam install"
+            fi
         fi
     fi
 
@@ -607,9 +646,18 @@ cmd_status() {
     else
         printf 'installed: no (%s missing)\n' "$ROOT"
     fi
-    if [[ -L "$HOME/.local/bin/wam" ]]; then
-        printf 'wam:       %s -> %s (symlink)\n' \
-            "$HOME/.local/bin/wam" "$(readlink "$HOME/.local/bin/wam")"
+    if [[ -L "$WAM_BIN" ]]; then
+        # the one failure mode a symlinked install has that a copy does
+        # not: WAM_HOME moved or was deleted, and `wam` is now a dangling
+        # link. From the shell that reads as "command not found", which
+        # says nothing about why — so name it here
+        if [[ -e "$WAM_BIN" ]]; then
+            printf 'wam:       %s -> %s (symlink, always current)\n' \
+                "$WAM_BIN" "$(readlink "$WAM_BIN")"
+        else
+            printf 'wam:       %s -> %s (BROKEN — that path is gone; run: wam install)\n' \
+                "$WAM_BIN" "$(readlink "$WAM_BIN")"
+        fi
     elif [[ -f "$WAM_BIN" ]]; then
         if cmp -s "$ROOT/scripts/wam" "$WAM_BIN" 2>/dev/null; then
             printf 'wam:       %s\n' "$WAM_BIN"
