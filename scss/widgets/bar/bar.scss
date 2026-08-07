@@ -106,6 +106,18 @@ window.Bar {
         background-color: t.$surface050;
         border: solid 2px t.$accent20;
 
+        // the elapsed ticks every second: mono, or the digits shuffle
+        // their own width and nudge the widgets either side of the pill
+        label {
+            font-family: s.$font-mono;
+        }
+
+        // running is the state worth seeing from across the room, and
+        // the only one that earns the brand colour
+        &.running {
+            border-color: color.mix(t.$harvest, transparent, 45%);
+        }
+
         &:hover {
             background-color: t.$accent20;
             border: solid 2px t.$accent40;

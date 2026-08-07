@@ -145,6 +145,15 @@ window.HarvestPopup {
                 font-size: s.$font-small;
                 color: t.$subtext0;
             }
+            // marked, not merely recoloured: a spine is visible down a
+            // list at a glance where a tinted timestamp is not. Squared
+            // on that side, because a 3px edge run around the radius
+            // curls into both corners and reads as a bracket
+            &.running {
+                border-radius: 0 s.$radius s.$radius 0;
+                border-left: solid 3px t.$harvest;
+                padding-left: 8px;
+            }
             &.running .rowTime {
                 color: t.$harvest;
                 font-weight: bold;
