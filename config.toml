@@ -444,10 +444,11 @@
 #             output meter without the shell ever listening. default true
 # min_height - the popup never shrinks below this many px when you
 #              switch to a short pane (vpn, wired), so navigating
-#              settles it instead of yanking it. 0 (default) derives
-#              the floor from the smallest monitor — half a 1080p panel
-#              is comfortable, half a 1366x768 one is not, and a 1080p
-#              screen at 1.5x scale is only 720px tall
+#              settles it instead of yanking it. 0 (default) holds a
+#              short pane at the main pane's own height — the size you
+#              opened at, whatever it happens to be. Set a number only
+#              to hold short panes TALLER than that; it never pads the
+#              main pane itself
 # show_avatar - show the avatar in the popup header. default true
 # width - popup content width in px. default 440 (the pre-config value
 #         was 520; raise it back if you liked the wide layout)
