@@ -1,6 +1,7 @@
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
 import toml from "toml"
+import { createState } from "gnim"
 import { execAsync } from "ags/process"
 import { readFile } from "ags/file"
 import { isFile } from "./lib/utils"
@@ -900,18 +901,25 @@ function getPanelsConfig(): PanelConfig[] {
 }
 
 /**
- * Resolve the pending-updates daemon's package list. The daemon
- * (extra/pending-updates-daemon) writes it next to the shell cache —
- * same resolution as GLib.get_user_cache_dir() — so the file's
- * presence is the cheap startup signal. Never /tmp: a predictable
- * world-writable path is a symlink/planted-content hazard.
+ * Where the pending-updates daemon (extra/pending-updates-daemon) writes
+ * its package list: next to the shell cache, same resolution as
+ * GLib.get_user_cache_dir(). Never /tmp — a predictable world-writable
+ * path is a symlink/planted-content hazard.
+ */
+function pendingUpdatesPath(instanceName: string): string {
+    return `${GLib.get_user_cache_dir()}/${instanceName}/system_updates`
+}
+
+/**
+ * The file's presence is the cheap startup signal, before the daemon
+ * probe below can answer.
  *
  * @returns
  * - false → update file missing
  * - string → absolute path to the update file
  */
 function getPendingUpdateDaemonStatus(instanceName: string): false | string {
-    const updateFile = `${GLib.get_user_cache_dir()}/${instanceName}/system_updates`
+    const updateFile = pendingUpdatesPath(instanceName)
     return isFile(updateFile) ? updateFile : false
 }
 
@@ -931,8 +939,14 @@ export default class Config {
     static instanceSrcDir = instanceSrcDir
     static osIcon = getOsIcon()
     static desktopSession = getDesktopSession()
+    // where the daemon writes, whether or not it exists yet: the widget
+    // monitors this path, so a daemon that starts after the shell is
+    // picked up rather than needing a restart
+    static pendingUpdatesPath = pendingUpdatesPath(this.instanceName)
     // file-based default; the exact daemon state (a systemctl probe)
-    // resolves asynchronously after class init so it can't block startup
+    // resolves asynchronously after class init so it can't block startup.
+    // Read the `pendingUpdates` ACCESSOR below rather than this static
+    // in anything built at startup — see the note on the probe
     static pendingUpdates = getPendingUpdateDaemonStatus(this.instanceName)
     static updatesThreshold = (() => {
         const v = configData.arch_updates_threshold
@@ -975,19 +989,34 @@ export default class Config {
     static scssPath = `${this.instanceSrcDir}/scss/style.scss`
 }
 
-// Correct Config.pendingUpdates once the real daemon state is known.
-// The old startup path ran this probe synchronously, blocking the main
-// loop during class init; the bar widget reads the static at build
-// time from the file-based default above, the probe refines it for
-// later readers (a stale list next to a stopped daemon reads as false,
-// same as the old probe decided at startup).
+/**
+ * The pending-updates daemon's list, as a state rather than a static.
+ *
+ * The probe below is async — it must not block the main loop during
+ * class init, which is what the old synchronous version did. But
+ * `main()` runs on `activate`, before a subprocess can possibly
+ * complete, so ANY widget built at startup reads the file-based default
+ * and never sees the correction: a stale list next to a stopped daemon
+ * kept the updates pill on the bar, which is exactly what the probe
+ * exists to prevent. Bind this instead of reading `Config.pendingUpdates`.
+ *
+ * false = no list to show; a string = the absolute path to it.
+ */
+const [pendingUpdates, setPendingUpdates] = createState<false | string>(Config.pendingUpdates)
+export { pendingUpdates }
+
+// Correct both once the real daemon state is known. The static is kept
+// in step for non-reactive readers; the accessor is what the UI follows.
 execAsync(["systemctl", "--user", "is-active", "pending-updates-daemon.service"])
     .then(status => {
-        Config.pendingUpdates =
+        const resolved =
             status.trim() === "active" ? getPendingUpdateDaemonStatus(Config.instanceName) : false
+        Config.pendingUpdates = resolved
+        setPendingUpdates(resolved)
     })
     .catch(() => {
         Config.pendingUpdates = false
+        setPendingUpdates(false)
     })
 
 // Re-read the theme key from the config file so theme changes apply
