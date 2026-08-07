@@ -37,7 +37,16 @@ export default class ArchUpdates extends GObject.Object {
     constructor() {
         super()
 
-        const updatesFile = Config.pendingUpdates
+        // the PATH, not the "does it exist" answer: the daemon writes
+        // the file atomically via mv, and may not have written it at
+        // all yet (it starts alongside the shell). A monitor on a
+        // missing file still reports its creation, so a late daemon
+        // fills the widget in instead of needing a shell restart.
+        //
+        // This used to throw when there was no file, which made the
+        // class unconstructable in exactly the state it is designed to
+        // report on — an empty one
+        const updatesFile = Config.pendingUpdatesPath
 
         const updatesFileUpdate = async (path: string) => {
             // the daemon swaps the file atomically via mv; a momentary
@@ -47,7 +56,9 @@ export default class ArchUpdates extends GObject.Object {
             try {
                 v = await readFileAsync(path)
             } catch (e) {
-                console.warn("archUpdates: read failed:", e)
+                // also the ordinary "not written yet" case, so this is
+                // a debug note rather than a warning
+                console.log("archUpdates: no update list yet:", e)
                 return
             }
             this.#updates = v
@@ -57,10 +68,6 @@ export default class ArchUpdates extends GObject.Object {
             this.notify("updates-num")
             this.notify("overthreshold")
         }
-        if (updatesFile === false) {
-            throw new Error("ArchUpdates constructed invoked when no update file is provided")
-        }
-
         updatesFileUpdate(updatesFile)
 
         this.#monitor = monitorFile(updatesFile, async f => {
