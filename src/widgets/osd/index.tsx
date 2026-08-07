@@ -115,25 +115,26 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
                         visible={content.as(c => c.icon !== "")}
                         cssClasses={content.as(c => (c.over ? ["osdOn"] : ["osdOff"]))}
                     />
-                    <With value={content}>
-                        {c =>
-                            c.value !== null && (
-                                <box
-                                    cssClasses={["osdBar", c.over ? "over" : ""]}
-                                    // fill is a background-size percentage so the
-                                    // bar's size is fully controlled from scss;
-                                    // clamp: negative size is invalid css
-                                    css={`
-                                        background-size: ${Math.max(
-                                            0,
-                                            Math.round((c.value ?? 0) * 100),
-                                        )}%
-                                            100%;
-                                    `}
-                                />
-                            )
-                        }
-                    </With>
+                    {/* Always built, visibility-toggled — never a <With>.
+                    A With child is created when its value resolves and
+                    is APPENDED, so the bar landed after the label and
+                    the pill read "icon 35% ▁▁▁" instead of
+                    "icon ▁▁▁ 35%". Same lesson as the harvest popup's
+                    running section, which carries the same note. */}
+                    <box
+                        cssClasses={content.as(c => ["osdBar", c.over ? "over" : ""])}
+                        visible={content.as(c => c.value !== null)}
+                        // fill is a background-size percentage so the
+                        // bar's size is fully controlled from scss;
+                        // clamp: negative size is invalid css
+                        css={content.as(
+                            c =>
+                                `background-size: ${Math.max(
+                                    0,
+                                    Math.round((c.value ?? 0) * 100),
+                                )}% 100%;`,
+                        )}
+                    />
                     <label
                         label={content.as(c => c.label)}
                         // minimum width only: capping + ellipsizing ate
