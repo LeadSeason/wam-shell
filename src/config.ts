@@ -308,6 +308,11 @@ function getMediaConfig() {
         hideWhenScreenSharing: get("hide_when_screen_sharing", false),
         // treat browsers' scrubbed private-session titles as no track
         hidePrivateSessions: get("hide_private_sessions", true),
+        // look a chromium browser's 150px mpris art back up in its own
+        // history db to find the full-size one (lib/browserArt). Reads
+        // browsing history, so it is worth a switch even though the
+        // query is a title match against youtube rows only
+        recoverBrowserArt: get("recover_browser_art", true),
     }
 }
 

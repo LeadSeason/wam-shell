@@ -178,12 +178,21 @@
 #           browsers scrub the track title to an anonymized "<X> is
 #           playing media" placeholder, and such tracks are treated as
 #           no track at all. default true
+# recover_browser_art - chromium browsers (brave, chrome, chromium,
+#           edge, vivaldi) downscale cover art to 150px before handing
+#           it over, which the quick-settings backdrop then upscales
+#           ~4x. With this on, the track title is looked up in the
+#           browser's own history db to find the page it is playing,
+#           and youtube pages give up a full-size thumbnail. Reads
+#           browsing history (read-only, youtube rows only); set false
+#           to leave it alone. default true
 # [media]
 # enabled = false
 # show_controls = true
 # max_width = 20
 # hide_when_screen_sharing = false
 # hide_private_sessions = true
+# recover_browser_art = true
 
 # [harvest] - Harvest time tracking (getharvest.com): running timer on
 #             the panel + a picker popup (start/stop/resume/notes/new
