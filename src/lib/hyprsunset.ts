@@ -45,6 +45,25 @@ const GSCHEMA = "org.gnome.settings-daemon.plugins.color"
 const [tempBackend, setTempBackend] = createState<TempBackend>("none")
 export { tempBackend }
 
+/**
+ * False until the first daemon read has landed (or failed).
+ *
+ * Moving that read off the import path means `dim` now changes once,
+ * asynchronously, shortly after startup — and to everything downstream
+ * that looks exactly like the user reaching for the brightness control.
+ * Two consumers have to know the difference:
+ *
+ * - `lib/brightness.ts` records a "previous level" on every change, and
+ *   was recording the 1.0 it had snapshotted before this landed. The
+ *   restore gesture then jumped a gamma-dim laptop to full brightness.
+ * - `lib/osd.ts` shows a brightness banner on every change, and would
+ *   pop one unprompted at login whenever startup outran its 1.5s grace.
+ *
+ * Both gate on this instead of guessing from timing.
+ */
+const [initialReadDone, setInitialReadDone] = createState(false)
+export { initialReadDone }
+
 function currentTemp(): number {
     if (nightLight.get()) return Config.hyprsunset.nightTemp
     if (outdoor.get() && Config.hyprsunset.temperatureOutdoor !== null)
@@ -114,7 +133,20 @@ function applyGamma() {
 // and the Quick Settings popup calls this on open, so the slider never
 // shows stale values where the user actually looks at them.
 let watchRunning = false
-export function refreshHyprsunset() {
+
+/**
+ * @param initial the COLD-START read, not a drift check.
+ *
+ * The two are not the same job and must not share guards. The steady
+ * state asks "did something change this behind our back", so it ignores
+ * a reading within 1 of what we last applied and skips anything within
+ * 1.5s of our own write. At startup nothing has been applied and the
+ * "expected" value is just the default 1.0 — so a daemon sitting at 101
+ * (gamma_outdoor a shade over 100, outdoor mode left on across a
+ * restart) differed by exactly 1 and was ignored, leaving the bar and
+ * the slider drawing normal styling over a screen in outdoor mode.
+ */
+export function refreshHyprsunset(initial = false) {
     if (Config.desktopSession !== "hyprland") return
     if (watchRunning) return
     watchRunning = true
@@ -124,9 +156,9 @@ export function refreshHyprsunset() {
     ])
         .then(([gammaOut, tempOut]) => {
             const gamma = Number(gammaOut.trim())
-            if (!isNaN(gamma) && gamma > 0 && Date.now() - lastApply >= 1500) {
+            if (!isNaN(gamma) && gamma > 0 && (initial || Date.now() - lastApply >= 1500)) {
                 const expected = outdoor.get() ? OUTDOOR_GAMMA : Math.round(dim.get() * 100)
-                if (Math.abs(gamma - expected) > 1) {
+                if (initial || Math.abs(gamma - expected) > 1) {
                     if (gamma > 100) {
                         setOutdoor(true)
                     } else {
@@ -137,7 +169,7 @@ export function refreshHyprsunset() {
             }
 
             const temp = Number(tempOut.trim())
-            if (!isNaN(temp) && temp > 0 && Date.now() - lastTempApply >= 1500) {
+            if (!isNaN(temp) && temp > 0 && (initial || Date.now() - lastTempApply >= 1500)) {
                 // matches the init heuristic: warm means night light is on
                 const nl = temp <= 5000
                 if (nl !== nightLight.get()) setNightLight(nl)
@@ -146,6 +178,10 @@ export function refreshHyprsunset() {
         .catch(() => {})
         .finally(() => {
             watchRunning = false
+            // after the reads have been applied, never before: the
+            // consumers gating on this must see the seeding change as
+            // seeding, not as a user action
+            if (initial) setInitialReadDone(true)
         })
 }
 
@@ -162,12 +198,13 @@ export function refreshHyprsunset() {
 // property of this file, so the declarations come first.
 if (Config.desktopSession === "hyprland") {
     setTempBackend("hyprctl")
-    // the same two reads the 30s watch makes, and its guards are
-    // already correct for a cold start (nothing has been applied yet),
-    // so this is a call rather than a second copy of them
-    refreshHyprsunset()
+    // the same two reads the 30s watch makes, but flagged as the cold
+    // start so the drift guards (which exist to ignore our OWN writes)
+    // do not suppress the seeding values — see refreshHyprsunset
+    refreshHyprsunset(true)
 } else if (GLib.find_program_in_path("gammastep")) {
     setTempBackend("gammastep")
+    setInitialReadDone(true) // nothing to read; consumers are live at once
 } else {
     // the schema existing proves nothing on sway, where it is often
     // pulled in as a dependency and changes nothing — the daemon has to
@@ -181,6 +218,7 @@ if (Config.desktopSession === "hyprland") {
             setNightLight(enabled.trim() === "true")
         })
         .catch(() => {}) // stays "none"
+        .finally(() => setInitialReadDone(true))
 }
 
 // The watch that keeps gamma/temperature in step with changes made
@@ -258,4 +296,4 @@ export function setDimLevel(v: number) {
     applyGamma()
 }
 
-export default { nightLight, outdoor, dim }
+export default { nightLight, outdoor, dim, initialReadDone }
