@@ -57,9 +57,12 @@ usage: wam <command>
                    dependencies + fonts there, and install wam itself into
                    ~/.local/bin — the invoking clone can then be deleted
                    (extra args are passed to scripts/setup.sh, e.g. --source)
-  update           git fetch + fast-forward merge (upstream when set,
+  update [--force] git fetch + fast-forward merge (upstream when set,
                    origin/master otherwise) + pnpm i
-                   (restarts the service when active)
+                   (restarts the service when active).
+                   --force stashes local changes, hard-resets to the
+                   remote and drops the cached stylesheet — for when a
+                   normal update refuses because the tree has diverged
   start            start the shell (no-op when already running)
   stop             stop the shell
   restart          stop, then start
@@ -131,23 +134,70 @@ cmd_install() {
     log "The shell now lives in $ROOT; the clone may be deleted."
 }
 
+# Everything in the cache dir that the shell REGENERATES: the compiled
+# stylesheet, its map, the generated active-theme copy, and the marker
+# recording which scss dir built the css. Named individually and never
+# by wiping the directory — its neighbours are state, not artefacts.
+# gcal-events, github-seen, youtube-seen/-channels/-thumbs and the
+# sleep-* files live there too, and dropping those marks every seen
+# notification unread again and forgets a running sleep timer.
+CACHED_BUILD=(style.css style.css.map style.src active-theme.scss)
+
+clear_build_cache() {
+    local removed=0 f
+    for f in "${CACHED_BUILD[@]}"; do
+        [[ -e "$LOG_DIR/$f" ]] && rm -f "$LOG_DIR/$f" && ((removed++)) || true
+    done
+    log "Cleared $removed cached build file(s) in $LOG_DIR (state files untouched)"
+}
+
 cmd_update() {
     require_install
+    local force=0
+    [[ "${1:-}" == "--force" || "${1:-}" == "-f" ]] && force=1
+
     log "Pulling $ROOT"
-    git -C "$ROOT" fetch origin || die "fetch failed"
+    # --force: prune, so a branch deleted upstream stops shadowing, and
+    # refetch rather than trusting whatever is already in .git
+    if ((force)); then
+        git -C "$ROOT" fetch --prune --force origin || die "fetch failed"
+    else
+        git -C "$ROOT" fetch origin || die "fetch failed"
+    fi
     local branch upstream prev
     prev="$(git -C "$ROOT" rev-parse HEAD)"
     branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
     upstream="$(git -C "$ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
-    if [[ -n "$upstream" ]]; then
+
+    if ((force)); then
+        local target="${upstream:-origin/master}"
+        # local work is STASHED, not discarded. --force means "I do not
+        # want to resolve this by hand", not "destroy what I forgot was
+        # here": a reset --hard takes uncommitted edits with it and no
+        # reflog brings them back. The stash is listed so it is findable
+        if [[ -n "$(git -C "$ROOT" status --porcelain)" ]]; then
+            local stamp
+            stamp="wam update --force $(date '+%Y-%m-%d %H:%M:%S')"
+            git -C "$ROOT" stash push -u -m "$stamp" >/dev/null &&
+                log "Local changes stashed: git -C $ROOT stash list"
+        fi
+        # the old sha is the handle for local COMMITS, which a reset
+        # drops and the stash does not cover: print it, so undoing this
+        # is a copy-paste rather than a reflog expedition
+        log "Resetting $branch to $target — undo with: git -C $ROOT reset --hard $prev"
+        git -C "$ROOT" reset --hard "$target" || die "reset to $target failed"
+        clear_build_cache
+    elif [[ -n "$upstream" ]]; then
         git -C "$ROOT" merge --ff-only "$upstream" ||
-            die "not fast-forward: $branch has diverged from $upstream"
+            die "not fast-forward: $branch has diverged from $upstream
+  discard the local commits and take $upstream: wam update --force"
     else
         # local feature branches usually have no upstream: sync with
         # master instead of failing with git's "no tracking information"
         log "No upstream for $branch — syncing with origin/master"
         git -C "$ROOT" merge --ff-only origin/master ||
-            die "not fast-forward: $branch has commits not in origin/master — merge it yourself: git merge origin/master"
+            die "not fast-forward: $branch has commits not in origin/master — merge it yourself: git merge origin/master
+  or discard them and take origin/master: wam update --force"
     fi
     # awareness: the update touched the config template -> there may be
     # new options the user's config predates
@@ -596,7 +646,10 @@ case "${1:-}" in
         shift
         cmd_install "$@"
         ;;
-    update) cmd_update ;;
+    update)
+        shift
+        cmd_update "$@"
+        ;;
     start) cmd_start ;;
     stop) cmd_stop ;;
     restart) cmd_restart ;;
