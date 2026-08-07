@@ -421,19 +421,28 @@ window#QSettings {
     // the playback level, under the volume it is being played at: a
     // thin bar, deliberately quieter than the slider above it, because
     // it is something to glance at rather than something to aim
+    // A READOUT, not a control, and it has to look like one — reported
+    // as "duplicate devices … i cannot click on the one below". It sits
+    // under the volume slider at the same width, so a full-width track
+    // made it read as a second, dead slider. No track: only the fill is
+    // drawn, which floats rather than sitting in a groove, and it is
+    // thinner than the slider it reports on
     .audioMeter {
-        min-height: 4px;
-        margin-top: 5px;
+        min-height: 3px;
+        // .6em is the scale's own horizontal padding, above — the trough
+        // is inset by it and a LevelBar is not, so without this the
+        // level overhung the slider it reports on by ~11px on the left.
+        // Same unit, not the measured pixels, so it tracks font-size
+        margin: 5px 0.6em 0;
 
         trough {
-            background-color: t.$surface1;
-            border-radius: 2px;
-            min-height: 4px;
+            background-color: transparent;
+            min-height: 3px;
         }
         block.filled {
             background-color: t.$teal;
             border-radius: 2px;
-            min-height: 4px;
+            min-height: 3px;
         }
         // the same warning the slider uses, on the level rather than the
         // setting: approaching full scale is where output starts to clip
