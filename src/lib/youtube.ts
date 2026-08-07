@@ -219,6 +219,14 @@ function thumbPath(videoId: string): string {
 // that cannot be on screen, and a re-listed video simply re-downloads.
 const THUMB_TTL_SEC = 30 * 86_400
 
+// Batched, and async all the way down. enumerate_children_async only
+// defers opening the directory — a next_file() loop after it still stats
+// every entry and unlinks synchronously, on the main loop, at startup.
+// That is worst exactly where this sweep matters: the multi-thousand-file
+// cache it exists to bound. next_files_async yields between batches, so
+// a large prune costs frames nobody sees instead of one long stall.
+const THUMB_PRUNE_BATCH = 64
+
 function pruneThumbs() {
     const dir = Gio.File.new_for_path(thumbsDir)
     dir.enumerate_children_async(
@@ -227,17 +235,36 @@ function pruneThumbs() {
         GLib.PRIORITY_LOW,
         null,
         (_d, res) => {
+            let iter: Gio.FileEnumerator
             try {
-                const iter = dir.enumerate_children_finish(res)
-                const cutoff = GLib.get_real_time() / 1_000_000 - THUMB_TTL_SEC
-                let info: Gio.FileInfo | null
-                while ((info = iter.next_file(null)) !== null) {
-                    if (info.get_attribute_uint64("time::modified") > cutoff) continue
-                    GLib.unlink(`${thumbsDir}/${info.get_name()}`)
-                }
+                iter = dir.enumerate_children_finish(res)
             } catch {
-                /* no thumbs dir yet: nothing to prune */
+                return // no thumbs dir yet: nothing to prune
             }
+            const cutoff = GLib.get_real_time() / 1_000_000 - THUMB_TTL_SEC
+            let removed = 0
+            const step = () => {
+                iter.next_files_async(THUMB_PRUNE_BATCH, GLib.PRIORITY_LOW, null, (_i, r) => {
+                    let batch: Gio.FileInfo[]
+                    try {
+                        batch = iter.next_files_finish(r)
+                    } catch (e) {
+                        console.warn("YouTube: thumbnail prune failed:", e)
+                        return
+                    }
+                    if (batch.length === 0) {
+                        iter.close_async(GLib.PRIORITY_LOW, null, null)
+                        if (removed > 0) console.log(`YouTube: pruned ${removed} stale thumbnail(s)`)
+                        return
+                    }
+                    for (const info of batch) {
+                        if (info.get_attribute_uint64("time::modified") > cutoff) continue
+                        if (GLib.unlink(`${thumbsDir}/${info.get_name()}`) === 0) removed++
+                    }
+                    step()
+                })
+            }
+            step()
         },
     )
 }
