@@ -1,6 +1,7 @@
 import { Gtk } from "ags/gtk4"
 import Pango from "gi://Pango?version=1.0"
 import { Accessor, Setter } from "gnim"
+import { pressable } from "../../pressable"
 
 /** badge text for a frequency in MHz: "" hides the badge
  *  (2.4GHz gets none, by design) */
@@ -97,15 +98,19 @@ export function DropdownButton({
           ? "go-next-symbolic"
           : activeDropdown!.as(s => (s === dropdownIndex ? "pan-up-symbolic" : "pan-down-symbolic"))
 
+    // the tile is a box, not a button: the press has to be painted by
+    // hand (see pressable). The flag lands on the inner body box and
+    // propagates up to the tile, which lights it without touching the
+    // chevron sitting beside it
     return (
         <box cssName={"button"} hexpand cssClasses={cssClasses}>
             <box spacing={8} hexpand>
                 <Gtk.GestureClick
                     button={1}
-                    onPressed={() => {
+                    {...pressable(() => {
                         if (activate) activate()
                         else toggleDropdown()
-                    }}
+                    })}
                 />
                 {badge ? <OverlayIcon icon={icon} badge={badge} /> : <image iconName={icon} />}
                 <box orientation={Gtk.Orientation.VERTICAL} valign={Gtk.Align.CENTER} hexpand>
@@ -136,10 +141,10 @@ export function DropdownButton({
                     <image halign={Gtk.Align.END} iconName={chevronIcon} />
                     <Gtk.GestureClick
                         button={1}
-                        onPressed={() => {
+                        {...pressable(() => {
                             if (navigate) navigate()
                             else toggleDropdown()
-                        }}
+                        })}
                     />
                 </box>
             )}

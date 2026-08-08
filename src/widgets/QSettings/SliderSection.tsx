@@ -10,6 +10,7 @@ import { Accessor, For, Setter, With, createBinding, createComputed, createState
 import { qsVisible } from "./MediaSection"
 import { PercentEntry } from "./PercentEntry"
 import { createIconResolver } from "../../lib/appIcon"
+import { pressable } from "../pressable"
 
 interface VolSliderProps {
     maxValue?: number
@@ -187,7 +188,7 @@ function VolSlider({
             </overlay>
             <PercentEntry value={volume} onCommit={v => endpoint.set_volume(v)} max={maxValue} />
             <box cssName="button" tooltipText={"Devices, app volumes and routing"}>
-                <Gtk.GestureClick button={1} onPressed={() => onOpen()} />
+                <Gtk.GestureClick button={1} {...pressable(onOpen)} />
                 <image iconName={"go-next-symbolic"} />
             </box>
         </box>
@@ -210,9 +211,9 @@ function BrightnessSlider() {
             <box cssName="button" tooltipText={"Click: reset to 100%, scroll: outdoor mode"}>
                 <Gtk.GestureClick
                     button={1}
-                    onPressed={() => {
+                    {...pressable(() => {
                         brightness.screen = 1
-                    }}
+                    })}
                 />
                 <Gtk.EventControllerScroll
                     flags={Gtk.EventControllerScrollFlags.VERTICAL}
@@ -281,9 +282,9 @@ function BrightnessSlider() {
             >
                 <Gtk.GestureClick
                     button={1}
-                    onPressed={() => {
+                    {...pressable(() => {
                         if (previous.get() >= 0) brightness.restorePrevious()
-                    }}
+                    })}
                 />
                 <image iconName={"edit-undo-symbolic"} />
             </box>

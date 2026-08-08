@@ -38,9 +38,13 @@ window#QSettings {
             background-color: t.$accent20;
             border: solid 2px t.$accent20;
         }
+        // a press has to differ from a hover by more than a border
+        // shade — the pointer is already on the button when it lands,
+        // so the border was the only thing that changed and the click
+        // read as nothing happening
         &:active {
-            background-color: t.$accent20;
-            border: solid 2px t.$accent30;
+            background-color: t.$accent40;
+            border: solid 2px t.$accent40;
             label {
                 color: t.$accent;
             }
