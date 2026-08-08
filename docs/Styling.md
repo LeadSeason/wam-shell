@@ -209,6 +209,21 @@ recent adwaita-icon-theme releases, the shell also bundles fallback
 copies under `assets/icons/` (registered as an extra search path) —
 system themes always take precedence. See `assets/icons/README.md`.
 
+Two conventions keep the names coherent:
+
+- **`pan-*` is an expander, `go-*` is navigation.** `pan-down`/`pan-up`
+  disclose something in place; `go-next`/`go-previous` drill into a pane
+  or step through months and days. An expander whose two states are
+  different *shapes* — a chevron one way, a lightbulb the other — is the
+  bug this rule exists to prevent.
+- **Prefer a name Adwaita does not define over one it defines
+  differently.** The bundled copies are only a fallback, so a name the
+  system theme also ships resolves to *its* drawing, not ours. For the
+  handful of concepts Adwaita has no name for (cpu, memory, temperature,
+  gpu, hourglass, speedometer, dark-mode) the shell ships original
+  drawings on Adwaita's 16px grid rather than importing a second icon
+  set — see the README for how to draw one.
+
 ## Live reload while developing
 
 `scripts/style-watch.sh` watches `scss/` and triggers `reloadStyle` on

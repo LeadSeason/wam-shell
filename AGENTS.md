@@ -149,7 +149,13 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   precompile it (`scripts/precompile-style.ts`), and `lib/style.ts` only
   decides when to compile and applies the result.
 - Icons: always prefer symbolic icon names (`-symbolic`) over
-  full-color ones wherever possible.
+  full-color ones wherever possible. `pan-down`/`pan-up` is an expander,
+  `go-next`/`go-previous` is navigation — don't mix them, and never give
+  an expander two different SHAPES for its two states. Don't import a
+  second icon set for a name Adwaita lacks: the bundled icons are a
+  fallback the system theme overrides, and Papirus next to Adwaita in
+  one FlowBox is visible at a glance. Draw it on Adwaita's grid instead
+  (`assets/icons/README.md`).
 
 ## Formatting
 

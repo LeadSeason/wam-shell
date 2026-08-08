@@ -275,9 +275,13 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan }: DeviceRowProps)
                     tooltipText={"Device details"}
                     onClicked={() => setDetailsOpen(!detailsOpen.get())}
                 >
+                    {/* same expander pair as the wifi row's. Collapsed
+                    it showed dialog-information — which in Adwaita is a
+                    LIGHTBULB — so the control changed shape entirely
+                    depending on which way it was pointing */}
                     <image
                         iconName={detailsOpen.as(o =>
-                            o ? "pan-up-symbolic" : "dialog-information-symbolic",
+                            o ? "pan-up-symbolic" : "pan-down-symbolic",
                         )}
                     />
                 </button>

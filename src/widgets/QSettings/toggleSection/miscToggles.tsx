@@ -75,7 +75,10 @@ export function DarkStyleButton() {
 
     return (
         <DropdownButton
-            icon={"weather-clear-night-symbolic"}
+            // a half-filled disc, not a crescent: this tile sits beside
+            // Night Light, whose icon is also a moon, and two moons in
+            // one grid say nothing about which is which
+            icon={"dark-mode-symbolic"}
             label={"Dark Style"}
             subtitle={active.as(v => (v ? "On" : "Off"))}
             isActive={active}
