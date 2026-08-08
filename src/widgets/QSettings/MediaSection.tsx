@@ -22,6 +22,7 @@ import { isSmallCover } from "../../lib/coverArt"
 import { sharing, enable as enableShareWatch } from "../../lib/screenShare"
 import Config from "../../config"
 import { isRtl } from "../../lib/utils"
+import { pressable } from "../pressable"
 
 function MediaButton({
     iconName,
@@ -315,14 +316,14 @@ function Player({ player }: { player: AstalMpris.Player }) {
                         >
                             <Gtk.GestureClick
                                 button={1}
-                                onPressed={() => {
+                                {...pressable(() => {
                                     const r = revertTo.get()
                                     if (!player.canSeek || r < 0) return
                                     // toggle: a second click seeks forward again
                                     setRevertTo(position.accessor.get())
                                     position.seekTo(r)
                                     player.position = r
-                                }}
+                                })}
                             />
                             <image iconName="edit-undo-symbolic" />
                         </box>

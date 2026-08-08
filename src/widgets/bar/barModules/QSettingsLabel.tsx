@@ -14,6 +14,7 @@ import Brightness from "../../../lib/brightness"
 import { alarming } from "../../../lib/sleepTimer"
 import { execAsync, timeoutAdd, sourceRemove } from "../../../lib/metrics"
 import Config, { pendingUpdates } from "../../../config"
+import { pressable } from "../../pressable"
 
 const registry = CommandRegistry.get_default()
 
@@ -413,9 +414,9 @@ export default function QSettings() {
         >
             <Gtk.GestureClick
                 button={1}
-                onPressed={() => {
+                {...pressable(() => {
                     registry.execute(["qSettings"], true)
-                }}
+                })}
             />
             <ButtonLabel />
         </box>
