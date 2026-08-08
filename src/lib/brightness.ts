@@ -6,6 +6,7 @@ import AstalBrightness from "gi://AstalBrightness"
 import Config from "../config"
 import { setDimLevel } from "./hyprsunset"
 import hyprsunset from "./hyprsunset"
+import { registerDispose } from "./lifecycle"
 
 // Backlight via the astal brightness library (systemd-logind, no
 // brightnessctl or video group needed). OLED laptops expose a dummy
@@ -43,7 +44,10 @@ export default class Brightness extends GObject.Object {
     static instance: Brightness
 
     static get_default() {
-        if (!this.instance) this.instance = new Brightness()
+        if (!this.instance) {
+            this.instance = new Brightness()
+            registerDispose("brightness", () => this.instance.dispose())
+        }
 
         return this.instance
     }

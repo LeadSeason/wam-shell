@@ -1,13 +1,19 @@
 import GLib from "gi://GLib?version=2.0"
-import Gio from "gi://Gio?version=2.0"
-import Soup from "gi://Soup?version=3.0"
 import AstalNotifd from "gi://AstalNotifd?version=0.1"
 import { createState } from "gnim"
 import Config from "../config"
-import { loadCredentials } from "./credentials"
-import { timeoutAddSeconds, sourceRemove, trackHttp } from "./metrics"
+import { loadToken } from "./credentials"
+import { configHome } from "./paths"
+import { createJsonClient, USER_AGENT } from "./httpJson"
+import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { Provider, ProviderItem, registerProvider } from "./notificationProviders"
 import { addProviderPopup, removePopup } from "./notifd"
+import { createRefreshGate, newArrivals, openUrl } from "./providerCore"
+import { registerDispose } from "./lifecycle"
+
+// re-exported so the unit suite can pin it against Todoist's own
+// shapes; the implementation is shared (lib/providerCore)
+export { newArrivals }
 
 // Todoist provider for the notification center (API v1): timed tasks
 // due today or tomorrow merge into the center's list, and banner when
@@ -26,20 +32,13 @@ import { addProviderPopup, removePopup } from "./notifd"
 // the due time now lives in due.date itself)
 
 const API = "https://api.todoist.com/api/v1"
-const UA = "wam-shell (https://github.com/LeadSeason/wam-shell)"
 const MAX_PAGES = 3 // 150 due/overdue tasks is plenty for a center list
 
 // ---------------------------------------------------------- credentials
 
-const configHome = `${GLib.getenv("XDG_CONFIG_HOME") || `${GLib.getenv("HOME")}/.config`}/wam-shell`
 const envPath = `${configHome}/todoist.env`
 
-function loadToken(): string | null {
-    const creds = loadCredentials("Todoist", ["TODOIST_API_TOKEN"], envPath)
-    return creds ? creds.TODOIST_API_TOKEN : null
-}
-
-const token = Config.todoist.enabled ? loadToken() : null
+const token = Config.todoist.enabled ? loadToken("Todoist", "TODOIST_API_TOKEN", envPath) : null
 // the center gates on the registry; this gates the registry
 export const active = Config.todoist.enabled && token !== null
 if (Config.todoist.enabled && !token) {
@@ -145,56 +144,16 @@ export function isDueSoon(due: { date?: string; datetime?: string } | null, nowM
     return !Number.isNaN(ms) && ms - nowMs <= DUE_SOON_MS
 }
 
-// ids in next but not in prev. Brand-new tasks only: a task that was
-// already due keeps its id and stays quiet
-export function newArrivals(prev: { id: string }[], next: { id: string }[]): string[] {
-    const prevIds = new Set(prev.map(i => i.id))
-    return next.filter(i => !prevIds.has(i.id)).map(i => i.id)
-}
-
 // ---------------------------------------------------------------- http
 
-const session = new Soup.Session({ timeout: 20 })
-
-interface Reply {
-    ok: boolean // 2xx
-    status: number
-    json: any
-}
-
-// never log anything beyond method + path + status: the token is a secret
-function request(method: string, path: string, cb: (r: Reply) => void) {
-    const url = `${API}${path}`
-    const msg = Soup.Message.new(method, url)
-    if (!msg) {
-        cb({ ok: false, status: 0, json: null })
-        return
-    }
-    const h = msg.get_request_headers()
-    h.append("Authorization", `Bearer ${token}`)
-    h.append("User-Agent", UA)
-    session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (_s, res) => {
-        let reply: Reply
-        try {
-            const bytes = session.send_and_read_finish(res)
-            if (bytes) trackHttp(url, bytes.get_size())
-            const text = bytes ? new TextDecoder().decode(bytes.get_data() ?? new Uint8Array()) : ""
-            let json: any = null
-            try {
-                json = text ? JSON.parse(text) : null
-            } catch {}
-            const status = msg.get_status()
-            reply = { ok: status >= 200 && status < 300, status, json }
-        } catch (e) {
-            reply = { ok: false, status: 0, json: null }
-        }
-        if (!reply.ok)
-            console.warn(
-                `Todoist: ${method} ${path.split("?")[0]} -> ${reply.status || "network error"}`,
-            )
-        cb(reply)
-    })
-}
+const request = createJsonClient({
+    baseUrl: API,
+    logTag: "Todoist",
+    headers: () => ({
+        Authorization: `Bearer ${token}`,
+        "User-Agent": USER_AGENT,
+    }),
+})
 
 // whether todoist items may raise transient banners: the unified
 // opt-in list in [notifications]
@@ -206,7 +165,6 @@ const [items, setItems] = createState<ProviderItem[]>([])
 export { items }
 
 let pollInFlight = false
-let lastPollAttempt = 0
 let authFailed = false
 let pollTimer = 0
 // stays false until the first successful fetch lands: that fetch is the
@@ -365,15 +323,7 @@ function attachActions(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">
             setItems(items.get().filter(i => i.id !== data.id))
         },
         dismiss: () => complete(data),
-        activate: () => {
-            Gio.AppInfo.launch_default_for_uri_async(data.url, null, null, (_s, res) => {
-                try {
-                    Gio.AppInfo.launch_default_for_uri_finish(res)
-                } catch (e) {
-                    console.warn("Todoist: could not open the browser:", e)
-                }
-            })
-        },
+        activate: () => openUrl(data.url, "Todoist"),
     }
     // visible buttons on the banner and the center row (the gestures
     // stay as power-user shortcuts). On the banner the host consumes
@@ -483,16 +433,14 @@ function fetchReminders(taskList: any[]) {
 export function poll() {
     if (!active || authFailed || pollInFlight) return
     pollInFlight = true
-    lastPollAttempt = Date.now()
+    gate.touch()
     fetchTasks("", [])
 }
 
 // stale-while-revalidate when the center opens; age-gated so fidgety
 // toggling doesn't burn requests
-export function refresh() {
-    if (Date.now() - lastPollAttempt < 60_000) return
-    poll()
-}
+const gate = createRefreshGate(60_000, poll)
+export const refresh = gate.refresh
 
 export function dispose() {
     if (pollTimer) {
@@ -538,3 +486,6 @@ export function init() {
         },
     )
 }
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("todoist", dispose)

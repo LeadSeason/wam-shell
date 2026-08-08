@@ -3,6 +3,7 @@ import GLib from "gi://GLib?version=2.0"
 import { createState } from "gnim"
 import bluetooth from "./bluetooth"
 import { timeoutAdd, sourceRemove, connect, disconnect } from "./metrics"
+import { registerDispose } from "./lifecycle"
 
 // BlueZ pairing agent (org.bluez.Agent1): answers confirmation / PIN /
 // passkey prompts during pairing. The GTK side lives in
@@ -407,3 +408,6 @@ export function dispose() {
     registered = false
     registering = false
 }
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("bluetoothAgent", dispose)

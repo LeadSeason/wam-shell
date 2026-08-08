@@ -2,6 +2,7 @@ import { test, eq } from "./framework"
 import AstalNotifd from "gi://AstalNotifd?version=0.1"
 import {
     capPopups,
+    displayGroups,
     groupPopups,
     popupDuration,
     staleArrivalKeys,
@@ -145,6 +146,74 @@ test("groupPopups: anonymous senders are never folded together", () => {
 
 test("groupPopups: empty in, empty out", () => {
     eq(groupPopups([]), [])
+})
+
+// -------------------------------------------------------- displayGroups
+
+// The stored stack is OLDEST first (admission appends), capPopups evicts
+// from the front, and groupPopups wants NEWEST first. Those two
+// conventions disagree, and nothing used to pin the composition — each
+// pure half was tested in isolation while the reverse that joins them
+// lived in a widget. These cases run the real pipeline.
+
+test("displayGroups: the newest banner leads", () => {
+    // stored order: "old" arrived first
+    const groups = displayGroups([named("old", "Signal"), named("new", "Syncthing")])
+    eq(
+        groups.map(g => g.key),
+        ["new", "old"],
+    )
+})
+
+test("displayGroups: a folded card is headed by the newest of its run", () => {
+    const groups = displayGroups([
+        named("first", "CI"),
+        named("second", "CI"),
+        named("third", "CI"),
+    ])
+    eq(groups.length, 1)
+    eq(
+        groups[0].entries.map(e => e.key),
+        ["third", "second", "first"],
+    )
+})
+
+test("displayGroups: criticals lead whatever their arrival order", () => {
+    const groups = displayGroups([
+        named("urgent", "Backup", true),
+        named("chatty1", "CI"),
+        named("chatty2", "CI"),
+    ])
+    eq(
+        groups.map(g => g.key),
+        ["urgent", "chatty2"],
+    )
+})
+
+test("displayGroups: cap then display keeps the critical and the newest", () => {
+    // the composition the banner window actually performs: admission
+    // caps the STORED (oldest-first) list, the view reverses and folds
+    const stored = [
+        named("urgent", "Backup", true),
+        named("a", "CI"),
+        named("b", "CI"),
+        named("c", "Signal"),
+    ]
+    const groups = displayGroups(capPopups(stored, 3))
+    // "a" is the oldest ordinary banner, so it is the one evicted
+    eq(
+        groups.flatMap(g => g.entries.map(e => e.key)),
+        ["urgent", "c", "b"],
+    )
+})
+
+test("displayGroups: does not mutate the stored list", () => {
+    const stored = [named("a", "X"), named("b", "Y")]
+    displayGroups(stored)
+    eq(
+        stored.map(e => e.key),
+        ["a", "b"],
+    )
 })
 
 test("staleArrivalKeys: forget apps with nothing left on screen", () => {

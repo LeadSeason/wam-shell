@@ -38,12 +38,18 @@ chmod +x "$TMP/main" "$TMP/config-dump" "$TMP/metrics-probe"
 # XDG_RUNTIME_DIR is redirected too (DBUS_SESSION_BUS_ADDRESS is explicit,
 # so the session bus stays reachable): the bundle wrapper would otherwise
 # write its decoded payload into the real /run/user/<uid>.
+#
+# HYPRLAND_INSTANCE_SIGNATURE is set alongside DESKTOP_SESSION because
+# config.ts preflights it the same way it preflights I3SOCK for sway:
+# without it the session resolves to "" and the suite would be testing a
+# compositor-less shell rather than the hyprland one it means to.
 XDG_CONFIG_HOME="$TMP/config" \
 XDG_CACHE_HOME="$TMP/cache" \
 XDG_RUNTIME_DIR="$TMP/rt" \
 HOME="$TMP/home" \
 WAM_SHELL_DIR="$TMP/srcdir" \
 DESKTOP_SESSION=hyprland \
+HYPRLAND_INSTANCE_SIGNATURE=wam-shell-tests \
 WAM_TEST_TMP="$TMP" \
 WAM_TEST_CONFIG_DUMP="$TMP/config-dump" \
 WAM_TEST_METRICS_PROBE="$TMP/metrics-probe" \

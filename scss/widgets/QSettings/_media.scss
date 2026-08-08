@@ -1,0 +1,206 @@
+@use "active-theme" as t;
+@use "../../conf.scss" as s;
+@use "sass:color";
+
+// The media card: cover backdrop, veil and scrim, controls, seek bar and the player segment strip.
+//
+// Part of the quick settings stylesheet, split from what was a
+// single 1000-line file into the same regions the TSX already has
+// (src/widgets/QSettings/). Every part reopens window#QSettings:
+// sass merges them, and the split is contiguous and in the original
+// order, so cascade behaviour is unchanged.
+window#QSettings {
+    .mediaPlayer {
+        border-radius: s.$radius;
+        background-color: t.$base;
+        // no padding: the art runs to the card edges and the scrim
+        // carries the inset instead
+        padding: 0;
+        // clipping the art to the rounded corners is a widget property
+        // (Gtk.Overflow.HIDDEN on the card box), not css: gtk has no
+        // overflow property and errors on one
+        button {
+            margin: 0; // gaps come from the card's box spacing
+        }
+    }
+    // the cover, filling the whole card behind everything else
+    .mediaBackdrop {
+        background-color: t.$surface0;
+        background-size: cover;
+        background-position: center;
+        border-radius: s.$radius;
+        // taller than its content on purpose: the art needs a band of
+        // its own at the top, or the card is just a dark strip with a
+        // picture leaking around the edges
+        min-height: 172px;
+        // the window sets a blanket transition-duration, and .smallArt
+        // below swaps this box's margin: animating that makes gtk
+        // measure the box at every interpolated step, each one reporting
+        // a negative minimum ("reported min width -26, but sizes must be
+        // >= 0", once per frame, in both directions). The class toggle
+        // has to be instant — and it has to be set HERE, not on
+        // .smallArt, or removing the class animates on the way back
+        transition-duration: 0s;
+    }
+    // art too small for the card (isSmallCover): a blur reads as a
+    // deliberately soft backdrop where a sharp 4x upscale just reads as
+    // broken. Same trick as the veil below — the blur feathers the box's
+    // OWN edges, so the art has to start outside the rounded clip or the
+    // corners show the card through a vignette. min-height buys back
+    // exactly what the negative margins spend, so the card does not
+    // change height when a player switches between big and small art
+    $art-bleed: 14px;
+    .mediaBackdrop.smallArt {
+        filter: blur(5px);
+        margin: -$art-bleed;
+        // what gtk measures is the css minimum PLUS the margins, so the
+        // box has to carry at least what the bleed spends or it measures
+        // negative and warns. Both land back on what the card had: width
+        // 28 - 28 = 0, height 200 - 28 = 172
+        min-width: 2 * $art-bleed;
+        min-height: 172px + 2 * $art-bleed;
+    }
+    // the veil behind the text. Blurring a solid-ish panel feathers
+    // its OWN edges — gtk has no gradient mask — so the dark area
+    // fades into the cover rather than stopping on a line. It sits
+    // lower than it looks: the blur bleeds it upward
+    .mediaVeil {
+        background-image: linear-gradient(
+            to bottom,
+            rgba(23, 25, 26, 0.45) 0%,
+            rgba(23, 25, 26, 0.88) 30%,
+            rgba(23, 25, 26, 0.95) 100%
+        );
+        // a wide blur is what feathers the top edge; the negative
+        // margins let it bleed past the card so the sides and bottom
+        // stay solid instead of fading away from them
+        filter: blur(16px);
+        margin: 0 -18px -18px;
+    }
+    // a track with no art: a flat panel rather than a black hole, and
+    // the scrim above still keeps the text legible
+    .mediaBackdrop.noArt {
+        background-image: linear-gradient(160deg, t.$surface1, t.$surface0 70%);
+    }
+    // everything reads off this, not off the artwork: the gradient is
+    // opaque enough at the bottom that a pale cover cannot wash out
+    // the title or the timestamps
+    .mediaScrim {
+        border-radius: s.$radius;
+        padding: s.$gap;
+
+        // the gradient cannot know what the artwork does underneath it:
+        // a shadow keeps the title readable over a busy cover (posters
+        // with their own lettering are the hard case)
+        .mediaTitle,
+        .mediaArtist {
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+        }
+        // an rtl track reads from the right: the timestamps stay in
+        // clock order (elapsed, then total) — only the text flips
+        &.rtl .mediaTitle,
+        &.rtl .mediaArtist {
+            margin-right: 2px;
+        }
+        // weighted to the bottom third, where the text actually sits:
+        // album art is often busy exactly where a title would land, so
+        // the scrim goes nearly opaque under it rather than tinting the
+        // whole card evenly
+        // a whisper of a tint only: the veil underneath carries the
+        // contrast, and a second hard gradient here would bring the
+        // edge back
+        background-image: linear-gradient(
+            to bottom,
+            rgba(23, 25, 26, 0) 0%,
+            rgba(23, 25, 26, 0.12) 45%,
+            rgba(23, 25, 26, 0.35) 100%
+        );
+    }
+    .mediaTitle {
+        font-weight: bold;
+    }
+    .mediaCover {
+        min-width: 40px;
+        min-height: 40px;
+        border-radius: 6px;
+        background-size: cover;
+        background-position: center;
+        background-color: t.$surface0;
+    }
+    // the big-cover card layout: ~104px art on the left, 16:9 like
+    // the video thumbnails most content carries
+    .mediaCoverBig {
+        min-width: 185px;
+        min-height: 104px;
+    }
+    // the card keeps this height with or without art: switching
+    // players must not move the content under the pointer
+    .coverRow {
+        min-height: 104px;
+        // the cover's button wrapper would otherwise add margin,
+        // padding and a transparent border around the 104px art
+        > button {
+            margin: 0;
+            padding: 0;
+            border: none;
+        }
+    }
+    .mediaCoverFallback {
+        color: t.$subtext0;
+    }
+    .mediaCoverFallback image {
+        margin: 8px;
+    }
+    .mediaArtist {
+        font-size: s.$font-small;
+        color: t.$subtext0;
+    }
+    .mediaButton {
+        border-radius: 2em;
+        min-width: 2em;
+        min-height: 2em;
+        padding: 0;
+        &:disabled {
+            opacity: 0.35;
+        }
+    }
+    // the play button is the controls row's anchor: accent block,
+    // slightly larger
+    .mediaPlay {
+        background-color: t.$accent;
+        color: t.$base;
+        min-width: 2.4em;
+        min-height: 2.4em;
+        &:hover {
+            background-color: color.mix(t.$accent, transparent, 70%);
+        }
+    }
+    // engaged shuffle/repeat get the accent text cue
+    .mediaButton.active {
+        color: t.$accent;
+    }
+    .mediaSeek {
+        .mediaTime {
+            font-size: s.$font-small;
+            color: t.$subtext0;
+        }
+        // thinner than the volume sliders: a position indicator, not a
+        // primary control
+        scale trough {
+            min-height: 6px;
+        }
+    }
+    // scroll-position strip on the card's left edge: one segment per
+    // player, the shown one lit; wide enough to click
+    .mediaSegments {
+        .mediaSegment {
+            // 4px was a frustrating click target
+            min-width: 8px;
+            border-radius: 2px;
+            background-color: t.$surface1;
+            &.active {
+                background-color: t.$accent;
+            }
+        }
+    }
+}

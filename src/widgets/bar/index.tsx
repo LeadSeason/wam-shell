@@ -20,7 +20,11 @@ import SleepTimer from "./barModules/sleepTimer"
 import HarvestTimer from "./barModules/harvest"
 import WindowTitle from "./barModules/windowTitle"
 
-function trayWidgetFor(gdkMonitor: Gdk.Monitor) {
+// on_panel: the whole tray on the bar. Otherwise only pinned apps
+// (tray.always_on_panel) show there, the rest stay in quick settings.
+// Monitor-independent, unlike the workspace and media widgets — the
+// tray is the same on every bar
+function trayWidget() {
     if (Config.tray.onPanel) {
         return <Tray />
     } else if (Config.tray.alwaysOnPanel.length > 0) {
@@ -53,7 +57,7 @@ function moduleFor(name: string, gdkMonitor: Gdk.Monitor) {
         case "stats":
             return <SysStats />
         case "tray":
-            return trayWidgetFor(gdkMonitor)
+            return trayWidget()
         case "quicksettings":
             return <QSettingsLabel />
         case "language":
@@ -114,18 +118,15 @@ export default function Bar({
     }
 
     // legacy layout (no [[panel]] config): the historical arrangement
-    let workspaceWidget = workspaceWidgetFor(gdkMonitor)
-
-    // on_panel: the whole tray on the bar. Otherwise only pinned apps
-    // (tray.always_on_panel) show on the bar, the rest stay nested.
-    let trayWidget = trayWidgetFor(gdkMonitor)
+    const workspaces = workspaceWidgetFor(gdkMonitor)
+    const tray = trayWidget()
 
     return win(
         TOP | LEFT | RIGHT,
         <centerbox cssName="centerbox">
             <box $type="start">
                 <OSIcon />
-                {Config.workspaces.position == "left" && workspaceWidget}
+                {Config.workspaces.position == "left" && workspaces}
             </box>
             <box $type="center">
                 <Clock />
@@ -135,12 +136,12 @@ export default function Bar({
                 <SleepTimer />
                 {Config.quicksettings.statsOnPanel && <SysStats />}
                 {Config.media.enabled && <Media monitor={gdkMonitor} />}
-                {Config.tray.position == "left" && trayWidget}
+                {Config.tray.position == "left" && tray}
                 <QSettingsLabel />
-                {Config.tray.position == "right" && trayWidget}
+                {Config.tray.position == "right" && tray}
                 <KeyboardLayout />
                 <SwayNC />
-                {Config.workspaces.position == "right" && workspaceWidget}
+                {Config.workspaces.position == "right" && workspaces}
             </box>
         </centerbox>,
     )

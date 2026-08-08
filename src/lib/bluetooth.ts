@@ -4,6 +4,7 @@ import AstalBluetooth from "gi://AstalBluetooth?version=0.1"
 import Config from "../config"
 import { connect, disconnect } from "./metrics"
 import { batteryPercentValue } from "./utils"
+import { registerDispose } from "./lifecycle"
 
 // Shared bluetooth state + connect/battery event notifications.
 
@@ -147,3 +148,6 @@ export function dispose() {
 }
 
 export default bluetooth
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("bluetooth", dispose)
