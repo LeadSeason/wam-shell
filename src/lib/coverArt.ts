@@ -155,16 +155,16 @@ export function isSmallCover(uri: string): boolean {
     }
 }
 
-export function coverFile(url: string): string {
-    if (!url) return ""
-    // astal gives bare paths (no file:// scheme) for local art
-    if (url.startsWith("/")) return isFile(url) ? `file://${url}` : ""
-    if (!url.startsWith("http")) return url
-
+/** the cached local uri for a remote cover, "" when it is not
+ *  downloaded yet.
+ *
+ *  Sync on purpose: downloadCover resolves through a microtask even for
+ *  a file that is already on disk, so a caller that went through it
+ *  would paint one frame of "no art" on every track change that hits
+ *  the cache. */
+export function cachedCover(url: string): string {
     const path = cachePath(url)
-    if (isFile(path)) return `file://${path}`
-    downloadCover(url).catch(() => {})
-    return ""
+    return isFile(path) ? `file://${path}` : ""
 }
 
 // prune cached covers older than a week once at startup: the cache is

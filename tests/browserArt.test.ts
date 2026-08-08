@@ -1,7 +1,7 @@
 import GdkPixbuf from "gi://GdkPixbuf?version=2.0"
 import GLib from "gi://GLib?version=2.0"
 import { test, eq } from "./framework"
-import { artForWatchUrl, escapeLike, isBrowserThumb } from "../src/lib/browserArt"
+import { artForWatchUrl, escapeLike, historyQuery, isBrowserThumb } from "../src/lib/browserArt"
 import { isSmallCover } from "../src/lib/coverArt"
 
 const TMP = GLib.getenv("WAM_TEST_TMP")!
@@ -53,6 +53,37 @@ test("escapeLike: the escape character escapes itself", () => {
 test("escapeLike: a title with no metacharacters is untouched", () => {
     eq(escapeLike("Some Ordinary Title"), "Some Ordinary Title")
     eq(escapeLike(""), "")
+})
+
+test("historyQuery: the three tiers a youtube tab title comes in", () => {
+    const q = historyQuery("Some Track")
+    // the video title verbatim, and the " - YouTube" suffix
+    eq(q.includes("title = 'Some Track'"), true)
+    eq(q.includes("title LIKE 'Some Track - %'"), true)
+    // behind youtube's unread count: "(3) Some Track - YouTube". Both
+    // other tiers are anchored at the start, so this used to miss a
+    // quarter of a real history db outright
+    eq(q.includes("title LIKE '(%) Some Track - %'"), true)
+})
+
+test("historyQuery: an exact hit outranks a suffix, which outranks a badge", () => {
+    // ordering by recency alone lets a looser match beat the row whose
+    // title IS the track, purely by being opened more recently
+    const order = historyQuery("T").slice(historyQuery("T").indexOf("ORDER BY"))
+    eq(order.indexOf("title = 'T'") < order.indexOf("title LIKE 'T - %'"), true)
+    eq(order.indexOf("title LIKE 'T - %'") < order.indexOf("last_visit_time"), true)
+})
+
+test("historyQuery: wildcards stay escaped in the badge tier too", () => {
+    const q = historyQuery("100% Real")
+    eq(q.includes("'100\\% Real - %'"), true)
+    eq(q.includes("'(%) 100\\% Real - %'"), true)
+    // the equality tier reads no wildcards, so it only needs quoting
+    eq(q.includes("title = '100% Real'"), true)
+})
+
+test("historyQuery: a quote in the title cannot break out of the literal", () => {
+    eq(historyQuery("Don't Stop").includes("title = 'Don''t Stop'"), true)
 })
 
 // a real header read, since that is the whole point of isSmallCover
