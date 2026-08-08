@@ -132,7 +132,16 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 
 - Colors come from the active theme (`scss/theme/*.scss`, selected via
   the `theme` config key) — never hardcode hex in widget styles.
-- Shared spacing/radius values live in `scss/conf.scss`.
+- Shared spacing/radius/type values live in `scss/conf.scss`; the mixins
+  that spend them — `surface`, `card`, `button-quiet/framed/accent`,
+  `icon-button`, `chip`, `row`, `eyebrow`, `slider`, `meter`, `switch`,
+  `checkbox`, `text-field`, `menu` — live in `scss/ui.scss`. A widget
+  sheet includes those rather than restating them. Reach for a token or
+  a mixin BEFORE writing a literal: every popup silhouette, button
+  vocabulary and slider design in the tree was individually reasonable,
+  and there were four, five and three of them respectively. Override
+  after an include when a widget must differ, and say why.
+  Full table + the two rules the mixins encode: `docs/Styling.md`.
 - Big widgets get a stylesheet DIRECTORY, not a 1000-line file:
   `scss/widgets/QSettings/` mirrors `src/widgets/QSettings/`, and each
   part reopens `window#QSettings`. Compiling is split the same way —
@@ -140,7 +149,13 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   precompile it (`scripts/precompile-style.ts`), and `lib/style.ts` only
   decides when to compile and applies the result.
 - Icons: always prefer symbolic icon names (`-symbolic`) over
-  full-color ones wherever possible.
+  full-color ones wherever possible. `pan-down`/`pan-up` is an expander,
+  `go-next`/`go-previous` is navigation — don't mix them, and never give
+  an expander two different SHAPES for its two states. Don't import a
+  second icon set for a name Adwaita lacks: the bundled icons are a
+  fallback the system theme overrides, and Papirus next to Adwaita in
+  one FlowBox is visible at a glance. Draw it on Adwaita's grid instead
+  (`assets/icons/README.md`).
 
 ## Formatting
 

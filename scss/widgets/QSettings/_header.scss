@@ -1,6 +1,6 @@
 @use "active-theme" as t;
 @use "../../conf.scss" as s;
-@use "sass:color";
+@use "../../ui.scss" as u;
 
 // The header card: avatar, battery ring, session actions.
 //
@@ -18,29 +18,19 @@ window#QSettings {
             color: t.$accent;
         }
         .avatarFrame {
-            border-radius: 999px;
+            border-radius: s.$radius-pill;
         }
         .whoName {
-            font-weight: bold;
+            font-weight: s.$weight-bold;
         }
         .whoSub {
-            font-size: s.$font-small;
-            color: t.$subtext0;
+            @include u.subtitle;
         }
+        // lock / log out / shut down: icon-only, so square
         button {
-            background: t.$surface070;
-            margin: 3px 0 3px s.$gap;
-            &:hover {
-                background-color: t.$accent20;
-                border: solid 2px t.$accent20;
-            }
-            &:active {
-                background-color: t.$accent20;
-                border: solid 2px t.$accent30;
-                label {
-                    color: t.$accent;
-                }
-        }
+            @include u.icon-button;
+            background-color: t.$surface070;
+            margin: s.$padding-small 0 s.$padding-small s.$gap;
         }
     }
 }

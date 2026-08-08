@@ -1,23 +1,9 @@
-@use "active-theme" as t;
-@use "../conf.scss" as s;
+@use "../ui.scss" as u;
 
 // uniform text input for the whole shell: a clear boundary so entries
-// never read as plain labels (surface bg + border on card/crust
-// backgrounds, accent frame on focus)
+// never read as plain labels. The design lives in `ui.text-field` so
+// the popups that style their own fields (the harvest new-entry form)
+// get the same one rather than a lookalike.
 .textInput {
-    background-color: t.$surface0;
-    border: solid 2px t.$surface1;
-    border-radius: s.$radius;
-    padding: 4px 8px;
-    caret-color: t.$accent;
-
-    &:focus {
-        border-color: t.$accent;
-    }
-    &:disabled {
-        opacity: 0.5;
-    }
-    > text > placeholder {
-        color: t.$subtext0;
-    }
+    @include u.text-field;
 }

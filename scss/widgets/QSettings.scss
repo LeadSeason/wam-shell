@@ -4,6 +4,8 @@
 // where this used to be one of 1009 lines. The parts are @use-d in the
 // original source order and each reopens window#QSettings.
 
+@use "../conf.scss" as s;
+
 @use "QSettings/base";
 @use "QSettings/header";
 @use "QSettings/sliders";
@@ -11,14 +13,11 @@
 @use "QSettings/panes";
 @use "QSettings/devices";
 
-
-// brightness undo button before the first recorded value
-.brightnessRestore.disabled {
-    opacity: 0.35;
-}
-
-// seek-revert button until a drag has been recorded (or the player
-// can't seek)
+// Two controls that exist before they can do anything: the brightness
+// undo before a value has been recorded, the seek-revert before a drag
+// has. `.disabled` rather than :disabled — they stay clickable so the
+// tooltip can explain why nothing happens.
+.brightnessRestore.disabled,
 .mediaSeekRevert.disabled {
-    opacity: 0.35;
+    opacity: s.$disabled-opacity;
 }

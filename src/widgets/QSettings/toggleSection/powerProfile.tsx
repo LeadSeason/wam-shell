@@ -192,7 +192,7 @@ function PowerDetails() {
                     visible={Power.hasFreq}
                 />
                 <StatTile
-                    icon="freon-temperature-symbolic"
+                    icon="temperature-symbolic"
                     big={createComputed([Power.tempC, Power.fanRpm], (t, r) =>
                         Power.hasTemp ? `${t} °C` : `${r} RPM`,
                     )}
@@ -202,9 +202,12 @@ function PowerDetails() {
                     visible={Power.hasTemp || Power.hasFan}
                 />
                 {/* CPU package power (RAPL): what the profile actually
-                throttles */}
+                throttles. A bolt, not a second cpu-symbolic — the
+                frequency tile two cells up already wears that one, and
+                two identical icons in one grid read as one repeated
+                stat */}
                 <StatTile
-                    icon="cpu-symbolic"
+                    icon="power-profile-performance-symbolic"
                     big={Power.pkgWatts.as(w => `${w.toFixed(1)} W`)}
                     sub={"CPU package"}
                     visible={Power.hasPkg}
@@ -232,7 +235,7 @@ function PowerDetails() {
                     {present =>
                         present && (
                             <StatTile
-                                icon="freon-gpu-temperature-symbolic"
+                                icon="gpu-symbolic"
                                 big={createComputed([Sys.gpu, Sys.gpuWatts], (g, w) =>
                                     w > 0 ? `${g}% · ${Math.round(w)} W` : `${g}%`,
                                 )}
