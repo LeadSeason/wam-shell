@@ -2,6 +2,7 @@ import AstalTray from "gi://AstalTray"
 import { createState } from "gnim"
 import { isPinned } from "./trayPinned"
 import { connect, disconnect } from "./metrics"
+import { registerDispose } from "./lifecycle"
 
 // Tracks whether any tray item reports Status.NeedsAttention.
 // Used to show an indicator on the bar when the tray is nested inside
@@ -63,3 +64,6 @@ export function dispose() {
 }
 
 export default needsAttention
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("trayAttention", dispose)

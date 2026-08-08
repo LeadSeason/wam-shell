@@ -1,0 +1,345 @@
+@use "active-theme" as t;
+@use "../../conf.scss" as s;
+@use "sass:color";
+
+// Shared pane chrome (the .paneCard/.paneRow list design used by every pane) plus the audio pane's own rows, meters and dropdowns.
+//
+// Part of the quick settings stylesheet, split from what was a
+// single 1000-line file into the same regions the TSX already has
+// (src/widgets/QSettings/). Every part reopens window#QSettings:
+// sass merges them, and the split is contiguous and in the original
+// order, so cascade behaviour is unchanged.
+window#QSettings {
+    // shared pane list design (introduced by the power mode pane):
+    // a card of selectable rows — 16px icon, bold name, dim
+    // description, trailing widget. Used by every quick settings
+    // pane (classes: .paneCard, .paneRow, .paneRowName, .paneRowDesc,
+    // .paneSection)
+    .paneCard {
+        background-color: t.$base;
+        border-radius: s.$radius;
+        padding: 6px 12px;
+    }
+    // --- audio pane ---------------------------------------------
+    // the volume slider gets its own full-width line under the row it
+    // belongs to: sharing a line with the icon, the mute button and the
+    // routing chevron left ~200px for a 0-150% range
+    .audioSliderRow {
+        margin: 2px 10px 6px;
+    }
+    // past 100% pipewire amplifies rather than raises, and will clip:
+    // the fill and the number warn before it does, orange first, red
+    // where it almost certainly is distorting
+    .audioHeat.over {
+        scale trough highlight {
+            background-color: t.$peach;
+        }
+        .audioPercent {
+            color: t.$peach;
+        }
+    }
+    .audioHeat.hot {
+        scale trough highlight {
+            background-color: t.$red;
+        }
+        .audioPercent {
+            color: t.$red;
+        }
+    }
+    .audioPercent {
+        font-size: s.$font-small;
+        color: t.$subtext0;
+    }
+    // the percentage is a number you can type into, so it has to look
+    // like one without becoming a permanent input box in every row:
+    // plain text at rest, a framed field only while it is being edited
+    .percentEntry {
+        font-size: s.$font-small;
+        color: t.$subtext0;
+
+        &:hover {
+            color: t.$text;
+        }
+        text {
+            background-color: t.$surface0;
+            color: t.$text;
+            border-radius: 4px;
+            padding: 0 2px;
+            min-height: 0;
+        }
+        selection {
+            background-color: t.$accent;
+            color: t.$base;
+        }
+    }
+    // the playback level, under the volume it is being played at: a
+    // thin bar, deliberately quieter than the slider above it, because
+    // it is something to glance at rather than something to aim
+    // A READOUT, not a control, and it has to look like one — reported
+    // as "duplicate devices … i cannot click on the one below". It sits
+    // under the volume slider at the same width, so a full-width track
+    // made it read as a second, dead slider. No track: only the fill is
+    // drawn, which floats rather than sitting in a groove, and it is
+    // thinner than the slider it reports on
+    .audioMeter {
+        min-height: 3px;
+        // .6em is the scale's own horizontal padding, above — the trough
+        // is inset by it and a LevelBar is not, so without this the
+        // level overhung the slider it reports on by ~11px on the left.
+        // Same unit, not the measured pixels, so it tracks font-size
+        margin: 5px 0.6em 0;
+
+        trough {
+            background-color: transparent;
+            min-height: 3px;
+        }
+        block.filled {
+            background-color: t.$teal;
+            border-radius: 2px;
+            min-height: 3px;
+        }
+        // the same warning the slider uses, on the level rather than the
+        // setting: approaching full scale is where output starts to clip
+        &.over block.filled {
+            background-color: t.$peach;
+        }
+        &.hot block.filled {
+            background-color: t.$red;
+        }
+    }
+    // the options a row unfolds: capped and scrolled on their own, so a
+    // card with seven profiles does not move the pane under the pointer
+    .audioExpandList {
+        margin: 0 6px 6px 26px;
+    }
+    .audioDefaultTag {
+        font-size: s.$font-small;
+        color: t.$accent;
+    }
+    .audioRoute {
+        opacity: 0.6;
+        margin: 0 2px;
+    }
+    .audioRow:hover .audioRoute {
+        opacity: 1;
+    }
+    .paneRow {
+        // a list you read: rows get room, and only the current one
+        // carries a fill, so a pane reads as one highlighted thing
+        // among plain ones rather than a stack of competing cards
+        padding: 8px 10px;
+        border-radius: s.$radius;
+        background-color: transparent;
+    }
+    .paneRow.active,
+    .paneRow:hover {
+        background-color: t.$surface1;
+    }
+    .paneRowName {
+        font-weight: bold;
+    }
+    .paneRowDesc {
+        font-size: s.$font-small;
+        color: t.$subtext0;
+    }
+    // real <button> widgets styled as card rows (sleep timer presets,
+    // the custom-start chip): the global button margin breaks the
+    // card's rhythm
+    button.paneRow {
+        margin: 0;
+    }
+
+    // trailing buttons in the sleep timer dropdown (Start, the alarm
+    // checkbox): one width so their right edges AND centers align
+    button.trailingBtn {
+        min-width: 64px;
+    }
+
+    .toggleTitle {
+        font-weight: bold;
+    }
+    .toggleSubtitle {
+        font-size: s.$font-small;
+        color: t.$subtext0;
+    }
+    .toggleChevron {
+        margin-left: 4px;
+        padding-left: 6px;
+        border-left: solid 1px color.mix(t.$text, transparent, 80%);
+    }
+    .ToggleSectionActive {
+        color: t.$base;
+        background-color: t.$accent;
+        .toggleSubtitle {
+            color: color.mix(t.$base, transparent, 70%);
+        }
+        .toggleChevron {
+            border-left-color: color.mix(t.$base, transparent, 70%);
+        }
+        &:hover {
+            background-color: color.mix(t.$accent, transparent, 70%);
+            border: solid 2px transparent;
+        }
+        &:active {
+            background-color: color.mix(t.$accent, transparent, 55%);
+            border: solid 2px color.mix(t.$accent, transparent, 50%);
+        }
+    }
+
+    // the current row is filled (see .paneRow.active above); the name
+    // keeps the accent cue on top of it, so state reads whether or not
+    // the fill is noticed
+    .paneRow.active .paneRowName {
+        color: t.$accent;
+    }
+    // same cue for the default device in the sliders' dropdowns
+    .paneCard revealer button.active label {
+        color: t.$accent;
+    }
+
+    // per-app audio rows in the volume dropdown: the header and the
+    // muted-state cue on the mute toggle
+    .dropdownCard {
+        background-color: t.$crust;
+        border-radius: s.$radius;
+        padding: 6px 12px;
+        margin-top: 4px;
+    }
+    .dropdownSection {
+        font-weight: bold;
+        margin: 4px 0 2px 4px;
+        // breathing room between the two sections, none needed above
+        // the first
+        &:not(:first-child) {
+            margin-top: 10px;
+        }
+    }
+    .appMuteBtn.active {
+        color: t.$accent;
+    }
+    .appStreamVol {
+        font-size: s.$font-small;
+        color: t.$subtext0;
+    }
+
+    // wifi band section headers in the wifi pane
+    // wifi band badge pill, overlaid bottom-right on signal icons
+    // (2.4GHz gets no badge)
+    .bandBadge {
+        font-size: 0.75em;
+        font-weight: bold;
+        padding: 0 4px;
+        border-radius: 4px;
+        color: t.$base;
+        &.b5 {
+            background-color: t.$green;
+        }
+        &.b6 {
+            background-color: t.$blue;
+        }
+    }
+
+    // pane header: the back part (icon + title) is its own small
+    // button — hover covers ONLY it, never the row or the pane's
+    // switch. Bold title with a rule under the whole row, matching
+    // the .paneSection dividers
+    .paneHeader {
+        margin: s.$padding-small s.$padding;
+        padding: 2px 0 6px;
+        border-bottom: solid 1px color.mix(t.$surface0, transparent, 40%);
+    }
+    .paneHeaderBack {
+        font-weight: bold;
+        border-radius: s.$radius;
+        padding: 4px 8px;
+        border: solid 2px transparent;
+
+        &:hover {
+            background-color: t.$accent20;
+            border: solid 2px t.$accent20;
+        }
+        &:active {
+            background-color: t.$accent20;
+            border: solid 2px t.$accent30;
+        }
+    }
+
+    // checkbox indicator for card-row toggles (display-only; the row's
+    // gesture does the toggling)
+    .paneCheckbox {
+        check {
+            min-width: 16px;
+            min-height: 16px;
+            border-radius: 4px;
+            border: 2px solid t.$surface1;
+            background-color: t.$surface0;
+            color: transparent;
+        }
+        &:checked check {
+            background-color: t.$accent;
+            border-color: t.$accent;
+            color: t.$base;
+            -gtk-icon-source: -gtk-icontheme("object-select-symbolic");
+        }
+    }
+
+    // the pane header's on/off switch: the theme does all:unset, so
+    // Gtk.Switch is invisible without this
+    .paneSwitch,
+    .vpnPane switch {
+        background-color: t.$surface0;
+        border: 1px solid t.$surface1;
+        border-radius: 999px;
+        slider {
+            background-color: t.$text;
+            border-radius: 50%;
+            min-width: 14px;
+            min-height: 14px;
+            margin: 3px;
+        }
+        &:checked {
+            background-color: t.$accent;
+            slider {
+                background-color: t.$base;
+            }
+        }
+        &:disabled {
+            opacity: 0.35;
+        }
+    }
+
+    .wifiConnected {
+        border-radius: s.$radius;
+        background-color: t.$base;
+        padding: s.$gap;
+        margin: 4px 0;
+    }
+    .wifiConnectedSsid {
+        font-weight: bold;
+    }
+    .wifiConnectedInfo,
+    .wifiStatus {
+        font-size: s.$font-small;
+        color: t.$subtext0;
+    }
+    .wifiStatus {
+        margin: 4px;
+    }
+
+    // section dividers inside panes ("Paired", "Available",
+    // "Connected network", "Networks", "Features"): full-size bold
+    // text with a rule underneath
+    // group labels are eyebrows, not headings: they separate the rows
+    // beneath them without competing with the names in them
+    .paneSection {
+        font-size: s.$font-small;
+        font-weight: normal;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: t.$overlay1;
+        margin: 10px 0 2px 4px;
+        padding-bottom: 4px;
+        border-bottom: solid 1px color.mix(t.$surface0, transparent, 40%);
+    }
+
+}

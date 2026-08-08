@@ -3,6 +3,7 @@ import Gio from "gi://Gio?version=2.0"
 import { execAsync, timeoutAddSeconds, sourceRemove } from "./metrics"
 import { createState } from "gnim"
 import { streamLines } from "./streamLines"
+import { registerDispose } from "./lifecycle"
 
 // Shared Mullvad VPN state. `mullvad status listen` streams tunnel
 // state changes from one long-lived process; the 15s poll below is the
@@ -422,3 +423,6 @@ export function reconnect() {
 }
 
 export default status
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("vpn", dispose)

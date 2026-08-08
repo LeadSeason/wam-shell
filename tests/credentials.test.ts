@@ -63,6 +63,39 @@ test("loadEnvFile: full-line and inline comments ignored", () => {
     eq(loadEnvFile(hash, [A]), { [A]: "al#pha" })
 })
 
+test("loadEnvFile: quotes protect a # inside the value", () => {
+    // The two features used to be applied in the wrong order — comment
+    // stripping first, then quote removal — so a quoted secret with a
+    // " #" in it was silently truncated and the provider failed to
+    // authenticate with nothing in the log to say why. Shell semantics:
+    // inside quotes, a # is just a character.
+    const path = writeEnv(`${A}="p@ss #1"\n${B}='another #2 here'\n`)
+    eq(loadEnvFile(path, [A, B]), { [A]: "p@ss #1", [B]: "another #2 here" })
+})
+
+test("loadEnvFile: anything after a closing quote is dropped", () => {
+    const path = writeEnv(`${A}="value" # a trailing comment\n`)
+    eq(loadEnvFile(path, [A]), { [A]: "value" })
+})
+
+test("loadEnvFile: a quote inside an unquoted value is left alone", () => {
+    const path = writeEnv(`${A}=pa'ss\n`)
+    eq(loadEnvFile(path, [A]), { [A]: "pa'ss" })
+})
+
+test("loadEnvFile: an unterminated quote keeps the lenient old behaviour", () => {
+    // malformed, and not worth inventing a meaning for: strip the
+    // comment, drop the stray quote, move on
+    const path = writeEnv(`${A}="unterminated\n`)
+    eq(loadEnvFile(path, [A]), { [A]: "unterminated" })
+})
+
+test("loadEnvFile: an explicitly empty quoted value stays empty", () => {
+    // documented: a key with no value anywhere fails the whole load
+    const path = writeEnv(`${A}=""\n`)
+    eq(loadEnvFile(path, [A]), { [A]: "" })
+})
+
 test("loadEnvFile: whitespace variants and the optional export prefix", () => {
     const path = writeEnv(`  ${A}  =  spaced out  \nexport ${B}=exported\n`)
     eq(loadEnvFile(path, [A, B]), { [A]: "spaced out", [B]: "exported" })

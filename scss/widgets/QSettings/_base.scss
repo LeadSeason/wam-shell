@@ -1,0 +1,102 @@
+@use "active-theme" as t;
+@use "../../conf.scss" as s;
+@use "sass:color";
+
+// The popup shell itself: the card, generic buttons, scales and the shared volume-scale states.
+//
+// Part of the quick settings stylesheet, split from what was a
+// single 1000-line file into the same regions the TSX already has
+// (src/widgets/QSettings/). Every part reopens window#QSettings:
+// sass merges them, and the split is contiguous and in the original
+// order, so cascade behaviour is unchanged.
+window#QSettings {
+    all: unset; // Unset all user provided style. Since we are
+    transition-duration: s.$transition-time;
+
+    .qSettings {
+        background: t.$crust;
+        border-radius: s.$radius;
+        border: solid 2px color.mix(t.$surface0, transparent, 60%);
+        border-top: none; // reads as a stray line right under the bar
+        margin: 5px 12px 12px; // For shadow
+        color: t.$text;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        // uniform rhythm: 8px gutters, 8px between sections
+        padding: 4px 0;
+    }
+    /////////////////////////////////////
+    /// Calendar
+    /////////////////////////////////////
+
+    button {
+        border-radius: s.$radius;
+        margin: s.$padding-small s.$padding;
+        padding: 1px s.$padding;
+        border: solid 2px transparent;
+
+        &:hover {
+            background-color: t.$accent20;
+            border: solid 2px t.$accent20;
+        }
+        &:active {
+            background-color: t.$accent20;
+            border: solid 2px t.$accent30;
+            label {
+                color: t.$accent;
+            }
+        }
+    }
+
+    scale {
+        // the trough is deliberately thin; the padding is what stays
+        // grabbable, and keeps the row the same height it always was
+        padding: .45em .6em;
+        trough {
+            border-radius: 7px;
+            border: 1px solid t.$surface1;
+            background-color: t.$surface0;
+            min-height: s.$slider-height;
+            highlight {
+                background-color: t.$accent;
+                border-radius: 7px;
+            }
+            slider {
+                // no knob: the fill's rounded end is the visual head
+                background-color: transparent;
+                background-image: none;
+                border: none;
+                box-shadow: none;
+                min-height: 0;
+                min-width: 0;
+                margin: 0;
+            }
+        }
+    }
+
+    .volHigh {
+        scale {
+            padding: .45em .6em;
+            trough {
+                border-radius: 7px;
+                border: 1px solid t.$red30;
+                background-color: t.$red20;
+                highlight {
+                    background-color: t.$red;
+                    border-radius: 7px;
+                }
+                slider {
+                    // no knob, matches the flat sliders
+                    background-color: transparent;
+                    background-image: none;
+                    border: none;
+                    box-shadow: none;
+                    min-height: 0;
+                    min-width: 0;
+                    margin: 0;
+                }
+            }
+        }
+        color: t.$red;
+    }
+
+}

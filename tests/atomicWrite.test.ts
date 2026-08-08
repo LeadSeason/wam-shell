@@ -1,27 +1,16 @@
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
 import { readFile } from "ags/file"
-import { test, eq } from "./framework"
+import { test, eq, runAsync as run } from "./framework"
 import { writeFileAtomic } from "../src/lib/atomicWrite"
 
 const TMP = GLib.getenv("WAM_TEST_TMP")!
 
 // writeFileAtomic is async while the framework's test() is sync: each
-// case drives its promises on a nested main loop (metrics-probe.ts
-// pattern) and rethrows the first rejection
-function run(...promises: Promise<unknown>[]) {
-    const loop = new GLib.MainLoop(null, false)
-    let failure: unknown = null
-    Promise.all(promises).then(
-        () => loop.quit(),
-        e => {
-            failure = e
-            loop.quit()
-        },
-    )
-    loop.run()
-    if (failure) throw failure
-}
+// case drives its promises on a nested main loop. That helper started
+// here and now lives in the framework (runAsync), with a timeout — the
+// version here would hang the suite forever on a promise that never
+// settled, which is exactly the bug it would be catching
 
 const namesInTmp = (prefix: string) => {
     const out: string[] = []

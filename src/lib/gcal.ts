@@ -2,10 +2,13 @@ import GLib from "gi://GLib?version=2.0"
 import { createComputed, createState } from "gnim"
 import Config from "../config"
 import { isFile } from "./utils"
+import { configHome } from "./paths"
 import { writeFileAtomic } from "./atomicWrite"
 import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { GoogleAccount, createGoogleAuth, googleRequest } from "./googleAuth"
+import { createRefreshGate } from "./providerCore"
 import { WEEKDAYS } from "./relTime"
+import { registerDispose } from "./lifecycle"
 
 // Google Calendar for the clock popover (Calendar API v3, read-only).
 // Multiple calendars of the account are merged into one event list; the
@@ -18,7 +21,6 @@ import { WEEKDAYS } from "./relTime"
 // or exclusive all-day end dates, both normalized here.
 
 const API = "https://www.googleapis.com/calendar/v3"
-const configHome = `${GLib.getenv("XDG_CONFIG_HOME") || `${GLib.getenv("HOME")}/.config`}/wam-shell`
 const cachePath = `${Config.instanceCacheDir}/gcal-events.json`
 
 // ---------------------------------------------------------------- types
@@ -162,7 +164,6 @@ export const visibleEvents = createComputed(
 // the loaded window: navigation outside it triggers a re-sync
 let loadedFrom = 0 // ms epoch, first covered day
 let loadedTo = 0 // ms epoch, exclusive
-let lastSyncAttempt = 0
 
 // ------------------------------------------------------- pure helpers
 
@@ -183,7 +184,13 @@ function localMidnight(y: number, m: number, d: number): number {
 // events ending exactly at midnight don't spill into that day. A
 // zero-length event covers its start day only. Capped defensively: a
 // broken feed must not produce 10k keys
-export function eventDays(startMs: number, endMs: number, allDay: boolean): string[] {
+//
+// `_allDay` is deliberately unused: the two cases converged once the
+// rule was stated as "the last covered instant is end-1ms", which is
+// true of both. It stays in the signature because callers still have to
+// know which kind they hold to normalize the end in the first place
+// (mapGoogleEvent does), and the tests pass both to pin that they agree
+export function eventDays(startMs: number, endMs: number, _allDay: boolean): string[] {
     if (endMs <= startMs) return [dayKey(startMs)]
     const days: string[] = []
     // end is exclusive for both kinds: the last covered instant is end-1ms
@@ -450,7 +457,7 @@ export function sync(focus?: { y: number; m: number }) {
         return
     }
     syncInFlight = true
-    lastSyncAttempt = Date.now()
+    gate.touch()
     const now = new Date()
     const y = focus?.y ?? now.getFullYear()
     const m = focus?.m ?? now.getMonth()
@@ -517,11 +524,13 @@ export function ensureCoverage(y: number, m: number) {
 }
 
 // stale-while-revalidate on popover open; age-gated so fidgety toggling
-// doesn't burn quota
+// doesn't burn quota. The signed-out check comes first: opening the
+// popover before a sign-in must not consume the gate's window, or the
+// first sync after signing in would be a minute late
+const gate = createRefreshGate(60_000, () => sync())
 export function refresh() {
     if (!active || auth.getAccounts().length === 0) return
-    if (Date.now() - lastSyncAttempt < 60_000) return
-    sync()
+    gate.refresh()
 }
 
 // --------------------------------------------------------------- cache
@@ -589,3 +598,6 @@ export function init() {
     if (auth.getAccounts().length > 0) arm()
     else auth.onAccountAdded(arm)
 }
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("gcal", dispose)

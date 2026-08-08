@@ -14,6 +14,11 @@ import { isFile } from "./utils"
 // - file syntax: `KEY=value` per line, optional `export ` prefix,
 //   optional single/double quotes, `#` comments (full-line, or inline
 //   when preceded by whitespace), surrounding whitespace ignored
+// - QUOTES SUPPRESS COMMENT STRIPPING, like a shell: `KEY="p@ss #1"`
+//   is the seven-character password, not `p@ss`. The two features used
+//   to be applied in the wrong order — comments first, then quotes —
+//   so quoting a value that contained a ` #` silently truncated it and
+//   the provider failed to authenticate with no hint why
 // - a repeated key keeps its LAST value (shell `source` semantics)
 // - a key with no value anywhere (or an empty one, e.g. `KEY=""`)
 //   fails the whole load: null
@@ -41,6 +46,31 @@ export function warnPerms(logTag: string, path: string): void {
     }
 }
 
+/**
+ * The value half of one `KEY=value` line, already trimmed of the
+ * whitespace around it.
+ *
+ * A quoted value is taken verbatim between the quotes: whatever follows
+ * the closing quote is a comment (or junk) and is dropped, and a `#`
+ * INSIDE the quotes is part of the secret. Only an unquoted value gets
+ * the inline-comment treatment, and only when the `#` is preceded by
+ * whitespace — `al#pha` is a password, `alpha # note` is not.
+ *
+ * An unterminated quote is malformed; it keeps the old lenient
+ * behaviour (comment-strip, then drop stray quotes) rather than
+ * inventing a meaning for it.
+ *
+ * Exported for the unit tests.
+ */
+export function parseEnvValue(raw: string): string {
+    const quote = raw[0]
+    if (quote === '"' || quote === "'") {
+        const end = raw.indexOf(quote, 1)
+        if (end > 0) return raw.slice(1, end)
+    }
+    return raw.replace(/\s+#.*$/, "").replace(/^["']|["']$/g, "")
+}
+
 // parse the requested KEY=value pairs out of an env file; null when the
 // file is missing or unreadable. Keys absent from the file are absent
 // from the result — an empty record means "readable, nothing matched".
@@ -60,10 +90,21 @@ export function loadEnvFile(path: string, keys: string[]): Record<string, string
     for (const l of text.split("\n")) {
         const m = l.match(line)
         if (!m) continue
-        // tolerate inline comments and single/double quotes
-        out[m[1]] = m[2].replace(/\s+#.*$/, "").replace(/^["']|["']$/g, "")
+        out[m[1]] = parseEnvValue(m[2])
     }
     return out
+}
+
+/**
+ * The single-secret case: one env var, one env file, one value.
+ *
+ * Three providers (GitHub, Todoist, and every future bearer-token
+ * service) had the same four-line wrapper around `loadCredentials` for
+ * this. `null` when the key is set nowhere.
+ */
+export function loadToken(logTag: string, envKey: string, filePath: string): string | null {
+    const creds = loadCredentials(logTag, [envKey], filePath)
+    return creds ? creds[envKey] : null
 }
 
 // resolve every key from the environment first and the env file second;

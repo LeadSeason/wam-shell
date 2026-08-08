@@ -2,6 +2,7 @@ import { execAsync, timeoutAdd, sourceRemove } from "./metrics"
 import { createState } from "gnim"
 import GLib from "gi://GLib?version=2.0"
 import Config from "../config"
+import { registerDispose } from "./lifecycle"
 
 // Shared hyprsunset state. The daemon runs as a systemd user service
 // (see ~/.config/hypr/user-config.conf), we never kill or spawn it —
@@ -297,3 +298,6 @@ export function setDimLevel(v: number) {
 }
 
 export default { nightLight, outdoor, dim, initialReadDone }
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("hyprsunset", dispose)

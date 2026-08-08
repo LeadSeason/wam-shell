@@ -4,6 +4,7 @@ import AstalHyprland from "gi://AstalHyprland"
 import { connect, disconnect, timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
 import type { Gtk } from "ags/gtk4"
+import { registerDispose } from "./lifecycle"
 
 // Close a popup when keyboard focus leaves the shell entirely. The
 // popup windows used to be keymode EXCLUSIVE, which grabbed the whole
@@ -134,3 +135,6 @@ export function dispose() {
     pickerLayers = 0
     graceUntil = 0
 }
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("popupFocus", dispose)

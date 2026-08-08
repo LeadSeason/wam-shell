@@ -1,14 +1,27 @@
 {
-  "$schema": "https://json.schemastore.org/tsconfig",
-  "compilerOptions": {
-    "jsx": "react-jsx",
-    "jsxImportSource": "ags/gtk4",
-    "lib": [
-      "ES2023"
-    ],
-    "module": "ES2022",
-    "moduleResolution": "Bundler",
-    "strict": true,
-    "target": "ES2020"
-  }
+    "$schema": "https://json.schemastore.org/tsconfig",
+    "compilerOptions": {
+        "jsx": "react-jsx",
+        "jsxImportSource": "ags/gtk4",
+        "lib": ["ES2023"],
+        "module": "ES2022",
+        "moduleResolution": "Bundler",
+        "strict": true,
+        // Beyond `strict`, and worth it because scripts/typecheck.sh
+        // scopes reporting to src/lib, src/config.ts and tests — the
+        // paths where a type error is a real finding. Both of these
+        // catch a class of bug this codebase actually has: unchecked
+        // indexing into /proc field splits and argv, and `catch (e)`
+        // blocks that never read e.
+        //
+        // Not enabled: noUncheckedIndexedAccess. It is the right rule
+        // and it does not survive contact with the JSX layer, whose
+        // prop typings are already incomplete (see typecheck.sh) —
+        // turning it on would bury the covered paths' real findings
+        // under widget noise the gate deliberately filters out.
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noFallthroughCasesInSwitch": true,
+        "target": "ES2020"
+    }
 }
