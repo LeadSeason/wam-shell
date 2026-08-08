@@ -246,6 +246,18 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   destroyed from their own click handlers (a provider's `hide()` calls
   `setItems`). No crash has ever been traced there, so it was left
   alone — but it is where to look first if one is.
+- **There is a THIRD signature, and it is unrelated to the other two**
+  (2026-08-08, issue #223). `gdk_wayland_toplevel_remove_from_session`
+  (gdktoplevel-wayland.c:2893) reached from `gtk_window_destroy` →
+  `window-removed` → `gtk_application_impl_wayland_window_forget`, with
+  `SEGV_MAPERR` — an unmapped address, so a dangling pointer, not a
+  NULL one. `xx_session` is GTK 4.22's new xdg-session-management
+  support. The only JS caller of `Gtk.Window.destroy` is the per-monitor
+  `<For>` cleanup in `app.tsx`, so monitor removal and app teardown are
+  the two candidate paths. Both locals are optimised out in the release
+  build, so identifying the pointer needs a GTK debug build. Do not
+  confuse it with the crossing-event crash: different stack, different
+  cause, and the banner deferral does nothing for it.
 
 ## Typecheck gate
 
