@@ -1,6 +1,21 @@
 import { Gtk } from "ags/gtk4"
 
 /**
+ * Hold or release the `:active` state on a gesture's own widget.
+ *
+ * The primitive under `pressable` below, exported for the widgets that
+ * cannot use it: a notification center row acts on RELEASE (and only if
+ * the press did not land on one of its buttons), so it owns its own
+ * handlers and only borrows the paint.
+ */
+export function paintPress(gesture: Gtk.Gesture, down: boolean) {
+    const widget = gesture.get_widget()
+    if (!widget) return
+    if (down) widget.set_state_flags(Gtk.StateFlags.ACTIVE, false)
+    else widget.unset_state_flags(Gtk.StateFlags.ACTIVE)
+}
+
+/**
  * Signal props for a `Gtk.GestureClick` that also PAINTS the press.
  *
  * GTK sets `:active` on real buttons and nothing else. Everything the
@@ -25,22 +40,16 @@ import { Gtk } from "ags/gtk4"
  *     <Gtk.GestureClick button={1} {...pressable(navigate)} />
  */
 export function pressable(onPress: () => void) {
-    const paint = (gesture: Gtk.Gesture, down: boolean) => {
-        const widget = gesture.get_widget()
-        if (!widget) return
-        if (down) widget.set_state_flags(Gtk.StateFlags.ACTIVE, false)
-        else widget.unset_state_flags(Gtk.StateFlags.ACTIVE)
-    }
     return {
         onPressed: (gesture: Gtk.Gesture) => {
-            paint(gesture, true)
+            paintPress(gesture, true)
             onPress()
         },
         // released is the ordinary click; cancel a grab lost to
         // something else, end a press that was dragged off the widget
         // — miss one and the tile stays lit until the next press
-        onReleased: (gesture: Gtk.Gesture) => paint(gesture, false),
-        onCancel: (gesture: Gtk.Gesture) => paint(gesture, false),
-        onEnd: (gesture: Gtk.Gesture) => paint(gesture, false),
+        onReleased: (gesture: Gtk.Gesture) => paintPress(gesture, false),
+        onCancel: (gesture: Gtk.Gesture) => paintPress(gesture, false),
+        onEnd: (gesture: Gtk.Gesture) => paintPress(gesture, false),
     }
 }
