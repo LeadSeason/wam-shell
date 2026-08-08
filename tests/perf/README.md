@@ -62,6 +62,20 @@ Report-only (never gated): time to first frame, RSS, context switches,
 blocking-ms, HTTP counts. Local runs have real desktop noise — an
 incoming notification, a track change triggering a cover download.
 
+**RSS includes the instrumentation's own retention, and cannot not.**
+The signal-handler leak detector in `src/lib/metrics.ts` keys its
+buckets on the connecting object (`signalBuckets`), so every object that
+ever connected a signal stays strongly referenced until the next
+`metrics reset` — including exactly the objects a leak would strand,
+which is the point: they are the suspects, and a WeakMap would let them
+be collected before they could be counted. The cost is that a measured
+instance's RSS is structurally higher than an uninstrumented one's, and
+grows with churn rather than plateauing. Read RSS as a comparison
+between two legs of the same harness, never as the shell's real
+footprint, and never treat its growth across a churn scenario as
+evidence of a leak on its own — the alive-timer and live-signal counts
+are the gated signals for that, and they are the ones that mean it.
+
 ## Isolation
 
 - Fixture config (`fixtures/config.toml`) sets
