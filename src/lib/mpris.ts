@@ -7,8 +7,9 @@ import { Accessor, createBinding, createComputed, createState, onCleanup } from 
 import { connect, disconnect, execAsync, idleAdd, timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
 import { hyprDispatch } from "./hyprDispatch"
-import { downloadCover } from "./coverArt"
+import { cachedCover, downloadCover } from "./coverArt"
 import { isBrowserThumb, recoverBrowserArt } from "./browserArt"
+import { isFile } from "./utils"
 import { registerDispose } from "./lifecycle"
 
 // Shared MPRIS state + helpers, used by the QS media section and the
@@ -339,22 +340,62 @@ export function dispose() {
 /** cover art url as a state, re-resolving when the track changes.
  *  The binding subscription is tied to the calling component's scope. */
 export function coverState(player: AstalMpris.Player): Accessor<string> {
+    const art = createBinding(player, "artUrl")
     const cover = createBinding(player, "coverArt")
     const title = createBinding(player, "title")
     const [local, setLocal] = createState("")
 
-    const update = () => {
+    // astal's coverArt is only its OWN cache of artUrl, fetched at
+    // whatever size the player happened to publish — which is 320px far
+    // more often than not. Reading it was quietly making artCandidates
+    // dead code: every url arrived already resolved to a local path, so
+    // nothing ever asked a cdn for the size the backdrop actually
+    // needs, and the backdrop blurred (isSmallCover) on art that had a
+    // bigger version one request away. Resolve artUrl ourselves, and
+    // keep coverArt as the fallback for the schemes it handles and we
+    // do not (data:image, and players that only expose a local file).
+    const fallback = () => {
         const url = cover.get()
-        if (!url) return setLocal("")
-        // astal gives bare paths (no file:// scheme) for local art
-        if (url.startsWith("/")) return setLocal(`file://${url}`)
-        if (!url.startsWith("http")) return setLocal(url)
-        setLocal("")
+        if (!url) return ""
+        // astal gives bare paths (no file:// scheme) for local art, and
+        // does not re-check the file is still there. Chromium deletes
+        // its temp thumbnails on track change, so a dead path would
+        // render as a blank card that is not even styled as one:
+        // isSmallCover reads false for a missing file, so it loses the
+        // blur AND the noArt gradient
+        if (url.startsWith("/")) return isFile(url) ? `file://${url}` : ""
+        return url
+    }
+
+    // the title the recovery has already upgraded the art for. Chromium
+    // re-emits its thumbnail path on its own schedule, and update()
+    // would otherwise put the 150px copy back over the recovered
+    // full-size one — the same track blurring and unblurring on every
+    // notify
+    let upgradedFor: string | null = null
+
+    const update = () => {
+        if (upgradedFor !== null && upgradedFor === title.get()) return
+        // past the guard we are about to render whatever the player
+        // currently reports, so the recovered art is no longer what is
+        // on screen: leaving the title set would short-circuit the
+        // update that switches BACK to it later and keep the other
+        // track's cover
+        upgradedFor = null
+        const url = art.get() || ""
+        if (!url.startsWith("http")) return setLocal(fallback())
+
+        const cached = cachedCover(url)
+        if (cached) return setLocal(cached)
+        // astal's copy is already downloaded far more often than not:
+        // show it rather than the noArt gradient while the bigger one
+        // is on its way
+        setLocal(fallback())
         downloadCover(url)
             .then(path => {
                 // a track change during the download must not let the
                 // older cover overwrite the newer one
-                if (cover.get() === url) setLocal(`file://${path}`)
+                if (art.get() === url) setLocal(`file://${path}`)
             })
             .catch(e => console.warn("cover download failed:", e))
     }
@@ -365,21 +406,50 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
     // thumbnail. The small copy is already on screen by now (update
     // above ran first): this only ever swaps in something better, and a
     // miss leaves what is there.
+    //
+    // A missed lookup is retried on a slow ramp rather than written off.
+    // Retrying on the notify storm would be useless: the whole storm
+    // lands within milliseconds of the track starting, which is exactly
+    // when chrome has not committed the history row yet. Budget matches
+    // MAX_MISSES in browserArt (one lookup plus these two).
+    const RETRY_DELAYS_MS = [1500, 4000]
+    let attemptedTitle: string | null = null
+    let retries = 0
+    let retryTimer = 0
+
     const recover = () => {
         const artUrl = cover.get()
         if (!artUrl || !isBrowserThumb(artUrl)) return
         const forTitle = title.get()
+        // a new track gets its own retry budget
+        if (forTitle !== attemptedTitle) {
+            attemptedTitle = forTitle
+            retries = 0
+        }
         // the pair we resolved for must still be the pair on screen when
         // the lookup and the download come back
         const stale = () => cover.get() !== artUrl || title.get() !== forTitle
         recoverBrowserArt(forTitle)
             .then(found => {
-                if (!found || stale()) return
+                if (stale()) return
+                if (!found) return scheduleRetry()
                 return downloadCover(found).then(path => {
-                    if (!stale()) setLocal(`file://${path}`)
+                    if (stale()) return
+                    upgradedFor = forTitle
+                    setLocal(`file://${path}`)
                 })
             })
             .catch(e => console.warn("browser art recovery failed:", e))
+    }
+
+    const scheduleRetry = () => {
+        if (retryTimer || retries >= RETRY_DELAYS_MS.length) return
+        const delay = RETRY_DELAYS_MS[retries++]
+        retryTimer = timeoutAdd("mpris:artRetry", GLib.PRIORITY_DEFAULT_IDLE, delay, () => {
+            retryTimer = 0
+            recover()
+            return GLib.SOURCE_REMOVE
+        })
     }
 
     // one mpris metadata update arrives as a separate notify per
@@ -397,6 +467,7 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
         })
     }
 
+    onCleanup(art.subscribe(update))
     onCleanup(cover.subscribe(update))
     update()
 
@@ -407,6 +478,7 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
         onCleanup(title.subscribe(scheduleRecover))
         onCleanup(() => {
             if (pending) sourceRemove(pending)
+            if (retryTimer) sourceRemove(retryTimer)
         })
         scheduleRecover()
     }
