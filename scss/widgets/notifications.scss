@@ -62,6 +62,13 @@
             background-color: t.$accent20;
             border: solid 2px t.$accent20;
         }
+        // these are real buttons, so :active was live all along — just
+        // never styled, which left dismissing or answering a
+        // notification as unacknowledged as everything else here
+        &:active {
+            background-color: t.$accent40;
+            border: solid 2px t.$accent40;
+        }
     }
 
     button.dismiss {
@@ -345,6 +352,11 @@ window.Notifications {
         &:hover {
             background: t.$accent20;
         }
+        // the zone's rows start filled, so the press has to clear the
+        // fill they already carry, not the plain row's
+        &:active {
+            background: t.$accent40;
+        }
     }
 
     .filter {
@@ -365,10 +377,15 @@ window.Notifications {
 
         @include row-buttons;
 
-        // the row is not a card. Hover is the only paint it gets, which
-        // is what keeps a list of twelve from reading as banding
+        // the row is not a card. Hover is the only paint it gets at
+        // rest, which is what keeps a list of twelve from reading as
+        // banding; the press is a moment, not a state, so it can take
+        // a heavier fill without the list ever wearing it
         &:hover {
             background: t.$surface050;
+        }
+        &:active {
+            background: t.$surface1;
         }
 
         .appIcon {
