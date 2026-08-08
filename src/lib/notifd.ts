@@ -2,7 +2,7 @@ import AstalNotifd from "gi://AstalNotifd?version=0.1"
 import Gio from "gi://Gio?version=2.0"
 import GLib from "gi://GLib?version=2.0"
 import { Accessor, createBinding, createState } from "gnim"
-import { connect, disconnect, timeoutAdd, sourceRemove } from "./metrics"
+import { connect, disconnect, idleAdd, timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
 import type { ProviderItem } from "./notificationProviders"
 import { registerDispose } from "./lifecycle"
@@ -166,8 +166,66 @@ function cancelExpire(key: string) {
     sourceRemove(src)
 }
 
+// Removals asked for from inside a gesture handler: key -> GLib source.
+//
+// Destroying the widget GTK is currently delivering an event to is the
+// shape behind GNOME/gtk#3090: crossing-event synthesis holds the old
+// hover target across the dispatch, and recycling that widget mid-flight
+// leaves the pointer stale — `gtk_synthesize_crossing_events` then walks
+// freed memory. Both of the 2026-08-06 segfaults landed there.
+//
+// A banner is exactly that shape. removePopup runs synchronously through
+// the popups state and the <For> above it, so clicking a banner to
+// dismiss it destroys the very widget the click is being delivered to,
+// while the pointer is still inside it. One idle turn puts the teardown
+// after GTK has finished with the event.
+//
+// This is a dodge, not a fix — the bug is upstream and open, and it was
+// never reproduced here (a 210-round hover/expiry/dismiss soak came back
+// clean), so treat it as removing a known hazard rather than as a closed
+// case. It costs one idle turn of latency on a banner that is about to
+// animate away regardless.
+//
+// Tracked like `expiring` above, and for the same reason it had to be:
+// an untracked source outlives dispose() and fires against a torn-down
+// module.
+const deferredRemoval = new Map<string, number>()
+
+function cancelDeferred(key: string) {
+    const src = deferredRemoval.get(key)
+    if (src === undefined) return
+    deferredRemoval.delete(key)
+    sourceRemove(src)
+}
+
+/**
+ * `removePopup`, for callers inside a gesture or click handler.
+ *
+ * Idempotent and coalescing: a second click on the same banner before
+ * the idle runs is a no-op, and any other path removing the key first
+ * cancels the pending source.
+ *
+ * A re-add landing inside the pending window cannot resurrect the wrong
+ * banner, which is the race this looks like it has: while the removal is
+ * queued the entry is still in `popupsState`, so `addPopup` rejects the
+ * key outright, and once the idle has run the map entry is already gone.
+ * The two states never overlap.
+ */
+export function removePopupDeferred(key: string) {
+    if (deferredRemoval.has(key)) return
+    const src = idleAdd("notifd:removePopupDeferred", GLib.PRIORITY_DEFAULT_IDLE, () => {
+        // dropped before removePopup so its cancelDeferred cannot try to
+        // sourceRemove the source it is running inside
+        deferredRemoval.delete(key)
+        removePopup(key)
+        return GLib.SOURCE_REMOVE
+    })
+    deferredRemoval.set(key, src)
+}
+
 export function removePopup(key: string) {
     cancelExpire(key)
+    cancelDeferred(key)
     if (timers.delete(key)) bumpTimerVersion()
     setPopups(popupsState.get().filter(p => p.key !== key))
     forgetFinishedApps()
@@ -457,9 +515,17 @@ const notifiedId = connect(notifd, "notified", (_s: AstalNotifd.Notifd, id: numb
     addPopup({ key: `desktop:${id}`, desktop: n, item: null }, n.urgency, n.expireTimeout ?? -1)
 })
 
-// dismissed/expired elsewhere (center, app) -> drop the banner too
+// dismissed/expired elsewhere (center, app) -> drop the banner too.
+//
+// Deferred, because this is the funnel the banner's own buttons come
+// back through: onDismiss calls desktop.dismiss() and onAction calls
+// desktop.invoke(), and astal emits "resolved" synchronously inside
+// both — so a click on a banner reaches removePopup through HERE, still
+// inside GTK's dispatch to that banner, whatever the caller in
+// PopupRow does. Deferring only the call in PopupRow would have looked
+// like a fix and changed nothing.
 const resolvedId = connect(notifd, "resolved", (_s: AstalNotifd.Notifd, id: number) =>
-    removePopup(`desktop:${id}`),
+    removePopupDeferred(`desktop:${id}`),
 )
 
 export function dispose() {
@@ -467,10 +533,13 @@ export function dispose() {
         sourceRemove(tickSource)
         tickSource = null
     }
-    // collapse animations still in flight would otherwise fire
-    // removePopup on a module that is already down
+    // collapse animations still in flight, and removals deferred out of
+    // a gesture handler, would otherwise fire removePopup on a module
+    // that is already down
     for (const src of expiring.values()) sourceRemove(src)
     expiring.clear()
+    for (const src of deferredRemoval.values()) sourceRemove(src)
+    deferredRemoval.clear()
     disconnect(notifd, notifiedId)
     disconnect(notifd, resolvedId)
 }

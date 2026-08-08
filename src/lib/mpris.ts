@@ -135,6 +135,58 @@ export function playPauseExclusive(player: AstalMpris.Player) {
     player.play_pause()
 }
 
+// ---------------------------------------------------------------- loop
+//
+// The loop control is a THREE-state cycle drawn on one button, which is
+// only usable if the button says which of the three it is in. It used to
+// draw media-playlist-repeat for all of them, with an "active" tint that
+// was identical for Track and Playlist — so the two modes that actually
+// differ were the two you could not tell apart, and the only way to find
+// out was to click through and listen.
+//
+// One definition here rather than one per surface: the cycle was already
+// written out twice, identically, in mediaPopup and MediaSection, which
+// is the shape that lets two views of one control drift apart.
+
+/** the icon for a loop mode — Track gets the glyph with the "1" on it */
+export function loopIcon(loop: AstalMpris.Loop): string {
+    return loop === AstalMpris.Loop.TRACK
+        ? "media-playlist-repeat-song-symbolic"
+        : "media-playlist-repeat-symbolic"
+}
+
+/** what the mode is called, for the tooltip: the glyphs differ by a
+ *  single small numeral, which is not much to go on at 16px */
+export function loopLabel(loop: AstalMpris.Loop): string {
+    switch (loop) {
+        case AstalMpris.Loop.TRACK:
+            return "Repeat: this track"
+        case AstalMpris.Loop.PLAYLIST:
+            return "Repeat: playlist"
+        default:
+            return "Repeat: off"
+    }
+}
+
+/** is looping engaged at all — the accent cue both surfaces paint */
+export function loopActive(loop: AstalMpris.Loop): boolean {
+    return loop === AstalMpris.Loop.TRACK || loop === AstalMpris.Loop.PLAYLIST
+}
+
+/** advance the cycle: none → track → playlist → none */
+export function cycleLoop(player: AstalMpris.Player) {
+    switch (player.loopStatus) {
+        case AstalMpris.Loop.NONE:
+            player.loopStatus = AstalMpris.Loop.TRACK
+            break
+        case AstalMpris.Loop.TRACK:
+            player.loopStatus = AstalMpris.Loop.PLAYLIST
+            break
+        default:
+            player.loopStatus = AstalMpris.Loop.NONE
+    }
+}
+
 // app database for the fuzzy name match, built on first use
 let appDb: AstalApps.Apps | null = null
 

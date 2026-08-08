@@ -223,9 +223,79 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 - The lead that leaves: crossing-event synthesis running over a widget
   tree that changed underneath it. Banner rows are destroyed from inside
   gesture handlers (`removePopup` during a click), which is the shape
-  that produces this. Not proven, and a 210-round hover/expiry/dismiss
-  soak did not reproduce it, so nothing has been changed on the strength
-  of it.
+  that produces this. It matches a known upstream bug —
+  [GNOME/gtk#3090](https://gitlab.gnome.org/GNOME/gtk/-/issues/3090),
+  open: GTK keeps the old hover target across a dispatch, and a widget
+  recycled mid-flight leaves that pointer stale.
+- **Removing a banner from inside a click is therefore deferred one idle
+  turn** (`removePopupDeferred` in `lib/notifd`). Still not reproduced —
+  the 210-round soak came back clean — so this removes a known hazard
+  rather than closing a case; do not record it as the fix.
+  Two things about it are easy to get wrong:
+  - The banner's own buttons do not reach `removePopup` through
+    `PopupRow`. `desktop.dismiss()` and `desktop.invoke()` make astal
+    emit `resolved` **synchronously**, and that handler removes the
+    popup — so deferring only the call in `PopupRow` looks like a fix
+    and changes nothing. The `resolved` handler is the funnel.
+  - Deferred sources must be tracked and cleared in `dispose()`, like
+    `expiring` already is, or they fire against a torn-down module.
+  Use plain `removePopup` from timers and async callbacks (todoist's
+  `complete()` runs from a Soup callback and is correctly synchronous);
+  use the deferred one from anything reachable by a click.
+- Same shape, not changed: the notification CENTER's rows are also
+  destroyed from their own click handlers (a provider's `hide()` calls
+  `setItems`). No crash has ever been traced there, so it was left
+  alone — but it is where to look first if one is.
+- **There is a THIRD signature, and it is unrelated to the other two**
+  (2026-08-08, issue #223). `gdk_wayland_toplevel_remove_from_session`
+  (gdktoplevel-wayland.c:2893) reached from `gtk_window_destroy` →
+  `window-removed` → `gtk_application_impl_wayland_window_forget`, with
+  `SEGV_MAPERR` — an unmapped address, so a dangling pointer, not a
+  NULL one. `xx_session` is GTK 4.22's new xdg-session-management
+  support. Do not confuse it with the crossing-event crash: different
+  stack, different cause, and the banner deferral does nothing for it.
+
+  **It reproduces 100% in one cycle, and the trigger is MONITOR REMOVAL,
+  not teardown:**
+
+      hyprctl output create headless
+      sleep 2
+      hyprctl output remove HEADLESS-1   # shell is dead here
+
+  No physical display involved, so it is safe to run on a laptop — and
+  it means any monitor going away (undock, unplug, output reconfigure)
+  takes the shell down. The graceful-quit path was tested and does NOT
+  reproduce it: two clean `ags quit` cycles exited 0 with no core, so
+  the teardown-ordering theory was wrong. The path is the per-monitor
+  `<For>` cleanup in `app.tsx` — the only JS caller of
+  `Gtk.Window.destroy` besides teardown.
+
+  **Do not try to fix it by reordering the teardown.** `set_application
+  (null)` before `destroy()` was tested and crashes identically, one
+  frame earlier (`gtk_window_set_application` instead of
+  `gtk_window_destroy`) — it emits `window-removed` too. The toplevel is
+  already freed before any JS cleanup runs, so hiding first or deferring
+  to an idle are worse, not better. The only shell-side avenue left is
+  keeping the per-monitor windows out of the `Gtk.Application` entirely,
+  since the crash comes through the app's `window-removed` emission —
+  and that is a real change, not a teardown tweak.
+
+  When testing a candidate, check `ags list` between cycles: once the
+  shell has crashed, further cycles are silent no-ops that look like a
+  pass.
+- **A FOURTH signature** (2026-08-07, issue #225):
+  `astal_hyprland_hyprland_get_default` → `g_io_stream_get_input_stream`
+  on a NULL stream. astal reads from the Hyprland IPC connection without
+  checking the connect succeeded, so a missing or not-yet-ready socket
+  segfaults the process at STARTUP. Three cores 71 seconds apart is what
+  it looks like: crash, restart, socket still not ready, crash. It is a
+  segfault inside the library, so wrapping `get_default()` in a
+  `try`/`catch` does nothing. Distinct from #70, which was the socket
+  NOISE from the same area, not a crash.
+- Four signatures, four different causes. Classify a new core by its
+  frame 0 before assuming it is one of the known ones — the first
+  instinct on the 2026-08-08 crash was that it was the crossing-event
+  bug, and it was not.
 
 ## Typecheck gate
 

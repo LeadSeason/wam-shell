@@ -14,9 +14,13 @@ import {
     activePlayer,
     bindSeekScale,
     coverState,
+    cycleLoop,
     eligiblePlayers,
     formatTime,
     lengthState,
+    loopActive,
+    loopIcon,
+    loopLabel,
     overrideActivePlayer,
     playPauseExclusive,
     positionState,
@@ -102,22 +106,8 @@ function PopupContent({ player }: { player: AstalMpris.Player }) {
     const shuffleClass = createBinding(player, "shuffleStatus").as(s =>
         s === AstalMpris.Shuffle.ON ? ["active"] : [""],
     )
-    const loopClass = createBinding(player, "loopStatus").as(l =>
-        l === AstalMpris.Loop.TRACK || l === AstalMpris.Loop.PLAYLIST ? ["active"] : [""],
-    )
-
-    function cycleLoop() {
-        switch (player.loopStatus) {
-            case AstalMpris.Loop.NONE:
-                player.loopStatus = AstalMpris.Loop.TRACK
-                break
-            case AstalMpris.Loop.TRACK:
-                player.loopStatus = AstalMpris.Loop.PLAYLIST
-                break
-            default:
-                player.loopStatus = AstalMpris.Loop.NONE
-        }
-    }
+    const loop = createBinding(player, "loopStatus")
+    const loopClass = loop.as(l => (loopActive(l) ? ["active"] : [""]))
 
     return (
         <box
@@ -190,12 +180,11 @@ function PopupContent({ player }: { player: AstalMpris.Player }) {
             <box cssClasses={["controls"]} spacing={6} halign={Gtk.Align.CENTER}>
                 <button
                     cssClasses={loopClass}
-                    sensitive={createBinding(player, "loopStatus").as(
-                        l => l !== AstalMpris.Loop.UNSUPPORTED,
-                    )}
-                    onClicked={cycleLoop}
+                    sensitive={loop.as(l => l !== AstalMpris.Loop.UNSUPPORTED)}
+                    tooltipText={loop.as(loopLabel)}
+                    onClicked={() => cycleLoop(player)}
                 >
-                    <image iconName="media-playlist-repeat-symbolic" />
+                    <image iconName={loop.as(loopIcon)} />
                 </button>
                 <button
                     onClicked={() => player.previous()}
