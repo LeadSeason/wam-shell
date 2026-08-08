@@ -81,6 +81,12 @@ window.Bar {
             background-color: t.$accent20;
             border: solid 2px t.$accent40;
         }
+        // the pill opens a popup, which takes a moment to slide in; the
+        // press is the only thing that can answer in the meantime
+        &:active {
+            background-color: t.$accent40;
+            border: solid 2px t.$accent60;
+        }
 
         .mediaProgress {
             color: t.$accent;
@@ -91,6 +97,9 @@ window.Bar {
             border-radius: s.$radius;
             &:hover {
                 background-color: t.$accent10;
+            }
+            &:active {
+                background-color: t.$accent30;
             }
             &:disabled {
                 opacity: 0.35;
@@ -122,6 +131,13 @@ window.Bar {
             background-color: t.$accent20;
             border: solid 2px t.$accent40;
         }
+        // same as the media pill: the press answers the click while the
+        // popup is still on its way. The border stays out of it here —
+        // .running paints it in the brand colour, and a press must not
+        // read as the timer changing state
+        &:active {
+            background-color: t.$accent40;
+        }
 
         // Harvest brand color (theme variable, default #fa5d00)
         .harvestIcon {
@@ -134,6 +150,9 @@ window.Bar {
             border-radius: s.$radius;
             &:hover {
                 background-color: t.$accent10;
+            }
+            &:active {
+                background-color: t.$accent30;
             }
             &:disabled {
                 opacity: 0.35;
