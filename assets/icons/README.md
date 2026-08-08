@@ -15,7 +15,48 @@ When adding new `-symbolic` icon names to the code, copy the matching
 SVGs here (keep the category dirs + `index.theme` in sync — contexts
 must be standard: actions, status, devices, apps, categories,
 mimetypes, places, emblems; non-standard ones like Adwaita's
-`legacy`/`ui` do not resolve).
+`legacy`/`ui` do not resolve — `pan-start`/`pan-end` live in Adwaita's
+`ui` and are filed under `actions` here).
+
+## Which names belong here: reachability, not grep
+
+A name belongs in this directory if the shell can ever **ask** for it,
+which is not the same as it appearing as a literal in `src/`. Four
+sources produce names no grep will find, and everything they can emit
+has to be bundled:
+
+| source | family |
+| --- | --- |
+| `AstalBattery.batteryIconName` | `battery-*` (36 of them) |
+| `AstalNetwork` `wifi`/`wired`/`ap` `.iconName` | `network-wireless-*`, `network-wired-*`, `network-offline` |
+| `AstalWp` `volumeIcon` | `audio-volume-*`, `microphone-sensitivity-*` |
+| BlueZ `device.icon` (device class) | `phone`, `printer`, `camera-photo`, `input-*`, `audio-headset`, `computer`, … |
+
+Two more that grep misses for different reasons: `power-profile-*` is
+built by interpolation (`power-profile-${v}-symbolic`), and the SCSS
+reaches icons through `-gtk-icontheme()`, so `scss/` counts as a
+reference site alongside `src/`.
+
+Verify both directions rather than eyeballing it. The useful check is
+whether the bundle covers everything **on its own** — build a
+`Gtk.IconTheme` whose search path is only this directory, set the theme
+name to `hicolor`, and `has_icon` every referenced name. With the system
+theme on the search path a gap is invisible, because Adwaita quietly
+fills it on your machine and not on someone else's.
+
+That check found eleven core names referenced and never bundled —
+`battery`, `dialog-warning`, `network-wireless`, `network-transmit-receive`,
+`video-display`, the three `audio-*` device icons, `open-menu`,
+`pan-start` and `pan-end`. Going the other way, seven had no producer at
+all and were removed: `avatar-default` (the header falls back to
+`os_icon`, not this), `starred`, `non-starred`, `folder`,
+`media-playlist-consecutive`, and `weather-clear-night` and
+`dialog-information`, both orphaned when the toggles that used them got
+better icons.
+
+`image-missing-symbolic` stays despite having no reference: GTK draws it
+when a lookup fails, which is exactly when this directory is doing its
+job.
 
 `harvest-symbolic.svg` is an exception: an original drawing (the
 Harvest "H" mark), not an Adwaita copy.
