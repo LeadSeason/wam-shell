@@ -269,6 +269,20 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   the teardown-ordering theory was wrong. The path is the per-monitor
   `<For>` cleanup in `app.tsx` — the only JS caller of
   `Gtk.Window.destroy` besides teardown.
+
+  **Do not try to fix it by reordering the teardown.** `set_application
+  (null)` before `destroy()` was tested and crashes identically, one
+  frame earlier (`gtk_window_set_application` instead of
+  `gtk_window_destroy`) — it emits `window-removed` too. The toplevel is
+  already freed before any JS cleanup runs, so hiding first or deferring
+  to an idle are worse, not better. The only shell-side avenue left is
+  keeping the per-monitor windows out of the `Gtk.Application` entirely,
+  since the crash comes through the app's `window-removed` emission —
+  and that is a real change, not a teardown tweak.
+
+  When testing a candidate, check `ags list` between cycles: once the
+  shell has crashed, further cycles are silent no-ops that look like a
+  pass.
 - **A FOURTH signature** (2026-08-07, issue #225):
   `astal_hyprland_hyprland_get_default` → `g_io_stream_get_input_stream`
   on a NULL stream. astal reads from the Hyprland IPC connection without
