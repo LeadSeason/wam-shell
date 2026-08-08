@@ -1,12 +1,15 @@
 @use "active-theme" as t;
 @use "../conf.scss" as s;
+@use "../ui.scss" as u;
 
+// Tooltips are drawn by GTK outside every shell window, so they get the
+// surface treatment explicitly. Body size: this was 18px — the only
+// absolute font size in the tree, and half again the size of the text
+// it was explaining.
 tooltip {
+    @include u.surface(t.$mantle, s.$radius);
+    background-clip: border-box;
     margin: s.$padding;
     padding: s.$padding;
-    font-size: 18px;
-    background-color: t.$mantle;
-    background-clip: border-box;
-    border-radius: s.$radius;
-    border: 1.6px solid t.$surface0;
+    font-size: 1em;
 }

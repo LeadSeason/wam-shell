@@ -1,0 +1,389 @@
+@use "active-theme" as t;
+@use "conf.scss" as s;
+@use "sass:color";
+
+// The shell's shared appearance, as mixins.
+//
+// `conf.scss` holds the numbers; this holds what the numbers ADD UP TO —
+// what a popup looks like, what a button does under the pointer, what a
+// list row does. Widget sheets include these rather than restating them,
+// which is the only thing that keeps five surfaces looking like one
+// shell: before this file the tree had four popup silhouettes, five
+// button hover vocabularies and three unrelated slider designs, all of
+// them individually reasonable and none of them the same.
+//
+// When a widget genuinely needs to differ, override AFTER the include
+// and say why. A deliberate exception reads as one; a fresh literal
+// reads as drift.
+
+// ---------------------------------------------------------------- lines
+//
+// Two greys, and the distinction matters: a FRAME goes around a surface,
+// a RULE goes between two things inside one.
+$border-color: color.mix(t.$surface0, transparent, 60%);
+$rule-color: color.mix(t.$surface0, transparent, 45%);
+
+// One shadow for every floating surface. Popups used to carry three
+// different ones, which made the notification center look like it was
+// hovering a centimetre above the quick settings beside it.
+$shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+
+// --------------------------------------------------------- interaction
+//
+// One pointer vocabulary, spent two ways:
+//
+//   accent  is FEEDBACK on something that has no state of its own — a
+//           button. Hover is accent20, a press is accent40.
+//   surface is feedback on something that DOES carry state — a list row,
+//           a workspace, a tile that can be on. Accent is reserved there
+//           for saying "this one is the active one", so the pointer has
+//           to speak in a different colour or the two collide.
+$hover-accent: t.$accent20;
+$press-accent: t.$accent40;
+$hover-surface: t.$surface050;
+$press-surface: t.$surface1;
+
+// ============================================================ surfaces
+
+/// A floating window: quick settings, a popover, a toast, a dialog.
+/// Everything that appears over the desktop has this silhouette.
+@mixin surface($bg: t.$crust, $radius: s.$radius-large) {
+    background: $bg;
+    color: t.$text;
+    border-radius: $radius;
+    border: solid s.$border $border-color;
+    box-shadow: $shadow;
+}
+
+/// A card INSIDE a surface: a pane's list, a stat tile, the media card.
+/// One step lighter than the popup it sits on, no border, no shadow —
+/// depth is the popup's job, and a card that also framed itself turned
+/// every pane into a stack of boxes in boxes.
+@mixin card($bg: t.$base, $padding: s.$card-padding) {
+    background-color: $bg;
+    border-radius: s.$radius;
+    padding: $padding;
+}
+
+// ============================================================= buttons
+
+/// The default button: no frame at rest, accent under the pointer.
+/// Used wherever a button sits among others in a row or a popup.
+@mixin button-quiet($padding: s.$btn-padding) {
+    background-color: transparent;
+    border: solid s.$border transparent;
+    border-radius: s.$radius;
+    padding: $padding;
+
+    &:hover {
+        background-color: $hover-accent;
+        border-color: $hover-accent;
+    }
+    // A press has to differ from a hover by more than a border shade:
+    // the pointer is already on the button when the click lands, so if
+    // the border is the only thing that moves, the click reads as
+    // nothing having happened.
+    &:active {
+        background-color: $press-accent;
+        border-color: $press-accent;
+    }
+    &:disabled {
+        opacity: s.$disabled-opacity;
+    }
+}
+
+/// A button that is framed at rest, so it reads as clickable when it is
+/// the only thing on that line — the bar's media and harvest pills, a
+/// pane's action buttons, a sign-in offer.
+@mixin button-framed($padding: s.$btn-padding) {
+    @include button-quiet($padding);
+    background-color: t.$surface050;
+    border-color: t.$accent20;
+
+    &:hover {
+        border-color: t.$accent40;
+    }
+    &:active {
+        border-color: t.$accent60;
+    }
+}
+
+/// The primary action on a surface: filled, one per surface at most.
+@mixin button-accent($padding: s.$btn-padding-lg) {
+    @include button-quiet($padding);
+    background-color: t.$accent50;
+    border-color: t.$accent50;
+
+    &:hover {
+        background-color: t.$accent70;
+        border-color: t.$accent70;
+    }
+    &:active {
+        background-color: t.$accent90;
+        border-color: t.$accent90;
+    }
+}
+
+/// Icon-only, no label: square, with a floor under both dimensions so it
+/// stays square whatever the glyph inside it happens to measure. A
+/// letterbox around a magnifier is what `padding: 0 5px` produces.
+@mixin icon-button {
+    @include button-quiet(s.$btn-padding-icon);
+    min-width: s.$icon + 2 * s.$gap-small;
+    min-height: s.$icon + 2 * s.$gap-small;
+}
+
+/// One of a set you pick from: rounded ends, dimmed until chosen.
+@mixin chip {
+    @include button-quiet(s.$chip-padding);
+    border-radius: s.$radius-pill;
+    opacity: s.$quiet-opacity;
+
+    &:hover {
+        opacity: 1;
+    }
+    &.active {
+        opacity: 1;
+        background-color: $press-accent;
+        border-color: $press-accent;
+    }
+}
+
+/// A keyboard focus ring, for the surfaces that are actually driven by
+/// one (the launcher, the dialog, text fields).
+@mixin focus-ring {
+    &:focus,
+    &:focus-within {
+        border-color: t.$accent;
+    }
+}
+
+// ================================================================ rows
+
+/// A row in a list. Not a card: no fill at rest, so twelve of them read
+/// as a list rather than as banding. The pointer paints in surface, not
+/// accent — accent means "this is the selected one" (see `.active`).
+@mixin row($padding: s.$row-padding) {
+    padding: $padding;
+    border-radius: s.$radius;
+    background-color: transparent;
+
+    &:hover {
+        background-color: $hover-surface;
+    }
+    // A press is a moment, not a state, so it can take a heavier fill
+    // than the list would ever want to wear.
+    &:active {
+        background-color: $press-surface;
+    }
+}
+
+/// The one row in a list that is currently in effect.
+@mixin row-active {
+    background-color: t.$accent20;
+
+    &:hover {
+        background-color: t.$accent30;
+    }
+}
+
+// =============================================================== type
+
+/// A group label — "Paired", "Needs you", "Today". It names the region
+/// beneath it and then gets out of the way, so it is small, lettered
+/// wide and set in the dim foreground rather than competing with the
+/// names it sits above.
+@mixin eyebrow {
+    font-size: s.$font-small;
+    font-weight: s.$weight-medium;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: t.$subtext0;
+}
+
+/// The same label with a rule under it, for lists long enough that the
+/// heading alone stops separating anything.
+@mixin eyebrow-rule {
+    @include eyebrow;
+    padding-bottom: s.$gap-small;
+    border-bottom: solid s.$hairline $rule-color;
+}
+
+/// A window, card or pane title.
+@mixin title {
+    font-size: s.$font-title;
+    font-weight: s.$weight-bold;
+}
+
+/// The one big number a surface exists to show.
+@mixin display {
+    font-size: s.$font-display;
+    font-weight: s.$weight-bold;
+}
+
+/// A secondary line under a name: what the row is, rather than what it
+/// is called.
+@mixin subtitle {
+    font-size: s.$font-small;
+    color: t.$subtext0;
+}
+
+// ============================================================== inputs
+
+/// The shell's one slider. No knob: the fill's rounded end IS the head,
+/// which is what lets the trough get thin without the control shrinking
+/// — the scale's padding is what stays grabbable.
+@mixin slider($height: s.$slider-height, $fill: t.$accent) {
+    padding: 0.45em 0.6em;
+
+    trough {
+        border-radius: s.$radius-pill;
+        border: solid s.$hairline t.$surface1;
+        background-color: t.$surface0;
+        min-height: $height;
+
+        highlight {
+            background-color: $fill;
+            border-radius: s.$radius-pill;
+            transition: background-color s.$transition-slow;
+        }
+        slider {
+            background-color: transparent;
+            background-image: none;
+            border: none;
+            box-shadow: none;
+            min-height: 0;
+            min-width: 0;
+            margin: 0;
+        }
+    }
+}
+
+/// A READOUT, not a control, and it has to look like one. No track: only
+/// the fill is drawn, so it floats rather than sitting in a groove, and
+/// it is thinner than whatever slider it reports on. A full-width track
+/// here reads as a second, dead slider.
+@mixin meter($fill: t.$teal) {
+    min-height: s.$meter-height;
+
+    trough {
+        background-color: transparent;
+        min-height: s.$meter-height;
+    }
+    block.filled {
+        background-color: $fill;
+        border-radius: s.$radius-pill;
+        min-height: s.$meter-height;
+    }
+}
+
+/// Gtk.Switch. The theme does `all: unset`, so this is invisible without
+/// an explicit style.
+@mixin switch {
+    background-color: t.$surface0;
+    border: solid s.$hairline t.$surface1;
+    border-radius: s.$radius-pill;
+
+    slider {
+        background-color: t.$text;
+        border-radius: s.$radius-pill;
+        min-width: 14px;
+        min-height: 14px;
+        margin: s.$padding-small;
+    }
+    &:checked {
+        background-color: t.$accent;
+        slider {
+            background-color: t.$base;
+        }
+    }
+    &:disabled {
+        opacity: s.$disabled-opacity;
+    }
+}
+
+/// Gtk.CheckButton's indicator. The shell's one checkbox — an icon pair
+/// swapped by hand is a second design that then has to be kept in step.
+@mixin checkbox {
+    check {
+        min-width: s.$icon;
+        min-height: s.$icon;
+        border-radius: s.$radius-small;
+        border: solid s.$border t.$surface1;
+        background-color: t.$surface0;
+        color: transparent;
+    }
+    &:checked check {
+        background-color: t.$accent;
+        border-color: t.$accent;
+        color: t.$base;
+        -gtk-icon-source: -gtk-icontheme("object-select-symbolic");
+    }
+    &:disabled {
+        opacity: 1; // display-only checkboxes are not "unavailable"
+    }
+}
+
+/// A text field, on any background. A clear boundary, or an entry reads
+/// as a plain label until you happen to click it.
+@mixin text-field {
+    background-color: t.$surface0;
+    border: solid s.$border t.$surface1;
+    border-radius: s.$radius;
+    padding: s.$gap-small s.$gap;
+    caret-color: t.$accent;
+
+    @include focus-ring;
+
+    &:disabled {
+        opacity: s.$disabled-opacity;
+    }
+    > text > placeholder {
+        color: t.$subtext0;
+    }
+}
+
+// ============================================================ menus
+
+/// A GTK menu (tray menus, anything popover-backed). Its own node type,
+/// so it cannot pick up the button rules — it has to be styled by hand,
+/// and it was styled by hand TWICE, identically, in two files.
+@mixin menu {
+    modelbutton {
+        @include button-quiet(s.$btn-padding);
+
+        &:disabled {
+            color: t.$surface2;
+            opacity: 1; // the dim colour already says it
+        }
+    }
+
+    separator {
+        margin: s.$gap-small 0;
+        background-color: $rule-color;
+        min-height: s.$hairline;
+    }
+
+    arrow {
+        // an icon box, not a slider: sized on its own so the sliders can
+        // get thinner without shrinking the dropdown arrows with them
+        min-height: s.$icon;
+        min-width: s.$icon;
+
+        &.none {
+            -gtk-icon-source: -gtk-icontheme("open-menu-symbolic");
+        }
+        &.down {
+            -gtk-icon-source: -gtk-icontheme("pan-down-symbolic");
+        }
+        &.up {
+            -gtk-icon-source: -gtk-icontheme("pan-up-symbolic");
+        }
+        &.left {
+            -gtk-icon-source: -gtk-icontheme("pan-start-symbolic");
+        }
+        &.right {
+            -gtk-icon-source: -gtk-icontheme("pan-end-symbolic");
+        }
+    }
+}
