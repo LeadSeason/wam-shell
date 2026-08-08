@@ -58,11 +58,22 @@ function historyDbs(): string[] {
 // call on every track change
 let dbs: string[] | null = null
 
-// title -> recovered art url ("" = looked and found nothing). Bounded
-// so a long listening session cannot grow it without limit; tracks
-// repeat far more often than the cap is reached.
+// title -> recovered art url. Bounded so a long listening session
+// cannot grow it without limit; tracks repeat far more often than the
+// cap is reached.
+//
+// A hit is final, a miss is NOT: chrome commits a visit on its own
+// schedule and the db is read with immutable=1, which deliberately
+// ignores the journal — so the row for a page that just started
+// playing is routinely unreadable on the first look. Memoizing that
+// as "nothing here" left the track blurred for the rest of the shell
+// session. Misses are counted instead, and only become permanent once
+// the budget is spent (a page that is not youtube never resolves, and
+// must not spawn sqlite3 on every notify for the rest of the session).
 const MAX_MEMO = 200
+const MAX_MISSES = 3
 const memo = new Map<string, string>()
+const misses = new Map<string, number>()
 
 function sqlLiteral(s: string): string {
     return `'${s.replace(/'/g, "''")}'`
@@ -89,27 +100,15 @@ const LIKE_ESCAPE = String.raw` ESCAPE '\'`
 export function recoverBrowserArt(title: string): Promise<string> {
     if (!title || !Config.media.recoverBrowserArt) return Promise.resolve("")
     const hit = memo.get(title)
-    if (hit !== undefined) return Promise.resolve(hit)
+    if (hit) return Promise.resolve(hit)
+    if ((misses.get(title) ?? 0) >= MAX_MISSES) return Promise.resolve("")
 
     dbs ??= historyDbs()
-    if (dbs.length === 0) return remember(title, "")
+    // no chromium browser installed at all: permanent, and not worth a
+    // miss slot
+    if (dbs.length === 0) return Promise.resolve("")
 
-    // youtube stores the video title verbatim as the page title, so an
-    // equality match is the common case; the LIKE catches the sites
-    // that append their own suffix to it.
-    //
-    // An exact hit outranks a suffix one, and only then does the newest
-    // visit win: ORDER BY on the recency alone lets a loose LIKE match
-    // beat the row whose title IS the track, purely by being opened
-    // more recently. (sqlite scores the comparison as 1/0.) Among rows
-    // that tie, the same video watched twice carries the same art
-    // either way.
-    const exact = sqlLiteral(title)
-    const suffix = sqlLiteral(`${escapeLike(title)} - %`)
-    const q =
-        "SELECT url FROM urls WHERE url LIKE '%youtube.com/watch?v=%' AND " +
-        `(title = ${exact} OR title LIKE ${suffix}${LIKE_ESCAPE}) ` +
-        `ORDER BY (title = ${exact}) DESC, last_visit_time DESC LIMIT 1;`
+    const q = historyQuery(title)
 
     return dbs
         .reduce(
@@ -128,6 +127,47 @@ export function recoverBrowserArt(title: string): Promise<string> {
         .then(url => remember(title, artForWatchUrl(url)))
 }
 
+/** the history lookup for a track title, ranked best match first.
+ *  Exported for the tests: the db half needs a browser, the sql is
+ *  pure string work.
+ *
+ *  Three tiers, because chrome stores the TAB title and youtube does
+ *  not leave the video title alone in it:
+ *
+ *  1. `title = exact` — the video title verbatim, the common case.
+ *  2. `title LIKE 'x - %'` — a site that appends its own suffix, which
+ *     on youtube is " - YouTube" (93% of the watch rows in a real db).
+ *  3. `title LIKE '(%) x - %'` — the same, behind youtube's unread
+ *     count: "(3) Video Title - YouTube". A quarter of the rows in a
+ *     real history db carry one, and tiers 1 and 2 are both anchored at
+ *     the start of the string, so every one of them used to miss —
+ *     which cost the track its full-size art for the whole session.
+ *     Anchored on the "(" so this can only ever pick up a badge, never
+ *     an arbitrary substring hit.
+ *
+ *  An exact hit outranks a suffix one, which outranks a badged one, and
+ *  only then does the newest visit win: ORDER BY on the recency alone
+ *  lets a looser match beat the row whose title IS the track, purely by
+ *  being opened more recently. (sqlite scores each comparison as 1/0.)
+ *  Among rows that tie, the same video watched twice carries the same
+ *  art either way.
+ *
+ *  A row youtube never got to name at all — the SPA writes "YouTube" as
+ *  the title when the navigation beats the title update, 7% of a real
+ *  db — has nothing to match on and is simply not recoverable. */
+export function historyQuery(title: string): string {
+    const exact = sqlLiteral(title)
+    const suffix = sqlLiteral(`${escapeLike(title)} - %`)
+    const badged = sqlLiteral(`(%) ${escapeLike(title)} - %`)
+    const isSuffix = `title LIKE ${suffix}${LIKE_ESCAPE}`
+    return (
+        "SELECT url FROM urls WHERE url LIKE '%youtube.com/watch?v=%' AND " +
+        `(title = ${exact} OR ${isSuffix} OR title LIKE ${badged}${LIKE_ESCAPE}) ` +
+        `ORDER BY (title = ${exact}) DESC, (${isSuffix}) DESC, ` +
+        "last_visit_time DESC LIMIT 1;"
+    )
+}
+
 /** i.ytimg thumbnail url for a youtube watch url, "" for anything else.
  *  Exported for the tests: the db half needs a browser, this half is
  *  pure string work. */
@@ -137,7 +177,13 @@ export function artForWatchUrl(url: string): string {
 }
 
 function remember(title: string, url: string): Promise<string> {
+    if (!url) {
+        if (misses.size >= MAX_MEMO) misses.clear()
+        misses.set(title, (misses.get(title) ?? 0) + 1)
+        return Promise.resolve("")
+    }
     if (memo.size >= MAX_MEMO) memo.clear()
     memo.set(title, url)
+    misses.delete(title)
     return Promise.resolve(url)
 }
