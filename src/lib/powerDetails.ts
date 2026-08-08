@@ -2,6 +2,7 @@ import GLib from "gi://GLib?version=2.0"
 import { createState } from "gnim"
 import { createPoll } from "ags/time"
 import { readFile } from "ags/file"
+import { registerDispose } from "./lifecycle"
 
 // Power profile details for the power mode pane: the knobs a profile
 // actually turns — CPU frequency vs its cap, governor, energy
@@ -175,3 +176,6 @@ export function setActive(on: boolean) {
 export function dispose() {
     setActive(false)
 }
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("powerDetails", dispose)

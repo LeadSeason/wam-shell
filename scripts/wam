@@ -52,6 +52,41 @@ pnpm_install() {
     - install the pinned pnpm: corepack enable && corepack install --global ${pin:-pnpm@10.28.1}"
 }
 
+# Build the stylesheet now, so the shell's first start does not have to.
+#
+# The cold-start path in lib/style.ts compiles sass SYNCHRONOUSLY when
+# there is no cached css — it has to, because ags loads the stylesheet at
+# activation and an async compile races the first frame. That block is
+# the slowest thing in startup and it is entirely avoidable: the cache is
+# only ever cold at install, at `update --force`, and after a cache wipe.
+#
+# Runs the shell's OWN compile code (scripts/precompile-style.ts bundles
+# src/lib/styleCompile, which is display-free for exactly this reason),
+# rather than reimplementing theme resolution and sass load paths here —
+# two definitions of that would drift, and the one that drifts writes a
+# stylesheet the shell then rejects as stale on every start.
+#
+# Best-effort throughout: no ags, no sass, or a broken user.scss must not
+# fail an install that is otherwise fine. The shell still compiles on
+# first run, it just pays for it there.
+compile_style() {
+    command -v ags >/dev/null || return 0
+    command -v sass >/dev/null || { log "sass not found — skipping style precompile"; return 0; }
+    [[ -f "$ROOT/scripts/precompile-style.ts" ]] || return 0
+
+    local tmp
+    tmp="$(mktemp -d)" || return 0
+    if (cd "$ROOT" && ags bundle --gtk 4 scripts/precompile-style.ts "$tmp/precompile" >/dev/null 2>&1); then
+        chmod +x "$tmp/precompile"
+        # WAM_SHELL_DIR: config.ts resolves the scss tree against it, and
+        # this runs from wherever the user invoked wam
+        WAM_SHELL_DIR="$ROOT" "$tmp/precompile" || log "style precompile failed (the shell will compile on first start)"
+    else
+        log "could not bundle the style precompiler — skipping"
+    fi
+    rm -rf "$tmp"
+}
+
 usage() {
     cat <<EOF
 usage: wam <command>
@@ -181,6 +216,9 @@ cmd_install() {
 
     bash "$ROOT/scripts/setup.sh" "$@"
 
+    log "Precompiling the stylesheet"
+    compile_style
+
     log "Linking wam into ~/.local/bin (a symlink into $ROOT, so it follows every update)"
     if ! link_wam_script; then
         log "Could not symlink — installing a copy instead (kept in sync by wam update)"
@@ -291,6 +329,9 @@ cmd_update() {
 
     log "pnpm i"
     pnpm_install
+    # after the merge and after pnpm: the scss may have changed in this
+    # update, and --force just cleared the cached sheet outright
+    compile_style
     if systemctl --user is-active "$SERVICE" &>/dev/null; then
         log "Restarting the service"
         systemctl --user restart "$SERVICE"

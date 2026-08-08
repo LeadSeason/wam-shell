@@ -6,6 +6,7 @@ import { readFile } from "ags/file"
 import AstalHyprland from "gi://AstalHyprland"
 import Config from "../config"
 import { watchSwayInputs, unwatchSwayInputs } from "./swayInput"
+import { registerDispose } from "./lifecycle"
 
 // Shared keyboard layout source. The bar dropdown and the OSD both
 // consume it; it runs when either exists, independent of panel config.
@@ -278,3 +279,6 @@ export function dispose() {
     unwatchSwayInputs()
     source = null
 }
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("kbLayout", dispose)

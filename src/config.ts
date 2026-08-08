@@ -5,6 +5,7 @@ import { createState } from "gnim"
 import { execAsync } from "ags/process"
 import { readFile } from "ags/file"
 import { isFile } from "./lib/utils"
+import { createReader, numberList } from "./lib/configSchema"
 import type { TimeFormat } from "./lib/timerInput"
 
 // scss/theme/script paths resolve against the repo root. Launching from
@@ -56,15 +57,8 @@ function parseToml(raw: string): Record<string, any> {
 }
 
 function getOsIcon(): string {
-    if (configData.os_icon !== undefined) {
-        if (typeof configData.os_icon !== "string") {
-            console.error(
-                `Config "os_icon" cannot be typeof ${typeof configData.os_icon}, must be string`,
-            )
-        } else {
-            return configData.os_icon
-        }
-    }
+    const configured = topLevel.str("os_icon", "")
+    if (configured) return configured
 
     // Get OsIcon from /etc/os-release
     try {
@@ -79,20 +73,10 @@ function getOsIcon(): string {
 }
 
 function getDesktopSession(): string {
-    let override = configData.desktop_session_override
-    let desktop = GLib.getenv("DESKTOP_SESSION")
-
-    // Preflight checks for override config variable
-    if (override !== undefined) {
-        if (typeof override !== "string") {
-            console.error(
-                `Config "desktop_session_override" cannot be typeof ${typeof override}, must be string`,
-            )
-            override = GLib.getenv("DESKTOP_SESSION") // Fallback
-        }
-
-        desktop = override
-    }
+    // an override of "" is indistinguishable from an absent key here,
+    // and both mean the same thing: use the environment
+    const override = topLevel.str("desktop_session_override", "")
+    const desktop = override || GLib.getenv("DESKTOP_SESSION")
 
     // Preflight checks for i3/sway (both speak the i3 IPC protocol)
     if (desktop === "sway" || desktop === "i3") {
@@ -104,9 +88,17 @@ function getDesktopSession(): string {
         return desktop
     }
 
-    // Preflight checks for hyprland
+    // Preflight for hyprland, matching what sway/i3 get above: a session
+    // that says "hyprland" without a compositor to talk to would send
+    // every `hyprctl` call and every AstalHyprland lookup into a socket
+    // that is not there. HYPRLAND_INSTANCE_SIGNATURE is what names that
+    // socket, so its absence is the same class of answer as a missing
+    // I3SOCK — fall back to the compositor-agnostic paths instead.
     if (desktop === "hyprland") {
-        // @TODO
+        if (typeof GLib.getenv("HYPRLAND_INSTANCE_SIGNATURE") !== "string") {
+            console.error("hyprland ipc HYPRLAND_INSTANCE_SIGNATURE env missing")
+            return "" // Fallback
+        }
         return "hyprland"
     }
 
@@ -121,218 +113,167 @@ function getDesktopSession(): string {
     return ""
 }
 
+// Keys can be set in a [workspaces] section or flat at the top level;
+// the section takes precedence. Same for [tray], [quicksettings],
+// [bluetooth], [media], [appearance], [hyprsunset], [sleep_timer],
+// [harvest], [notifications] and [osd] below — the service sections
+// pass sectionOnly instead (see lib/configSchema).
 function getWorkspacesConfig() {
-    // Keys can be set in a [workspaces] section or flat at the top level;
-    // the section takes precedence.
-    const ws = configData.workspaces ?? {}
-    const get = (key: string, fallback: any) => ws[key] ?? configData[key] ?? fallback
-
-    let position = get("position", "left")
-    if (position !== "left" && position !== "right") {
-        console.error(`Config "workspaces.position" must be "left" or "right", got "${position}"`)
-        position = "left"
-    }
-
+    const r = createReader(configData, "workspaces")
     return {
-        enabled: get("enabled", true),
-        position: position as "left" | "right",
-        showIcons: get("show_icons", true),
-        showLabels: get("show_labels", true),
-        hideEmpty: get("hide_empty", false),
-        collapseIcons: get("collapse_icons", false),
+        enabled: r.bool("enabled", true),
+        // NB this reads a bare top-level "position" too, which is the
+        // historical behaviour and is kept deliberately — the tray is
+        // the one that had to move aside (tray_position). Changing it
+        // now would silently relocate a working config's workspaces
+        position: r.oneOf("position", ["left", "right"] as const, "left"),
+        showIcons: r.bool("show_icons", true),
+        showLabels: r.bool("show_labels", true),
+        hideEmpty: r.bool("hide_empty", false),
+        collapseIcons: r.bool("collapse_icons", false),
     }
 }
 
 function getTrayConfig() {
-    // Keys can be set in a [tray] section or flat at the top level;
-    // the section takes precedence.
-    const t = configData.tray ?? {}
-    const get = (key: string, fallback: any) => t[key] ?? configData[key] ?? fallback
-
-    let spacing = get("spacing", 0)
-    if (typeof spacing !== "number" || spacing < 0) {
-        console.error(`Config "tray.spacing" must be a positive number, got "${spacing}"`)
-        spacing = 0
-    }
-
-    // Flat fallback is "tray_position": a bare "position" key would collide
-    // with workspaces.position.
-    let position = t.position ?? configData.tray_position ?? "left"
-    if (position !== "left" && position !== "right") {
-        console.error(`Config "tray.position" must be "left" or "right", got "${position}"`)
-        position = "left"
-    }
-
-    let alwaysOnPanel = get("always_on_panel", [])
-    if (!Array.isArray(alwaysOnPanel)) {
-        console.error(`Config "tray.always_on_panel" must be a list of app ids`)
-        alwaysOnPanel = []
-    }
-    alwaysOnPanel = alwaysOnPanel.filter((id: unknown) => typeof id === "string" && id !== "")
-
+    const r = createReader(configData, "tray")
     return {
-        onPanel: get("on_panel", false),
-        spacing,
-        position: position as "left" | "right",
-        alwaysOnPanel,
+        onPanel: r.bool("on_panel", false),
+        spacing: r.num("spacing", 0, { min: 0 }),
+        // the top-level spelling is "tray_position": a bare "position"
+        // key would collide with workspaces.position
+        position: r.oneOf("position", ["left", "right"] as const, "left", {
+            flatKey: "tray_position",
+        }),
+        alwaysOnPanel: r.strList("always_on_panel", []),
         // type-guarded like spacing/width: a non-number (popup_icon_size
         // = "22") reaches Gtk.Image.pixelSize / pill CSS at startup
-        popupIconSize: (() => {
-            const size = get("popup_icon_size", 22)
-            if (typeof size !== "number" || size <= 0) {
-                console.error(
-                    `Config "tray.popup_icon_size" must be a positive number, got "${size}"`,
-                )
-                return 22
-            }
-            return size
-        })(),
+        popupIconSize: r.num("popup_icon_size", 22, { positive: true }),
     }
 }
 
 function getQSettingsConfig() {
-    // Keys can be set in a [quicksettings] section or flat at the top level;
-    // the section takes precedence.
-    const q = configData.quicksettings ?? {}
-    const get = (key: string, fallback: any) => q[key] ?? configData[key] ?? fallback
-
-    let statsInterval = get("stats_interval", 1000)
-    if (typeof statsInterval !== "number" || statsInterval <= 0) {
-        console.error(
-            `Config "quicksettings.stats_interval" must be a positive number, got "${statsInterval}"`,
-        )
-        statsInterval = 1000
-    }
-
+    const r = createReader(configData, "quicksettings")
     return {
-        showBatteryPercentage: get("show_battery_percentage", true),
-        showDeviceNames: get("show_device_names", false),
-        showStats: get("show_stats", false),
-        statsOnPanel: get("stats_on_panel", false),
-        statsInterval,
+        showBatteryPercentage: r.bool("show_battery_percentage", true),
+        showDeviceNames: r.bool("show_device_names", false),
+        showStats: r.bool("show_stats", false),
+        statsOnPanel: r.bool("stats_on_panel", false),
+        statsInterval: r.num("stats_interval", 1000, { positive: true }),
         // popup content width in px (the scroll view clamps it)
-        width: (() => {
-            const w = get("width", 440)
-            if (typeof w !== "number" || w <= 0) {
-                console.error(`Config "quicksettings.width" must be a positive number, got "${w}"`)
-                return 440
-            }
-            return w
-        })(),
+        width: r.num("width", 440, { positive: true }),
         // the power profile icon in the bar's quicksettings label
-        powerProfileOnPanel: get("power_profile_on_panel", true),
+        powerProfileOnPanel: r.bool("power_profile_on_panel", true),
         // close the popup when a player starts playing: pressing play
         // here (or a video starting elsewhere) means the user wants to
         // watch, not to keep reading the popup
-        hideOnMediaPlay: get("hide_on_media_play", true),
+        hideOnMediaPlay: r.bool("hide_on_media_play", true),
         // draw a playback level bar under the default output device in
         // the audio pane. Reading a level means capturing the sink's
         // monitor, so this runs a gstreamer pipeline — only while that
         // pane is open, and never at all when this is false
-        audioMeter: get("audio_meter", true),
+        audioMeter: r.bool("audio_meter", true),
         // the same bar under the default input device. Separate from
         // audio_meter because it is a different bargain: reading an
         // input level means opening the microphone (only while the
         // Input pane is on screen, but still opening it)
-        micMeter: get("mic_meter", true),
+        micMeter: r.bool("mic_meter", true),
         // floor for the pane area, in px. 0 = derive it from the
         // smallest monitor, which is what keeps the popup sane on a
         // short or heavily-scaled screen
-        minHeight: (() => {
-            const h = get("min_height", 0)
-            if (typeof h !== "number" || h < 0) {
-                console.error(`Config "quicksettings.min_height" must be a number >= 0, got "${h}"`)
-                return 0
-            }
-            return h
-        })(),
+        minHeight: r.num("min_height", 0, { min: 0 }),
         // header avatar: absolute path to an image; empty = the login
         // avatar from AccountsService, else the OS icon. Type-guarded:
         // a non-string (avatar = 5) would crash GLib.file_test at
         // startup
-        avatar: (() => {
-            const avatar = get("avatar", "")
-            if (typeof avatar !== "string") {
-                console.error(`Config "avatar" cannot be typeof ${typeof avatar}, must be string`)
-                return ""
-            }
-            return avatar
-        })(),
-        showAvatar: get("show_avatar", true),
+        avatar: r.str("avatar", ""),
+        showAvatar: r.bool("show_avatar", true),
         // charge cap in percent: the header ring treats this as full.
-        // explicit config wins; otherwise auto-detect from sysfs
-        // (charge_control_end_threshold, e.g. Lenovo/ASUS limits);
-        // default 100 when neither is available
-        batteryFullAt: (() => {
-            const explicit = configData.quicksettings?.battery_full_at ?? configData.battery_full_at
-            if (typeof explicit === "number" && explicit > 0 && explicit <= 100) return explicit
-            for (const bat of ["BAT0", "BAT1", "BAT2"]) {
-                const p = `/sys/class/power_supply/${bat}/charge_control_end_threshold`
-                try {
-                    if (isFile(p)) {
-                        const v = Number(readFile(p).trim())
-                        if (v > 0 && v <= 100) return v
-                    }
-                } catch {}
-            }
-            return 100
-        })(),
+        // Lazy (see batteryFullAt below) — the sysfs probe behind it is
+        // three blocking reads that nothing needs before the first frame
+        get batteryFullAt(): number {
+            return batteryFullAt()
+        },
     }
 }
 
-function getBluetoothConfig() {
-    const b = configData.bluetooth ?? {}
-    const get = (key: string, fallback: any) => b[key] ?? configData[key] ?? fallback
+// The battery charge cap, resolved once on first use.
+//
+// Explicit config wins; otherwise auto-detect from sysfs
+// (charge_control_end_threshold, e.g. Lenovo/ASUS limits); 100 when
+// neither is available.
+//
+// Deferred rather than computed at import: the fallback path stats and
+// reads up to three sysfs files, and the only consumer is the quick
+// settings header ring — which does not exist until the user opens the
+// popup. Nothing should read the battery cap to draw the first frame.
+let batteryFullAtCache: number | null = null
 
+function batteryFullAt(): number {
+    if (batteryFullAtCache !== null) return batteryFullAtCache
+    const explicit = createReader(configData, "quicksettings").raw("battery_full_at")
+    if (typeof explicit === "number" && explicit > 0 && explicit <= 100) {
+        return (batteryFullAtCache = explicit)
+    }
+    for (const bat of ["BAT0", "BAT1", "BAT2"]) {
+        const p = `/sys/class/power_supply/${bat}/charge_control_end_threshold`
+        try {
+            if (isFile(p)) {
+                const v = Number(readFile(p).trim())
+                if (v > 0 && v <= 100) return (batteryFullAtCache = v)
+            }
+        } catch {}
+    }
+    return (batteryFullAtCache = 100)
+}
+
+function getBluetoothConfig() {
+    const r = createReader(configData, "bluetooth")
     return {
-        notifications: get("notifications", true),
+        // sectionOnly, and it has to be: the flat fallback for this key
+        // is the top-level `notifications` name, which is a SECTION —
+        // so any config with a [notifications] table handed this a table
+        // where a boolean belongs. It went unnoticed because a table is
+        // truthy and the default is true, so the wrong value and the
+        // right one behaved identically. This is the collision class the
+        // flat fallback exists to create; here it is, found by a type
+        // check the old untyped `get()` never performed
+        notifications: r.bool("notifications", true, { sectionOnly: true }),
     }
 }
 
 function getMediaConfig() {
-    const m = configData.media ?? {}
-    const get = (key: string, fallback: any) => m[key] ?? configData[key] ?? fallback
-
-    let maxWidth = get("max_width", 20)
-    if (typeof maxWidth !== "number" || maxWidth <= 0) {
-        console.error(`Config "media.max_width" must be a positive number, got "${maxWidth}"`)
-        maxWidth = 20
-    }
-
+    const r = createReader(configData, "media")
     return {
-        enabled: get("enabled", false),
-        showControls: get("show_controls", true),
-        maxWidth,
+        enabled: r.bool("enabled", false),
+        showControls: r.bool("show_controls", true),
+        maxWidth: r.num("max_width", 20, { positive: true }),
         // while screen sharing, hide the quick-settings player entirely
         // (title/artist/cover are visible to viewers otherwise)
-        hideWhenScreenSharing: get("hide_when_screen_sharing", false),
+        hideWhenScreenSharing: r.bool("hide_when_screen_sharing", false),
         // treat browsers' scrubbed private-session titles as no track
-        hidePrivateSessions: get("hide_private_sessions", true),
+        hidePrivateSessions: r.bool("hide_private_sessions", true),
         // look a chromium browser's 150px mpris art back up in its own
         // history db to find the full-size one (lib/browserArt). Reads
         // browsing history, so it is worth a switch even though the
         // query is a title match against youtube rows only
-        recoverBrowserArt: get("recover_browser_art", true),
+        recoverBrowserArt: r.bool("recover_browser_art", true),
     }
 }
 
 function getAppearanceConfig() {
-    const a = configData.appearance ?? {}
-    const get = (key: string, fallback: any) => a[key] ?? configData[key] ?? fallback
-
+    const r = createReader(configData, "appearance")
+    // a theme name is only valid if the stylesheet exists: a typo must
+    // land on the documented default rather than compiling to nothing
     const themeOr = (key: string, fallback: string) => {
-        const t = get(key, fallback)
-        return typeof t === "string" && isFile(`${instanceSrcDir}/scss/theme/${t}.scss`)
-            ? t
-            : fallback
+        const t = r.str(key, fallback)
+        return isFile(`${instanceSrcDir}/scss/theme/${t}.scss`) ? t : fallback
     }
-
     return {
         // themes applied when Dark Style toggles on/off
         darkTheme: themeOr("dark_theme", "catppuccin-mocha"),
         lightTheme: themeOr("light_theme", "catppuccin-latte"),
         // also follow the system color scheme at startup
-        followSystem: get("follow_system", true),
+        followSystem: r.bool("follow_system", true),
     }
 }
 
@@ -357,136 +298,74 @@ function resolveTheme(data: Record<string, any>): string {
 }
 
 function getHyprsunsetConfig() {
-    const h = configData.hyprsunset ?? {}
-    const get = (key: string, fallback: any) => h[key] ?? configData[key] ?? fallback
-
+    const r = createReader(configData, "hyprsunset")
     return {
         // temperature used normally (night light off, gamma <= 100%)
-        temperatureDefault: get("temperature_default", 6000),
+        temperatureDefault: r.num("temperature_default", 6000, { positive: true }),
         // temperature applied in outdoor mode (gamma > 100%).
-        // falls back to temperature_default when omitted
-        temperatureOutdoor: get("temperature_outdoor", null),
-        nightTemp: get("night_temp", 4000),
+        // falls back to temperature_default when omitted, so the absent
+        // case has to stay distinguishable from a configured value
+        temperatureOutdoor:
+            r.raw("temperature_outdoor") === undefined
+                ? null
+                : r.num("temperature_outdoor", 6000, { positive: true }),
+        nightTemp: r.num("night_temp", 4000, { positive: true }),
         // gamma in outdoor mode, in percent (may exceed 100)
-        gammaOutdoor: get("gamma_outdoor", 150),
+        gammaOutdoor: r.num("gamma_outdoor", 150, { positive: true }),
     }
 }
 
 function getBarMonitors(): string[] {
     // connectors (e.g. "eDP-1") that get a panel; empty = all monitors
-    const m = configData.bar_monitors
-    if (m === undefined) return []
-    if (!Array.isArray(m)) {
-        console.error(`Config "bar_monitors" must be a list of monitor connectors`)
-        return []
-    }
-    return m.filter(x => typeof x === "string" && x !== "")
+    return createReader(configData, "").strList("bar_monitors", [])
 }
 
 function getSleepTimerConfig() {
-    const s = configData.sleep_timer ?? {}
-    const get = (key: string, fallback: any) => s[key] ?? configData[key] ?? fallback
+    const r = createReader(configData, "sleep_timer")
 
-    let presets = get("presets", [10, 15, 20, 30, 45, 60])
-    if (
-        !Array.isArray(presets) ||
-        presets.length === 0 ||
-        presets.some((p: any) => typeof p !== "number" || p <= 0)
-    ) {
-        console.error(
-            `Config "sleep_timer.presets" must be a non-empty list of positive numbers, got "${JSON.stringify(presets)}"`,
-        )
-        presets = [10, 15, 20, 30, 45, 60]
-    }
-
-    // a 0..1 fraction, or the fallback when missing/wrong
-    const fraction = (key: string, fallback: number) => {
-        const v = get(key, fallback)
-        if (typeof v !== "number" || v < 0 || v > 1) {
-            console.error(
-                `Config "sleep_timer.${key}" must be a number between 0 and 1, got "${v}"`,
-            )
-            return fallback
-        }
-        return v
-    }
-
-    // 1..100 percent as a fraction, or the fallback when missing/wrong
-    const percent = (key: string, fallback: number) => {
-        const v = get(key, fallback)
-        if (typeof v !== "number" || v < 1 || v > 100) {
-            console.error(
-                `Config "sleep_timer.${key}" must be a number between 1 and 100, got "${v}"`,
-            )
-            return fallback / 100
-        }
-        return v / 100
-    }
-
-    // how the entry reads and writes clock times. 24h is the default
-    // rather than the locale's choice: the shell's own strings are
-    // English and its clock is already numeric, so following the locale
-    // here would be the only place it did. "auto" opts into it.
-    let timeFormat = get("time_format", "24h")
-    if (timeFormat !== "24h" && timeFormat !== "12h" && timeFormat !== "auto") {
-        console.error(
-            `Config "sleep_timer.time_format" must be "24h", "12h" or "auto", got "${timeFormat}"`,
-        )
-        timeFormat = "24h"
-    }
+    // 1..100 percent, stored as a fraction
+    const percent = (key: string, fallbackPercent: number) =>
+        r.num(key, fallbackPercent, { min: 1, max: 100 }) / 100
 
     return {
-        presets,
-        timeFormat: timeFormat as TimeFormat,
+        presets: numberList("sleep_timer.presets", r.raw("presets"), [10, 15, 20, 30, 45, 60]),
+        // how the entry reads and writes clock times. 24h is the default
+        // rather than the locale's choice: the shell's own strings are
+        // English and its clock is already numeric, so following the
+        // locale here would be the only place it did. "auto" opts into it
+        timeFormat: r.oneOf("time_format", ["24h", "12h", "auto"] as const, "24h") as TimeFormat,
         // show the sleep timer toggle in quick settings
-        enabled: get("enabled", true),
+        enabled: r.bool("enabled", true),
         // show the countdown on the panel while a timer runs.
-        // Section-only lookup, NOT the usual top-level fallback: the
-        // tray's top-level on_panel key would leak in otherwise
-        onPanel: s["on_panel"] ?? true,
+        // Section-only, NOT the usual top-level fallback: the tray's
+        // top-level on_panel key would leak in otherwise
+        onPanel: r.bool("on_panel", true, { sectionOnly: true }),
         // dim the screen on fire: dim_level as a fraction of the current
         // brightness (default half), never below the dim_floor minimum
-        dim: get("dim", true),
-        dimLevel: fraction("dim_level", 0.5),
-        dimFloor: fraction("dim_floor", 0.1),
+        dim: r.bool("dim", true),
+        dimLevel: r.num("dim_level", 0.5, { min: 0, max: 1 }),
+        dimFloor: r.num("dim_floor", 0.1, { min: 0, max: 1 }),
         // play a soothing chime in a loop when the timer reaches 0,
         // until stopped from the pill
-        alarm: get("alarm", false),
+        alarm: r.bool("alarm", false),
         // the volume the sink is raised to while the alarm rings
         alarmVolume: percent("alarm_volume", 80),
         // restore the pre-dim brightness when media starts playing
         // after a fire (the mute lift on play always happens)
-        restoreOnPlay: get("restore_on_play", false),
+        restoreOnPlay: r.bool("restore_on_play", false),
         // an alarm is a reminder: when it rings, nothing is paused,
         // muted or dimmed. false = ring AND do the sleep actions
-        alarmOnly: get("alarm_only", true),
+        alarmOnly: r.bool("alarm_only", true),
     }
 }
 
 function getHarvestConfig() {
-    const h = configData.harvest ?? {}
-    const get = (key: string, fallback: any) => h[key] ?? configData[key] ?? fallback
-
-    let pollInterval = get("poll_interval", 10)
-    if (typeof pollInterval !== "number" || pollInterval <= 0) {
-        console.error(
-            `Config "harvest.poll_interval" must be a positive number, got "${pollInterval}"`,
-        )
-        pollInterval = 10
-    }
-    // floor: a config typo must not throttle the Harvest account
-    if (pollInterval < 5) pollInterval = 5
-
-    let recents = get("recents", 5)
-    if (typeof recents !== "number" || recents <= 0) {
-        console.error(`Config "harvest.recents" must be a positive number, got "${recents}"`)
-        recents = 5
-    }
+    const r = createReader(configData, "harvest")
 
     // both keys must hold "HH:MM" or the window is disabled
-    const hhmm = (v: any) => typeof v === "string" && /^([01]?\d|2[0-3]):[0-5]\d$/.test(v)
-    let workStart = get("work_start", "")
-    let workEnd = get("work_end", "")
+    const hhmm = (v: string) => /^([01]?\d|2[0-3]):[0-5]\d$/.test(v)
+    let workStart = r.str("work_start", "")
+    let workEnd = r.str("work_end", "")
     if (!hhmm(workStart) || !hhmm(workEnd)) {
         if (workStart !== "" || workEnd !== "") {
             console.error(
@@ -497,41 +376,33 @@ function getHarvestConfig() {
         workEnd = ""
     }
 
-    let workDays: number[] = []
-    const workDaysRaw = get("work_days", "")
-    if (typeof workDaysRaw !== "string") {
+    const workDaysRaw = r.str("work_days", "")
+    const parsedDays = parseWorkDays(workDaysRaw)
+    if (parsedDays === null) {
         console.error(
-            `Config "harvest.work_days" must be a string like "1-5", got ${JSON.stringify(workDaysRaw)}`,
+            `Config "harvest.work_days" has an invalid range, got "${workDaysRaw}" (expected e.g. "1-5" or "6,0"; 0=Sunday); treating as every day`,
         )
-    } else {
-        const parsed = parseWorkDays(workDaysRaw)
-        if (parsed === null) {
-            console.error(
-                `Config "harvest.work_days" has an invalid range, got "${workDaysRaw}" (expected e.g. "1-5" or "6,0"; 0=Sunday); treating as every day`,
-            )
-        } else {
-            workDays = parsed
-        }
     }
 
     return {
-        enabled: get("enabled", false),
-        // section-only lookup, NOT the usual top-level fallback: the
-        // tray's top-level on_panel key would leak in otherwise
-        onPanel: h["on_panel"] ?? true,
-        pollInterval,
-        recents,
+        enabled: r.bool("enabled", false),
+        // section-only, NOT the usual top-level fallback: the tray's
+        // top-level on_panel key would leak in otherwise
+        onPanel: r.bool("on_panel", true, { sectionOnly: true }),
+        // floor: a config typo must not throttle the Harvest account
+        pollInterval: r.num("poll_interval", 10, { positive: true, floor: 5 }),
+        recents: r.num("recents", 5, { positive: true }),
         workStart,
         workEnd,
-        workDays,
+        workDays: parsedDays ?? [],
         // off work_days, shrink to a bare icon instead of hiding
-        collapseOffDays: get("collapse_off_days", false),
+        collapseOffDays: r.bool("collapse_off_days", false),
         // while screen sharing, mask entry details on the panel
-        hideWhenScreenSharing: get("hide_when_screen_sharing", true),
+        hideWhenScreenSharing: r.bool("hide_when_screen_sharing", true),
         // banner every timer start/pause, wherever it happened (this
         // shell, the web app, the phone). Critical urgency: it waits
         // to be dismissed
-        notify: get("notify", true),
+        notify: r.bool("notify", true),
     }
 }
 
@@ -555,251 +426,109 @@ function parseWorkDays(raw: string): number[] | null {
     return [...out].sort((x, y) => x - y)
 }
 
-// Google Calendar in the clock popover. Section-only keys: no top-level
-// fallbacks exist for these names and none should leak in
+// The service providers. Every one of these sections is sectionOnly:
+// their key names (enabled, poll_minutes, port) are generic enough that
+// a top-level spelling would leak across all five at once, and none of
+// them ever had one to be compatible with.
+
+// Google Calendar in the clock popover
 function getCalendarConfig() {
-    const c = configData.calendar ?? {}
-
-    let pollMinutes = c["poll_minutes"] ?? 15
-    if (typeof pollMinutes !== "number" || pollMinutes <= 0) {
-        console.error(
-            `Config "calendar.poll_minutes" must be a positive number, got "${pollMinutes}"`,
-        )
-        pollMinutes = 15
-    }
-    // floor: a config typo must not burn the Calendar API quota
-    if (pollMinutes < 5) pollMinutes = 5
-
-    let hiddenCalendars = c["hidden_calendars"] ?? []
-    if (
-        !Array.isArray(hiddenCalendars) ||
-        hiddenCalendars.some((x: any) => typeof x !== "string")
-    ) {
-        console.error(
-            `Config "calendar.hidden_calendars" must be a list of strings, got "${JSON.stringify(hiddenCalendars)}"`,
-        )
-        hiddenCalendars = []
-    }
-
+    const r = createReader(configData, "calendar", { sectionOnly: true })
     return {
-        enabled: c["enabled"] ?? true,
-        pollMinutes,
-        hiddenCalendars,
+        enabled: r.bool("enabled", true),
+        // floor: a config typo must not burn the Calendar API quota
+        pollMinutes: r.num("poll_minutes", 15, { positive: true, floor: 5 }),
+        hiddenCalendars: r.strList("hidden_calendars", []),
         // ISO-8601 week numbers down the month grid's left edge
-        weekNumbers: c["week_numbers"] ?? true,
+        weekNumbers: r.bool("week_numbers", true),
     }
 }
 
-// GitHub notifications in the notification center. Section-only keys:
-// no top-level fallbacks exist for these names and none should leak in
+// GitHub notifications in the notification center
 function getGitHubConfig() {
-    const g = configData.github ?? {}
-
-    let pollMinutes = g["poll_minutes"] ?? 5
-    if (typeof pollMinutes !== "number" || pollMinutes <= 0) {
-        console.error(
-            `Config "github.poll_minutes" must be a positive number, got "${pollMinutes}"`,
-        )
-        pollMinutes = 5
-    }
-    // floor: a config typo must not burn the GitHub API rate limit
-    if (pollMinutes < 1) pollMinutes = 1
-
+    const r = createReader(configData, "github", { sectionOnly: true })
     return {
-        enabled: g["enabled"] ?? true,
-        pollMinutes,
+        enabled: r.bool("enabled", true),
+        // floor: a config typo must not burn the GitHub API rate limit
+        pollMinutes: r.num("poll_minutes", 5, { positive: true, floor: 1 }),
     }
 }
 
-// Todoist tasks (due today/overdue) in the notification center.
-// Section-only keys: no top-level fallbacks exist for these names and
-// none should leak in
+// Todoist tasks (due today/tomorrow) in the notification center
 function getTodoistConfig() {
-    const t = configData.todoist ?? {}
-
-    let pollMinutes = t["poll_minutes"] ?? 5
-    if (typeof pollMinutes !== "number" || pollMinutes <= 0) {
-        console.error(
-            `Config "todoist.poll_minutes" must be a positive number, got "${pollMinutes}"`,
-        )
-        pollMinutes = 5
-    }
-    // floor: a config typo must not burn the Todoist API rate limit
-    if (pollMinutes < 1) pollMinutes = 1
-
-    let remindBefore = t["remind_before_minutes"] ?? 5
-    if (typeof remindBefore !== "number" || remindBefore < 0) {
-        console.error(
-            `Config "todoist.remind_before_minutes" must be a number >= 0, got "${remindBefore}"`,
-        )
-        remindBefore = 5
-    }
-
-    let snooze = t["snooze_minutes"] ?? 30
-    if (typeof snooze !== "number" || snooze <= 0) {
-        console.error(`Config "todoist.snooze_minutes" must be a positive number, got "${snooze}"`)
-        snooze = 30
-    }
-
+    const r = createReader(configData, "todoist", { sectionOnly: true })
     return {
-        enabled: t["enabled"] ?? true,
-        pollMinutes,
+        enabled: r.bool("enabled", true),
+        // floor: a config typo must not burn the Todoist API rate limit
+        pollMinutes: r.num("poll_minutes", 5, { positive: true, floor: 1 }),
         // proactive banners before a scheduled (timed) task is due
-        reminders: t["reminders"] ?? true,
-        remindBeforeMinutes: remindBefore,
+        reminders: r.bool("reminders", true),
+        remindBeforeMinutes: r.num("remind_before_minutes", 5, { min: 0 }),
         // the banner's Postpone button: local snooze length (capped at
         // the task's due time)
-        snoozeMinutes: snooze,
+        snoozeMinutes: r.num("snooze_minutes", 30, { positive: true }),
     }
 }
 
 // ProtonMail unread mail in the notification center, via ProtonMail
-// Bridge's local IMAP. Section-only keys: no top-level fallbacks exist
-// for these names and none should leak in
+// Bridge's local IMAP
 function getProtonmailConfig() {
-    const p = configData.protonmail ?? {}
-
-    let pollMinutes = p["poll_minutes"] ?? 2
-    if (typeof pollMinutes !== "number" || pollMinutes <= 0) {
-        console.error(
-            `Config "protonmail.poll_minutes" must be a positive number, got "${pollMinutes}"`,
-        )
-        pollMinutes = 2
-    }
-    // floor: a config typo must not hammer the bridge
-    if (pollMinutes < 1) pollMinutes = 1
-
-    let port = p["port"] ?? 1143
-    if (typeof port !== "number" || port <= 0) {
-        console.error(`Config "protonmail.port" must be a positive number, got "${port}"`)
-        port = 1143
-    }
-
-    const host = typeof p["host"] === "string" && p["host"] !== "" ? p["host"] : "127.0.0.1"
-
+    const r = createReader(configData, "protonmail", { sectionOnly: true })
     return {
-        enabled: p["enabled"] ?? true,
-        pollMinutes,
-        host,
-        port,
+        enabled: r.bool("enabled", true),
+        // floor: a config typo must not hammer the bridge
+        pollMinutes: r.num("poll_minutes", 2, { positive: true, floor: 1 }),
+        host: r.str("host", "127.0.0.1", { nonEmpty: true }),
+        port: r.num("port", 1143, { positive: true }),
     }
 }
 
-// YouTube notifications in the notification center. Section-only keys:
-// no top-level fallbacks exist for these names and none should leak in
+// YouTube notifications in the notification center
 function getYouTubeConfig() {
-    const y = configData.youtube ?? {}
-
-    let pollMinutes = y["poll_minutes"] ?? 60
-    if (typeof pollMinutes !== "number" || pollMinutes <= 0) {
-        console.error(
-            `Config "youtube.poll_minutes" must be a positive number, got "${pollMinutes}"`,
-        )
-        pollMinutes = 60
-    }
-    // floor: a config typo must not burn the YouTube API quota (each
-    // poll costs ~1 unit per subscription; see config.toml)
-    if (pollMinutes < 15) pollMinutes = 15
-
+    const r = createReader(configData, "youtube", { sectionOnly: true })
     return {
-        enabled: y["enabled"] ?? true,
-        pollMinutes,
+        enabled: r.bool("enabled", true),
+        // floor: a config typo must not burn the YouTube API quota (each
+        // poll costs ~1 unit per subscription; see config.toml)
+        pollMinutes: r.num("poll_minutes", 60, { positive: true, floor: 15 }),
     }
 }
 
 function getNotificationsConfig() {
-    const n = configData.notifications ?? {}
-    const get = (key: string, fallback: any) => n[key] ?? configData[key] ?? fallback
-
-    let popupTimeout = get("popup_timeout", 5000)
-    if (typeof popupTimeout !== "number" || popupTimeout <= 0) {
-        console.error(
-            `Config "notifications.popup_timeout" must be a positive number, got "${popupTimeout}"`,
-        )
-        popupTimeout = 5000
-    }
-
-    let position = get("position", "topRight")
-    if (!["topRight", "topCenter"].includes(position)) {
-        console.error(
-            `Config "notifications.position" must be "topRight" or "topCenter", got "${position}"`,
-        )
-        position = "topRight"
-    }
-
-    let daemon = get("daemon", "auto")
-    if (!["auto", "wam-shell", "system"].includes(daemon)) {
-        console.error(
-            `Config "notifications.daemon" must be "auto", "wam-shell" or "system", got "${daemon}"`,
-        )
-        daemon = "auto"
-    }
-
-    let transientApps = get("transient_apps", [])
-    if (!Array.isArray(transientApps)) {
-        console.error(`Config "notifications.transient_apps" must be a list of app names`)
-        transientApps = []
-    }
-    transientApps = transientApps
-        .filter((a: any) => typeof a === "string" && a !== "")
-        .map((a: string) => a.toLowerCase())
-
-    let popupProviders = get("popup_providers", [])
-    if (!Array.isArray(popupProviders) || popupProviders.some((x: any) => typeof x !== "string")) {
-        console.error(
-            `Config "notifications.popup_providers" must be a list of provider names, got "${JSON.stringify(popupProviders)}"`,
-        )
-        popupProviders = []
-    }
-
+    const r = createReader(configData, "notifications")
     return {
         // transient banners for incoming notifications
-        popups: get("popups", true),
+        popups: r.bool("popups", true),
         // provider names ("github", "youtube", ...) whose items may
         // also raise transient banners. opt-in: empty = center only
-        popupProviders,
+        popupProviders: r.strList("popup_providers", []),
         // ms before a popup auto-hides (critical stays until dismissed,
         // low urgency drains in half the time)
-        popupTimeout,
-        position: position as "topRight" | "topCenter",
+        popupTimeout: r.num("popup_timeout", 5000, { positive: true }),
+        position: r.oneOf("position", ["topRight", "topCenter"] as const, "topRight", {
+            // a bare top-level "position" belongs to the workspaces
+            sectionOnly: true,
+        }),
         // fixed banner width in px: the stack must not resize as
         // notifications arrive and expire
-        popupWidth: (() => {
-            const w = get("popup_width", 460)
-            if (typeof w !== "number" || w <= 0) {
-                console.error(
-                    `Config "notifications.popup_width" must be a positive number, got "${w}"`,
-                )
-                return 460
-            }
-            return w
-        })(),
+        popupWidth: r.num("popup_width", 460, { positive: true }),
         // whose notification daemon is used: auto = the system's if one
         // is running, ours otherwise
-        daemon: daemon as "auto" | "wam-shell" | "system",
-        // app names (lowercased) whose notifications are popup-only:
-        // shown as banners but excluded from the center's history
-        transientApps: transientApps as string[],
+        daemon: r.oneOf("daemon", ["auto", "wam-shell", "system"] as const, "auto"),
+        // app names whose notifications are popup-only: shown as banners
+        // but excluded from the center's history. Lowercased once here,
+        // so every comparison site can match without repeating it
+        transientApps: r.strList("transient_apps", []).map(a => a.toLowerCase()),
     }
 }
 
 function getOsdConfig() {
-    const o = configData.osd ?? {}
-    const get = (key: string, fallback: any) => o[key] ?? configData[key] ?? fallback
-
-    let position = get("position", "bottom")
-    if (!["bottom", "center", "top"].includes(position)) {
-        console.error(
-            `Config "osd.position" must be "bottom", "center" or "top", got "${position}"`,
-        )
-        position = "bottom"
-    }
-
-    let timeout = get("timeout", 2000)
-    if (typeof timeout !== "number" || timeout <= 0) {
-        console.error(`Config "osd.timeout" must be a positive number, got "${timeout}"`)
-        timeout = 2000
-    }
+    const r = createReader(configData, "osd")
+    const position = r.oneOf("position", ["bottom", "center", "top"] as const, "bottom", {
+        // a bare top-level "position" belongs to the workspaces
+        sectionOnly: true,
+    })
+    const timeout = r.num("timeout", 2000, { positive: true })
 
     // How long a pill stays up depends on what it is telling you.
     //
@@ -821,30 +550,17 @@ function getOsdConfig() {
         layout: 0.3,
         lockKeys: 0.6,
     }
-    const perKind = (kind: string, key: string) => {
-        const scaled = Math.round(timeout * scale[kind])
-        const v = get(`timeout_${key}`, null)
-        if (v === null || v === undefined) return scaled
-        if (typeof v !== "number" || v <= 0) {
-            console.error(`Config "osd.timeout_${key}" must be a positive number, got "${v}"`)
-            return scaled
-        }
-        return v
-    }
-
-    // distance from the anchored edge. 140 clears the message composer
-    // of a bottom-docked chat app (slack, discord), which a 60px pill
-    // sat right on top of; "center" ignores it
-    let margin = get("margin", 140)
-    if (typeof margin !== "number" || margin < 0) {
-        console.error(`Config "osd.margin" must be a number >= 0, got "${margin}"`)
-        margin = 140
-    }
+    // the scaled duration, unless the user pinned this kind outright
+    const perKind = (kind: keyof typeof scale, key: string) =>
+        r.num(`timeout_${key}`, Math.round(timeout * scale[kind]), { positive: true })
 
     return {
-        enabled: get("enabled", true),
-        position: position as "bottom" | "center" | "top",
-        margin,
+        enabled: r.bool("enabled", true),
+        position,
+        // distance from the anchored edge. 140 clears the message
+        // composer of a bottom-docked chat app (slack, discord), which a
+        // 60px pill sat right on top of; "center" ignores it
+        margin: r.num("margin", 140, { min: 0 }),
         timeout,
         // per-trigger durations, keyed by OSD kind (see the note above)
         timeouts: {
@@ -855,11 +571,11 @@ function getOsdConfig() {
             lockKeys: perKind("lockKeys", "lock_keys"),
         },
         // per-trigger toggles
-        volume: get("volume", true),
-        microphone: get("microphone", true),
-        brightness: get("brightness", true),
-        layout: get("layout", true),
-        lockKeys: get("lock_keys", true),
+        volume: r.bool("volume", true),
+        microphone: r.bool("microphone", true),
+        brightness: r.bool("brightness", true),
+        layout: r.bool("layout", true),
+        lockKeys: r.bool("lock_keys", true),
     }
 }
 
@@ -910,6 +626,9 @@ function getPanelsConfig(): PanelConfig[] {
         Array.isArray(v) ? v.filter(x => typeof x === "string") : fallback
 
     return p.map((entry: any, i: number) => {
+        // hand-rolled rather than a SectionReader: these are anonymous
+        // tables in a list, and the useful label is the INDEX
+        // ("panel[1].position"), which a section name cannot carry
         let position = entry.position ?? "top"
         if (position !== "top" && position !== "bottom") {
             console.error(
@@ -958,35 +677,20 @@ function pendingUpdatesPath(cacheDir: string): string {
     return `${cacheDir}/system_updates`
 }
 
+// the top-level keys that belong to no section
+const topLevel = createReader(configData, "")
+
 export default class Config {
-    // the only top-level key without a type guard: a truthy non-string
-    // (e.g. instance_name = 5) would poison the bus name and paths
-    static instanceName = (() => {
-        const v = configData.instance_name
-        if (v === undefined) return "wam-shell"
-        if (typeof v !== "string" || v === "") {
-            console.error(`Config "instance_name" must be a non-empty string, got "${v}"`)
-            return "wam-shell"
-        }
-        return v
-    })()
+    // a truthy non-string (e.g. instance_name = 5) would poison the bus
+    // name and every path derived from it
+    static instanceName = topLevel.str("instance_name", "wam-shell", { nonEmpty: true })
 
     static instanceSrcDir = instanceSrcDir
     static osIcon = getOsIcon()
     static desktopSession = getDesktopSession()
-    static updatesThreshold = (() => {
-        const v = configData.arch_updates_threshold
-        if (v === undefined) return 50
-        if (typeof v !== "number" || v < 0) {
-            console.error(
-                `Config "arch_updates_threshold" must be a non-negative number, got "${v}"`,
-            )
-            return 50
-        }
-        return v
-    })()
+    static updatesThreshold = topLevel.num("arch_updates_threshold", 50, { min: 0 })
 
-    static swayGaps = configData.sway_gaps === undefined ? true : configData.sway_gaps
+    static swayGaps = topLevel.bool("sway_gaps", true)
     static swayGapsSizeDefault = 10
 
     static workspaces = getWorkspacesConfig()

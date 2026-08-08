@@ -4,7 +4,7 @@ import { createBinding, createComputed, For } from "gnim"
 import AstalHyprland from "gi://AstalHyprland"
 import Config from "../../config"
 import Sway from "../../lib/sway"
-import { groupPopups, popups } from "../../lib/notifd"
+import { displayGroups, popups } from "../../lib/notifd"
 import PopupRow from "./PopupRow"
 
 // Transient notification banners. One window per monitor; content only
@@ -51,14 +51,11 @@ export default function NotificationPopups({ gdkMonitor }: { gdkMonitor: Gdk.Mon
     // parallel rows on unfocused windows would double-render and fight
     // over hover freeze
     //
-    // Newest first. The controller appends arrivals, so its own order
-    // puts the newest at the bottom, which reads backwards once several
-    // banners are up: the one that just arrived is the one being read
-    //
-    // Then folded per app, so a chatty app costs one card rather than
-    // one card per message, and criticals lead (see groupPopups)
+    // Newest first, then folded per app so a chatty app costs one card
+    // rather than one card per message, with criticals leading. Both the
+    // ordering and the folding belong to lib/notifd — see displayGroups
     const groups = createComputed([popups, isFocused], (list, focused) =>
-        focused ? groupPopups([...list].reverse()) : [],
+        focused ? displayGroups(list) : [],
     )
 
     return (

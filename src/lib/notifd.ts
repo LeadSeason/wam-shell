@@ -5,6 +5,7 @@ import { Accessor, createBinding, createState } from "gnim"
 import { connect, disconnect, timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
 import type { ProviderItem } from "./notificationProviders"
+import { registerDispose } from "./lifecycle"
 
 // Shared notification daemon state. The first instantiation becomes
 // the daemon (so swaync must not run alongside).
@@ -126,6 +127,16 @@ export interface PopupTimer {
     expiring: boolean
 }
 
+/**
+ * The banner stack, **oldest first** — admission appends.
+ *
+ * That order is load-bearing in two directions and the two disagree,
+ * which is exactly why it is written down here: `capPopups` evicts from
+ * the FRONT (the oldest ordinary banner), while `groupPopups` wants
+ * NEWEST first (the newest arrival is the card's representative, and
+ * criticals lead). The conversion between them belongs to this module —
+ * see `displayGroups`, which is what views must render.
+ */
 const [popupsState, setPopups] = createState<PopupEntry[]>([])
 export const popups: Accessor<PopupEntry[]> = popupsState
 
@@ -140,7 +151,23 @@ export function popupTimer(key: string): PopupTimer | null {
     return timers.get(key) ?? null
 }
 
+// Collapse animations in flight: key -> GLib source. A banner whose
+// countdown hit zero is dropped 220ms later so the collapse can play,
+// and until then the source is the only thing holding that removal.
+// Untracked, it outlived dispose() and fired removePopup against a torn
+// down module — and a banner dismissed by hand inside its own collapse
+// window left a source that removed an already-gone key.
+const expiring = new Map<string, number>()
+
+function cancelExpire(key: string) {
+    const src = expiring.get(key)
+    if (src === undefined) return
+    expiring.delete(key)
+    sourceRemove(src)
+}
+
 export function removePopup(key: string) {
+    cancelExpire(key)
     if (timers.delete(key)) bumpTimerVersion()
     setPopups(popupsState.get().filter(p => p.key !== key))
     forgetFinishedApps()
@@ -181,11 +208,15 @@ function ensurePopupTick() {
                 t.remaining -= dt
                 if (t.remaining <= 0) {
                     t.expiring = true
-                    // let the collapse animation play before dropping it
-                    timeoutAdd("notifd:popupExpire", GLib.PRIORITY_DEFAULT, 220, () => {
+                    // let the collapse animation play before dropping it.
+                    // Tracked so dispose() can cancel it and so a manual
+                    // dismiss inside the window doesn't leave it armed
+                    const src = timeoutAdd("notifd:popupExpire", GLib.PRIORITY_DEFAULT, 220, () => {
+                        expiring.delete(key)
                         removePopup(key)
                         return GLib.SOURCE_REMOVE
                     })
+                    expiring.set(key, src)
                 }
             }
             // A bump is what PopupRow watches, for two different things:
@@ -297,7 +328,8 @@ export function popupArrivals(p: PopupEntry): number {
  * arrive last, and they carry no timeout, so it would hide indefinitely.
  * They also lead, ahead of everything ordinary.
  *
- * @param list newest first
+ * @param list newest first — NOT the order `popups` is stored in.
+ *        Views want `displayGroups` instead, which owns the conversion
  */
 export function groupPopups(list: PopupEntry[]): PopupGroup[] {
     const urgent: PopupGroup[] = []
@@ -322,6 +354,20 @@ export function groupPopups(list: PopupEntry[]): PopupGroup[] {
         ordinary.push(group)
     }
     return [...urgent, ...ordinary]
+}
+
+/**
+ * What a banner window renders: the stored stack, folded into cards, in
+ * the order they should appear on screen.
+ *
+ * The one place the stored order (oldest first, see `popups`) is turned
+ * into the display order (newest first). Every per-monitor window used
+ * to do the `.reverse()` itself, which put a convention this module owns
+ * in the hands of its views — and left nothing that pins the whole
+ * pipeline, since the pure halves are only ever tested in isolation.
+ */
+export function displayGroups(list: PopupEntry[]): PopupGroup[] {
+    return groupPopups([...list].reverse())
 }
 
 /**
@@ -421,8 +467,15 @@ export function dispose() {
         sourceRemove(tickSource)
         tickSource = null
     }
+    // collapse animations still in flight would otherwise fire
+    // removePopup on a module that is already down
+    for (const src of expiring.values()) sourceRemove(src)
+    expiring.clear()
     disconnect(notifd, notifiedId)
     disconnect(notifd, resolvedId)
 }
 
 export default notifd
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("notifd", dispose)

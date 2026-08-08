@@ -17,6 +17,7 @@ import {
 } from "./metrics"
 import { writeFileAtomic } from "./atomicWrite"
 import { SleepTimerState, serialize, parse, decide } from "./sleepTimerState"
+import { registerDispose } from "./lifecycle"
 
 // Sleep timer: pauses every playing MPRIS player when it fires (and
 // dims, if configured). The user picks the duration when starting (QS
@@ -67,11 +68,7 @@ function pref<T extends boolean | string>(file: string, fallback: T) {
     const [state, setState] = createState<T>(initial)
     const set = (v: T) => {
         setState(v)
-        try {
-            GLib.mkdir_with_parents(Config.instanceCacheDir, 0o755)
-        } catch (e) {
-            console.warn(`sleepTimer: failed writing ${file}:`, e)
-        }
+        // no mkdir: writeFileAtomic creates the parent directory
         queueIo(file, () => writeFileAtomic(path, JSON.stringify(v)))
     }
     return [state, set] as const
@@ -317,6 +314,10 @@ function currentState(): SleepTimerState {
 // write — the deadline is wall-clock, so nothing in the file changes
 // while ticking
 function writeState() {
+    // this mkdir stays, unlike the cache-dir ones: writeFileAtomic
+    // creates a missing parent at the default mode, and the runtime
+    // state dir has to be 0700 — it names muted streams and the
+    // owning shell's pid
     try {
         GLib.mkdir_with_parents(stateDir, 0o700)
     } catch (e) {
@@ -578,11 +579,7 @@ function loadHealApps(): Set<string> {
 const healApps = loadHealApps()
 
 function writeHealApps() {
-    try {
-        GLib.mkdir_with_parents(Config.instanceCacheDir, 0o755)
-    } catch (e) {
-        console.warn("sleepTimer: failed writing heal state:", e)
-    }
+    // no mkdir: writeFileAtomic creates the parent directory
     queueIo("heal state", () => writeFileAtomic(healPath, JSON.stringify([...healApps])))
 }
 
@@ -1025,3 +1022,6 @@ sleep-timer status
 })
 
 loadState()
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("sleepTimer", dispose)

@@ -4,11 +4,15 @@ import Soup from "gi://Soup?version=3.0"
 import { createState } from "gnim"
 import Config from "../config"
 import { isFile } from "./utils"
+import { configHome } from "./paths"
 import { writeFileAtomic } from "./atomicWrite"
 import { timeoutAdd, timeoutAddSeconds, sourceRemove, trackHttp } from "./metrics"
 import { Provider, ProviderItem, registerProvider } from "./notificationProviders"
 import { GoogleAccount, Reply, createGoogleAuth, googleRequest } from "./googleAuth"
 import { addProviderPopup } from "./notifd"
+import { createSeenStore } from "./seenStore"
+import { bannerCandidates, createRefreshGate, openUrl } from "./providerCore"
+import { registerDispose } from "./lifecycle"
 
 // YouTube notifications provider: new uploads from the user's
 // subscriptions. YouTube has no bell-notifications endpoint, and the
@@ -30,8 +34,6 @@ const MAX_SUB_PAGES = 10 // 500 subscriptions is plenty
 const SWEEP_CONCURRENCY = 8 // 275 channels in flight would churn sockets
 const QUOTA_PER_DAY = 9500 // leave headroom under the 10k default
 
-const configHome = `${GLib.getenv("XDG_CONFIG_HOME") || `${GLib.getenv("HOME")}/.config`}/wam-shell`
-const seenPath = `${Config.instanceCacheDir}/youtube-seen.json`
 const channelsPath = `${Config.instanceCacheDir}/youtube-channels.json`
 const thumbsDir = `${Config.instanceCacheDir}/youtube-thumbs`
 
@@ -101,23 +103,13 @@ export function playlistVideoData(raw: any):
     }
 }
 
-// ids in next but neither in prev nor in the seen store — and
-// published within the banner horizon. The horizon is what makes
-// banners safe: a quiet channel's years-old backlog entering the list
-// (first sweep, a partial failure healing) is never a banner
-const BANNER_HORIZON_SEC = 48 * 3600
-
-export function bannerCandidates(
-    prev: { id: string }[],
-    next: { id: string; time: number }[],
-    seen: Set<string>,
-    nowSec: number,
-): string[] {
-    const prevIds = new Set(prev.map(i => i.id))
-    return next
-        .filter(i => !prevIds.has(i.id) && !seen.has(i.id))
-        .filter(i => i.time >= nowSec - BANNER_HORIZON_SEC)
-        .map(i => i.id)
+// Items already on screen must not banner again either, so the "known"
+// set is the persisted seen store UNIONED with the previous list — the
+// horizon and the filtering itself are shared (lib/providerCore).
+export function knownIds(prev: { id: string }[], seen: Set<string>): Set<string> {
+    const out = new Set(seen)
+    for (const i of prev) out.add(i.id)
+    return out
 }
 
 // the center is a notification list, not a subscriptions digest: a
@@ -134,32 +126,14 @@ const itemAccounts = new Map<string, string>()
 
 // dismissed/activated ids, persisted (cap 200) so restarts neither
 // resurface rows nor replay banners
-const seen = new Set<string>()
+const seen = createSeenStore(`${Config.instanceCacheDir}/youtube-seen.json`, "YouTube")
 // right-click "dismiss": session-only hide, no persistence — filtered
 // out of sweeps so it doesn't reappear before the shell restarts
 const sessionHidden = new Set<string>()
 
-function loadSeen() {
-    if (!isFile(seenPath)) return
-    try {
-        const contents = GLib.file_get_contents(seenPath)[1]
-        const data = JSON.parse(new TextDecoder().decode(contents))
-        if (Array.isArray(data?.seen)) for (const id of data.seen) seen.add(String(id))
-    } catch (e) {
-        console.warn("YouTube: failed reading seen store:", e)
-    }
-}
-
-function storeSeen() {
-    writeFileAtomic(seenPath, JSON.stringify({ seen: [...seen].slice(-200) })).catch(e =>
-        console.warn("YouTube: failed writing seen store:", e),
-    )
-}
-
 function markSeen(id: string) {
     if (seen.has(id)) return
-    seen.add(id)
-    storeSeen()
+    seen.remember([id])
     itemAccounts.delete(id)
     setItems(items.get().filter(i => i.id !== id))
 }
@@ -412,7 +386,6 @@ function discoverChannels(account: GoogleAccount, cb: (ok: boolean) => void) {
 // ---------------------------------------------------------------- poll
 
 let pollInFlight = false
-let lastPollAttempt = 0
 let pollTimer = 0
 // stays false until the first successful sweep lands: that sweep is
 // the baseline and never banners
@@ -439,13 +412,7 @@ function attachActions(
         },
         dismiss: () => markSeen(data.id),
         activate: () => {
-            Gio.AppInfo.launch_default_for_uri_async(data.url, null, null, (_s, res) => {
-                try {
-                    Gio.AppInfo.launch_default_for_uri_finish(res)
-                } catch (e) {
-                    console.warn("YouTube: could not open the browser:", e)
-                }
-            })
+            openUrl(data.url, "YouTube")
             markSeen(data.id)
         },
     }
@@ -560,6 +527,51 @@ function effectivePollMinutes(): number {
     return Math.max(Config.youtube.pollMinutes, floor, failStreak > 0 ? backoff : 0)
 }
 
+// A sweep is a two-stage fan-out — channel discovery per account, then
+// one playlistItems call per channel, pooled — and it only settles when
+// the LAST callback in that tree arrives. Nothing re-arms the poll timer
+// until it does, so a single undelivered callback (a Soup message that
+// never completes, a pool entry whose done() is lost) latches
+// pollInFlight true and the provider is silently dead until the shell
+// restarts: no rows, no banners, no log line saying why.
+//
+// The deadline is generous — 275 channels at 8-way concurrency is
+// minutes of real work on a slow link — because it exists to break a
+// stuck sweep, not to bound a slow one.
+const POLL_DEADLINE_SEC = 300
+let pollWatchdog = 0
+
+function armPollWatchdog() {
+    if (pollWatchdog) sourceRemove(pollWatchdog)
+    pollWatchdog = timeoutAddSeconds(
+        "youtube:pollWatchdog",
+        GLib.PRIORITY_DEFAULT,
+        POLL_DEADLINE_SEC,
+        () => {
+            pollWatchdog = 0
+            if (!pollInFlight) return GLib.SOURCE_REMOVE
+            pollInFlight = false
+            // counted as a failed sweep: whatever wedged it is likely to
+            // wedge the next one, and the backoff is the right answer to
+            // that. A later straggler callback settles harmlessly —
+            // scheduleNext replaces the timer rather than stacking one
+            failStreak++
+            console.warn(`YouTube: sweep did not finish within ${POLL_DEADLINE_SEC}s; releasing it`)
+            setStatus(`Couldn't sync YouTube — retrying in ${effectivePollMinutes()}m`)
+            scheduleNext()
+            return GLib.SOURCE_REMOVE
+        },
+    )
+}
+
+function finishPoll() {
+    if (pollWatchdog) {
+        sourceRemove(pollWatchdog)
+        pollWatchdog = 0
+    }
+    pollInFlight = false
+}
+
 function scheduleNext() {
     if (pollTimer) sourceRemove(pollTimer)
     const minutes = effectivePollMinutes()
@@ -583,7 +595,8 @@ export function poll() {
     // sign-in restarts it via onAccountAdded
     if (accounts.length === 0) return
     pollInFlight = true
-    lastPollAttempt = Date.now()
+    armPollWatchdog()
+    gate.touch()
     const startSweep = () => {
         const prev = items.get()
         const merged: ProviderItem[] = []
@@ -622,16 +635,19 @@ export function poll() {
             for (const id of thumbInfo.keys()) if (!keep.has(id)) thumbInfo.delete(id)
             setItems(shown)
             fetchDisplayedThumbs()
-            pollInFlight = false
+            finishPoll()
             scheduleNext()
             if (!baselineDone) {
                 baselineDone = true
                 return
             }
             if (!Config.notifications.popupProviders.includes("youtube")) return
-            for (const id of bannerCandidates(prev, merged, seen, Date.now() / 1000)) {
-                const item = merged.find(i => i.id === id)
-                if (item) addProviderPopup(item)
+            for (const item of bannerCandidates(
+                merged,
+                knownIds(prev, seen.ids()),
+                Date.now() / 1000,
+            )) {
+                addProviderPopup(item)
             }
         }
         for (const account of accounts) {
@@ -657,17 +673,21 @@ export function poll() {
     }
 }
 
-// stale-while-revalidate when the center opens; age-gated hard: a
-// sweep costs ~1 unit per subscription
-export function refresh() {
-    if (Date.now() - lastPollAttempt < 600_000) return
-    poll()
-}
+// stale-while-revalidate when the center opens; age-gated hard (10
+// minutes, not the other providers' one): a sweep costs ~1 quota unit
+// per subscription, so a fidgety toggle is measured against a daily
+// budget rather than a rate limit
+const gate = createRefreshGate(600_000, poll)
+export const refresh = gate.refresh
 
 export function dispose() {
     if (pollTimer) {
         sourceRemove(pollTimer)
         pollTimer = 0
+    }
+    if (pollWatchdog) {
+        sourceRemove(pollWatchdog)
+        pollWatchdog = 0
     }
     if (thumbFlush) {
         sourceRemove(thumbFlush)
@@ -705,7 +725,6 @@ if (active) {
 
 export function init() {
     if (!active) return
-    loadSeen()
     loadChannelsCache()
     GLib.mkdir_with_parents(thumbsDir, 0o755)
     pruneThumbs()
@@ -722,3 +741,6 @@ export function init() {
         scheduleNext()
     }
 }
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("youtube", dispose)

@@ -1,5 +1,6 @@
 import { test, eq } from "./framework"
-import { playlistVideoData, bannerCandidates } from "../src/lib/youtube"
+import { playlistVideoData, knownIds } from "../src/lib/youtube"
+import { bannerCandidates } from "../src/lib/providerCore"
 
 const playlistItem = (over: any = {}) => ({
     snippet: {
@@ -44,7 +45,17 @@ test("youtube playlistVideoData: videoIds unsafe for filenames are dropped", () 
     eq(playlistVideoData(playlistItem({ resourceId: { videoId: "../etc" } })), null)
 })
 
-test("youtube bannerCandidates: new ids minus prev and seen, within 48h", () => {
+test("youtube knownIds: the displayed list counts as already known", () => {
+    // YouTube's seen store only carries what was dismissed or opened, so
+    // "do not banner this again" is that store UNIONED with whatever is
+    // already on screen — the filtering itself is providerCore's
+    const prev = [{ id: "youtube:1" }, { id: "youtube:2" }]
+    eq(knownIds(prev, new Set(["youtube:4"])), new Set(["youtube:1", "youtube:2", "youtube:4"]))
+    eq(knownIds([], new Set(["youtube:4"])), new Set(["youtube:4"]))
+    eq(knownIds(prev, new Set()), new Set(["youtube:1", "youtube:2"]))
+})
+
+test("youtube banner filtering: new ids minus prev and seen, within 48h", () => {
     const now = 1_800_000_000
     const prev = [{ id: "youtube:1" }, { id: "youtube:2" }]
     const item = (id: string, ageSec: number) => ({ id, time: now - ageSec })
@@ -54,7 +65,17 @@ test("youtube bannerCandidates: new ids minus prev and seen, within 48h", () => 
         item("youtube:4", 60), // seen: no banner
         item("youtube:5", 7 * 86_400), // enters the list but is days old: no banner
     ]
-    const seen = new Set(["youtube:4"])
-    eq(bannerCandidates(prev, next, seen, now), ["youtube:3"])
-    eq(bannerCandidates(prev, prev.map(p => ({ ...p, time: now })), new Set(), now), [])
+    const known = knownIds(prev, new Set(["youtube:4"]))
+    eq(
+        bannerCandidates(next, known, now).map(i => i.id),
+        ["youtube:3"],
+    )
+    eq(
+        bannerCandidates(
+            prev.map(p => ({ ...p, time: now })),
+            known,
+            now,
+        ),
+        [],
+    )
 })

@@ -3,9 +3,16 @@ import Gio from "gi://Gio?version=2.0"
 import { createState } from "gnim"
 import Config from "../config"
 import { loadCredentials as loadEnvCredentials } from "./credentials"
+import { configHome } from "./paths"
 import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { Provider, ProviderItem, registerProvider } from "./notificationProviders"
 import { addProviderPopup } from "./notifd"
+import { createRefreshGate, newArrivals, openUrl } from "./providerCore"
+import { registerDispose } from "./lifecycle"
+
+// re-exported so the unit suite can pin it against ProtonMail's own
+// shapes; the implementation is shared (lib/providerCore)
+export { newArrivals }
 
 // ProtonMail provider for the notification center, via ProtonMail
 // Bridge's local IMAP (default 127.0.0.1:1143): unread INBOX mail
@@ -27,7 +34,6 @@ const MAX_ITEMS = 20
 
 // ---------------------------------------------------------- credentials
 
-const configHome = `${GLib.getenv("XDG_CONFIG_HOME") || `${GLib.getenv("HOME")}/.config`}/wam-shell`
 const envPath = `${configHome}/protonmail.env`
 
 function loadCredentials(): { user: string; password: string } | null {
@@ -189,12 +195,6 @@ export function envelopeData(env: Envelope): Omit<ProviderItem, "dismiss" | "act
     }
 }
 
-// ids in next but not in prev
-export function newArrivals(prev: { id: string }[], next: { id: string }[]): string[] {
-    const prevIds = new Set(prev.map(i => i.id))
-    return next.filter(i => !prevIds.has(i.id)).map(i => i.id)
-}
-
 // an untagged line seen while idling: "event" = the mailbox changed
 // (new mail, expunge, flag change made from another client), "bye" =
 // the server is closing the session, null = ignorable chatter ("* OK
@@ -224,21 +224,8 @@ function socketConnect(host: string, port: number): Promise<Gio.SocketConnection
 // a hung bridge (accepts the TCP connection, never answers) must not
 // wedge the provider: without a read timeout the fetch promise never
 // settles and pollInFlight stays true forever. One cancellable per
-// session, cancelled by a watchdog.
+// session, cancelled by a watchdog (ImapSession.watchdog).
 const IO_TIMEOUT_SEC = 30
-
-function ioWatchdog() {
-    const cancellable = new Gio.Cancellable()
-    // the source destroys itself when it fires: done() must not try to
-    // remove it again (GLib-CRITICAL "Source ID was not found")
-    let fired = false
-    const src = timeoutAddSeconds("protonmail:io", GLib.PRIORITY_DEFAULT, IO_TIMEOUT_SEC, () => {
-        fired = true
-        cancellable.cancel()
-        return GLib.SOURCE_REMOVE
-    })
-    return { cancellable, done: () => !fired && sourceRemove(src) }
-}
 
 function readLineRaw(input: Gio.DataInputStream, cancellable: Gio.Cancellable): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -437,6 +424,17 @@ class ImapSession {
         await this.command("EXAMINE INBOX")
     }
 
+    // read-WRITE select; STORE changes flags, which EXAMINE forbids
+    async selectInbox(): Promise<void> {
+        await this.command("SELECT INBOX")
+    }
+
+    // mark one mail seen. command() throws on NO/BAD, so a refused
+    // STORE cannot be mistaken for a successful one
+    async markSeen(uid: number): Promise<void> {
+        await this.command(`UID STORE ${uid} +FLAGS (\\Seen)`)
+    }
+
     // UID SEARCH UNSEEN + UID FETCH ENVELOPE for the newest few; shared
     // by the one-shot poll and the IDLE session
     async fetchUnread(): Promise<Envelope[]> {
@@ -599,28 +597,23 @@ async function fetchUnread(): Promise<Envelope[]> {
     }
 }
 
-// mark one mail seen; best-effort, errors are the caller's log
-async function storeSeen(uid: number) {
-    const conn = await socketConnect(Config.protonmail.host, Config.protonmail.port)
-    const wd = ioWatchdog()
+// mark one mail seen on its own short connection; throws on any
+// failure, and an auth rejection carries e.auth so the caller can trip
+// the same kill-switch a failed poll does.
+//
+// Routed through ImapSession rather than hand-rolling a second login
+// path: the old one issued LOGIN and never looked at the reply, so a
+// rejected password went on to SELECT and STORE, came back false, and
+// surfaced as a generic "mark-seen failed" — the one state the provider
+// already knows how to explain, reported as the one it cannot.
+async function storeSeen(uid: number): Promise<void> {
+    const s = await ImapSession.open()
     try {
-        const input = Gio.DataInputStream.new(conn.get_input_stream())
-        await readChunk(input, "", wd.cancellable)
-        await cmd(
-            input,
-            conn,
-            "a1",
-            `LOGIN "${quote(creds!.user)}" "${quote(creds!.password)}"`,
-            wd.cancellable,
-        )
-        // read-write select: STORE changes flags
-        await cmd(input, conn, "a2", "SELECT INBOX", wd.cancellable)
-        const r = await cmd(input, conn, "a3", `UID STORE ${uid} +FLAGS (\\Seen)`, wd.cancellable)
-        await cmd(input, conn, "a4", "LOGOUT", wd.cancellable).catch(() => {})
-        return /^a3 OK/im.test(r)
+        await s.selectInbox()
+        await s.markSeen(uid)
     } finally {
-        wd.done()
-        conn.close(null)
+        await s.logout()
+        s.close()
     }
 }
 
@@ -630,7 +623,6 @@ const [items, setItems] = createState<ProviderItem[]>([])
 export { items }
 
 let pollInFlight = false
-let lastPollAttempt = 0
 let authFailed = false
 let pollTimer = 0
 // stays false until the first successful fetch lands: that fetch is the
@@ -650,11 +642,13 @@ function attachActions(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">
     const markRead = () => {
         const uid = Number(data.id.slice("protonmail:".length))
         storeSeen(uid)
-            .then(ok => {
-                if (ok) setItems(items.get().filter(i => i.id !== data.id))
-                else console.warn("ProtonMail: mark-seen failed")
+            .then(() => setItems(items.get().filter(i => i.id !== data.id)))
+            .catch(e => {
+                // the same rejection a poll would have seen: say so, and
+                // stop the provider rather than failing quietly per click
+                if (e?.auth) return onAuthFailure()
+                console.warn("ProtonMail: mark-seen failed:", e)
             })
-            .catch(e => console.warn("ProtonMail: mark-seen failed:", e))
     }
     return {
         ...data,
@@ -664,13 +658,7 @@ function attachActions(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">
         },
         dismiss: markRead,
         activate: () => {
-            Gio.AppInfo.launch_default_for_uri_async(data.url, null, null, (_s, res) => {
-                try {
-                    Gio.AppInfo.launch_default_for_uri_finish(res)
-                } catch (e) {
-                    console.warn("ProtonMail: could not open webmail:", e)
-                }
-            })
+            openUrl(data.url, "ProtonMail")
             markRead()
         },
     }
@@ -743,7 +731,10 @@ function deliver(envs: Envelope[]) {
         bridgeDownSince = 0
     }
     setStatus(null)
-    lastPollAttempt = Date.now()
+    // an IDLE push is as good as a poll for the refresh gate: the
+    // center opening straight after one must not open a second
+    // connection to ask the bridge what it just told us
+    gate.touch()
     applyEnvelopes(envs)
 }
 
@@ -757,7 +748,7 @@ function onAuthFailure() {
 export function poll() {
     if (!active || authFailed || pollInFlight || disposed) return
     pollInFlight = true
-    lastPollAttempt = Date.now()
+    gate.touch()
     fetchUnread()
         .then(deliver)
         .catch(e => {
@@ -777,10 +768,8 @@ export function poll() {
 
 // stale-while-revalidate when the center opens; age-gated so fidgety
 // toggling doesn't hammer the bridge
-export function refresh() {
-    if (Date.now() - lastPollAttempt < 60_000) return
-    poll()
-}
+const gate = createRefreshGate(60_000, poll)
+export const refresh = gate.refresh
 
 // ----------------------------------------------------- idle / fallback
 
@@ -918,3 +907,6 @@ export function init() {
     if (!active) return
     startIdle()
 }
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("protonmail", dispose)

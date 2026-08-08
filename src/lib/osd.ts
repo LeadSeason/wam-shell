@@ -7,6 +7,7 @@ import Config from "../config"
 import Brightness from "./brightness"
 import hyprsunset, { OUTDOOR_GAMMA, refreshHyprsunset } from "./hyprsunset"
 import { ensureLayoutSource, ensureLockSource, layoutOsdText, lockKeyState } from "./kbLayout"
+import { registerDispose } from "./lifecycle"
 
 // OSD state and triggers. Widgets read `content`/`visible`; triggers
 // call show() which (re)starts the hide timer.
@@ -318,3 +319,6 @@ export function dispose() {
     for (const d of disposers) d()
     disposers.length = 0
 }
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("osd", dispose)
