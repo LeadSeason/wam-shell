@@ -4,6 +4,7 @@ import { count, dnd } from "../../../lib/notifd"
 import { providers } from "../../../lib/notificationProviders"
 import type { ProviderItem } from "../../../lib/notificationProviders"
 import CommandRegistry from "../../../lib/requestHandler"
+import { pressable } from "../../pressable"
 
 const registry = CommandRegistry.get_default()
 
@@ -35,9 +36,9 @@ export default function Notify() {
         <box cssClasses={["swayNC"]} spacing={4}>
             <Gtk.GestureClick
                 button={1}
-                onPressed={() => {
+                {...pressable(() => {
                     registry.execute(["notifications"], true)
-                }}
+                })}
             />
             <image iconName={icon} />
             {/* hidden at zero rather than showing a "0": an empty inbox

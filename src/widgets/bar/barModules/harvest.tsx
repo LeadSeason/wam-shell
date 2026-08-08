@@ -7,6 +7,7 @@ import { sharing, enable as enableShareWatch } from "../../../lib/screenShare"
 import { setPopupAnchor } from "../../harvestPopup"
 import CommandRegistry from "../../../lib/requestHandler"
 import { timeoutAdd } from "../../../lib/metrics"
+import { pressable } from "../../pressable"
 
 const registry = CommandRegistry.get_default()
 
@@ -166,14 +167,14 @@ export default function HarvestTimer({
                 {/* left click: popup below the pill, right click: stop/resume */}
                 <Gtk.GestureClick
                     button={1}
-                    onPressed={() => {
+                    {...pressable(() => {
                         const [, x] = clickArea.translate_coordinates(clickArea.get_root(), 0, 0)
                         setPopupAnchor({
                             x: x + clickArea.get_width() / 2,
                             monitor,
                         })
                         registry.execute(["harvest"], true)
-                    }}
+                    })}
                 />
                 <Gtk.GestureClick
                     button={3}

@@ -15,6 +15,7 @@ import {
 } from "../../../lib/mpris"
 import { createIconResolver } from "../../../lib/appIcon"
 import { popupAnchor, setPopupAnchor } from "../../mediaPopup"
+import { pressable } from "../../pressable"
 
 const registry = CommandRegistry.get_default()
 
@@ -64,14 +65,14 @@ function MediaWidget({
                     {/* left click: popup below the pill, right click: play/pause */}
                     <Gtk.GestureClick
                         button={1}
-                        onPressed={() => {
+                        {...pressable(() => {
                             const [, x] = mediaBox.translate_coordinates(mediaBox.get_root(), 0, 0)
                             setPopupAnchor({
                                 x: x + mediaBox.get_width() / 2,
                                 monitor,
                             })
                             registry.execute(["media"], true)
-                        }}
+                        })}
                     />
                     <Gtk.GestureClick button={3} onPressed={() => playPauseExclusive(player)} />
                     <image

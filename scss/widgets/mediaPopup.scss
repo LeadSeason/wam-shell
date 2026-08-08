@@ -61,6 +61,14 @@ window.MediaPopup {
                 background-color: t.$accent20;
                 border: solid 2px t.$accent20;
             }
+            // these are real buttons, so :active was live all along and
+            // simply never styled: the pointer is already hovering when
+            // a press lands, so skip/next/shuffle changed nothing on
+            // screen until the player got round to answering
+            &:active {
+                background-color: t.$accent40;
+                border: solid 2px t.$accent40;
+            }
             &.active {
                 color: t.$accent;
             }
@@ -69,6 +77,9 @@ window.MediaPopup {
                 padding: 8px 18px;
                 &:hover {
                     background-color: color.mix(t.$accent, transparent, 40%);
+                }
+                &:active {
+                    background-color: color.mix(t.$accent, transparent, 25%);
                 }
             }
         }
