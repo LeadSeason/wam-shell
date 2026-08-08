@@ -252,12 +252,36 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   `window-removed` → `gtk_application_impl_wayland_window_forget`, with
   `SEGV_MAPERR` — an unmapped address, so a dangling pointer, not a
   NULL one. `xx_session` is GTK 4.22's new xdg-session-management
-  support. The only JS caller of `Gtk.Window.destroy` is the per-monitor
-  `<For>` cleanup in `app.tsx`, so monitor removal and app teardown are
-  the two candidate paths. Both locals are optimised out in the release
-  build, so identifying the pointer needs a GTK debug build. Do not
-  confuse it with the crossing-event crash: different stack, different
-  cause, and the banner deferral does nothing for it.
+  support. Do not confuse it with the crossing-event crash: different
+  stack, different cause, and the banner deferral does nothing for it.
+
+  **It reproduces 100% in one cycle, and the trigger is MONITOR REMOVAL,
+  not teardown:**
+
+      hyprctl output create headless
+      sleep 2
+      hyprctl output remove HEADLESS-1   # shell is dead here
+
+  No physical display involved, so it is safe to run on a laptop — and
+  it means any monitor going away (undock, unplug, output reconfigure)
+  takes the shell down. The graceful-quit path was tested and does NOT
+  reproduce it: two clean `ags quit` cycles exited 0 with no core, so
+  the teardown-ordering theory was wrong. The path is the per-monitor
+  `<For>` cleanup in `app.tsx` — the only JS caller of
+  `Gtk.Window.destroy` besides teardown.
+- **A FOURTH signature** (2026-08-07, issue #225):
+  `astal_hyprland_hyprland_get_default` → `g_io_stream_get_input_stream`
+  on a NULL stream. astal reads from the Hyprland IPC connection without
+  checking the connect succeeded, so a missing or not-yet-ready socket
+  segfaults the process at STARTUP. Three cores 71 seconds apart is what
+  it looks like: crash, restart, socket still not ready, crash. It is a
+  segfault inside the library, so wrapping `get_default()` in a
+  `try`/`catch` does nothing. Distinct from #70, which was the socket
+  NOISE from the same area, not a crash.
+- Four signatures, four different causes. Classify a new core by its
+  frame 0 before assuming it is one of the known ones — the first
+  instinct on the 2026-08-08 crash was that it was the crossing-event
+  bug, and it was not.
 
 ## Typecheck gate
 
