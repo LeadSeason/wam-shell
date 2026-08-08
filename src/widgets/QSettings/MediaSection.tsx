@@ -70,6 +70,10 @@ function Player({ player }: { player: AstalMpris.Player }) {
     const title = createBinding(player, "title")
     const artist = createBinding(player, "artist")
     const status = createBinding(player, "playbackStatus")
+    // one binding, four consumers (icon, tooltip, active class, sensitive):
+    // each createBinding is its own notify:: subscription, and the loop
+    // button needs the same value four ways
+    const loop = createBinding(player, "loopStatus")
     const localCover = coverState(player)
     // an arabic/hebrew title should hug the right edge, like the rest
     // of the shell does (see isRtl in lib/utils): the artist follows the
@@ -289,17 +293,11 @@ function Player({ player }: { player: AstalMpris.Player }) {
                                 sensitive={createBinding(player, "canGoNext")}
                             />
                             <MediaButton
-                                extraClasses={createBinding(player, "loopStatus").as(l =>
-                                    loopActive(l) ? ["active"] : [],
-                                )}
-                                iconName={createBinding(player, "loopStatus").as(loopIcon)}
-                                tooltipText={createBinding(player, "loopStatus").as(loopLabel)}
-                                onPressed={() => {
-                                    cycleLoop(player)
-                                }}
-                                sensitive={createBinding(player, "loopStatus").as(
-                                    l => l !== AstalMpris.Loop.UNSUPPORTED,
-                                )}
+                                extraClasses={loop.as(l => (loopActive(l) ? ["active"] : []))}
+                                iconName={loop.as(loopIcon)}
+                                tooltipText={loop.as(loopLabel)}
+                                onPressed={() => cycleLoop(player)}
+                                sensitive={loop.as(l => l !== AstalMpris.Loop.UNSUPPORTED)}
                             />
                         </box>
                     </box>
