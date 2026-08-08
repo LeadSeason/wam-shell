@@ -1,10 +1,55 @@
 // Tiny test runner for gjs. No node, no deps: tests are bundled with
 // `ags bundle` and run with `gjs -m` (see run.sh). Suites register cases
 // with test(); the entry point calls summary() last.
+import GLib from "gi://GLib?version=2.0"
 import System from "system"
 
 let passed = 0
 const failures: string[] = []
+
+/**
+ * Drive promises to completion inside a synchronous `test()`.
+ *
+ * gjs has a main loop but the runner does not run one, so an async
+ * module (atomicWrite, seenStore, the secret store) settles nothing
+ * unless something spins one. This nests a loop, exactly like
+ * metrics-probe.ts does, and rethrows the first rejection so the
+ * failure lands on the case that caused it.
+ *
+ * The timeout is the part worth having: the version of this that lived
+ * in atomicWrite.test.ts would hang the whole suite forever if a promise
+ * never settled, which is the failure mode async code actually has —
+ * and a suite that hangs reports nothing at all, where a suite that
+ * fails reports which case and why.
+ */
+export function runAsync(...promises: Promise<unknown>[]): void {
+    const loop = new GLib.MainLoop(null, false)
+    let failure: unknown = null
+    let settled = false
+    const timeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, ASYNC_TIMEOUT_MS, () => {
+        if (!settled) {
+            settled = true
+            failure = new Error(`timed out after ${ASYNC_TIMEOUT_MS}ms`)
+            loop.quit()
+        }
+        return GLib.SOURCE_REMOVE
+    })
+    const finish = (e?: unknown) => {
+        if (settled) return
+        settled = true
+        GLib.source_remove(timeout)
+        failure = e ?? null
+        loop.quit()
+    }
+    Promise.all(promises).then(
+        () => finish(),
+        e => finish(e ?? new Error("promise rejected with no reason")),
+    )
+    loop.run()
+    if (failure) throw failure
+}
+
+const ASYNC_TIMEOUT_MS = 5000
 
 export function test(name: string, fn: () => void) {
     try {
