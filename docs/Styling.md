@@ -109,11 +109,68 @@ window.Bar > centerbox > box > *:not(:last-child) {
 }
 ```
 
-## Design tokens
+## The design system: `conf.scss` and `ui.scss`
 
-Shared values live in `scss/conf.scss`: `$padding`, `$gap`,
-`$gap-small`, `$radius`, `$font-small`, `$slider-height`, `$pill-size`,
-`$bar-widget-spacing` (gap between panel widgets), `$transition-time`.
+Two files carry everything the shell's surfaces have in common.
+
+**`scss/conf.scss` is the values** — pure numbers and font stacks, no
+theme dependency, so anything may `@use` it:
+
+| group | tokens |
+| --- | --- |
+| space | `$padding-small` `$padding` `$gap-small` `$gap` `$gap-large` `$bar-widget-spacing` |
+| shape | `$radius-small` `$radius` `$radius-large` `$radius-pill`, `$border` `$hairline` |
+| type | `$font-tiny` `$font-small` `$font-title` `$font-display`, `$weight-medium` `$weight-bold`, `$font-ui` `$font-mono` |
+| states | `$disabled-opacity` `$quiet-opacity`, `$transition-time` `$transition-slow` |
+| presets | `$btn-padding{,-icon,-lg}` `$chip-padding` `$row-padding{,-tight}` `$card-padding` `$popup-padding` `$popup-margin` |
+| sizes | `$icon` `$icon-medium` `$icon-large`, `$slider-height` `$meter-height` `$seek-height` `$pill-size` |
+
+Which radius to use is decided by **what the thing is**, not by how big
+it looks: `$radius-small` for inline marks, `$radius` for buttons, rows
+and cards, `$radius-large` for anything that is a window, `$radius-pill`
+for anything whose ends should be round.
+
+**`scss/ui.scss` is what the values add up to** — the theme-aware
+mixins. Include these instead of restating them:
+
+| mixin | for |
+| --- | --- |
+| `surface($bg, $radius)` | a floating window: popup, toast, dialog, OSD |
+| `card($bg, $padding)` | a card inside a surface — no border, no shadow |
+| `button-quiet` / `button-framed` / `button-accent` | the three buttons |
+| `icon-button` / `chip` | icon-only (square) / one of a pickable set |
+| `row($padding)` / `row-active` | a list row, and the one in effect |
+| `eyebrow` / `eyebrow-rule` / `title` / `display` / `subtitle` | the type roles |
+| `slider($height, $fill)` / `meter($fill)` | a control you aim at / a readout you glance at |
+| `switch` / `checkbox` / `text-field` | the form controls |
+| `menu` | `modelbutton`/`separator`/`arrow` for GTK menus |
+| `focus-ring` | keyboard focus, for the surfaces driven by one |
+
+Two rules the mixins encode, worth knowing before overriding them:
+
+- **Accent is feedback on stateless things, surface on stateful ones.**
+  A button has no state, so the pointer paints it accent (hover
+  `$accent20`, press `$accent40`). A list row, a workspace or a tile
+  *can be the active one*, and accent is reserved for saying so — the
+  pointer speaks in surface there (`$surface050` / `$surface1`) or the
+  two collide, and hovering a workspace looks like switching to it.
+- **A card does not frame itself.** Depth is the surface's job. A card
+  that also drew a border and a shadow turned every pane into boxes in
+  boxes.
+
+When a widget genuinely needs to differ, override *after* the include
+and say why. A deliberate exception reads as one; a fresh literal reads
+as drift — which is how the tree ended up with popup radii of 6, 12, 14
+and 15px at the same time, three unrelated slider designs, and the
+`modelbutton`/`separator`/`arrow` block written out twice, identically,
+in two files.
+
+One node-path trap, since it cost a working rule: in `Gtk.Scale` the
+`slider` and `highlight` nodes are **siblings** under `trough`
+(`scale > trough > {fill, highlight, slider}`). `slider highlight`
+therefore matches nothing — always reach a fill as
+`scale trough highlight`.
+
 Theme colors come from `scss/theme/*.scss` (`t.$accent`, `t.$base`, …).
 
 ## Targeting widgets and panels

@@ -21,7 +21,7 @@
 * {
     all: unset; // Unset all user provided style. Since we are
     font-family: s.$font-ui;
-    transition-duration: 200ms;
+    transition-duration: s.$transition-time;
 }
 
 // Everything the shell renders is prose EXCEPT the readouts below, where

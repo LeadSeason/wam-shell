@@ -1,18 +1,14 @@
 @use "active-theme" as t;
 @use "../conf.scss" as s;
-@use "sass:color";
+@use "../ui.scss" as u;
 
 window.MediaPopup {
     background: transparent;
 
     .mediaPopup {
-        background: t.$crust;
-        color: t.$text;
-        border-radius: s.$radius;
-        border: solid 2px color.mix(t.$surface0, transparent, 60%);
-        margin: 5px 12px 12px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-        padding: 12px;
+        @include u.surface;
+        margin: s.$popup-margin;
+        padding: s.$popup-padding;
 
         .coverBig {
             min-width: 260px;
@@ -27,21 +23,17 @@ window.MediaPopup {
         }
 
         .identity {
-            font-weight: bold;
+            font-weight: s.$weight-bold;
             color: t.$subtext0;
         }
         .title {
-            font-size: 1.15em;
-            font-weight: bold;
+            @include u.title;
         }
         .artist, .time {
-            font-size: s.$font-small;
-            color: t.$subtext0;
+            @include u.subtitle;
         }
         .section {
-            font-size: s.$font-small;
-            font-weight: bold;
-            color: t.$subtext0;
+            @include u.eyebrow;
         }
 
         &.empty {
@@ -49,58 +41,21 @@ window.MediaPopup {
             color: t.$subtext0;
         }
 
+        // transport: icon-only, so square
         button {
-            border-radius: s.$radius;
-            border: solid 2px transparent;
-            padding: 2px 8px;
+            @include u.icon-button;
 
-            &:disabled {
-                opacity: 0.35;
-            }
-            &:hover {
-                background-color: t.$accent20;
-                border: solid 2px t.$accent20;
-            }
-            // these are real buttons, so :active was live all along and
-            // simply never styled: the pointer is already hovering when
-            // a press lands, so skip/next/shuffle changed nothing on
-            // screen until the player got round to answering
-            &:active {
-                background-color: t.$accent40;
-                border: solid 2px t.$accent40;
-            }
             &.active {
                 color: t.$accent;
             }
+            // the one primary action on the surface
             &.play {
-                background-color: color.mix(t.$accent, transparent, 55%);
-                padding: 8px 18px;
-                &:hover {
-                    background-color: color.mix(t.$accent, transparent, 40%);
-                }
-                &:active {
-                    background-color: color.mix(t.$accent, transparent, 25%);
-                }
+                @include u.button-accent(s.$gap 18px);
             }
         }
 
         scale {
-            trough {
-                min-height: 4px;
-                border-radius: s.$radius;
-                background-color: t.$surface0;
-
-                highlight {
-                    background-color: t.$accent;
-                    border-radius: s.$radius;
-                }
-                slider {
-                    min-width: 12px;
-                    min-height: 12px;
-                    background-color: t.$text;
-                    border-radius: 50%;
-                }
-            }
+            @include u.slider(s.$seek-height);
         }
     }
 }

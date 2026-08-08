@@ -1,11 +1,12 @@
 @use "active-theme" as t;
 @use "sass:color";
 @use "../../conf.scss" as s;
+@use "../../ui.scss" as u;
 
 window.Bar {
     background: transparent;
     color: t.$text;
-    transition-duration: 200ms;
+    transition-duration: s.$transition-time;
 
     >centerbox {
         // solid theme base: translucency over the wallpaper washed
@@ -13,7 +14,7 @@ window.Bar {
         background-color: t.$base;
         background-image: url("./assets/grain.webp"),
             radial-gradient(ellipse at bottom, rgba(72, 40, 5, 0.2), rgba(2, 4, 66, 0.3) 100%);
-        transition: background-color 300ms;
+        transition: background-color s.$transition-slow;
     }
 
     // outdoor mode: dark solid so the bar stays readable at 150% gamma
@@ -45,23 +46,13 @@ window.Bar {
     // .QSettings, .keyboardLayout, .swayNC, .media, .harvest, .brightness,
     // .windowTitle, .batteryPercent
 
+    // the panel's plain widgets: no frame until the pointer arrives
     clock button,
     .osIcon,
-    .QSettings {
-        border-radius: s.$radius;
+    .QSettings,
+    .swayNC {
+        @include u.button-quiet;
         margin: s.$padding-small s.$padding;
-        padding: 1px s.$padding;
-        border: solid 2px transparent;
-
-        &:hover {
-            background-color: color.mix(t.$accent, transparent, 10%);
-            border: solid 2px color.mix(t.$accent, transparent, 10%);
-        }
-
-        &:active {
-            background-color: color.mix(t.$accent, transparent, 25%);
-            border: solid 2px color.mix(t.$accent, transparent, 30%);
-        }
     }
 
     .tray-attention {
@@ -69,52 +60,32 @@ window.Bar {
         margin-left: 2px;
     }
 
-    .media {
-        border-radius: s.$radius;
+    // the panel's two pills: framed by default so they read as clickable
+    // rather than as text that happens to be there. Both open a popup,
+    // which takes a moment to slide in — the press is the only thing
+    // that can answer in the meantime.
+    .media,
+    .harvest {
+        @include u.button-framed;
         margin: s.$padding-small s.$padding;
-        padding: 1px s.$padding;
-        // framed by default so it reads as clickable, not just text
-        background-color: t.$surface050;
-        border: solid 2px t.$accent20;
 
-        &:hover {
-            background-color: t.$accent20;
-            border: solid 2px t.$accent40;
-        }
-        // the pill opens a popup, which takes a moment to slide in; the
-        // press is the only thing that can answer in the meantime
-        &:active {
-            background-color: t.$accent40;
-            border: solid 2px t.$accent60;
-        }
-
-        .mediaProgress {
-            color: t.$accent;
-        }
-
-        button {
-            padding: 0 3px;
-            border-radius: s.$radius;
-            &:hover {
-                background-color: t.$accent10;
-            }
-            &:active {
-                background-color: t.$accent30;
-            }
-            &:disabled {
-                opacity: 0.35;
-            }
+        // the compact transport buttons inside the pill. Borderless, on
+        // purpose: the shared button carries a 2px transparent frame,
+        // and three of those inside one pill widen it by 12px of bar
+        // that the panel does not have to spare. The fill still answers
+        // the pointer
+        button,
+        button.pp {
+            @include u.button-quiet(0 s.$padding-small);
+            border-width: 0;
         }
     }
 
-    .harvest {
-        border-radius: s.$radius;
-        margin: s.$padding-small s.$padding;
-        padding: 1px s.$padding;
-        // framed by default so it reads as clickable, not just text
-        background-color: t.$surface050;
-        border: solid 2px t.$accent20;
+    .media .mediaProgress {
+        color: t.$accent;
+    }
 
+    .harvest {
         // the elapsed ticks every second: mono, or the digits shuffle
         // their own width and nudge the widgets either side of the pill
         label {
@@ -122,21 +93,15 @@ window.Bar {
         }
 
         // running is the state worth seeing from across the room, and
-        // the only one that earns the brand colour
+        // the only one that earns the brand colour. It owns the border,
+        // so a press must not repaint it — that would read as the timer
+        // changing state.
         &.running {
             border-color: color.mix(t.$harvest, transparent, 45%);
-        }
-
-        &:hover {
-            background-color: t.$accent20;
-            border: solid 2px t.$accent40;
-        }
-        // same as the media pill: the press answers the click while the
-        // popup is still on its way. The border stays out of it here —
-        // .running paints it in the brand colour, and a press must not
-        // read as the timer changing state
-        &:active {
-            background-color: t.$accent40;
+            &:hover,
+            &:active {
+                border-color: color.mix(t.$harvest, transparent, 65%);
+            }
         }
 
         // Harvest brand color (theme variable, default #fa5d00)
@@ -144,25 +109,10 @@ window.Bar {
             color: t.$harvest;
         }
 
-        // compact pause/resume button, same treatment as media controls
-        button.pp {
-            padding: 0 3px;
-            border-radius: s.$radius;
-            &:hover {
-                background-color: t.$accent10;
-            }
-            &:active {
-                background-color: t.$accent30;
-            }
-            &:disabled {
-                opacity: 0.35;
-            }
-        }
-
         // idle inside work hours / paused: quiet, the day total or the
         // frozen elapsed is ambient info
         &.idle, &.paused {
-            opacity: 0.6;
+            opacity: s.$quiet-opacity;
         }
 
         // masked while screen sharing: elapsed and controls are hidden
@@ -188,65 +138,39 @@ window.Bar {
     // in JS — CSS opacity animations don't run in this shell)
     .QSettings.alarmAttention {
         background-color: t.$accent;
-        border-radius: s.$radius;
+        border-color: t.$accent;
         label,
         image {
             color: t.$base;
         }
     }
 
-    .swayNC {
-        border-radius: s.$radius;
-        margin: 0px s.$padding;
-        padding: 0px s.$padding;
-        border: solid 2px transparent;
-
-        &:hover {
-            background-color: t.$accent10;
-            border: solid 2px t.$accent10;
-        }
-
-        &:active {
-            background-color: t.$accent20;
-            border: solid 2px t.$accent20;
-        }
-
-        // SwayNC Notification Ticker
-        .Badge {
-            font-size: x-small;
-            padding: 1px 4px;
-            border-radius: s.$radius;
-            color: t.$crust;
-            background-color: t.$accent;
-        }
+    // SwayNC Notification Ticker
+    .swayNC .Badge {
+        font-size: s.$font-tiny;
+        padding: 1px s.$gap-small;
+        border-radius: s.$radius-pill;
+        color: t.$crust;
+        background-color: t.$accent;
     }
 
     // workspaces widget
+    //
+    // A workspace carries state (it can BE the active one), so the
+    // pointer speaks in surface and the accent is reserved for saying
+    // which one you are on. Swapping those makes hovering a workspace
+    // look like switching to it.
     workspaces {
         margin: s.$padding-small 0;
 
         >workspace {
-            border-radius: s.$radius;
-            border: solid 2px transparent;
-            padding: 0 s.$padding-small;
+            @include u.row(0 s.$padding-small);
+            border: solid s.$border transparent;
             margin: 0 s.$padding-small;
 
-            // Active workspace
             &.active {
                 color: t.$accent;
-                background-color: color.mix(t.$accent, transparent, 10%);
-                border: solid 2px color.mix(t.$accent, transparent, 10%);
-            }
-
-            &:hover {
-                background-color: color.mix(t.$text, transparent, 15%);
-                border: inset 2px color.mix(t.$text, transparent, 20%);
-            }
-
-            &:active {
-                // when the button is pressed down, this state.
-                background-color: color.mix(t.$text, transparent, 30%);
-                border: inset 2px color.mix(t.$text, transparent, 30%);
+                @include u.row-active;
             }
 
             // Workspace content
@@ -261,8 +185,8 @@ window.Bar {
                 }
 
                 label {
-                    font-weight: bold;
-                    margin: 0px 4px;
+                    font-weight: s.$weight-bold;
+                    margin: 0px s.$gap-small;
                 }
 
                 image {
@@ -283,24 +207,17 @@ window.Bar {
         // per-calendar dots), agenda with color-bar event cards right
         popover {
             .clockPopover {
-                padding: 14px;
+                padding: s.$popup-padding;
             }
 
             // ---- month pane
             .monthHeader {
                 button {
-                    background: transparent;
-                    border: solid 2px transparent;
-                    border-radius: s.$radius;
-                    padding: 2px 8px;
-
-                    &:hover {
-                        background-color: t.$accent20;
-                    }
+                    @include u.button-quiet(2px s.$gap);
+                    margin: 0;
                 }
                 .monthLabel label {
-                    font-weight: bold;
-                    font-size: 1.05em;
+                    @include u.title;
                 }
             }
 
@@ -313,32 +230,29 @@ window.Bar {
             .calWeek {
                 font-size: s.$font-small;
                 color: t.$subtext0;
-                opacity: 0.6;
+                opacity: s.$quiet-opacity;
                 min-width: 34px;
             }
 
             button.calDay {
+                @include u.button-quiet(0);
+                margin: 0;
                 min-width: 34px;
                 min-height: 34px;
-                padding: 0;
-                background: transparent;
-                border: solid 2px transparent;
-                border-radius: s.$radius;
 
-                &:hover {
-                    background-color: t.$accent20;
-                }
                 &.otherMonth {
-                    opacity: 0.35;
+                    opacity: s.$disabled-opacity;
                 }
                 &.today {
                     background-color: t.$accent;
+                    border-color: t.$accent;
                     label {
                         color: t.$crust;
-                        font-weight: bold;
+                        font-weight: s.$weight-bold;
                     }
                     &:hover {
                         background-color: color.mix(t.$accent, t.$text, 88%);
+                        border-color: color.mix(t.$accent, t.$text, 88%);
                     }
                 }
                 &.selected {
@@ -351,86 +265,68 @@ window.Bar {
                 min-height: 5px;
             }
             .calDot {
-                min-width: 4px;
-                min-height: 4px;
-                border-radius: 99px;
+                min-width: s.$gap-small;
+                min-height: s.$gap-small;
+                border-radius: s.$radius-pill;
             }
 
             // ---- picker pane
             .paneTitle {
-                font-size: s.$font-small;
-                font-weight: bold;
-                color: t.$subtext0;
+                @include u.eyebrow;
             }
 
             button.calRow {
-                background: transparent;
-                border: solid 2px transparent;
-                border-radius: s.$radius;
-                padding: 3px 6px;
-
-                &:hover {
-                    background-color: t.$accent20;
-                }
+                @include u.row(s.$padding-small 6px);
+                border: solid s.$border transparent;
+                margin: 0;
             }
 
             // checkbox square: filled with the calendar color when
             // visible, hollow when hidden (colors set inline, API data)
             .calCheck {
-                min-width: 12px;
-                min-height: 12px;
-                border: solid 2px;
-                border-radius: 3px;
+                min-width: s.$gap-large;
+                min-height: s.$gap-large;
+                border: solid s.$border;
+                border-radius: s.$radius-small;
             }
 
             // ---- agenda pane
             .gcalAgendaGroup {
                 &:not(:first-child) {
-                    margin-top: 12px;
+                    margin-top: s.$gap-large;
                 }
             }
 
             .gcalAgendaDay {
-                font-size: s.$font-small;
-                font-weight: bold;
-                color: t.$subtext0;
+                @include u.eyebrow;
                 margin-bottom: 2px;
             }
 
             // event card: the calendar color is a left bar (set inline,
             // per-calendar API data); the card itself is themed
             .gcalEvent {
-                background-color: t.$surface050;
-                border-radius: s.$radius;
-                border-left: 3px solid;
-                padding: 4px 8px;
+                @include u.card(t.$surface050, s.$gap-small s.$gap);
+                border-left: solid s.$padding-small;
             }
 
             .gcalMeta {
-                font-size: s.$font-small;
-                color: t.$subtext0;
+                @include u.subtitle;
             }
 
             .gcalEmpty {
-                font-size: s.$font-small;
+                @include u.subtitle;
                 font-style: italic;
-                color: t.$subtext0;
                 padding: 16px 0;
             }
 
             // flat text button, bottom of the agenda pane
             button.gcalSignin {
-                background: transparent;
-                border: solid 2px transparent;
-                border-radius: s.$radius;
-                padding: 4px 8px;
+                @include u.button-quiet(s.$btn-padding-lg);
+                margin: 0;
 
                 label {
                     color: t.$accent;
                     font-size: s.$font-small;
-                }
-                &:hover {
-                    background-color: t.$accent20;
                 }
             }
         }
@@ -439,7 +335,7 @@ window.Bar {
     // audio widget
     .muted {
         color: t.$text;
-        opacity: 0.35;
+        opacity: s.$disabled-opacity;
     }
 
 
@@ -447,7 +343,7 @@ window.Bar {
         color: t.$red;
     }
 }
-// sleep timer countdown while paused
+// sleep timer countdown while paused: ambient, not unavailable
 window.Bar .sleepTimer.paused {
-    opacity: 0.5;
+    opacity: s.$quiet-opacity;
 }

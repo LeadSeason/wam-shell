@@ -1,8 +1,8 @@
 @use "active-theme" as t;
 @use "../../conf.scss" as s;
-@use "sass:color";
+@use "../../ui.scss" as u;
 
-// Device panes and popover primitives: bluetooth, wifi, power-mode stat tiles, tray, vpn, and the modelbutton/separator/arrow nodes.
+// Device panes and popover primitives: bluetooth, wifi, power-mode stat tiles, tray, vpn, and the menu nodes.
 //
 // Part of the quick settings stylesheet, split from what was a
 // single 1000-line file into the same regions the TSX already has
@@ -12,15 +12,14 @@
 window#QSettings {
     .btDevice {
         .status {
-            font-size: s.$font-small;
-            color: t.$subtext0;
+            @include u.subtitle;
 
             &.error {
                 color: t.$red;
             }
         }
         .trust, .forget, .details {
-            padding: 0 4px;
+            padding: 0 s.$gap-small;
         }
         .trust.active {
             color: t.$accent;
@@ -28,17 +27,16 @@ window#QSettings {
     }
 
     .btDetails, .wifiDetails {
-        margin: 2px 8px 6px 32px;
+        margin: 2px s.$gap 6px 32px;
 
         .key {
-            font-size: s.$font-small;
-            color: t.$subtext0;
+            @include u.subtitle;
         }
         .value {
             font-size: s.$font-small;
         }
         .profileOption {
-            padding: 2px 6px;
+            @include u.row(s.$row-padding-tight);
             margin-top: 2px;
 
             label {
@@ -46,60 +44,50 @@ window#QSettings {
             }
             &.active label {
                 color: t.$accent;
-                font-weight: bold;
+                font-weight: s.$weight-bold;
             }
         }
     }
 
     .wifiAp {
+        // an in-flight row: not unavailable, just not answering yet
         &.busy {
-            opacity: 0.45;
+            opacity: s.$disabled-opacity;
         }
 
         .status {
-            font-size: s.$font-small;
-            color: t.$subtext0;
+            @include u.subtitle;
 
             &.error {
                 color: t.$red;
             }
         }
         .details, .forget {
-            padding: 0 4px;
+            padding: 0 s.$gap-small;
         }
     }
 
     .wifiPrompt {
-        padding: 8px;
+        padding: s.$gap;
 
         .title {
-            font-weight: bold;
+            font-weight: s.$weight-bold;
         }
 
         button.confirm {
-            background-color: color.mix(t.$accent, transparent, 55%);
-            &:hover {
-                background-color: color.mix(t.$accent, transparent, 40%);
-            }
+            @include u.button-accent;
         }
     }
 
     .rescan {
-        padding: 4px 6px;
-        &:disabled {
-            opacity: 0.35;
-        }
+        padding: s.$gap-small 6px;
     }
 
     // details-panel actions (auto-connect, forget): plain rows, no
     // button frame — a hover tint is the only affordance. generous
     // padding: easy to click without precision
     .wifiDetailAction {
-        padding: 6px 8px;
-        border-radius: s.$radius;
-        &:hover {
-            background-color: t.$accent10;
-        }
+        @include u.row(6px s.$gap);
     }
 
     // fixed-width action slots keep the lock/details cluster aligned
@@ -110,7 +98,7 @@ window#QSettings {
         // generous click target: the chevron must not need precision
         .details {
             margin: 0;
-            padding: 4px 8px;
+            padding: s.$gap-small s.$gap;
             opacity: 0;
             transition: opacity 150ms;
         }
@@ -123,17 +111,13 @@ window#QSettings {
     // stat tiles in the power mode pane (power details + the moved
     // performance stats): one card per metric, big value, dim sub-line
     .statTile {
-        background-color: t.$base;
-        border-radius: s.$radius;
-        padding: 8px 12px;
+        @include u.card;
     }
     .statTileValue {
-        font-size: 1.35em;
-        font-weight: bold;
+        @include u.display;
     }
     .statTileSub {
-        font-size: s.$font-small;
-        color: t.$subtext0;
+        @include u.subtitle;
     }
 
     // tray icons inside the popup: bigger, on their own pills
@@ -150,28 +134,25 @@ window#QSettings {
 
     // ---- VPN pane (first-class Mullvad support)
     .vpnStatus {
-        background-color: t.$base;
-        border-radius: s.$radius;
-        padding: 10px 12px;
+        @include u.card;
 
         .vpnRelay {
-            font-weight: bold;
+            font-weight: s.$weight-bold;
         }
         .dim {
-            font-size: s.$font-small;
-            color: t.$subtext0;
+            @include u.subtitle;
         }
         .chip {
             font-size: s.$font-small;
             background-color: t.$surface050;
-            border-radius: s.$radius;
+            border-radius: s.$radius-pill;
             padding: 1px 6px;
             color: t.$subtext0;
         }
 
         // the big state word, like the Mullvad app's CONNECTED banner
         .vpnState {
-            font-weight: bold;
+            font-weight: s.$weight-bold;
             &.on {
                 color: t.$green;
             }
@@ -180,8 +161,7 @@ window#QSettings {
             }
         }
         .vpnDetail {
-            font-size: s.$font-small;
-            color: t.$subtext0;
+            @include u.subtitle;
             margin-top: 6px;
         }
         .accountLine {
@@ -190,38 +170,23 @@ window#QSettings {
     }
 
     button.vpnAction {
+        @include u.button-framed(s.$btn-padding-lg);
         margin: 0;
-        padding: 4px 10px;
-        border-radius: s.$radius;
-        background-color: t.$surface050;
-        border: solid 2px t.$accent20;
-
-        &:hover {
-            background-color: t.$accent20;
-        }
-        &:disabled {
-            opacity: 0.35;
-        }
     }
 
     button.locRow {
-        background: transparent;
-        border: solid 2px transparent;
-        border-radius: s.$radius;
-        padding: 4px 8px;
+        @include u.row(s.$btn-padding-lg);
+        border: solid s.$border transparent;
+        margin: 0;
 
-        &:hover {
-            background-color: t.$accent20;
-        }
         &.current label {
             color: t.$accent;
-            font-weight: bold;
+            font-weight: s.$weight-bold;
         }
     }
 
     .dim {
-        font-size: s.$font-small;
-        color: t.$subtext0;
+        @include u.subtitle;
     }
     .expiring {
         color: t.$yellow;
@@ -232,62 +197,13 @@ window#QSettings {
 
     // the feature toggles as one card so they read as a unit
     .vpnFeatures {
-        background-color: t.$base;
-        border-radius: s.$radius;
-        padding: 8px 12px;
+        @include u.card;
     }
 
     .vpnFeature {
-        padding: 4px 0;
+        padding: s.$gap-small 0;
     }
 
-
-    /////////////////////////////////////
-    /// Regular tray popover menus.
-    /////////////////////////////////////
-    modelbutton {
-        border: 2px solid transparent;
-        border-radius: 4px;
-        &:active {
-            background-color: t.$surface1;
-            border: 2px solid t.$surface2;
-        }
-        &:hover {
-            background-color: t.$surface0;
-            border: 2px solid t.$surface2;
-        }
-        &:disabled {
-            color: t.$surface2;
-        }
-    }
-
-    separator {
-        margin: 4px 0;
-        background-color: color.mix(t.$surface0, transparent, 60%);
-        min-height: 1px;
-        min-height: 1px;
-    }
-
-    arrow {
-        // an icon box, not a slider: sized on its own so the sliders can
-        // get thinner without shrinking the dropdown arrows with them
-        min-height: 16px;
-        min-width: 16px;
-        &.none {
-            -gtk-icon-source: -gtk-icontheme('open-menu-symbolic');
-        }
-        &.down {
-            -gtk-icon-source: -gtk-icontheme('pan-down-symbolic');
-        }
-        &.up {
-            -gtk-icon-source: -gtk-icontheme('pan-up-symbolic');
-        }
-        &.left {
-            -gtk-icon-source: -gtk-icontheme('pan-start-symbolic');
-        }
-        &.right {
-            -gtk-icon-source: -gtk-icontheme('pan-end-symbolic');
-        }
-    }
-
+    // tray menus: the one definition, shared with popover.scss
+    @include u.menu;
 }
