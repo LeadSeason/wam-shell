@@ -38,6 +38,59 @@ Not merged.
    `GOOGLE_CLIENT_ID=...`, `GOOGLE_CLIENT_SECRET=...` — it wins over
    the embedded one.
 
+## The embedded OAuth client: what it is, and when to stop using it
+
+The project ships a client id and secret in `src/lib/googleAuth.ts`.
+That is deliberate and it is what Google's own installed-app guidance
+says to do — a desktop client's secret is not a credential, because
+anyone with the binary has it, which is exactly why the flow is
+PKCE-protected and why the loopback redirect is bound to the local
+machine. It is not a leak, and rotating it on discovery would be
+pointless.
+
+What it *is* is a **shared resource**, and that has consequences worth
+stating rather than discovering:
+
+- **The daily quota is shared across everyone using the shipped
+  client.** Calendar's is generous and the sync is small (a full refetch
+  of a ~5-month window, per account, every 15 minutes by default), so
+  this has never been the binding constraint. YouTube is the one to
+  watch: each sweep costs roughly one quota unit per subscription, which
+  is why `youtube.poll_minutes` has a floor and the provider raises its
+  own interval when the subscription count would exceed the headroom.
+- **A quota day looks like an outage, not like a quota.** Both surface
+  as `Couldn't sync … — retrying in Nm` in the center's empty state with
+  the HTTP status attached. A `403` there is the tell.
+- **The consent screen says "unverified app".** That is the project's
+  verification status, not a problem with your account. Managed
+  Workspace accounts may be blocked from proceeding at all by org
+  policy.
+
+**Use your own client if any of that bites you** — a quota you do not
+share, no unverified warning, no test-user cap. Create an OAuth client
+ID of type *Desktop app* at `console.cloud.google.com`, enable the
+Calendar and/or YouTube Data APIs on the project, and put it in
+`~/.config/wam-shell/google.env` (chmod 600):
+
+```
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+```
+
+or set the same names as environment variables. Precedence is env vars >
+`google.env` > the embedded client, resolved in `loadCredentials()`.
+Switching clients invalidates existing refresh tokens: the accounts drop
+themselves on the next refresh (`invalid_grant`) with a re-sign-in hint,
+which is self-healing but means one extra sign-in per account.
+
+**If the shipped client ever has to be replaced** — abuse, a Google
+policy change, a project deletion — the change is the two constants in
+`src/lib/googleAuth.ts` and nothing else. Every stored refresh token
+becomes invalid at that moment; the existing `invalid_grant` path
+already handles it by dropping the account and asking for a new
+sign-in, so no migration code is needed, but the release note has to say
+so, because to a user it looks like being randomly signed out.
+
 ## Design notes
 
 - `src/lib/gcal.ts`, mirrors `lib/harvest.ts` conventions: env-or-file

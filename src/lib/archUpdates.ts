@@ -3,13 +3,17 @@ import Gio from "gi://Gio?version=2.0"
 import { monitorFile, readFileAsync } from "ags/file"
 import Config from "../config"
 import { isFile } from "./utils"
+import { registerDispose } from "./lifecycle"
 
 @register({ GTypeName: "ArchUpdates" })
 export default class ArchUpdates extends GObject.Object {
     static instance: ArchUpdates
 
     static get_default() {
-        if (!this.instance) this.instance = new ArchUpdates()
+        if (!this.instance) {
+            this.instance = new ArchUpdates()
+            registerDispose("archUpdates", () => this.instance.dispose())
+        }
 
         return this.instance
     }

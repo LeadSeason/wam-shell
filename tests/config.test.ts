@@ -48,6 +48,14 @@ test("config: hyprland session", () => {
     eq(c.desktopSession, "hyprland")
 })
 
+test("config: hyprland without HYPRLAND_INSTANCE_SIGNATURE falls back to empty", () => {
+    // the same preflight sway/i3 get: a session that claims hyprland
+    // with no socket to talk to would send every hyprctl call and every
+    // AstalHyprland lookup nowhere
+    const c = loadConfig({ DESKTOP_SESSION: "hyprland", HYPRLAND_INSTANCE_SIGNATURE: null })
+    eq(c.desktopSession, "")
+})
+
 test("config: sway session requires I3SOCK", () => {
     const c = loadConfig({ DESKTOP_SESSION: "sway", I3SOCK: "/tmp/fake.sock" })
     eq(c.desktopSession, "sway")

@@ -3,6 +3,7 @@ import Gio from "gi://Gio?version=2.0"
 import { createState } from "gnim"
 import { execAsync, timeoutAdd, sourceRemove } from "./metrics"
 import { streamLines } from "./streamLines"
+import { registerDispose } from "./lifecycle"
 
 // Screen-share detection, event-driven through PipeWire itself. Any
 // node with media.class Stream/Input/Video means a capture is active
@@ -102,3 +103,6 @@ export function dispose() {
     monitor = null
     started = false
 }
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("screenShare", dispose)

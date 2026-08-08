@@ -31,10 +31,20 @@ import { init as initTodoist } from "./src/lib/todoist"
 import { init as initProtonmail } from "./src/lib/protonmail"
 import { forceExitStreamedChildren } from "./src/lib/streamLines"
 import { connect } from "./src/lib/metrics"
+import { runDisposers } from "./src/lib/lifecycle"
 
-// long-lived streamed children (mullvad listen, nvidia-smi --loop-ms)
-// must not outlive the shell
-connect(app, "shutdown", forceExitStreamedChildren)
+// The one place module teardown is actually called from.
+//
+// Every lib module owning long-lived sources registers a `dispose()`
+// with lib/lifecycle at import; this runs the ones that were actually
+// loaded. Streamed children go first and explicitly: with the read end
+// of their stdout pipe gone they only die on their next write, and a
+// quiet listener (mullvad between state changes) may never write again
+// — that has to happen whether or not a disposer throws.
+connect(app, "shutdown", () => {
+    forceExitStreamedChildren()
+    runDisposers()
+})
 
 function matchMonitor(wanted: string[], m: Gdk.Monitor): boolean {
     if (wanted.length === 0) return true

@@ -6,6 +6,7 @@ import Gio from "gi://Gio?version=2.0"
 import { timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
 import { streamLines } from "./streamLines"
+import { registerDispose } from "./lifecycle"
 
 // System performance stats, polled on quicksettings.stats_interval.
 // History targets a ~32s window, capped at 64 bars.
@@ -266,3 +267,6 @@ export function formatRate(bytesPerSec: number): string {
     if (bytesPerSec >= 1024) return `${Math.round(bytesPerSec / 1024)} KB/s`
     return `${bytesPerSec} B/s`
 }
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("sysstats", dispose)

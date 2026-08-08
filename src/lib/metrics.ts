@@ -204,7 +204,19 @@ export const trackHttp = ENABLED
 // --- snapshot -------------------------------------------------------------
 
 function processFacts() {
-    const status = readFile("/proc/self/status")
+    // procfs is not guaranteed (a container without /proc, a hardened
+    // mount): the fd walk below has always tolerated that, but the
+    // status read did not — and an exception here escapes through
+    // CommandRegistry.execute, which turns the metrics reply into an
+    // error string. The perf harness pipes that into jq and reports a
+    // parse failure instead of the missing counters. Zeroes are the
+    // honest answer; the fd fields already report the same way
+    let status = ""
+    try {
+        status = readFile("/proc/self/status")
+    } catch (err) {
+        console.warn("metrics: /proc/self/status unreadable:", err)
+    }
     const num = (re: RegExp) => Number(status.match(re)?.[1] ?? 0)
 
     // two counts, because most of them are not ours: the gpu buffers

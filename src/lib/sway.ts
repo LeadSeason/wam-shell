@@ -2,13 +2,21 @@ import GObject, { getter, register } from "ags/gobject"
 import GLib from "gi://GLib?version=2.0"
 import i3ipc from "gi://i3ipc"
 import { timeoutAdd, sourceRemove } from "./metrics"
+import { registerDispose } from "./lifecycle"
 
 @register({ GTypeName: "Sway" })
 export default class Sway extends GObject.Object {
     static instance: Sway
 
     static get_default() {
-        if (!this.instance) this.instance = new Sway()
+        if (!this.instance) {
+            this.instance = new Sway()
+            // tear-down entry point, run from app.tsx on shutdown. Bound
+            // here rather than at import: a session that never touches
+            // sway never builds the singleton, and must not be given a
+            // disposer that would build one at shutdown
+            registerDispose("sway", () => this.instance.dispose())
+        }
 
         return this.instance
     }

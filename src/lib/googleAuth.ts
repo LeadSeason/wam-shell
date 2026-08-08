@@ -3,6 +3,7 @@ import Gio from "gi://Gio?version=2.0"
 import Soup from "gi://Soup?version=3.0"
 import { Accessor, createState } from "gnim"
 import { isFile } from "./utils"
+import { configHome } from "./paths"
 import { timeoutAddSeconds, sourceRemove, trackHttp } from "./metrics"
 import { writeFileAtomic } from "./atomicWrite"
 import { secretsAvailable, secretStore, secretLookup, secretClear } from "./secretStore"
@@ -63,7 +64,6 @@ export interface Reply {
     json: any
 }
 
-const configHome = `${GLib.getenv("XDG_CONFIG_HOME") || `${GLib.getenv("HOME")}/.config`}/wam-shell`
 const envPath = `${configHome}/google.env`
 
 // ------------------------------------------------------ PKCE / state

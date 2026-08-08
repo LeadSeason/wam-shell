@@ -1,0 +1,293 @@
+@use "active-theme" as t;
+@use "../../conf.scss" as s;
+@use "sass:color";
+
+// Device panes and popover primitives: bluetooth, wifi, power-mode stat tiles, tray, vpn, and the modelbutton/separator/arrow nodes.
+//
+// Part of the quick settings stylesheet, split from what was a
+// single 1000-line file into the same regions the TSX already has
+// (src/widgets/QSettings/). Every part reopens window#QSettings:
+// sass merges them, and the split is contiguous and in the original
+// order, so cascade behaviour is unchanged.
+window#QSettings {
+    .btDevice {
+        .status {
+            font-size: s.$font-small;
+            color: t.$subtext0;
+
+            &.error {
+                color: t.$red;
+            }
+        }
+        .trust, .forget, .details {
+            padding: 0 4px;
+        }
+        .trust.active {
+            color: t.$accent;
+        }
+    }
+
+    .btDetails, .wifiDetails {
+        margin: 2px 8px 6px 32px;
+
+        .key {
+            font-size: s.$font-small;
+            color: t.$subtext0;
+        }
+        .value {
+            font-size: s.$font-small;
+        }
+        .profileOption {
+            padding: 2px 6px;
+            margin-top: 2px;
+
+            label {
+                font-size: s.$font-small;
+            }
+            &.active label {
+                color: t.$accent;
+                font-weight: bold;
+            }
+        }
+    }
+
+    .wifiAp {
+        &.busy {
+            opacity: 0.45;
+        }
+
+        .status {
+            font-size: s.$font-small;
+            color: t.$subtext0;
+
+            &.error {
+                color: t.$red;
+            }
+        }
+        .details, .forget {
+            padding: 0 4px;
+        }
+    }
+
+    .wifiPrompt {
+        padding: 8px;
+
+        .title {
+            font-weight: bold;
+        }
+
+        button.confirm {
+            background-color: color.mix(t.$accent, transparent, 55%);
+            &:hover {
+                background-color: color.mix(t.$accent, transparent, 40%);
+            }
+        }
+    }
+
+    .rescan {
+        padding: 4px 6px;
+        &:disabled {
+            opacity: 0.35;
+        }
+    }
+
+    // details-panel actions (auto-connect, forget): plain rows, no
+    // button frame — a hover tint is the only affordance. generous
+    // padding: easy to click without precision
+    .wifiDetailAction {
+        padding: 6px 8px;
+        border-radius: s.$radius;
+        &:hover {
+            background-color: t.$accent10;
+        }
+    }
+
+    // fixed-width action slots keep the lock/details cluster aligned
+    // across rows (a hidden icon keeps its slot). the details chevron
+    // only fades in on row hover — the slot keeps its width, so no
+    // layout shift
+    .wifiActions {
+        // generous click target: the chevron must not need precision
+        .details {
+            margin: 0;
+            padding: 4px 8px;
+            opacity: 0;
+            transition: opacity 150ms;
+        }
+    }
+    .wifiAp:hover .details,
+    .wifiAp .details.open {
+        opacity: 1;
+    }
+
+    // stat tiles in the power mode pane (power details + the moved
+    // performance stats): one card per metric, big value, dim sub-line
+    .statTile {
+        background-color: t.$base;
+        border-radius: s.$radius;
+        padding: 8px 12px;
+    }
+    .statTileValue {
+        font-size: 1.35em;
+        font-weight: bold;
+    }
+    .statTileSub {
+        font-size: s.$font-small;
+        color: t.$subtext0;
+    }
+
+    // tray icons inside the popup: bigger, on their own pills
+    // (pill size is set inline from tray.popup_icon_size, gaps from the
+    // FlowBox spacing)
+    .trayItem {
+        border-radius: s.$radius;
+        background-color: t.$base;
+        margin: 0;
+        button {
+            margin: 0;
+        }
+    }
+
+    // ---- VPN pane (first-class Mullvad support)
+    .vpnStatus {
+        background-color: t.$base;
+        border-radius: s.$radius;
+        padding: 10px 12px;
+
+        .vpnRelay {
+            font-weight: bold;
+        }
+        .dim {
+            font-size: s.$font-small;
+            color: t.$subtext0;
+        }
+        .chip {
+            font-size: s.$font-small;
+            background-color: t.$surface050;
+            border-radius: s.$radius;
+            padding: 1px 6px;
+            color: t.$subtext0;
+        }
+
+        // the big state word, like the Mullvad app's CONNECTED banner
+        .vpnState {
+            font-weight: bold;
+            &.on {
+                color: t.$green;
+            }
+            &.off {
+                color: t.$subtext0;
+            }
+        }
+        .vpnDetail {
+            font-size: s.$font-small;
+            color: t.$subtext0;
+            margin-top: 6px;
+        }
+        .accountLine {
+            margin-top: 6px;
+        }
+    }
+
+    button.vpnAction {
+        margin: 0;
+        padding: 4px 10px;
+        border-radius: s.$radius;
+        background-color: t.$surface050;
+        border: solid 2px t.$accent20;
+
+        &:hover {
+            background-color: t.$accent20;
+        }
+        &:disabled {
+            opacity: 0.35;
+        }
+    }
+
+    button.locRow {
+        background: transparent;
+        border: solid 2px transparent;
+        border-radius: s.$radius;
+        padding: 4px 8px;
+
+        &:hover {
+            background-color: t.$accent20;
+        }
+        &.current label {
+            color: t.$accent;
+            font-weight: bold;
+        }
+    }
+
+    .dim {
+        font-size: s.$font-small;
+        color: t.$subtext0;
+    }
+    .expiring {
+        color: t.$yellow;
+    }
+    .expired {
+        color: t.$red;
+    }
+
+    // the feature toggles as one card so they read as a unit
+    .vpnFeatures {
+        background-color: t.$base;
+        border-radius: s.$radius;
+        padding: 8px 12px;
+    }
+
+    .vpnFeature {
+        padding: 4px 0;
+    }
+
+
+    /////////////////////////////////////
+    /// Regular tray popover menus.
+    /////////////////////////////////////
+    modelbutton {
+        border: 2px solid transparent;
+        border-radius: 4px;
+        &:active {
+            background-color: t.$surface1;
+            border: 2px solid t.$surface2;
+        }
+        &:hover {
+            background-color: t.$surface0;
+            border: 2px solid t.$surface2;
+        }
+        &:disabled {
+            color: t.$surface2;
+        }
+    }
+
+    separator {
+        margin: 4px 0;
+        background-color: color.mix(t.$surface0, transparent, 60%);
+        min-height: 1px;
+        min-height: 1px;
+    }
+
+    arrow {
+        // an icon box, not a slider: sized on its own so the sliders can
+        // get thinner without shrinking the dropdown arrows with them
+        min-height: 16px;
+        min-width: 16px;
+        &.none {
+            -gtk-icon-source: -gtk-icontheme('open-menu-symbolic');
+        }
+        &.down {
+            -gtk-icon-source: -gtk-icontheme('pan-down-symbolic');
+        }
+        &.up {
+            -gtk-icon-source: -gtk-icontheme('pan-up-symbolic');
+        }
+        &.left {
+            -gtk-icon-source: -gtk-icontheme('pan-start-symbolic');
+        }
+        &.right {
+            -gtk-icon-source: -gtk-icontheme('pan-end-symbolic');
+        }
+    }
+
+}

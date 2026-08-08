@@ -9,6 +9,7 @@ import Config from "../config"
 import { hyprDispatch } from "./hyprDispatch"
 import { downloadCover } from "./coverArt"
 import { isBrowserThumb, recoverBrowserArt } from "./browserArt"
+import { registerDispose } from "./lifecycle"
 
 // Shared MPRIS state + helpers, used by the QS media section and the
 // panel media widget/popup.
@@ -612,3 +613,6 @@ export function bindSeekScale(
 }
 
 export default mpris
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("mpris", dispose)

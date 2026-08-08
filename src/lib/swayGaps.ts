@@ -6,13 +6,17 @@ import Sway from "./sway"
 import CommandRegistry from "./requestHandler"
 import Cache from "./cache"
 import { timeoutAdd, sourceRemove } from "./metrics"
+import { registerDispose } from "./lifecycle"
 
 @register({ GTypeName: "SwayGaps" })
 export default class SwayGaps extends GObject.Object {
     static instance: SwayGaps
 
     static get_default() {
-        if (!this.instance) this.instance = new SwayGaps()
+        if (!this.instance) {
+            this.instance = new SwayGaps()
+            registerDispose("swayGaps", () => this.instance.dispose())
+        }
 
         return this.instance
     }
@@ -121,13 +125,16 @@ export default class SwayGaps extends GObject.Object {
         // Ensure that correct state is applied when shell launches
         this.#applyGaps(true)
 
-        this.#conn?.on("workspace", async (conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
-            if (this.#disposed) return
-            if (event.change === "init") {
-                console.log("New Workspace Init, Setting size...")
-                this.#applyGaps(true)
-            }
-        })
+        this.#conn?.on(
+            "workspace",
+            async (_conn: i3ipc.Connection, event: i3ipc.WorkspaceEvent) => {
+                if (this.#disposed) return
+                if (event.change === "init") {
+                    console.log("New Workspace Init, Setting size...")
+                    this.#applyGaps(true)
+                }
+            },
+        )
 
         const registry = CommandRegistry.get_default()
 

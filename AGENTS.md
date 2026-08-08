@@ -14,7 +14,11 @@
   (`src/lib/notificationProviders.ts`): one lib module per service
   (`src/lib/github.ts`, `src/lib/youtube.ts`), a filter icon per
   provider in the center's header. New providers (ProtonMail) need no
-  center changes. Google providers share the OAuth stack in
+  center changes. The shared plumbing — arrival diffing, the banner
+  horizon, the persisted seen store, the JSON client, the refresh age
+  gate — lives in `lib/providerCore.ts`, `lib/seenStore.ts` and
+  `lib/httpJson.ts`; use it rather than growing a fifth copy. Full
+  contract and checklist: `docs/Providers.md`. Google providers share the OAuth stack in
   `src/lib/googleAuth.ts` (embedded desktop client, per-account tokens,
   `google.env`/env override). A provider can mark an item `actionable`
   (someone is waiting on YOU: a review request, a task now due) to lift
@@ -109,6 +113,18 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 
 - User-facing options live in `config.toml` (all commented, with
   defaults documented) and are parsed in `src/config.ts`.
+- Validation goes through `lib/configSchema.ts` — `createReader(data,
+  section)` then `bool` / `num` / `str` / `oneOf` / `strList`. Don't
+  hand-roll a `typeof` check and a `console.error`; the readers already
+  emit a consistent, named message and return the documented default.
+- **Decide the flat fallback explicitly.** Historically any key could
+  also be written at the top level, and the top level is shared: pass
+  `sectionOnly` for any key whose bare name another section might claim
+  (`enabled`, `on_panel`, `position`, `poll_minutes`, and anything named
+  after a section — `bluetooth.notifications` read the `[notifications]`
+  TABLE for years because of this), and `flatKey` where the top-level
+  spelling differs (`tray.position` ← `tray_position`). Service sections
+  (`[github]`, `[calendar]`, …) set `sectionOnly` section-wide.
 - After any config change, regenerate `config-override.toml`: copy of
   `config.toml` plus the user's active values appended.
 
@@ -117,6 +133,12 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 - Colors come from the active theme (`scss/theme/*.scss`, selected via
   the `theme` config key) — never hardcode hex in widget styles.
 - Shared spacing/radius values live in `scss/conf.scss`.
+- Big widgets get a stylesheet DIRECTORY, not a 1000-line file:
+  `scss/widgets/QSettings/` mirrors `src/widgets/QSettings/`, and each
+  part reopens `window#QSettings`. Compiling is split the same way —
+  `lib/styleCompile.ts` is display-free so `wam install`/`update` can
+  precompile it (`scripts/precompile-style.ts`), and `lib/style.ts` only
+  decides when to compile and applies the result.
 - Icons: always prefer symbolic icon names (`-symbolic`) over
   full-color ones wherever possible.
 
@@ -136,9 +158,15 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 
 - Widget subscriptions pair `subscribe` with `onCleanup`.
 - Lib modules with long-lived sources (timers, D-Bus subscriptions,
-  GObject handlers) expose a `dispose()` that tears everything down,
-  even when nothing calls it yet (see `lib/harvest.ts`,
-  `lib/screenShare.ts`).
+  GObject handlers) expose a `dispose()` that tears everything down —
+  and REGISTER it: `registerDispose("<module>", dispose)` from
+  `lib/lifecycle.ts`, which `app.tsx` runs on the app's `shutdown`
+  signal. Singletons register from inside `get_default()`, so a session
+  that never builds one is never handed a disposer that would build one
+  at shutdown. Disposers must be idempotent (`runDisposers` can be
+  reached twice) and safe to call when the module started nothing.
+  For two dozen releases these functions existed with no caller at all;
+  don't let that come back.
 
 ## Perf gate
 
@@ -199,6 +227,14 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   to make a gate green makes the code worse and hides the next real one.
   If the JSX typings improve upstream, widen `COVERED` in
   `scripts/typecheck.sh` instead.
+- Because the scope is narrow, `tsconfig.json` can afford to be stricter
+  than `strict`: `noUnusedLocals`, `noUnusedParameters` and
+  `noFallthroughCasesInSwitch` are on. An intentionally unused parameter
+  takes a leading underscore (`_allDay` in `lib/gcal.ts`) with a comment
+  saying why it stays in the signature. `noUncheckedIndexedAccess` is
+  deliberately NOT on: it is the right rule and it does not survive
+  contact with the JSX layer, so it would bury the covered paths' real
+  findings under widget noise the gate exists to filter out.
 - It is worth having: its first run found `Gio.Bus.unwatch_name` (there
   is no `Gio.Bus`, so `dispose()` would have thrown) and three no-arg
   calls to a gnim state setter, which set the state to `undefined` — and

@@ -49,6 +49,7 @@ export {
 import { disposeHttp } from "./harvest/api"
 import { disposeSync } from "./harvest/sync"
 import { disposeState } from "./harvest/state"
+import { registerDispose } from "./lifecycle"
 
 // convention for lib modules with long-lived sources, even though the
 // shell never calls it today: one place that tears everything down
@@ -57,3 +58,6 @@ export function dispose() {
     disposeSync()
     disposeState()
 }
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("harvest", dispose)
