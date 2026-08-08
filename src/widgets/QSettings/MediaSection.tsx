@@ -9,9 +9,13 @@ import {
     bindSeekScale,
     coverState,
     cycleActivePlayer,
+    cycleLoop,
     eligiblePlayers,
     formatTime,
     lengthState,
+    loopActive,
+    loopIcon,
+    loopLabel,
     overrideActivePlayer,
     playPauseExclusive,
     positionState,
@@ -29,11 +33,15 @@ function MediaButton({
     onPressed,
     sensitive,
     extraClasses = [],
+    tooltipText,
 }: {
     iconName: string | any
     onPressed: () => void
     sensitive?: any
     extraClasses?: string[] | any
+    /** for controls whose icon alone cannot say which state they are in
+     *  — the loop button's three modes differ by a small numeral */
+    tooltipText?: string | any
 }) {
     // extraClasses may be a plain array or an Accessor<string[]> (e.g.
     // the shuffle/loop active state)
@@ -41,7 +49,12 @@ function MediaButton({
         ? ["mediaButton", ...extraClasses]
         : extraClasses.as((v: string[]) => ["mediaButton", ...v])
     return (
-        <button cssClasses={classes} onClicked={onPressed} sensitive={sensitive}>
+        <button
+            cssClasses={classes}
+            onClicked={onPressed}
+            sensitive={sensitive}
+            tooltipText={tooltipText}
+        >
             <image iconName={iconName} />
         </button>
     )
@@ -277,22 +290,12 @@ function Player({ player }: { player: AstalMpris.Player }) {
                             />
                             <MediaButton
                                 extraClasses={createBinding(player, "loopStatus").as(l =>
-                                    l === AstalMpris.Loop.TRACK || l === AstalMpris.Loop.PLAYLIST
-                                        ? ["active"]
-                                        : [],
+                                    loopActive(l) ? ["active"] : [],
                                 )}
-                                iconName="media-playlist-repeat-symbolic"
+                                iconName={createBinding(player, "loopStatus").as(loopIcon)}
+                                tooltipText={createBinding(player, "loopStatus").as(loopLabel)}
                                 onPressed={() => {
-                                    switch (player.loopStatus) {
-                                        case AstalMpris.Loop.NONE:
-                                            player.loopStatus = AstalMpris.Loop.TRACK
-                                            break
-                                        case AstalMpris.Loop.TRACK:
-                                            player.loopStatus = AstalMpris.Loop.PLAYLIST
-                                            break
-                                        default:
-                                            player.loopStatus = AstalMpris.Loop.NONE
-                                    }
+                                    cycleLoop(player)
                                 }}
                                 sensitive={createBinding(player, "loopStatus").as(
                                     l => l !== AstalMpris.Loop.UNSUPPORTED,
