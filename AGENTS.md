@@ -223,9 +223,29 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 - The lead that leaves: crossing-event synthesis running over a widget
   tree that changed underneath it. Banner rows are destroyed from inside
   gesture handlers (`removePopup` during a click), which is the shape
-  that produces this. Not proven, and a 210-round hover/expiry/dismiss
-  soak did not reproduce it, so nothing has been changed on the strength
-  of it.
+  that produces this. It matches a known upstream bug —
+  [GNOME/gtk#3090](https://gitlab.gnome.org/GNOME/gtk/-/issues/3090),
+  open: GTK keeps the old hover target across a dispatch, and a widget
+  recycled mid-flight leaves that pointer stale.
+- **Removing a banner from inside a click is therefore deferred one idle
+  turn** (`removePopupDeferred` in `lib/notifd`). Still not reproduced —
+  the 210-round soak came back clean — so this removes a known hazard
+  rather than closing a case; do not record it as the fix.
+  Two things about it are easy to get wrong:
+  - The banner's own buttons do not reach `removePopup` through
+    `PopupRow`. `desktop.dismiss()` and `desktop.invoke()` make astal
+    emit `resolved` **synchronously**, and that handler removes the
+    popup — so deferring only the call in `PopupRow` looks like a fix
+    and changes nothing. The `resolved` handler is the funnel.
+  - Deferred sources must be tracked and cleared in `dispose()`, like
+    `expiring` already is, or they fire against a torn-down module.
+  Use plain `removePopup` from timers and async callbacks (todoist's
+  `complete()` runs from a Soup callback and is correctly synchronous);
+  use the deferred one from anything reachable by a click.
+- Same shape, not changed: the notification CENTER's rows are also
+  destroyed from their own click handlers (a provider's `hide()` calls
+  `setItems`). No crash has ever been traced there, so it was left
+  alone — but it is where to look first if one is.
 
 ## Typecheck gate
 
