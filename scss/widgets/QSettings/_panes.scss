@@ -162,10 +162,33 @@ window#QSettings {
         font-size: s.$font-small;
         color: t.$subtext0;
     }
+    // the chevron is a second button inside the tile, and used to look
+    // like part of the first: hovering it lit the whole tile and
+    // pressing it lit nothing, so the only clue that it opens a pane
+    // instead of flipping the toggle was the glyph. It carries its own
+    // hover and press now (the tile's own press propagates down to it,
+    // which is right — that IS the whole tile being pressed)
     .toggleChevron {
-        margin-left: 4px;
-        padding-left: 6px;
+        // negative margins cancel the tile's own padding (1px 5px), so
+        // the fill runs the full inner height and out to the tile's
+        // border instead of floating in the middle of it with its
+        // rounded edge cut off in mid-air. The radius is the tile's
+        // less its 2px border, so the corner nests inside the tile's
+        // rather than crossing it
+        margin: -1px -5px -1px 4px;
+        padding: 0 5px 0 6px;
         border-left: solid 1px color.mix(t.$text, transparent, 80%);
+        border-radius: 0 (s.$radius - 2px) (s.$radius - 2px) 0;
+        // a step above the tile's own hover, which is already on
+        // (hovering a child prelights its ancestors too): at the same
+        // accent20 the two washed into each other and the chevron
+        // looked like nothing had happened
+        &:hover {
+            background-color: t.$accent40;
+        }
+        &:active {
+            background-color: t.$accent60;
+        }
     }
     .ToggleSectionActive {
         color: t.$base;
@@ -173,8 +196,16 @@ window#QSettings {
         .toggleSubtitle {
             color: color.mix(t.$base, transparent, 70%);
         }
+        // accent20 over an accent fill is invisible: on a lit tile the
+        // chevron's own cues are cut OUT of the fill instead
         .toggleChevron {
             border-left-color: color.mix(t.$base, transparent, 70%);
+            &:hover {
+                background-color: color.mix(t.$base, transparent, 30%);
+            }
+            &:active {
+                background-color: color.mix(t.$base, transparent, 50%);
+            }
         }
         &:hover {
             background-color: color.mix(t.$accent, transparent, 70%);
@@ -259,8 +290,8 @@ window#QSettings {
             border: solid 2px t.$accent20;
         }
         &:active {
-            background-color: t.$accent20;
-            border: solid 2px t.$accent30;
+            background-color: t.$accent40;
+            border: solid 2px t.$accent40;
         }
     }
 

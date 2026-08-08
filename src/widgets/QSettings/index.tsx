@@ -1,4 +1,5 @@
 import Graphene from "gi://Graphene?version=1.0"
+import GLib from "gi://GLib?version=2.0"
 import AstalMpris from "gi://AstalMpris?version=0.1"
 
 import { Astal, Gdk, Gtk } from "ags/gtk4"
@@ -11,6 +12,8 @@ import { isPinned } from "../../lib/trayPinned"
 import { acquireHyprsunsetWatch } from "../../lib/hyprsunset"
 import { hideOnFocusLoss } from "../../lib/popupFocus"
 import { closeOtherPopups, registerPopup } from "../../lib/exclusivePopups"
+import { idleAdd } from "../../lib/metrics"
+import { pressable } from "../pressable"
 
 import { createBinding, createState } from "gnim"
 import { hookPlayers } from "../../lib/mpris"
@@ -44,7 +47,7 @@ function PaneHeader({
             hexpand, or it swallows switch clicks; the spacer pushes
             the switch right and takes no gesture */}
             <box cssClasses={["paneHeaderBack"]} spacing={5}>
-                <Gtk.GestureClick button={1} onPressed={onBack} />
+                <Gtk.GestureClick button={1} {...pressable(onBack)} />
                 <image iconName="go-previous-symbolic" />
                 <label label={title} xalign={0} />
             </box>
@@ -89,6 +92,29 @@ export default function QSettings() {
     let paneStack: Gtk.Stack | null = null
     let mainPane: Gtk.Box | null = null
     const [pane, setPane] = createState("main")
+
+    // What a pane does when it comes up — a wifi scan, bluetooth
+    // discovery, two pactl spawns for the audio pane, a mullvad query —
+    // used to run BEFORE the stack changed child. Every pane subscribes
+    // to `pane`, gnim notifies subscribers in subscription order, and
+    // the panes are built before the stack that holds them, so the
+    // click that opened the audio pane spent 24ms in pactl before
+    // anything on screen moved. The panes watch this accessor instead:
+    // the same value, delivered from a DEFAULT_IDLE source, which sits
+    // below GDK's redraw priority — so the switch is drawn first and
+    // the pane's I/O starts against a frame the user can already see.
+    // Reading `pane` at fire time also coalesces a fast main -> wifi ->
+    // main into one settle.
+    const [paneSettled, setPaneSettled] = createState("main")
+    let settleSource: number | null = null
+    pane.subscribe(() => {
+        if (settleSource !== null) return
+        settleSource = idleAdd("qs:pane-settled", GLib.PRIORITY_DEFAULT_IDLE, () => {
+            settleSource = null
+            setPaneSettled(pane.get())
+            return GLib.SOURCE_REMOVE
+        })
+    })
 
     // The floor a short pane (wired, vpn) is held at, so navigating
     // settles the popup instead of yanking the floor out. It is the main
@@ -266,7 +292,11 @@ export default function QSettings() {
             <Gtk.GestureClick onPressed={onClick} />
             <revealer
                 $={ref => (revealer = ref)}
-                transitionDuration={200}
+                // one speed for the popup: opening and switching panes
+                // are the same gesture from the user's side, and 200
+                // here against 150 inside made the popup read slower
+                // than the panes it holds
+                transitionDuration={150}
                 transition_type={Gtk.RevealerTransitionType.SLIDE_DOWN}
             >
                 <box
@@ -337,7 +367,11 @@ export default function QSettings() {
                                 })
                             }}
                             transitionType={Gtk.StackTransitionType.SLIDE_LEFT_RIGHT}
-                            transitionDuration={200}
+                            // the slide IS the answer to the click now that
+                            // the pill paints its own press, so it is the
+                            // whole remaining latency: 200ms read as the
+                            // pane thinking about it
+                            transitionDuration={150}
                         >
                             <box
                                 $type="named"
@@ -380,7 +414,7 @@ export default function QSettings() {
                                     propagateNaturalHeight
                                     maxContentHeight={MAX_PANE_HEIGHT}
                                 >
-                                    <WifiWidget pane={pane} name="wifi" />
+                                    <WifiWidget pane={paneSettled} name="wifi" />
                                 </Gtk.ScrolledWindow>
                             </box>
                             <box
@@ -400,7 +434,7 @@ export default function QSettings() {
                                     propagateNaturalHeight
                                     maxContentHeight={MAX_PANE_HEIGHT}
                                 >
-                                    <BluetoothWidget pane={pane} name="bluetooth" />
+                                    <BluetoothWidget pane={paneSettled} name="bluetooth" />
                                 </Gtk.ScrolledWindow>
                             </box>
                             {/* one pane per direction: a card's sink and
@@ -419,7 +453,11 @@ export default function QSettings() {
                                     propagateNaturalHeight
                                     maxContentHeight={MAX_PANE_HEIGHT}
                                 >
-                                    <AudioPane direction="output" pane={pane} name="audioOutput" />
+                                    <AudioPane
+                                        direction="output"
+                                        pane={paneSettled}
+                                        name="audioOutput"
+                                    />
                                 </Gtk.ScrolledWindow>
                             </box>
                             <box
@@ -435,7 +473,11 @@ export default function QSettings() {
                                     propagateNaturalHeight
                                     maxContentHeight={MAX_PANE_HEIGHT}
                                 >
-                                    <AudioPane direction="input" pane={pane} name="audioInput" />
+                                    <AudioPane
+                                        direction="input"
+                                        pane={paneSettled}
+                                        name="audioInput"
+                                    />
                                 </Gtk.ScrolledWindow>
                             </box>
                             <box $type="named" name="wired" orientation={Gtk.Orientation.VERTICAL}>
@@ -444,7 +486,7 @@ export default function QSettings() {
                                     onBack={() => setPane("main")}
                                     trailing={<WiredSwitch />}
                                 />
-                                <WiredWidget pane={pane} name="wired" />
+                                <WiredWidget pane={paneSettled} name="wired" />
                             </box>
                             <box $type="named" name="vpn" orientation={Gtk.Orientation.VERTICAL}>
                                 <PaneHeader
@@ -452,7 +494,7 @@ export default function QSettings() {
                                     onBack={() => setPane("main")}
                                     trailing={<VpnSwitch />}
                                 />
-                                <VpnPane pane={pane} name="vpn" />
+                                <VpnPane pane={paneSettled} name="vpn" />
                             </box>
                             <box
                                 $type="named"
@@ -473,7 +515,7 @@ export default function QSettings() {
                                     propagateNaturalHeight
                                     maxContentHeight={MAX_PANE_HEIGHT}
                                 >
-                                    <PowerProfilesWidget pane={pane} name="powerprofiles" />
+                                    <PowerProfilesWidget pane={paneSettled} name="powerprofiles" />
                                 </Gtk.ScrolledWindow>
                             </box>
                         </stack>
