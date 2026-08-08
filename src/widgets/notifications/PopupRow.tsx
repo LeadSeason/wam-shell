@@ -9,7 +9,7 @@ import {
     popupArrivals,
     popupTimer,
     popupTimerVersion,
-    removePopup,
+    removePopupDeferred,
     setPopupHovered,
 } from "../../lib/notifd"
 import Toast from "./Toast"
@@ -96,9 +96,15 @@ export default function PopupRow({ group }: { group: PopupEntry[] }) {
     //
     // Removing a banner is not dismissing its notification either: it
     // only ends its time on screen, and it stays in the center.
+    // Every one of these runs inside a click, on the widget the click is
+    // being delivered to, and removing the banner destroys that widget —
+    // the shape behind GNOME/gtk#3090. removePopupDeferred pushes the
+    // teardown one idle turn out, past GTK's crossing-event synthesis;
+    // see the note on it in lib/notifd. The action itself still fires
+    // immediately, which is what the user actually asked for.
     const handlers = (p: PopupEntry) => ({
         onActivate: () => {
-            removePopup(p.key)
+            removePopupDeferred(p.key)
             if (p.desktop) {
                 if (p.desktop.get_actions().some(a => a.get_id() === "default"))
                     p.desktop.invoke("default")
@@ -107,12 +113,12 @@ export default function PopupRow({ group }: { group: PopupEntry[] }) {
             }
         },
         onDismiss: () => {
-            removePopup(p.key)
+            removePopupDeferred(p.key)
             if (p.desktop) p.desktop.dismiss()
             else p.item!.dismiss()
         },
         onAction: (id: string) => {
-            removePopup(p.key)
+            removePopupDeferred(p.key)
             if (p.desktop) {
                 p.desktop.invoke(id)
                 return

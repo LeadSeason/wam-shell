@@ -7,7 +7,7 @@ import { configHome } from "./paths"
 import { createJsonClient, USER_AGENT } from "./httpJson"
 import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { Provider, ProviderItem, registerProvider } from "./notificationProviders"
-import { addProviderPopup, removePopup } from "./notifd"
+import { addProviderPopup, removePopup, removePopupDeferred } from "./notifd"
 import { createRefreshGate, newArrivals, openUrl } from "./providerCore"
 import { registerDispose } from "./lifecycle"
 
@@ -245,8 +245,10 @@ export function snoozeDelayMs(dueMs: number, nowMs: number, snoozeMin: number): 
 
 const snoozeTimers = new Map<string, number>()
 
+// reached from the banner's "Postpone" button, i.e. from inside a click
+// on the widget this removes — deferred, see removePopupDeferred
 function snooze(item: ProviderItem) {
-    removePopup(item.id)
+    removePopupDeferred(item.id)
     const existing = snoozeTimers.get(item.id)
     if (existing) sourceRemove(existing)
     const delayMs = snoozeDelayMs(item.time * 1000, Date.now(), Config.todoist.snoozeMinutes)
@@ -316,10 +318,11 @@ function scheduleReminders(mapped: ProviderItem[], reminderMap: Map<string, numb
 function attachActions(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">): ProviderItem {
     const item: ProviderItem = {
         ...data,
+        // "Dismiss" on the banner lands here, inside the click
         hide: () => {
             hiddenIds.add(data.id)
             cancelReminder(data.id)
-            removePopup(data.id)
+            removePopupDeferred(data.id)
             setItems(items.get().filter(i => i.id !== data.id))
         },
         dismiss: () => complete(data),
