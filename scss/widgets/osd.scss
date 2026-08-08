@@ -1,6 +1,7 @@
 @use "active-theme" as t;
-@use "../conf.scss" as s;
 @use "sass:color";
+@use "../conf.scss" as s;
+@use "../ui.scss" as u;
 
 window.OSDWindow {
     background: transparent;
@@ -9,17 +10,17 @@ window.OSDWindow {
     // .osd-volume, .osd-microphone, .osd-brightness, .osd-layout,
     // .osd-lockKeys — e.g. .OSD.osd-brightness { ... }
     .OSD {
-        background: color.mix(t.$crust, transparent, 90%);
-        color: t.$text;
-        border-radius: calc(s.$radius * 2.5);
-        border: solid 1px color.mix(t.$surface0, transparent, 60%);
-        padding: 8px 14px;
+        // the one surface in the shell that is see-through: it lands on
+        // top of whatever you are doing, and a solid slab in the middle
+        // of the screen is a bigger interruption than the thing it is
+        // reporting
+        @include u.surface(color.mix(t.$crust, transparent, 90%));
+        padding: s.$gap 14px;
         margin: 6px;
-        box-shadow: 0 3px 9px rgba(0, 0, 0, 0.3);
 
         // icon size is styled here, not in the widget
         image {
-            -gtk-icon-size: 20px;
+            -gtk-icon-size: s.$icon-medium;
         }
     }
 
@@ -29,7 +30,7 @@ window.OSDWindow {
     .osdBar {
         min-width: 8em;
         min-height: 7px;
-        border-radius: 4px;
+        border-radius: s.$radius-pill;
         background-color: t.$surface0;
         background-image: linear-gradient(to right, t.$accent, t.$accent);
         background-repeat: no-repeat;
@@ -64,7 +65,6 @@ window.OSDWindow {
     }
     .osd-layout label,
     .osd-lockKeys label {
-        font-size: 1.1em;
-        font-weight: 600;
+        @include u.title;
     }
 }

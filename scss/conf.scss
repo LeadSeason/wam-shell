@@ -1,14 +1,69 @@
-$padding: 5px;
-$padding-small: 3px;
+// Design tokens: the values, with no dependency on a theme.
+//
+// This file is pure numbers and font stacks, so anything may `@use` it.
+// The theme-aware half of the design system — the mixins that spend
+// these tokens (surfaces, buttons, rows, sliders) — lives in `ui.scss`,
+// because those need `active-theme` colors.
+//
+// Widget sheets should reach for a token or a mixin before writing a
+// literal. A one-off literal is how the shell ended up with popup radii
+// of 6, 12, 14 and 15px at the same time.
 
-// spacing scale
-$gap: 8px;
+// ---------------------------------------------------------------- space
+//
+// One scale, smallest to largest. `$padding*` are the tight
+// widget-internal values the bar was built on; `$gap*` are the layout
+// values everything since uses.
+$padding-small: 3px;
+$padding: 5px;
+
 $gap-small: 4px;
+$gap: 8px;
+$gap-large: 12px;
 
 // gap between panel widgets (left/center/right sections)
 $bar-widget-spacing: 6px;
 
+// ---------------------------------------------------- shape and outline
+//
+// Four radii and no more. Which one to use is decided by WHAT the thing
+// is, not by how big it happens to be:
+//
+//   $radius-small  inline marks — checkboxes, badges, inline fields
+//   $radius        the default — buttons, list rows, cards inside a popup
+//   $radius-large  a window: popups, toasts, dialogs, the OSD
+//   $radius-pill   anything whose ends should be round — chips, spines,
+//                  progress bars, slider troughs, avatars, switches
+$radius-small: 4px;
+$radius: 6px;
+$radius-large: 12px;
+$radius-pill: 999px;
+
+// One border weight for anything that draws a frame, one for anything
+// that draws a line BETWEEN things. Mixing 1px, 1.6px and 2px frames is
+// visible at a glance even when the colors match.
+$border: 2px;
+$hairline: 1px;
+
+// ----------------------------------------------------------------- type
+//
+// Four sizes. Body text carries no rule at all (it is 1em by
+// inheritance), so a widget sheet only ever names a departure from it.
+//
+//   $font-tiny     count badges, band pills — a number on a chip
+//   $font-small    captions, metadata, secondary lines, eyebrows
+//   (1em)          body: names, summaries, menu items, buttons
+//   $font-title    the title of a window, card or pane
+//   $font-display  the one big readout on a surface (elapsed, stat value)
+$font-tiny: 0.75em;
 $font-small: 0.85em;
+$font-title: 1.15em;
+$font-display: 1.4em;
+
+// Two weights. `bold` resolves differently per family and drifted
+// against the literal 600/700 already in the tree, so both are numeric.
+$weight-medium: 600;
+$weight-bold: 700;
 
 // Two faces, one job each. Prose (summaries, bodies, labels, menu items)
 // is set in a UI face — a coding font makes every sentence in the shell
@@ -22,9 +77,50 @@ $font-small: 0.85em;
 $font-ui: "Symbols Nerd Font Mono", "Adwaita Sans", "Noto Sans", sans-serif;
 $font-mono: "Symbols Nerd Font Mono", "Adwaita Mono", "FiraCode Nerd Font Propo", monospace;
 
-$slider-height: 9px;
-$pill-size: 44px;
-
-$radius: 6px;
+// --------------------------------------------------------------- states
+//
+// Two levels of dimming, and they mean different things:
+//
+//   $disabled-opacity  this cannot be used right now (disabled buttons,
+//                      an out-of-month day, an unconfigured provider)
+//   $quiet-opacity     this is ambient — real, usable, just not what you
+//                      are looking at (an idle timer, an unpicked chip)
+$disabled-opacity: 0.35;
+$quiet-opacity: 0.6;
 
 $transition-time: 200ms;
+// color changes that should read as a state settling rather than as an
+// instant swap (slider fills, a widget going warm)
+$transition-slow: 300ms;
+
+// ---------------------------------------------------------- measurements
+//
+// Padding presets, so a button's footprint says what kind of button it
+// is instead of being whatever looked right in that one file.
+$btn-padding: 1px $padding; // the default: dense, inline, in a row of others
+$btn-padding-icon: $gap-small; // square, icon-only, no label
+$btn-padding-lg: $gap-small 10px; // stands alone and carries a label
+$chip-padding: $padding-small 10px; // a pill you pick from a set
+
+// A list row, and the tighter variant for dense lists (the harvest
+// timeline, profile options) where the same figure wastes a screenful.
+$row-padding: 7px $gap;
+$row-padding-tight: $gap-small 6px;
+
+// A card inside a popup, and the popup itself.
+$card-padding: $gap $gap-large;
+$popup-padding: $gap-large;
+// popups are layer-shell windows drawn edge to edge: the margin is what
+// gives the drop shadow somewhere to land. Anchored under the bar, so
+// the top gets less than the sides and bottom.
+$popup-margin: $padding $gap-large $gap-large;
+
+// icon sizes: the three the shell actually needs
+$icon: 16px; // in a row, beside a label — GTK's own default
+$icon-medium: 20px; // leading a card, a stat tile, the OSD
+$icon-large: 32px; // an empty state's centrepiece
+
+$slider-height: 9px; // a control you aim at
+$meter-height: 3px; // a readout you glance at
+$seek-height: 6px; // a position bar: between the two
+$pill-size: 44px;

@@ -128,7 +128,13 @@ export function SleepTimerWidget({
                     <label label={"Alarm"} xalign={0} hexpand />
                     {/* a paneRow button like Start and the preset chips:
                     the right edges align by construction (a Gtk.Switch
-                    has its own geometry, and is invisible unstyled) */}
+                    has its own geometry, and is invisible unstyled).
+                    The mark inside is the shell's .paneCheckbox, same as
+                    the bluetooth and wifi panes — this used to swap two
+                    checkbox ICONS by hand, which was a second checkbox
+                    design that then had to be kept in step with the
+                    real one. The button owns the click; the check is
+                    display-only */}
                     <button
                         cssClasses={["paneRow", "trailingBtn"]}
                         tooltipText={
@@ -138,10 +144,12 @@ export function SleepTimerWidget({
                         }
                         onClicked={() => setAlarmEnabled(!alarmEnabled.get())}
                     >
-                        <image
-                            iconName={alarmEnabled.as(v =>
-                                v ? "checkbox-checked-symbolic" : "checkbox-symbolic",
-                            )}
+                        <Gtk.CheckButton
+                            cssClasses={["paneCheckbox"]}
+                            valign={Gtk.Align.CENTER}
+                            halign={Gtk.Align.CENTER}
+                            sensitive={false}
+                            active={alarmEnabled}
                         />
                     </button>
                 </box>
@@ -155,10 +163,12 @@ export function SleepTimerWidget({
                         }
                         onClicked={() => setRestoreOnPlay(!restoreOnPlay.get())}
                     >
-                        <image
-                            iconName={restoreOnPlay.as(v =>
-                                v ? "checkbox-checked-symbolic" : "checkbox-symbolic",
-                            )}
+                        <Gtk.CheckButton
+                            cssClasses={["paneCheckbox"]}
+                            valign={Gtk.Align.CENTER}
+                            halign={Gtk.Align.CENTER}
+                            sensitive={false}
+                            active={restoreOnPlay}
                         />
                     </button>
                 </box>

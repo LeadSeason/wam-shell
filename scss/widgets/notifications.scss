@@ -1,6 +1,6 @@
 @use "active-theme" as t;
 @use "../conf.scss" as s;
-@use "sass:color";
+@use "../ui.scss" as u;
 
 // Notifications, in two surfaces that deliberately do not look alike.
 //
@@ -11,6 +11,10 @@
 // window.Notifications) is browsed: no card at all, a hairline between
 // rows, artwork and a body worth reading, and paint only where the
 // pointer is.
+//
+// What they DO share is the shell's chrome — the same window silhouette,
+// the same button, the same row hover. The difference between them is
+// meant to be layout and density, not a second design language.
 //
 // Widget classes — banner: .popups (stack), .popup (row), .toast (card),
 // .toastBody, .timeoutBar (countdown), .thumb. Center: .notifications
@@ -31,7 +35,7 @@
 }
 
 @mixin headline {
-    font-weight: 600;
+    font-weight: s.$weight-medium;
     color: t.$text;
 }
 
@@ -54,21 +58,7 @@
 // surfaces, so it behaves the same in both
 @mixin row-buttons {
     button {
-        border-radius: s.$radius;
-        border: solid 2px transparent;
-        padding: 1px 6px;
-
-        &:hover {
-            background-color: t.$accent20;
-            border: solid 2px t.$accent20;
-        }
-        // these are real buttons, so :active was live all along — just
-        // never styled, which left dismissing or answering a
-        // notification as unacknowledged as everything else here
-        &:active {
-            background-color: t.$accent40;
-            border: solid 2px t.$accent40;
-        }
+        @include u.button-quiet(1px 6px);
     }
 
     button.dismiss {
@@ -80,13 +70,22 @@
         padding: 0;
     }
 
-    // a resting background so they read as buttons — the rule above only
-    // paints on hover, which leaves an untouched action row looking like
-    // plain text
+    // a resting background so they read as buttons — the quiet button
+    // only paints on hover, which leaves an untouched action row looking
+    // like plain text
     .actions button {
-        background: t.$surface0;
-        padding: 2px 8px;
+        background-color: t.$surface0;
+        padding: 2px s.$gap;
     }
+}
+
+// counts on a card ("3 more from this app", "12 folded away")
+@mixin count-badge {
+    font-size: s.$font-small;
+    color: t.$crust;
+    background: t.$overlay0;
+    border-radius: s.$radius-pill;
+    padding: 0 6px;
 }
 
 // ------------------------------------------------------- banner: toast
@@ -99,18 +98,14 @@ window.NotificationPopups {
     }
 
     .toast {
-        background: t.$base;
-        color: t.$text;
-        border-radius: 12px;
+        @include u.surface(t.$base);
         // no padding here: the body carries its own, so the countdown
         // can sit against the card's bottom edge
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-        border: solid 1px color.mix(t.$surface0, transparent, 45%);
 
         @include row-buttons;
 
         .toastBody {
-            padding: 10px 12px 8px;
+            padding: 10px s.$gap-large s.$gap;
         }
         // a banner that never expires draws no countdown, so the body
         // has to close the gap the bar was filling
@@ -129,7 +124,7 @@ window.NotificationPopups {
             padding-left: 6px;
         }
         &.critical.rtl .toastBody {
-            padding-left: 12px;
+            padding-left: s.$gap-large;
             padding-right: 6px;
         }
 
@@ -141,8 +136,8 @@ window.NotificationPopups {
         // shadow read as a rectangle around a rounded card
         .timeoutBar {
             color: t.$accent;
-            margin: 0 12px 8px;
-            border-radius: 999px;
+            margin: 0 s.$gap-large s.$gap;
+            border-radius: s.$radius-pill;
         }
 
         .appIcon {
@@ -153,11 +148,7 @@ window.NotificationPopups {
         }
         // how many banners from this app this card stands for
         .count {
-            font-size: s.$font-small;
-            color: t.$crust;
-            background: t.$overlay0;
-            border-radius: 999px;
-            padding: 0 6px;
+            @include count-badge;
         }
         .summary {
             @include headline;
@@ -181,7 +172,7 @@ window.NotificationPopups {
 
         .thumb {
             background: t.$surface0;
-            border-radius: 8px;
+            border-radius: s.$radius;
         }
 
         // the folded banners, dealt out under the card that stands for
@@ -194,14 +185,14 @@ window.NotificationPopups {
         // for a critical notification, which made "42 packages can be
         // upgraded" look like a kernel panic. The spine says it instead:
         // present, unmissable in a stack, and not shouting.
-        // an inset pill, not a border: the card keeps the same 12px
+        // an inset pill, not a border: the card keeps the same
         // silhouette as every other banner, so urgency is carried by the
         // mark and by colour rather than by being a different shape
         .spine {
-            min-width: 3px;
+            min-width: s.$padding-small;
             background: t.$red;
-            border-radius: 999px;
-            margin: 9px 0 9px 8px;
+            border-radius: s.$radius-pill;
+            margin: 9px 0 9px s.$gap;
         }
 
         &.critical .timeoutBar {
@@ -223,72 +214,51 @@ window.Notifications {
     background: transparent;
 
     .notifications {
-        background: t.$crust;
-        color: t.$text;
-        border-radius: 14px;
-        border: solid 2px color.mix(t.$surface0, transparent, 60%);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-        padding: 10px 8px 8px;
+        @include u.surface;
+        padding: 10px s.$gap s.$gap;
     }
 
     .header {
         padding: 0 6px 6px;
 
         .windowTitle {
-            font-size: 1.15em;
-            font-weight: 700;
+            @include u.title;
         }
 
+        // icon-only: do-not-disturb, clear all
         button {
-            border-radius: s.$radius;
-            border: solid 2px transparent;
-            padding: 3px 7px;
+            @include u.icon-button;
+            margin: 0;
 
-            &:hover {
-                background-color: t.$accent20;
-                border: solid 2px t.$accent20;
-            }
             // do-not-disturb is a MODE, not a command: while it is on the
             // button has to look pressed, or the only way to tell is to
             // notice which icon it happens to be showing
             &.active {
                 background-color: t.$accent40;
-                border: solid 2px t.$accent40;
-            }
-            &:disabled {
-                opacity: 0.35;
+                border-color: t.$accent40;
             }
         }
     }
 
     .filtersRow {
-        padding: 0 6px 8px;
+        padding: 0 6px s.$gap;
 
+        // provider chips: one of a set, dimmed until picked
         button {
-            border-radius: 999px;
-            border: solid 2px transparent;
-            padding: 3px 10px;
+            @include u.chip;
+            margin: 0;
 
-            &:hover {
-                background-color: t.$accent20;
-                border: solid 2px t.$accent20;
-            }
-        }
-        // provider chips: dimmed until selected
-        button.provider {
-            opacity: 0.5;
-            &.active {
-                opacity: 1;
-                background-color: t.$accent40;
-                border: solid 2px t.$accent40;
-            }
-            // muted providers (no banners): extra-dimmed
+            // muted providers (no banners): dimmer than merely unpicked,
+            // but still a control — it has to answer the pointer, or the
+            // only way to find out it is clickable is to click it
             &.muted {
-                opacity: 0.28;
+                opacity: s.$disabled-opacity;
+            }
+            &.muted:hover {
+                opacity: s.$quiet-opacity;
             }
             .count {
-                font-size: s.$font-small;
-                color: t.$subtext0;
+                @include u.subtitle;
             }
         }
     }
@@ -297,17 +267,11 @@ window.Notifications {
     //
     // "Needs you" over "Feed" is the whole point of the window: one
     // list, two kinds of thing in it, and a purely chronological order
-    // insisted they were the same kind. The headings are small and
-    // lettered wide — a label for a region, not a title competing with
-    // the notifications under it.
+    // insisted they were the same kind.
     .zoneTitle {
-        font-size: s.$font-small;
-        font-weight: 700;
-        letter-spacing: 0.09em;
-        text-transform: uppercase;
-        color: t.$subtext0;
+        @include u.eyebrow;
         padding: 0 6px;
-        margin-bottom: 4px;
+        margin-bottom: s.$gap-small;
     }
 
     .zone {
@@ -315,28 +279,20 @@ window.Notifications {
     }
 
     .zoneHeader {
-        padding-right: 4px;
+        padding-right: s.$gap-small;
 
-        // a square target, not a letterbox: `padding: 0 5px` gave it no
-        // vertical padding at all, so the button collapsed to the icon's
-        // own height and the magnifier came out pinched inside a narrow
-        // pill. Equal padding on all four sides, and a floor under both
-        // dimensions so it stays square whatever the icon measures
         button.search {
-            border-radius: s.$radius;
-            border: solid 2px transparent;
-            padding: 4px;
-            min-width: 20px;
-            min-height: 20px;
-            opacity: 0.6;
+            @include u.icon-button;
+            margin: 0;
+            opacity: s.$quiet-opacity;
 
             &:hover {
                 opacity: 1;
-                background-color: t.$accent20;
             }
             &.active {
                 opacity: 1;
                 background-color: t.$accent40;
+                border-color: t.$accent40;
             }
         }
     }
@@ -346,8 +302,7 @@ window.Notifications {
     // some rows
     .needs .centerRow {
         background: t.$accent10;
-        border-radius: 10px;
-        margin-bottom: 3px;
+        margin-bottom: s.$padding-small;
 
         &:hover {
             background: t.$accent20;
@@ -360,33 +315,21 @@ window.Notifications {
     }
 
     .filter {
-        margin: 0 4px 6px;
+        margin: 0 s.$gap-small 6px;
     }
 
     .dayDivider {
-        font-size: s.$font-small;
+        @include u.eyebrow;
         color: t.$overlay1;
-        padding: 10px 6px 4px;
+        padding: 10px 6px s.$gap-small;
     }
 
     // ---- rows
 
     .centerRow {
-        padding: 7px 8px;
-        border-radius: 8px;
+        @include u.row;
 
         @include row-buttons;
-
-        // the row is not a card. Hover is the only paint it gets at
-        // rest, which is what keeps a list of twelve from reading as
-        // banding; the press is a moment, not a state, so it can take
-        // a heavier fill without the list ever wearing it
-        &:hover {
-            background: t.$surface050;
-        }
-        &:active {
-            background: t.$surface1;
-        }
 
         .appIcon {
             margin-top: 1px;
@@ -420,17 +363,17 @@ window.Notifications {
 
         .art {
             background: t.$surface0;
-            border-radius: 8px;
-            margin-top: 4px;
+            border-radius: s.$radius;
+            margin-top: s.$gap-small;
         }
 
         // same restraint as the banner: an inset mark, not a red
         // headline, and not a shape change either
         .spine {
-            min-width: 3px;
+            min-width: s.$padding-small;
             background: t.$red;
-            border-radius: 999px;
-            margin: 2px 8px 2px 0;
+            border-radius: s.$radius-pill;
+            margin: 2px s.$gap 2px 0;
         }
         &.low {
             .appName,
@@ -444,18 +387,13 @@ window.Notifications {
     // belongs BETWEEN items, and a border on every row would draw twice
     // as many lines as there are gaps
     .feed .group:not(:first-child) {
-        border-top: solid 1px color.mix(t.$surface0, transparent, 45%);
+        border-top: solid s.$hairline u.$rule-color;
     }
 
     // ---- folded runs
 
     .groupHead {
-        padding: 7px 8px;
-        border-radius: 8px;
-
-        &:hover {
-            background: t.$surface050;
-        }
+        @include u.row;
 
         .appName {
             @include app-name;
@@ -466,14 +404,10 @@ window.Notifications {
         }
         // how many are folded away — the reason the row is worth a click
         .count {
-            font-size: s.$font-small;
-            color: t.$crust;
-            background: t.$overlay0;
-            border-radius: 999px;
-            padding: 0 6px;
+            @include count-badge;
         }
         .chevron {
-            opacity: 0.5;
+            opacity: s.$quiet-opacity;
         }
     }
 
@@ -486,10 +420,10 @@ window.Notifications {
     // border-inline-start, and on a mirrored row the line belongs on the
     // side the text starts from
     .groupRows {
-        border-left: solid 1px color.mix(t.$surface0, transparent, 45%);
+        border-left: solid s.$hairline u.$rule-color;
     }
     .groupRows.rtl {
         border-left: none;
-        border-right: solid 1px color.mix(t.$surface0, transparent, 45%);
+        border-right: solid s.$hairline u.$rule-color;
     }
 }

@@ -1,6 +1,7 @@
 @use "active-theme" as t;
-@use "../../conf.scss" as s;
 @use "sass:color";
+@use "../../conf.scss" as s;
+@use "../../ui.scss" as u;
 
 // Shared pane chrome (the .paneCard/.paneRow list design used by every pane) plus the audio pane's own rows, meters and dropdowns.
 //
@@ -16,9 +17,7 @@ window#QSettings {
     // pane (classes: .paneCard, .paneRow, .paneRowName, .paneRowDesc,
     // .paneSection)
     .paneCard {
-        background-color: t.$base;
-        border-radius: s.$radius;
-        padding: 6px 12px;
+        @include u.card;
     }
     // --- audio pane ---------------------------------------------
     // the volume slider gets its own full-width line under the row it
@@ -47,15 +46,13 @@ window#QSettings {
         }
     }
     .audioPercent {
-        font-size: s.$font-small;
-        color: t.$subtext0;
+        @include u.subtitle;
     }
     // the percentage is a number you can type into, so it has to look
     // like one without becoming a permanent input box in every row:
     // plain text at rest, a framed field only while it is being edited
     .percentEntry {
-        font-size: s.$font-small;
-        color: t.$subtext0;
+        @include u.subtitle;
 
         &:hover {
             color: t.$text;
@@ -63,7 +60,7 @@ window#QSettings {
         text {
             background-color: t.$surface0;
             color: t.$text;
-            border-radius: 4px;
+            border-radius: s.$radius-small;
             padding: 0 2px;
             min-height: 0;
         }
@@ -75,29 +72,14 @@ window#QSettings {
     // the playback level, under the volume it is being played at: a
     // thin bar, deliberately quieter than the slider above it, because
     // it is something to glance at rather than something to aim
-    // A READOUT, not a control, and it has to look like one — reported
-    // as "duplicate devices … i cannot click on the one below". It sits
-    // under the volume slider at the same width, so a full-width track
-    // made it read as a second, dead slider. No track: only the fill is
-    // drawn, which floats rather than sitting in a groove, and it is
-    // thinner than the slider it reports on
     .audioMeter {
-        min-height: 3px;
-        // .6em is the scale's own horizontal padding, above — the trough
-        // is inset by it and a LevelBar is not, so without this the
-        // level overhung the slider it reports on by ~11px on the left.
-        // Same unit, not the measured pixels, so it tracks font-size
-        margin: 5px 0.6em 0;
+        @include u.meter;
+        // .6em is the scale's own horizontal padding — the trough is
+        // inset by it and a LevelBar is not, so without this the level
+        // overhung the slider it reports on by ~11px on the left. Same
+        // unit, not the measured pixels, so it tracks font-size
+        margin: s.$padding 0.6em 0;
 
-        trough {
-            background-color: transparent;
-            min-height: 3px;
-        }
-        block.filled {
-            background-color: t.$teal;
-            border-radius: 2px;
-            min-height: 3px;
-        }
         // the same warning the slider uses, on the level rather than the
         // setting: approaching full scale is where output starts to clip
         &.over block.filled {
@@ -117,30 +99,30 @@ window#QSettings {
         color: t.$accent;
     }
     .audioRoute {
-        opacity: 0.6;
+        opacity: s.$quiet-opacity;
         margin: 0 2px;
     }
     .audioRow:hover .audioRoute {
         opacity: 1;
     }
+
     .paneRow {
-        // a list you read: rows get room, and only the current one
-        // carries a fill, so a pane reads as one highlighted thing
-        // among plain ones rather than a stack of competing cards
-        padding: 8px 10px;
-        border-radius: s.$radius;
-        background-color: transparent;
+        @include u.row;
     }
-    .paneRow.active,
-    .paneRow:hover {
-        background-color: t.$surface1;
+    // the current row is filled; the name keeps the accent cue on top of
+    // it, so state reads whether or not the fill is noticed
+    .paneRow.active {
+        @include u.row-active;
+
+        .paneRowName {
+            color: t.$accent;
+        }
     }
     .paneRowName {
-        font-weight: bold;
+        font-weight: s.$weight-bold;
     }
     .paneRowDesc {
-        font-size: s.$font-small;
-        color: t.$subtext0;
+        @include u.subtitle;
     }
     // real <button> widgets styled as card rows (sleep timer presets,
     // the custom-start chip): the global button margin breaks the
@@ -156,11 +138,10 @@ window#QSettings {
     }
 
     .toggleTitle {
-        font-weight: bold;
+        font-weight: s.$weight-bold;
     }
     .toggleSubtitle {
-        font-size: s.$font-small;
-        color: t.$subtext0;
+        @include u.subtitle;
     }
     // the chevron is a second button inside the tile, and used to look
     // like part of the first: hovering it lit the whole tile and
@@ -177,8 +158,8 @@ window#QSettings {
         // rather than crossing it
         margin: -1px -5px -1px 4px;
         padding: 0 5px 0 6px;
-        border-left: solid 1px color.mix(t.$text, transparent, 80%);
-        border-radius: 0 (s.$radius - 2px) (s.$radius - 2px) 0;
+        border-left: solid s.$hairline color.mix(t.$text, transparent, 80%);
+        border-radius: 0 (s.$radius - s.$border) (s.$radius - s.$border) 0;
         // a step above the tile's own hover, which is already on
         // (hovering a child prelights its ancestors too): at the same
         // accent20 the two washed into each other and the chevron
@@ -208,21 +189,15 @@ window#QSettings {
             }
         }
         &:hover {
-            background-color: color.mix(t.$accent, transparent, 70%);
-            border: solid 2px transparent;
+            background-color: t.$accent70;
+            border-color: transparent;
         }
         &:active {
-            background-color: color.mix(t.$accent, transparent, 55%);
-            border: solid 2px color.mix(t.$accent, transparent, 50%);
+            background-color: t.$accent50;
+            border-color: t.$accent50;
         }
     }
 
-    // the current row is filled (see .paneRow.active above); the name
-    // keeps the accent cue on top of it, so state reads whether or not
-    // the fill is noticed
-    .paneRow.active .paneRowName {
-        color: t.$accent;
-    }
     // same cue for the default device in the sliders' dropdowns
     .paneCard revealer button.active label {
         color: t.$accent;
@@ -231,14 +206,12 @@ window#QSettings {
     // per-app audio rows in the volume dropdown: the header and the
     // muted-state cue on the mute toggle
     .dropdownCard {
-        background-color: t.$crust;
-        border-radius: s.$radius;
-        padding: 6px 12px;
-        margin-top: 4px;
+        @include u.card(t.$crust);
+        margin-top: s.$gap-small;
     }
     .dropdownSection {
-        font-weight: bold;
-        margin: 4px 0 2px 4px;
+        @include u.eyebrow;
+        margin: s.$gap-small 0 2px s.$gap-small;
         // breathing room between the two sections, none needed above
         // the first
         &:not(:first-child) {
@@ -249,18 +222,16 @@ window#QSettings {
         color: t.$accent;
     }
     .appStreamVol {
-        font-size: s.$font-small;
-        color: t.$subtext0;
+        @include u.subtitle;
     }
 
-    // wifi band section headers in the wifi pane
     // wifi band badge pill, overlaid bottom-right on signal icons
     // (2.4GHz gets no badge)
     .bandBadge {
-        font-size: 0.75em;
-        font-weight: bold;
-        padding: 0 4px;
-        border-radius: 4px;
+        font-size: s.$font-tiny;
+        font-weight: s.$weight-bold;
+        padding: 0 s.$gap-small;
+        border-radius: s.$radius-small;
         color: t.$base;
         &.b5 {
             background-color: t.$green;
@@ -277,100 +248,46 @@ window#QSettings {
     .paneHeader {
         margin: s.$padding-small s.$padding;
         padding: 2px 0 6px;
-        border-bottom: solid 1px color.mix(t.$surface0, transparent, 40%);
+        border-bottom: solid s.$hairline u.$rule-color;
     }
     .paneHeaderBack {
-        font-weight: bold;
-        border-radius: s.$radius;
-        padding: 4px 8px;
-        border: solid 2px transparent;
-
-        &:hover {
-            background-color: t.$accent20;
-            border: solid 2px t.$accent20;
-        }
-        &:active {
-            background-color: t.$accent40;
-            border: solid 2px t.$accent40;
-        }
+        @include u.button-quiet(s.$btn-padding-lg);
+        font-weight: s.$weight-bold;
     }
 
     // checkbox indicator for card-row toggles (display-only; the row's
     // gesture does the toggling)
     .paneCheckbox {
-        check {
-            min-width: 16px;
-            min-height: 16px;
-            border-radius: 4px;
-            border: 2px solid t.$surface1;
-            background-color: t.$surface0;
-            color: transparent;
-        }
-        &:checked check {
-            background-color: t.$accent;
-            border-color: t.$accent;
-            color: t.$base;
-            -gtk-icon-source: -gtk-icontheme("object-select-symbolic");
-        }
+        @include u.checkbox;
     }
 
-    // the pane header's on/off switch: the theme does all:unset, so
-    // Gtk.Switch is invisible without this
+    // the pane header's on/off switch
     .paneSwitch,
     .vpnPane switch {
-        background-color: t.$surface0;
-        border: 1px solid t.$surface1;
-        border-radius: 999px;
-        slider {
-            background-color: t.$text;
-            border-radius: 50%;
-            min-width: 14px;
-            min-height: 14px;
-            margin: 3px;
-        }
-        &:checked {
-            background-color: t.$accent;
-            slider {
-                background-color: t.$base;
-            }
-        }
-        &:disabled {
-            opacity: 0.35;
-        }
+        @include u.switch;
     }
 
     .wifiConnected {
-        border-radius: s.$radius;
-        background-color: t.$base;
-        padding: s.$gap;
-        margin: 4px 0;
+        @include u.card;
+        margin: s.$gap-small 0;
     }
     .wifiConnectedSsid {
-        font-weight: bold;
+        font-weight: s.$weight-bold;
     }
     .wifiConnectedInfo,
     .wifiStatus {
-        font-size: s.$font-small;
-        color: t.$subtext0;
+        @include u.subtitle;
     }
     .wifiStatus {
-        margin: 4px;
+        margin: s.$gap-small;
     }
 
-    // section dividers inside panes ("Paired", "Available",
-    // "Connected network", "Networks", "Features"): full-size bold
-    // text with a rule underneath
-    // group labels are eyebrows, not headings: they separate the rows
-    // beneath them without competing with the names in them
+    // group labels inside panes ("Paired", "Available", "Connected
+    // network", "Networks", "Features"): eyebrows, not headings — they
+    // separate the rows beneath them without competing with the names
+    // in them
     .paneSection {
-        font-size: s.$font-small;
-        font-weight: normal;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: t.$overlay1;
-        margin: 10px 0 2px 4px;
-        padding-bottom: 4px;
-        border-bottom: solid 1px color.mix(t.$surface0, transparent, 40%);
+        @include u.eyebrow-rule;
+        margin: 10px 0 2px s.$gap-small;
     }
-
 }

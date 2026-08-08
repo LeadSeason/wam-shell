@@ -1,30 +1,25 @@
 @use "active-theme" as t;
-@use "../conf.scss" as s;
 @use "sass:color";
+@use "../conf.scss" as s;
+@use "../ui.scss" as u;
 
-// What a timeline row actually LOOKS like, flattened. The tokens the
-// row is built from are translucent ($surface050 over the popup's
-// $crust, plus $accent20 on hover), and anything drawn on top of a row
-// has to match the composite rather than re-apply the same token — the
-// action strip does exactly that.
-$rowBg: color.mix(t.$surface0, t.$crust, 50%);
-$rowBgHover: color.mix(t.$accent, $rowBg, 20%);
+// What a timeline row actually LOOKS like when hovered, flattened. The
+// row's hover is the shared translucent one ($surface050 over the
+// popup's $crust), and anything drawn on top of a row has to match that
+// composite rather than re-apply the token — the action strip does
+// exactly that, because it needs to be opaque.
+$rowBgHover: color.mix(t.$surface0, t.$crust, 50%);
 
 window.HarvestPopup {
     background: transparent;
 
     .harvestPopup {
-        background: t.$crust;
-        color: t.$text;
-        border-radius: s.$radius;
-        border: solid 2px color.mix(t.$surface0, transparent, 60%);
-        margin: 5px 12px 12px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        @include u.surface;
+        margin: s.$popup-margin;
         padding: 16px;
 
         .elapsed {
-            font-size: 1.4em;
-            font-weight: bold;
+            @include u.display;
             &.dim {
                 font-size: 1em;
                 color: t.$subtext0;
@@ -38,7 +33,7 @@ window.HarvestPopup {
 
         // "New Time Entry" form, in the style of Harvest's own widget
         .title {
-            font-weight: bold;
+            font-weight: s.$weight-bold;
         }
         .duration {
             color: t.$subtext0;
@@ -48,52 +43,22 @@ window.HarvestPopup {
                 color: t.$red;
             }
         }
-        // clearly bounded input fields (new-entry form)
-        .input {
-            background-color: t.$base;
-            border: solid 2px t.$accent50;
-            border-radius: s.$radius;
-            padding: 2px 6px;
-
-            &:focus-within,
-            &:focus {
-                border-color: t.$accent;
-            }
-        }
-        // the paused-hours editor must read as an input, not a label
+        // the new-entry fields and the paused-hours editor must read as
+        // inputs, not as labels: the shell's one text field
+        .input,
         .pausedEdit {
-            background-color: t.$base;
-            border: solid 2px t.$accent20;
-            border-radius: s.$radius;
+            @include u.text-field;
             padding: 2px 6px;
         }
         // inline selector list: themed container, no popup resizing
         .ddList {
+            @include u.card(t.$base, 6px);
             margin: 2px 0 6px;
-            padding: 6px;
-            border-radius: s.$radius;
-            background-color: t.$base;
-            border: solid 2px t.$accent20;
         }
 
         button {
+            @include u.button-framed(s.$btn-padding-lg);
             margin: 2px 0;
-            padding: 4px 10px;
-            border-radius: s.$radius;
-            background-color: t.$surface050;
-            border: solid 2px t.$accent20;
-
-            &:hover {
-                background-color: t.$accent20;
-                border-color: t.$accent40;
-            }
-            &:active {
-                background-color: t.$accent40;
-                border-color: t.$accent40;
-            }
-            &:disabled {
-                opacity: 0.35;
-            }
 
             &.start {
                 background-color: t.$green;
@@ -101,41 +66,33 @@ window.HarvestPopup {
                 color: t.$crust;
                 &:hover {
                     background-color: color.mix(t.$green, t.$text, 88%);
+                    border-color: color.mix(t.$green, t.$text, 88%);
                 }
             }
 
             &.stop {
-                background-color: color.mix(t.$red, transparent, 75%);
-                border-color: color.mix(t.$red, transparent, 55%);
+                background-color: t.$red30;
+                border-color: t.$red50;
                 &:hover {
-                    background-color: color.mix(t.$red, transparent, 60%);
+                    background-color: t.$red40;
+                    border-color: t.$red60;
                 }
             }
 
             &.confirm {
-                background-color: color.mix(t.$accent, transparent, 55%);
-                border-color: color.mix(t.$accent, transparent, 40%);
-                &:hover {
-                    background-color: color.mix(t.$accent, transparent, 40%);
-                }
+                @include u.button-accent(s.$btn-padding-lg);
             }
         }
 
         // section titles inside the popup ("Resume")
         .section {
-            font-size: s.$font-small;
-            font-weight: bold;
-            color: t.$subtext0;
-            margin-top: 4px;
+            @include u.eyebrow;
+            margin-top: s.$gap-small;
         }
 
         // day timeline: one row per entry, start time left, hours right
         .todayRow {
-            margin: 2px 0;
-            padding: 4px 6px;
-            border-radius: s.$radius;
-            background-color: t.$surface050;
-            border: solid 2px t.$accent20;
+            @include u.row(s.$row-padding-tight);
 
             // the row body is the notes-editor toggle, not a visible
             // button — and it never paints its own hover, because the
@@ -147,19 +104,19 @@ window.HarvestPopup {
                 background-color: transparent;
                 border: none;
                 margin: 0;
-                padding: 2px 4px;
+                padding: 2px s.$gap-small;
             }
             &.hovered {
-                background-color: $rowBgHover;
+                background-color: u.$hover-surface;
             }
 
             // The resume/delete strip is an Overlay child: unmeasured,
             // anchored to the trailing edge, drawn over the title. It
-            // needs an OPAQUE backdrop — the shared button style is
-            // $surface050, half transparent, so the entry title read
-            // straight through the icons — and the backdrop has to be
-            // the composite the row shows underneath it, hence the two
-            // literals above rather than the translucent tokens.
+            // needs an OPAQUE backdrop — the row's own hover fill is
+            // half transparent, so the entry title read straight through
+            // the icons — and the backdrop has to be the composite the
+            // row shows underneath it, hence the literal above rather
+            // than the translucent token.
             //
             // Left edge fades instead of cutting: a hard line landing
             // mid-word looks like a clipping bug. The fade is to the
@@ -186,17 +143,18 @@ window.HarvestPopup {
             }
 
             .rowTime {
-                font-size: s.$font-small;
-                color: t.$subtext0;
+                @include u.subtitle;
             }
             // marked, not merely recoloured: a spine is visible down a
             // list at a glance where a tinted timestamp is not. Squared
             // on that side, because a 3px edge run around the radius
-            // curls into both corners and reads as a bracket
+            // curls into both corners and reads as a bracket. The
+            // padding gives back exactly what the spine takes, so a
+            // running row's text stays on the column the others use
             &.running {
                 border-radius: 0 s.$radius s.$radius 0;
-                border-left: solid 3px t.$harvest;
-                padding-left: 8px;
+                border-left: solid s.$padding-small t.$harvest;
+                padding-left: s.$padding-small;
             }
             // The running row is inert on purpose — a running entry
             // cannot be edited — but it should not READ as disabled.
@@ -211,9 +169,8 @@ window.HarvestPopup {
                 color: t.$yellow;
             }
             .rowNotes {
-                font-size: s.$font-small;
+                @include u.subtitle;
                 font-style: italic;
-                color: t.$subtext0;
             }
         }
 
@@ -222,8 +179,7 @@ window.HarvestPopup {
             margin-top: 2px;
 
             .total {
-                font-size: 1.2em;
-                font-weight: bold;
+                @include u.title;
             }
         }
         button.newEntry {
@@ -245,17 +201,14 @@ window.HarvestPopup {
             }
         }
 
-        // resume button on the paused card
-        button.resumeNow {
-            padding: 4px 6px;
-        }
-
-        // timeline row delete (two-step: trash swaps into confirm/cancel
-        // with an identical footprint, so the row never shifts)
+        // resume on the paused card, and the timeline row's two-step
+        // delete (trash swaps into confirm/cancel with an identical
+        // footprint, so the row never shifts)
+        button.resumeNow,
         button.rowDelete,
         button.confirm,
         button.cancel {
-            padding: 4px 6px;
+            padding: s.$row-padding-tight;
         }
         button.rowDelete:hover {
             background-color: t.$red20;
@@ -266,14 +219,6 @@ window.HarvestPopup {
 
 // day browser chevrons in the timeline header
 window.HarvestPopup .dayNav {
-    border-radius: s.$radius;
-    padding: 0 4px;
+    @include u.icon-button;
     color: t.$subtext0;
-
-    &:hover {
-        background-color: t.$accent20;
-    }
-    &:disabled {
-        opacity: 0.35;
-    }
 }

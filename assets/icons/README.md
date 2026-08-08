@@ -33,13 +33,30 @@ Bundled icons must be FILL-only (fill="currentColor", no stroke
 attributes): GTK4's built-in SVG renderer (4.22+) renders strokes as
 fills, which turns stroked glyphs into solid blobs.
 
-`cpu-symbolic.svg`, `memory-symbolic.svg`, `sensors-fan-symbolic.svg`,
-`freon-temperature-symbolic.svg` and `freon-gpu-temperature-symbolic.svg`,
-`hourglass-symbolic.svg`
-are from the [Papirus icon theme](https://github.com/PapirusDevelopmentTeam/papirus-icon-theme)
-(GPL-3.0), bundled for the power pane's stat tiles.
+## Drawing a name Adwaita does not have
 
-`speedometer-symbolic.svg` is the Papirus gauge (GPL-3.0), bundled
-because some themes don't inherit Breeze (a breeze-only name fell
-back to image-missing); the Papirus stroke matches the other bundled
-symbols at tile size.
+`cpu-symbolic.svg`, `memory-symbolic.svg`, `temperature-symbolic.svg`,
+`gpu-symbolic.svg`, `hourglass-symbolic.svg`, `speedometer-symbolic.svg`
+(the power pane's stat tiles) and `dark-mode-symbolic.svg` (the Dark
+Style toggle) are original drawings. Adwaita ships none of these names,
+so nothing upstream can be copied for them.
+
+They used to be **Papirus** copies, and that was the whole problem: two
+icon sets drawn to different grids and different optical weights, sitting
+next to each other in one FlowBox. Papirus reads denser and rounder than
+Adwaita at 16px, so the power pane looked like it had been assembled from
+two shells. The replacements are drawn on Adwaita's own terms:
+
+- 16×16 viewBox, content inset ~1px from the edges
+- filled geometry only, `fill="#2e3436"` (GTK recolors by name; the
+  literal is Adwaita's own and is never what renders)
+- 2px frames, drawn as an outer shape with an `evenodd` counter — never
+  a stroke
+- checked at true 16px, not just scaled up: a 1px gap between two shapes
+  disappears at icon size, which is what merged the speedometer's needle
+  into its own dial on the first attempt
+
+`dark-mode-symbolic` is a half-filled disc rather than a crescent on
+purpose. It sits beside Night Light in the toggle grid, and Adwaita's
+`night-light-symbolic` is already a moon — two moons in one grid say
+nothing about which is which.

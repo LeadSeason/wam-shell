@@ -324,11 +324,12 @@ function AppRow({
                     tooltipText={targetLabel.as(t => `Output: ${t}`)}
                 >
                     <Gtk.GestureClick button={1} onPressed={toggle} />
-                    <image
-                        iconName={open.as(o =>
-                            o ? "pan-up-symbolic" : "media-playlist-shuffle-symbolic",
-                        )}
-                    />
+                    {/* an expander, so it draws the shell's expander
+                    chevron. It was a SHUFFLE glyph — crossed arrows,
+                    which in a row that also carries media controls
+                    reads as "shuffle this stream" rather than "show me
+                    where it is playing" */}
+                    <image iconName={open.as(o => (o ? "pan-up-symbolic" : "pan-down-symbolic"))} />
                 </box>
             </box>
             {/* the slider spans the row: sharing a line with the icon,

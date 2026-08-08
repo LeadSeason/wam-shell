@@ -1,56 +1,45 @@
 @use "active-theme" as t;
-@use "sass:color";
+@use "../conf.scss" as s;
+@use "../ui.scss" as u;
 
 window#Dialog {
     color: t.$text;
 
     box#main-content {
-        border: 2px solid t.$surface0;
-        background: t.$base;
+        @include u.surface(t.$base);
         min-width: 600px;
-        border-radius: 12px;
-        padding: 10px;
         min-height: 600px;
+        padding: 10px;
     }
 
     .title {
-        font-size: larger;
+        @include u.title;
         padding-bottom: 6px;
     }
 
+    // result entries: a list, so they get the list's treatment — no fill
+    // at rest, surface under the pointer, and an accent ring for the
+    // keyboard, which is how this window is actually driven
     button {
-        background-color: t.$surface0;
-        border-radius: 6px;
-        border: 2px solid transparent;
+        @include u.row;
+        border: solid s.$border transparent;
+        @include u.focus-ring;
 
         -gtk-icon-size: 2.5em;
 
         label.name {
-            font-weight: bold;
-            font-size: 1.1em;
+            font-weight: s.$weight-bold;
         }
 
         label.description {
-            color: t.$overlay1;
-        }
-
-        &:hover {
-            border-radius: 6px;
-            background-color: t.$surface0;
-            border: 2px solid t.$surface2;
-        }
-
-        &:focus {
-            border-radius: 6px;
-            background-color: t.$surface0;
-            border: 2px solid t.$accent;
+            @include u.subtitle;
         }
     }
 
     separator {
-        margin: .8rem 0;
-        background-color: t.$surface0;
-        min-height: 2px;
+        margin: s.$gap-large 0;
+        background-color: u.$rule-color;
+        min-height: s.$hairline;
     }
 }
 
@@ -59,24 +48,21 @@ window.BluetoothPairing {
 }
 
 window.BluetoothPairing .pairing {
-    background: t.$crust;
-    color: t.$text;
-    border-radius: 12px;
-    border: solid 2px color.mix(t.$surface0, transparent, 60%);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    @include u.surface;
     padding: 20px;
     min-width: 340px;
 }
 
 .pairing {
     .title {
-        font-size: larger;
-        font-weight: bold;
+        @include u.title;
     }
 
+    // read off a phone screen an arm's length away, so it is the one
+    // thing on this window that outgrows the type scale on purpose
     .passkey {
         font-size: 2.4em;
-        font-weight: bold;
+        font-weight: s.$weight-bold;
         letter-spacing: 4px;
     }
 
@@ -85,23 +71,15 @@ window.BluetoothPairing .pairing {
     }
 
     .pinEntry {
-        font-size: 1.6em;
+        font-size: s.$font-display;
     }
 
     .buttons button {
+        @include u.button-quiet(6px 16px);
         background-color: t.$base;
-        border-radius: 6px;
-        border: 2px solid transparent;
-        padding: 6px 16px;
 
-        &:hover {
-            background-color: t.$surface0;
-        }
         &.confirm {
-            background-color: color.mix(t.$accent, transparent, 55%);
-            &:hover {
-                background-color: color.mix(t.$accent, transparent, 40%);
-            }
+            @include u.button-accent(6px 16px);
         }
     }
 }

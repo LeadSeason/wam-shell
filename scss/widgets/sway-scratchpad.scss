@@ -1,20 +1,22 @@
 @use "active-theme" as t;
-@use "sass:color";
+@use "../conf.scss" as s;
+@use "../ui.scss" as u;
 
+// The launcher. Same window and same result list as window#Dialog — it
+// IS the same design; it just reaches its entries a different way, and
+// stays translucent because it covers the middle of the screen.
 window#Scratchpad {
     color: t.$text;
 
     box#launcher-content {
-        border: 2px solid t.$surface080;
-        background: t.$base70;
+        @include u.surface(t.$base70);
         min-width: 600px;
-        border-radius: 12px;
-        padding: 10px;
         min-height: 600px;
+        padding: 10px;
     }
 
     .title {
-        font-size: larger;
+        @include u.title;
         padding-bottom: 6px;
     }
 
@@ -32,32 +34,25 @@ window#Scratchpad {
         }
     }
 
+    // result entries: a list, driven by the keyboard, so the focus ring
+    // is the one that has to be unmissable
     button {
-        background-color: t.$surface040;
-        border-radius: 6px;
-        border: 2px solid transparent;
+        @include u.row;
+        border: solid s.$border transparent;
+        @include u.focus-ring;
 
         -gtk-icon-size: 2.5em;
 
         label.name {
-            font-weight: bold;
-            font-size: 1.1em;
+            font-weight: s.$weight-bold;
         }
 
         label.description {
-            color: t.$overlay1;
-        }
-
-        &:hover {
-            border-radius: 6px;
-            background-color: t.$surface060;
-            border: 2px solid t.$surface260;
+            @include u.subtitle;
         }
 
         &:focus {
-            border-radius: 6px;
             background-color: t.$accent10;
-            border: 2px solid t.$accent50;
         }
     }
 
@@ -67,13 +62,13 @@ window#Scratchpad {
         color: t.$text;
 
         label {
-            font-size: 1.2em;
+            @include u.title;
         }
     }
 
     separator {
-        margin: .8rem 0;
-        background-color: t.$surface0;
-        min-height: 2px;
+        margin: s.$gap-large 0;
+        background-color: u.$rule-color;
+        min-height: s.$hairline;
     }
 }
