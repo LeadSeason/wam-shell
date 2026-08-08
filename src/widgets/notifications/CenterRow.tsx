@@ -5,6 +5,7 @@ import Pango from "gi://Pango?version=1.0"
 import { createState, onCleanup } from "gnim"
 import { rtlAlign, safeMarkup } from "../../lib/utils"
 import { relTime, nowSec } from "../../lib/relTime"
+import { paintPress } from "../pressable"
 import type { RowData } from "./rowData"
 
 // The center's row — a browsing surface, where the banner is a glancing
@@ -109,16 +110,29 @@ export default function CenterRow({
             />
             <Gtk.GestureClick
                 button={1}
-                onPressed={(_g, _n, x, y) => {
+                onPressed={(g, _n, x, y) => {
                     pressOnButton = buttons.some(w => {
                         if (!row) return false
                         const [, rect] = w.compute_bounds(row)
                         return rect.contains_point(new Graphene.Point({ x, y }))
                     })
+                    // the row is a box, so GTK paints no press for it
+                    // (see pressable) — and it acts on RELEASE, which
+                    // left the whole click unanswered until whatever
+                    // the notification opens got around to appearing.
+                    // Not on the row's own buttons: those are real
+                    // buttons, and GTK already propagates their :active
+                    // up into the row (measured), so the row lights
+                    // either way — a second flag would only be one this
+                    // handler then has to remember to clear
+                    if (!pressOnButton) paintPress(g, true)
                 }}
-                onReleased={() => {
+                onReleased={g => {
+                    paintPress(g, false)
                     if (!pressOnButton) onActivate()
                 }}
+                onCancel={g => paintPress(g, false)}
+                onEnd={g => paintPress(g, false)}
             />
             <Gtk.GestureClick button={3} onReleased={() => (onSecondary ?? onDismiss)()} />
             <Gtk.GestureClick button={2} onReleased={onDismiss} />
