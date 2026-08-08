@@ -77,5 +77,6 @@ function LayoutDropdown({ source }: { source: LayoutSource }) {
 export default function KeyboardLayout() {
     const source = ensureLayoutSource()
     if (!source) return <></>
+    if (source.layouts.length === 0) return <></>
     return <LayoutDropdown source={source} />
 }
