@@ -46,11 +46,29 @@ function loadCredentials(): { user: string; password: string } | null {
 }
 
 const creds = Config.protonmail.enabled ? loadCredentials() : null
+
+// IMAP LOGIN puts the bridge password on the wire in the clear, and
+// `host` is a free-form config string. On loopback that is a hop between
+// two processes of the same user and is exactly how the bridge is meant
+// to be used. Off it, it is a password crossing a network — so a remote
+// host without `tls` is refused rather than silently transmitted, which
+// is the only version of this the user cannot get wrong by not reading
+// the docs.
+const transportOk =
+    isLoopbackHost(Config.protonmail.host) || Config.protonmail.tls || !Config.protonmail.enabled
+
 // the center gates on the registry; this gates the registry
-export const active = Config.protonmail.enabled && creds !== null
+export const active = Config.protonmail.enabled && creds !== null && transportOk
+
 if (Config.protonmail.enabled && !creds) {
     console.log(
         "ProtonMail: enabled but no credentials (env PROTONMAIL_IMAP_USER/PASSWORD or ~/.config/wam-shell/protonmail.env); provider disabled",
+    )
+} else if (Config.protonmail.enabled && !transportOk) {
+    console.error(
+        `ProtonMail: host "${Config.protonmail.host}" is not loopback and [protonmail] tls is false — ` +
+            "IMAP LOGIN would send your bridge password in the clear. Provider disabled; " +
+            "set tls = true (plus tls_insecure = true for the bridge's self-signed certificate) or use 127.0.0.1",
     )
 }
 
@@ -317,13 +335,70 @@ function writeAll(
 
 async function cmd(
     input: Gio.DataInputStream,
-    conn: Gio.SocketConnection,
+    io: Gio.IOStream,
     tag: string,
     text: string,
     cancellable: Gio.Cancellable,
 ): Promise<string> {
-    await writeAll(conn.get_output_stream(), `${tag} ${text}\r\n`, cancellable)
+    await writeAll(io.get_output_stream(), `${tag} ${text}\r\n`, cancellable)
     return readChunk(input, tag, cancellable)
+}
+
+/**
+ * Is this host reachable only from this machine?
+ *
+ * Decides whether a cleartext LOGIN is acceptable. Covers the whole
+ * 127.0.0.0/8 block, not just 127.0.0.1 — the bridge can be told to
+ * listen on any of it — plus IPv6 loopback in both spellings and the
+ * "localhost" name. Anything else, including a LAN address that happens
+ * to be this machine, counts as remote: the packet leaves the loopback
+ * interface and that is what matters here.
+ *
+ * Exported for the unit tests.
+ */
+export function isLoopbackHost(host: string): boolean {
+    const h = host.trim().toLowerCase().replace(/^\[|\]$/g, "")
+    if (h === "localhost" || h === "::1" || h === "0:0:0:0:0:0:0:1") return true
+    const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h)
+    if (!v4) return false
+    const octets = v4.slice(1).map(Number)
+    if (octets.some(n => n > 255)) return false
+    return octets[0] === 127
+}
+
+/**
+ * Wrap a live connection in TLS after a successful STARTTLS.
+ *
+ * `tlsInsecure` accepts the certificate whatever it says, because the
+ * bridge signs its own — that keeps the password off the wire but does
+ * not authenticate the peer, which is why it is a separate opt-in.
+ */
+function startTls(base: Gio.IOStream, host: string, insecure: boolean): Promise<Gio.IOStream> {
+    return new Promise((resolve, reject) => {
+        let tls: Gio.TlsClientConnection
+        try {
+            tls = Gio.TlsClientConnection.new(
+                base,
+                Gio.NetworkAddress.new(host, 0),
+            ) as Gio.TlsClientConnection
+        } catch (e) {
+            reject(e)
+            return
+        }
+        if (insecure) {
+            // returning true from accept-certificate is what overrides the
+            // handshake's own verdict; without it a self-signed cert fails
+            tls.connect("accept-certificate", () => true)
+        }
+        tls.handshake_async(GLib.PRIORITY_DEFAULT, null, (_s, res) => {
+            try {
+                tls.handshake_finish(res)
+                resolve(tls as unknown as Gio.IOStream)
+            } catch (e) {
+                reject(e)
+            }
+        })
+    })
 }
 
 // IMAP strings are quoted with \ escapes
@@ -346,15 +421,27 @@ class ImapSession {
     private tagCounter = 0
     private readonly cancellable = new Gio.Cancellable()
     private closed = false
+    // the stream commands run over: the raw socket, or the TLS stream
+    // wrapping it after STARTTLS. `conn` stays around because closing the
+    // TLS stream alone can leave the socket open
+    private io: Gio.IOStream
 
     private constructor(private conn: Gio.SocketConnection) {
+        this.io = conn
         this.input = Gio.DataInputStream.new(conn.get_input_stream())
     }
 
-    // connect + greeting + LOGIN; auth rejection carries e.auth (the
-    // marker poll() and startIdle() key on)
+    // swap the transport for its TLS-wrapped self and re-point the reader
+    private async upgrade(host: string, insecure: boolean): Promise<void> {
+        this.io = await startTls(this.conn, host, insecure)
+        this.input = Gio.DataInputStream.new(this.io.get_input_stream())
+    }
+
+    // connect + greeting + (STARTTLS) + LOGIN; auth rejection carries
+    // e.auth (the marker poll() and startIdle() key on)
     static async open(): Promise<ImapSession> {
-        const conn = await socketConnect(Config.protonmail.host, Config.protonmail.port)
+        const { host, port, tls, tlsInsecure } = Config.protonmail
+        const conn = await socketConnect(host, port)
         // the SocketClient timeout (10s) also applies to ASYNC reads on
         // the socket (observed: G_IO_ERROR_TIMED_OUT 10s into a quiet
         // IDLE) — drop it; the session's own timers (command watchdogs,
@@ -365,10 +452,22 @@ class ImapSession {
         const done = s.watchdog()
         try {
             await readChunk(s.input, "", s.cancellable) // server greeting
+            // STARTTLS before anything that carries the password. A
+            // refusal is fatal rather than a downgrade: falling back to
+            // cleartext because the server said no is the exact thing
+            // asking for TLS was meant to prevent
+            if (tls) {
+                const tag = s.nextTag()
+                const reply = await cmd(s.input, s.io, tag, "STARTTLS", s.cancellable)
+                if (!taggedOk(reply, tag)) {
+                    throw new Error("server refused STARTTLS; refusing to send credentials")
+                }
+                await s.upgrade(host, tlsInsecure)
+            }
             const tag = s.nextTag()
             const login = await cmd(
                 s.input,
-                s.conn,
+                s.io,
                 tag,
                 `LOGIN "${quote(creds!.user)}" "${quote(creds!.password)}"`,
                 s.cancellable,
@@ -411,7 +510,7 @@ class ImapSession {
         const tag = this.nextTag()
         const done = this.watchdog()
         try {
-            const reply = await cmd(this.input, this.conn, tag, text, this.cancellable)
+            const reply = await cmd(this.input, this.io, tag, text, this.cancellable)
             if (!taggedOk(reply, tag)) throw new Error(`IMAP command failed: ${text}`)
             return reply
         } finally {
@@ -452,7 +551,7 @@ class ImapSession {
     // itself carries e.unsupported (server without IDLE: poll forever)
     async idleRound(): Promise<"refresh" | "reissue"> {
         const tag = this.nextTag()
-        const out = this.conn.get_output_stream()
+        const out = this.io.get_output_stream()
 
         return new Promise((resolve, reject) => {
             let settled = false
@@ -581,6 +680,11 @@ class ImapSession {
         if (this.closed) return
         this.closed = true
         this.cancellable.cancel()
+        // close the TLS stream first when there is one, then the socket
+        // underneath it: closing only the wrapper can leave the fd open
+        try {
+            if (this.io !== this.conn) this.io.close(null)
+        } catch {}
         this.conn.close(null)
     }
 }
@@ -899,7 +1003,9 @@ if (Config.protonmail.enabled) {
         status,
         setupHint: active
             ? null
-            : "Set up ProtonMail: install Proton Mail Bridge and sign in, then put its IMAP credentials in ~/.config/wam-shell/protonmail.env as PROTONMAIL_IMAP_USER=<user> and PROTONMAIL_IMAP_PASSWORD=<password>",
+            : !transportOk
+              ? `ProtonMail is set to host ${Config.protonmail.host}, which is not this machine, with TLS off — the bridge password would be sent in the clear, so the provider is disabled. Set [protonmail] tls = true, or point host back at 127.0.0.1.`
+              : "Set up ProtonMail: install Proton Mail Bridge and sign in, then put its IMAP credentials in ~/.config/wam-shell/protonmail.env as PROTONMAIL_IMAP_USER=<user> and PROTONMAIL_IMAP_PASSWORD=<password>",
     } satisfies Provider)
 }
 

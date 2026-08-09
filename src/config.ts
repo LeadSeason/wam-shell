@@ -480,6 +480,19 @@ function getProtonmailConfig() {
         pollMinutes: r.num("poll_minutes", 2, { positive: true, floor: 1 }),
         host: r.str("host", "127.0.0.1", { nonEmpty: true }),
         port: r.num("port", 1143, { positive: true }),
+        // IMAP LOGIN sends the bridge password in the clear. On loopback
+        // that is a hop between two processes owned by the same user and
+        // is how the bridge is meant to be used; off it, it is a password
+        // on the wire. So `host` alone no longer decides: a non-loopback
+        // host REQUIRES tls, and lib/protonmail refuses to start
+        // otherwise rather than quietly transmitting it
+        tls: r.bool("tls", false),
+        // the bridge presents a self-signed certificate, so a strict
+        // handshake against a remote one fails. This accepts it anyway:
+        // still defeats passive sniffing, does NOT defeat an active MITM.
+        // Deliberately its own key so opting out of verification is a
+        // thing the user wrote down
+        tlsInsecure: r.bool("tls_insecure", false),
     }
 }
 
