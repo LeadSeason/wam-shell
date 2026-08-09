@@ -46,7 +46,14 @@ export interface Provider {
     items: Accessor<ProviderItem[]>
     // stale-while-revalidate when the center opens; providers age-gate
     refresh(): void
-    dispose(): void
+    // NB no `dispose` here. Teardown goes through lib/lifecycle's
+    // registry, which every provider already calls from its own module
+    // scope (`registerDispose("github", dispose)`), and which app.tsx
+    // runs on shutdown. This interface used to require a `dispose` too —
+    // implemented by all five providers and called by nobody, since the
+    // centre only ever reads `items`/`refresh`. That is the same shape
+    // AGENTS.md records as a past bug: teardown functions with no caller,
+    // free to rot. One mechanism, and it is the one with a caller
     // a sync problem to surface in the center's empty state ("quota
     // exceeded, retrying in 2h"), null when healthy. Shown instead of
     // the misleading "No notifications"
