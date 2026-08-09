@@ -858,6 +858,17 @@ function onAuthFailure() {
     authFailed = true
     setStatus("ProtonMail login rejected — check ~/.config/wam-shell/protonmail.env")
     stopTimers()
+    // ...and the live IDLE connection, which stopTimers does not touch.
+    //
+    // "Disabled until restart" has to mean it. Reached from a mark-seen
+    // STORE (rather than from the poll), this left an authenticated IDLE
+    // session up and pushing: the centre showed the provider's own
+    // "login rejected" in its empty state while new mail kept arriving in
+    // the list underneath it — a status line contradicting the rows it
+    // sits above. Every other disabling path already lands here, so this
+    // is the one place it belongs.
+    idleSession?.close()
+    idleSession = null
     console.warn("ProtonMail: login rejected; provider disabled until the shell restarts")
 }
 
@@ -1011,7 +1022,6 @@ if (Config.protonmail.enabled) {
         displayName: "ProtonMail",
         items,
         refresh,
-        dispose,
         status,
         setupHint: active
             ? null
