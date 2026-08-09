@@ -1,33 +1,62 @@
 #!/usr/bin/env bash
 # Opt-in sway smoke test (pnpm test:smoke:sway): boots the shell inside a
-# NESTED sway and asserts the sway-only code paths run clean.
+# nested sway and asserts the sway-only code paths run clean.
 #
-# Why this exists, specifically: `tests/smoke.sh` boots the shell on
-# whatever compositor the developer is sitting in front of. For everyone
-# working on this project so far that is hyprland, so `workspaces-sway`,
-# `lib/sway` and the i3ipc paths have never once been constructed by a
-# gate. Issue #229 is what that costs — a refactor deleted a declaration
-# and left its four uses, the widget threw a ReferenceError the moment it
-# was built, and the ENTIRE panel was gone on sway and i3 for eleven
-# days. Every gate was green the whole time.
+# Why this exists, specifically: `tests/smoke.sh` boots the shell on whatever
+# compositor the developer is sitting in front of. For everyone working on this
+# project so far that is hyprland, so `workspaces-sway`, `lib/sway` and the
+# i3ipc paths have never once been constructed by a gate. Issue #229 is what
+# that costs — a refactor deleted a declaration and left its four uses, the
+# widget threw a ReferenceError the moment it was built, and the ENTIRE panel
+# was gone on sway and i3 for eleven days with every gate green.
 #
-# Nested rather than a real session: sway's wayland backend runs it as a
-# window inside the running compositor, so this needs no VT, no seatd and
-# no logout. It is still opt-in, because it flashes a window on screen
-# for a few seconds and needs sway installed.
-#
-# Safety rules, the same ones smoke.sh follows:
-#   - skips unless org.freedesktop.Notifications already has an owner, so
-#     the nested shell can never become the notification daemon
-#   - only ever runs `ags quit -i wam-shell-sway-test`, never a bare one
-#   - XDG_CONFIG_HOME / XDG_CACHE_HOME point at a tmp dir
-#   - the nested sway is killed by PID, not by name
+# The compositor is started and torn down by `tests/nested-sway.sh`, which also
+# takes the seat and DRM precautions (and can be driven by hand — see its
+# header). Everything below is assertions.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+NESTED="$ROOT/tests/nested-sway.sh"
 INSTANCE="wam-shell-sway-test"
 
+# ---------------------------------------------------------------- assertions
+#
+# Borrowed in shape from hy3's test/smoke.sh: a check that names what it was
+# looking for, so a failure reads as a sentence rather than as a diff.
+failures=0
+
+check() { # check <label> <condition-cmd...>
+    local label=$1
+    shift
+    if "$@"; then
+        printf '  ok   %s\n' "$label"
+    else
+        printf '  FAIL %s\n' "$label" >&2
+        failures=$((failures + 1))
+    fi
+}
+
+check_eventually() { # check_eventually <label> <timeout_s> <condition-cmd...>
+    local label=$1 timeout=$2
+    shift 2
+    local deadline=$((SECONDS + timeout))
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        if "$@"; then
+            printf '  ok   %s\n' "$label"
+            return 0
+        fi
+        sleep 0.25
+    done
+    printf '  FAIL %s (after %ss)\n' "$label" "$timeout" >&2
+    failures=$((failures + 1))
+    return 1
+}
+
+log_has() { grep -qE "$1" "$(bash "$NESTED" log)"; }
+log_lacks() { ! grep -qE "$1" "$(bash "$NESTED" log)"; }
+
+# ------------------------------------------------------------------ preflight
 if ! command -v sway >/dev/null; then
     echo "skip: sway is not installed (pacman -S sway) — nothing to nest" >&2
     exit 0
@@ -45,6 +74,8 @@ if ags list 2>/dev/null | grep -qw "$INSTANCE"; then
     echo "skip: an instance named $INSTANCE is already running" >&2
     exit 0
 fi
+# same rule as smoke.sh: the nested shell must never be able to become the
+# session's notification daemon
 if ! gdbus call --session \
     --dest org.freedesktop.DBus \
     --object-path /org/freedesktop/DBus \
@@ -55,84 +86,37 @@ if ! gdbus call --session \
     exit 0
 fi
 
-TMP="$(mktemp -d)"
-SWAY_PID=""
-cleanup() {
-    ags quit -i "$INSTANCE" 2>/dev/null || true
-    [[ -n "$SWAY_PID" ]] && kill "$SWAY_PID" 2>/dev/null
-    rm -rf "$TMP"
-}
-trap cleanup EXIT
+trap 'bash "$NESTED" stop >/dev/null 2>&1' EXIT
 
-mkdir -p "$TMP/config/wam-shell" "$TMP/cache"
-cat >"$TMP/config/wam-shell/config.toml" <<EOF
-instance_name = "$INSTANCE"
-
-[workspaces]
-hide_empty = false
-
-[notifications]
-daemon = "system"
-popups = false
-
-[osd]
-enabled = false
-EOF
-
-# DESKTOP_SESSION is what src/config.ts reads to pick the compositor
-# backend — NOT XDG_CURRENT_DESKTOP — and the parent session's value is
-# inherited by the nested one. Without this the shell detects the HOST
-# compositor and builds the hyprland widgets, so the test passes while
-# exercising nothing it exists to exercise.
-#
-# SWAYSOCK is written out by the nested sway itself: globbing
-# /run/user/*/sway-ipc.* would just as happily find a real sway session.
-cat >"$TMP/sway.conf" <<EOF
-output * resolution 1280x720 position 0,0
-exec sh -c 'printf "%s" "\$SWAYSOCK" > "$TMP/swaysock"'
-exec env XDG_CONFIG_HOME="$TMP/config" XDG_CACHE_HOME="$TMP/cache" \\
-    WAM_SHELL_DIR="$ROOT" DESKTOP_SESSION=sway XDG_CURRENT_DESKTOP=sway \\
-    ags run "$ROOT/app.tsx" > "$TMP/log" 2>&1
-EOF
-
-WLR_BACKENDS=wayland WLR_RENDERER=pixman sway -c "$TMP/sway.conf" >"$TMP/sway.log" 2>&1 &
-SWAY_PID=$!
-
-# wait for the shell inside it, up to ~15s
-for _ in $(seq 1 60); do
-    ags list 2>/dev/null | grep -qw "$INSTANCE" && break
-    sleep 0.25
-done
-
-if ! ags list 2>/dev/null | grep -qw "$INSTANCE"; then
-    echo "FAIL: the shell never started inside the nested sway" >&2
-    cat "$TMP/log" "$TMP/sway.log" >&2
+if ! bash "$NESTED" start; then
+    echo "FAIL: could not bring up the nested sway" >&2
     exit 1
 fi
 
-# Exercise the widget rather than only its construction: the crash in
-# #229 was in a computed that re-runs on every workspace change, so
-# switching workspaces is what actually walks that code.
-if [[ -s "$TMP/swaysock" ]]; then
-    SWAYSOCK="$(cat "$TMP/swaysock")" swaymsg workspace 2 >/dev/null 2>&1
-    SWAYSOCK="$(cat "$TMP/swaysock")" swaymsg workspace 1 >/dev/null 2>&1
-    sleep 1
-else
-    echo "warn: never learned the nested SWAYSOCK; construction was checked, not the switch" >&2
-fi
+# --------------------------------------------------------------------- checks
+#
+# The backend check is first and it is not a formality: the parent session's
+# DESKTOP_SESSION is inherited, and a nested shell that detected hyprland would
+# pass everything below while testing the widgets this file exists to avoid.
+check "shell detected the sway backend" log_has "DesktopSession: sway"
 
-fail=0
-if ! grep -q "DesktopSession: sway" "$TMP/log"; then
-    echo "FAIL: the shell did not detect sway — it tested the wrong backend" >&2
-    grep -E "DesktopSession|InstancePath" "$TMP/log" >&2
-    fail=1
-fi
-if grep -qE "Gjs-CRITICAL|JS ERROR" "$TMP/log"; then
-    echo "FAIL: errors on the sway path" >&2
-    grep -E "Gjs-CRITICAL|JS ERROR" "$TMP/log" >&2
-    fail=1
-fi
+# Exercise the widget rather than only its construction: #229 crashed inside a
+# computed that re-runs on every workspace change.
+bash "$NESTED" ctl workspace 2 >/dev/null 2>&1
+bash "$NESTED" ctl workspace 3 >/dev/null 2>&1
+bash "$NESTED" ctl workspace 1 >/dev/null 2>&1
+sleep 1
 
-[[ $fail -ne 0 ]] && exit 1
+check "no errors on the sway path" log_lacks "Gjs-CRITICAL|JS ERROR"
+check "no undefined names (the #229 shape)" log_lacks "ReferenceError"
+check_eventually "instance still alive after the workspace churn" 5 \
+    bash -c 'ags list 2>/dev/null | grep -qw wam-shell-sway-test'
+
+if [ "$failures" -ne 0 ]; then
+    echo "FAIL smoke-sway: $failures check(s) failed" >&2
+    echo "--- shell log ---" >&2
+    tail -30 "$(bash "$NESTED" log)" >&2
+    exit 1
+fi
 
 echo "ok   smoke-sway: $INSTANCE started clean on the sway backend"
