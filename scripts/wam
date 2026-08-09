@@ -422,11 +422,18 @@ cmd_update() {
 # restart below (or the next login) picks the new unit up.
 refresh_unit() {
     [[ -f "$UNIT_DIR/$SERVICE" ]] || return 0
+    # write_unit DIES when ags is missing, which is right for `autostart
+    # enable` (an ExecStart that resolves to nothing only surfaces as a
+    # dead service at next login) and wrong here: `exit` is not caught by
+    # `if !`, so it would abort the whole update AFTER the merge and pnpm
+    # have already run, over a unit refresh that is not why anyone typed
+    # `wam update`. Same guard compile_style uses, for the same reason.
+    command -v ags >/dev/null || return 0
     local staging
     staging="$(mktemp -d)" || return 0
     if ! write_unit "$staging" 2>/dev/null; then
         rm -rf "$staging"
-        return 0 # no ags on PATH: nothing to compare against, say nothing
+        return 0
     fi
     if cmp -s "$UNIT_DIR/$SERVICE" "$staging/$SERVICE"; then
         rm -rf "$staging"
