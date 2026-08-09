@@ -65,6 +65,20 @@ stating rather than discovering:
   verification status, not a problem with your account. Managed
   Workspace accounts may be blocked from proceeding at all by org
   policy.
+- **It is a single point of failure for every install at once.** The
+  quota and the warning are inconveniences; this one is not. If the
+  Cloud project behind the shipped client is deleted, suspended, or
+  fails a verification review, then Calendar and YouTube stop working
+  for *everybody* on the same day, and what a user sees is a token
+  exchange that fails with no explanation attached to it. There is
+  nothing a release can do about that after the fact — the only
+  insulation is not depending on it.
+
+  So: if you rely on the calendar or the YouTube feed for anything that
+  matters, use your own client. It takes about five minutes, it is the
+  difference between a dependency you control and one you do not, and
+  the shipped client is best understood as a way to *try* the feature
+  rather than a foundation to build a workday on.
 
 **Use your own client if any of that bites you** — a quota you do not
 share, no unverified warning, no test-user cap. Create an OAuth client

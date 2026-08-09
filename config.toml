@@ -277,6 +277,12 @@
 #         GOOGLE_CLIENT_SECRET=...
 #       The same names as real environment variables also work and win
 #       over both the file and the embedded client.
+#       WORTH DOING IF YOU RELY ON THIS: the shipped client is one Cloud
+#       project shared by every install, so its quota is shared and, if
+#       it is ever deleted, suspended or fails a verification review,
+#       Calendar and YouTube stop working for everyone at once. Treat it
+#       as a way to try the feature, not a foundation. Five minutes of
+#       setup buys a dependency you control. See docs/gcal.md.
 #
 # enabled - master toggle (requires the credentials above). default true
 # poll_minutes - minutes between syncs with Google. the popover also

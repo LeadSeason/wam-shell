@@ -1,3 +1,11 @@
+// WHY THIS IS HAND-ROLLED: jasmine-gjs exists and is the obvious
+// answer, but it does not fit how this suite runs. `pnpm test` bundles
+// tests/main.ts with `ags bundle` into ONE self-contained executable and
+// runs that under gjs (see tests/run.sh) — there is no module loader at
+// runtime for a framework to hook, no CLI to hand a spec glob to, and
+// the bundler needs static imports, which is why every suite is
+// registered in main.ts by hand. Wiring jasmine into that shape is more
+// machinery than the ~100 lines below. Don't swap it for a package.
 // Tiny test runner for gjs. No node, no deps: tests are bundled with
 // `ags bundle` and run with `gjs -m` (see run.sh). Suites register cases
 // with test(); the entry point calls summary() last.
