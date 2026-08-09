@@ -436,6 +436,32 @@ neither is worth an auth URL that comes out shuffled between runs.
   the bundler needs static imports.
 - `pnpm test:smoke` (opt-in) boots the real shell as an isolated
   `wam-shell-test` instance and asserts a clean startup.
+- `pnpm test:smoke:sway` (opt-in) does the same inside a **nested sway**
+  (`WLR_BACKENDS=wayland`, so it needs no VT, no seatd and no logout) and
+  asserts the shell detected the sway backend and ran clean on it.
+  Plain smoke boots on whatever compositor the developer is sitting in
+  front of, which for everyone so far is hyprland — so `workspaces-sway`,
+  `lib/sway` and the i3ipc paths were never once constructed by a gate.
+  Issue #229 is the bill for that: a deleted declaration left four uses
+  behind, the widget threw on construction, and the whole panel was gone
+  on sway and i3 with every gate green. Two things it gets right that are
+  easy to get wrong — it sets `DESKTOP_SESSION=sway` (what `config.ts`
+  actually reads; the parent session's value is inherited, and without
+  this the nested shell detects the HOST compositor and the test proves
+  nothing), and it switches workspaces afterwards, because the crash was
+  in a computed that re-runs on workspace changes rather than only at
+  build time.
+  The compositor itself is started by `tests/nested-sway.sh`, which is
+  also usable by hand (`start` / `ctl` / `sock` / `log` / `stop`) when
+  something on the sway path needs poking at rather than asserting on.
+  Its structure and most of its safety reasoning are lifted from hy3's
+  `test/nested.sh`; two of that harness's hazards are wlroots-level and
+  are guarded here the same way. **Do not remove `LIBSEAT_BACKEND=noop`
+  or the physical-output check.** libseat falling back to logind can
+  activate the seat the real session is on and log the user out — with
+  no crash and nothing in any log — and if the DRM backend ever comes
+  up, the harness is driving the actual screens; the check is what turns
+  that from a silent disaster into a refusal to start.
 - `pnpm test:perf` (opt-in) measures an isolated `wam-shell-perf`
   instance (tests/perf/run.sh): idle, churn and startup scenarios, one
   single-line JSON blob per scenario on stdout. Requires
