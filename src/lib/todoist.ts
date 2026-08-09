@@ -9,12 +9,11 @@ import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { Provider, ProviderItem, registerProvider } from "./notificationProviders"
 import { addProviderPopup, removePopup, removePopupDeferred } from "./notifd"
 import {
+    createPollLoop,
     createRefreshGate,
-    formatWait,
-    isBackoffStatus,
+    createSessionHide,
     newArrivals,
     openUrl,
-    retryAfterSeconds,
 } from "./providerCore"
 import { registerDispose } from "./lifecycle"
 
@@ -173,15 +172,23 @@ export { items }
 
 let pollInFlight = false
 let authFailed = false
-let pollTimer = 0
 // stays false until the first successful fetch lands: that fetch is the
 // baseline and never banners
 let baselineDone = false
 
-// locally hidden tasks (right-click "dismiss"): session-only, no
+// Locally hidden tasks (right-click "dismiss"): session-only, no
 // service call — filtered out of every poll so they don't reappear
-// before the shell restarts
-const hiddenIds = new Set<string>()
+// before the shell restarts (lib/providerCore owns the mechanism).
+//
+// Hiding a task means more here than it does for the other providers,
+// and the `extra` hook is where that is said out loud: a task the user
+// has waved away must not go on popping its armed reminders, and its
+// banner has to leave the screen with it. Reached from inside a click on
+// the banner, hence the deferred removal.
+const hidden = createSessionHide(items, setItems, id => {
+    cancelReminder(id)
+    removePopupDeferred(id)
+})
 
 // ------------------------------------------------------- due reminders
 
@@ -326,12 +333,7 @@ function attachActions(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">
     const item: ProviderItem = {
         ...data,
         // "Dismiss" on the banner lands here, inside the click
-        hide: () => {
-            hiddenIds.add(data.id)
-            cancelReminder(data.id)
-            removePopupDeferred(data.id)
-            setItems(items.get().filter(i => i.id !== data.id))
-        },
+        hide: () => hidden.hide(data.id),
         dismiss: () => complete(data),
         activate: () => openUrl(data.url, "Todoist"),
     }
@@ -369,7 +371,7 @@ function applyTasks(rawList: any[], reminderMap: Map<string, number[]>) {
     const mapped: ProviderItem[] = []
     for (const raw of rawList) {
         const data = taskData(raw, nowMs)
-        if (data && !hiddenIds.has(data.id)) mapped.push(attachActions(data))
+        if (data && !hidden.has(data.id)) mapped.push(attachActions(data))
     }
     // soonest due first
     mapped.sort((a, b) => a.time - b.time)
@@ -405,30 +407,20 @@ function fetchTasks(cursor: string, acc: any[]) {
         if (r.status === 401 || r.status === 403) {
             authFailed = true
             setStatus("Todoist token rejected — check ~/.config/wam-shell/todoist.env")
-            if (pollTimer) {
-                sourceRemove(pollTimer)
-                pollTimer = 0
-            }
+            loop.stop()
             console.warn(
                 `Todoist: token rejected (${r.status}); provider disabled until the shell restarts`,
             )
             return
         }
         // rate limited or overloaded: honour the wait the server asked
-        // for instead of re-asking on our own schedule
-        if (isBackoffStatus(r.status)) {
-            backoffs++
-            const wait = retryAfterSeconds(r.header("Retry-After"), backoffs)
-            gate.backOff(wait)
-            setStatus(`Todoist is rate limiting — retrying in ${formatWait(wait)}`)
-            console.warn(`Todoist: ${r.status}; backing off ${wait}s`)
-            return // keep stale items
-        }
+        // for instead of re-asking on our own schedule (lib/providerCore
+        // owns the rule)
+        if (gate.noteBackoff(r, "Todoist", setStatus)) return // keep stale items
         if (!r.ok || !Array.isArray(r.json?.results)) {
             setStatus("Couldn't sync Todoist — retrying next poll")
             return // keep stale items
         }
-        backoffs = 0
         gate.clearBackoff()
         setStatus(null)
         const merged = acc.concat(r.json.results)
@@ -452,10 +444,6 @@ function fetchReminders(taskList: any[]) {
     })
 }
 
-// consecutive 429/503s, for the doubling fallback when the server sends
-// no Retry-After. Reset by the first clean poll
-let backoffs = 0
-
 export function poll() {
     if (!active || authFailed || pollInFlight) return
     // the SCHEDULED poll respects the backoff too, not just refresh()
@@ -470,11 +458,11 @@ export function poll() {
 const gate = createRefreshGate(60_000, poll)
 export const refresh = gate.refresh
 
+// the fixed-cadence poll (lib/providerCore owns the timer triple)
+const loop = createPollLoop("todoist:poll", Config.todoist.pollMinutes, poll)
+
 export function dispose() {
-    if (pollTimer) {
-        sourceRemove(pollTimer)
-        pollTimer = 0
-    }
+    loop.stop()
     for (const [, t] of reminderTimers) sourceRemove(t.src)
     reminderTimers.clear()
     for (const [, src] of snoozeTimers) sourceRemove(src)
@@ -493,7 +481,6 @@ if (Config.todoist.enabled) {
         displayName: "Todoist",
         items,
         refresh,
-        dispose,
         status,
         setupHint: active
             ? null
@@ -503,16 +490,7 @@ if (Config.todoist.enabled) {
 
 export function init() {
     if (!active) return
-    poll()
-    pollTimer = timeoutAddSeconds(
-        "todoist:poll",
-        GLib.PRIORITY_DEFAULT,
-        Config.todoist.pollMinutes * 60,
-        () => {
-            poll()
-            return GLib.SOURCE_CONTINUE
-        },
-    )
+    loop.start()
 }
 
 // tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)

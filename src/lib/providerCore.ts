@@ -1,4 +1,6 @@
 import Gio from "gi://Gio?version=2.0"
+import GLib from "gi://GLib?version=2.0"
+import { timeoutAddSeconds, sourceRemove } from "./metrics"
 
 // The parts every notification-center provider needs and none of them
 // should own: arrival diffing, the banner horizon, "open this in the
@@ -85,6 +87,12 @@ export function openUrl(url: string, logTag: string): void {
 export function createRefreshGate(minAgeMs: number, poll: () => void) {
     let lastAttempt = 0
     let backoffUntil = 0
+    // consecutive 429/503s, for the doubling fallback when the server
+    // sends no Retry-After. It lives HERE rather than as a `let backoffs`
+    // beside each provider's poll: the counter and the deadline it feeds
+    // are one piece of state, and keeping them apart is what let gcal
+    // reset one without the other. Reset by the first clean poll
+    let consecutive = 0
     return {
         refresh() {
             if (Date.now() < backoffUntil) return
@@ -109,8 +117,116 @@ export function createRefreshGate(minAgeMs: number, poll: () => void) {
         backOff(seconds: number) {
             backoffUntil = Math.max(backoffUntil, Date.now() + seconds * 1000)
         },
+        /**
+         * The whole 429/503 response, in one call.
+         *
+         * Every provider had a byte-identical copy of this — bump the
+         * counter, read Retry-After, install the wait, set a status
+         * string, warn — differing only in its log tag. That is a rule
+         * with three implementations, which is a rule that holds in two
+         * places, and the drift was already visible: gcal grew its own
+         * counter/deadline pair and could reset one without the other.
+         *
+         * @param reply the failing reply; only status and Retry-After
+         *        are read. `header` is optional because not every client
+         *        exposes response headers (googleRequest does not), in
+         *        which case the doubling fallback is all there is
+         * @param logTag the provider's name, for the warning and the
+         *        user-facing status line
+         * @param setStatus where the "retrying in 40m" line goes.
+         *        Optional: gcal feeds the clock popover, which has no
+         *        status line of its own
+         * @returns true when this WAS a backoff status and the caller
+         *          should stop and keep its stale items
+         */
+        noteBackoff(
+            reply: { status: number; header?: (name: string) => string },
+            logTag: string,
+            setStatus?: (s: string) => void,
+        ): boolean {
+            if (!isBackoffStatus(reply.status)) return false
+            consecutive++
+            const wait = retryAfterSeconds(reply.header?.("Retry-After") ?? "", consecutive)
+            backoffUntil = Math.max(backoffUntil, Date.now() + wait * 1000)
+            setStatus?.(`${logTag} is rate limiting — retrying in ${formatWait(wait)}`)
+            console.warn(`${logTag}: ${reply.status}; backing off ${wait}s`)
+            return true
+        },
+        /** a clean poll: drop the hold-off AND the escalation it feeds */
         clearBackoff() {
             backoffUntil = 0
+            consecutive = 0
+        },
+    }
+}
+
+/**
+ * The "not now" every provider offers on a right-click: take the row out
+ * of the centre for this session, without telling the service anything.
+ *
+ * Four providers had their own `Set` of hidden ids and their own
+ * identical closure around it, and they had already drifted — todoist's
+ * also cancels the task's armed reminders and pulls its banner, github's
+ * does neither, so "hide" quietly meant two different things depending
+ * on which row you right-clicked. The `extra` hook is where a provider
+ * says what else hiding implies for it, in one visible place.
+ *
+ * Session-scoped on purpose: it is a "not now", and the next shell start
+ * is a new session.
+ *
+ * @param items the provider's own item state
+ * @param setItems its setter
+ * @param extra provider-specific consequences of hiding (cancel timers,
+ *        drop a live banner)
+ */
+export function createSessionHide<T extends { id: string }>(
+    items: { get(): T[] },
+    setItems: (next: T[]) => void,
+    extra?: (id: string) => void,
+) {
+    const hidden = new Set<string>()
+    return {
+        /** filtered out of every poll, so it does not reappear */
+        has: (id: string) => hidden.has(id),
+        hide(id: string) {
+            hidden.add(id)
+            extra?.(id)
+            setItems(items.get().filter(i => i.id !== id))
+        },
+    }
+}
+
+/**
+ * A provider's fixed-interval poll: prime it, keep it running, stop it.
+ *
+ * The `let pollTimer = 0` / arm-in-init / clear-in-dispose triple was
+ * written out longhand in every provider that polls on a fixed cadence,
+ * which is three places to get the `sourceRemove`-then-zero dance
+ * slightly wrong. Providers whose cadence is NOT fixed keep their own
+ * loops and should: youtube recomputes its interval from the quota and
+ * its failure streak on every tick, and protonmail's poll is a fallback
+ * that hands back to IDLE. Those are different behaviours, not copies.
+ *
+ * @param label the metrics label for the source
+ * @param minutes the interval
+ * @param poll run immediately on start, then every interval
+ */
+export function createPollLoop(label: string, minutes: number, poll: () => void) {
+    let timer = 0
+    return {
+        start() {
+            if (timer) return
+            poll()
+            timer = timeoutAddSeconds(label, GLib.PRIORITY_DEFAULT, minutes * 60, () => {
+                poll()
+                return GLib.SOURCE_CONTINUE
+            })
+        },
+        /** idempotent, and safe when the loop never started */
+        stop() {
+            if (!timer) return
+            sourceRemove(timer)
+            timer = 0
         },
     }
 }
