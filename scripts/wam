@@ -397,12 +397,45 @@ cmd_update() {
     # after the merge and after pnpm: the scss may have changed in this
     # update, and --force just cleared the cached sheet outright
     compile_style
+    refresh_unit
     if systemctl --user is-active "$SERVICE" &>/dev/null; then
         log "Restarting the service"
         systemctl --user restart "$SERVICE"
     elif running; then
         log "Shell is running outside the service — apply with: wam restart"
     fi
+}
+
+# Rewrite the autostart unit when this update changed what it should say.
+#
+# `write_unit` only ran from `wam autostart enable`, so a unit-file change
+# shipped in a release reached NOBODY who had already enabled autostart —
+# they kept whatever unit their original `enable` wrote, forever, and
+# nothing said so. The #225 restart-policy fix landed exactly that way:
+# the protections were in the repo and absent from every existing
+# install, which is the same shape as the frozen `wam` copy that made the
+# PATH entry a symlink (see link_wam_script).
+#
+# Only touches an existing unit — this must not enable autostart for
+# someone who never asked for it — and only when the content actually
+# differs, so a normal update stays quiet. daemon-reload is enough: the
+# restart below (or the next login) picks the new unit up.
+refresh_unit() {
+    [[ -f "$UNIT_DIR/$SERVICE" ]] || return 0
+    local staging
+    staging="$(mktemp -d)" || return 0
+    if ! write_unit "$staging" 2>/dev/null; then
+        rm -rf "$staging"
+        return 0 # no ags on PATH: nothing to compare against, say nothing
+    fi
+    if cmp -s "$UNIT_DIR/$SERVICE" "$staging/$SERVICE"; then
+        rm -rf "$staging"
+        return 0
+    fi
+    rm -rf "$staging"
+    write_unit
+    systemctl --user daemon-reload
+    log "Refreshed the autostart unit ($SERVICE) — this update changed it"
 }
 
 # --- lifecycle ------------------------------------------------------------------
@@ -512,14 +545,18 @@ cmd_force_start() {
 
 # --- autostart ------------------------------------------------------------------
 
+# @param $1 directory to write into; defaults to $UNIT_DIR. The parameter
+# exists so refresh_unit can render the unit somewhere harmless and
+# compare it against the installed one without clobbering it first.
 write_unit() {
-    mkdir -p "$UNIT_DIR"
+    local dir="${1:-$UNIT_DIR}"
+    mkdir -p "$dir"
     # an empty ExecStart only surfaces as a dead service at next login
     command -v ags >/dev/null || die "ags not found in PATH"
     local target="graphical-session.target"
     systemctl --user list-units --type=target --no-legend 2>/dev/null | grep -q "$target" ||
         target="default.target"
-    cat >"$UNIT_DIR/$SERVICE" <<EOF
+    cat >"$dir/$SERVICE" <<EOF
 [Unit]
 Description=wam-shell (ags desktop shell)
 After=$target
