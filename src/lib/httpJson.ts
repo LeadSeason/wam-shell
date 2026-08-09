@@ -1,6 +1,7 @@
 import GLib from "gi://GLib?version=2.0"
+import Gio from "gi://Gio?version=2.0"
 import Soup from "gi://Soup?version=3.0"
-import { trackHttp } from "./metrics"
+import { trackHttp, timeoutAddSeconds, sourceRemove } from "./metrics"
 
 // One Soup-backed JSON client for the token-authenticated providers
 // (GitHub, Todoist). The Google services go through lib/googleAuth's
@@ -44,8 +45,25 @@ export interface JsonClientOptions {
     okStatuses?: number[]
 }
 
+/**
+ * Cap on a response body, in bytes.
+ *
+ * `send_and_read_async` buffers the WHOLE body before the callback runs,
+ * so without a cap a broken or hostile endpoint decides how much memory
+ * the shell allocates. Every one of these providers answers in tens of
+ * kilobytes; 8 MB is far past any legitimate reply and still small
+ * enough to be harmless. coverArt has had this for images all along —
+ * the JSON clients simply never grew it.
+ */
+export const MAX_BODY_BYTES = 8 * 1024 * 1024
+
 export function createJsonClient(opts: JsonClientOptions) {
-    const session = new Soup.Session({ timeout: opts.timeout ?? 20 })
+    // Soup's `timeout` is an IDLE timeout, not a deadline: a response
+    // that dribbles one byte before each interval elapses never trips
+    // it, and the provider's `pollInFlight`-style guards then stay set
+    // forever. The per-request watchdog below is the actual deadline.
+    const timeoutSec = opts.timeout ?? 20
+    const session = new Soup.Session({ timeout: timeoutSec })
     const extraOk = new Set(opts.okStatuses ?? [])
 
     /**
@@ -74,11 +92,47 @@ export function createJsonClient(opts: JsonClientOptions) {
             if (v) h.append(k, v)
         }
 
-        session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (_s, res) => {
+        // one deadline per request. Cancelling is what makes the callback
+        // run (with an error) instead of never running at all, so the
+        // caller's promise/flag always settles
+        const cancellable = new Gio.Cancellable()
+        let timedOut = false
+
+        // Refuse an oversized body BEFORE it is buffered. This has to
+        // hang off got-headers: response headers do not exist until the
+        // response starts arriving, so reading Content-Length next to the
+        // send call reads an empty header list and always sees 0.
+        // Cancelling here aborts the transfer mid-flight. The byte check
+        // in the callback stays as the real enforcement — Content-Length
+        // is a claim, and a chunked response makes none at all
+        msg.connect("got-headers", () => {
+            const declared = Number(msg.get_response_headers().get_one("Content-Length")) || 0
+            if (declared > MAX_BODY_BYTES) cancellable.cancel()
+        })
+        const deadline = timeoutAddSeconds(
+            "httpJson:deadline",
+            GLib.PRIORITY_DEFAULT,
+            // generous relative to the idle timeout: this is the backstop
+            // for a request that is technically progressing, not the
+            // normal failure path
+            timeoutSec * 3,
+            () => {
+                timedOut = true
+                cancellable.cancel()
+                return GLib.SOURCE_REMOVE
+            },
+        )
+
+        session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, cancellable, (_s, res) => {
+            if (!timedOut) sourceRemove(deadline)
             let reply: JsonReply
             try {
                 const bytes = session.send_and_read_finish(res)
-                if (bytes) trackHttp(url, bytes.get_size())
+                const size = bytes?.get_size() ?? 0
+                if (bytes) trackHttp(url, size)
+                if (size > MAX_BODY_BYTES) {
+                    throw new Error(`response body over ${MAX_BODY_BYTES} bytes`)
+                }
                 const text = bytes
                     ? new TextDecoder().decode(bytes.get_data() ?? new Uint8Array())
                     : ""
