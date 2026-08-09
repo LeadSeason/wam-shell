@@ -97,6 +97,14 @@ two shells. The replacements are drawn on Adwaita's own terms:
   disappears at icon size, which is what merged the speedometer's needle
   into its own dial on the first attempt
 
+`caffeine-symbolic.svg` (the Keep Awake toggle and its bar indicator) is
+an original drawing too — a mug with two steam ticks. Adwaita has no
+name for idle inhibition at all, and the near misses all say something
+else: `alarm-symbolic` is the sleep timer's own metaphor sitting in the
+same grid, and the padlock pair (`changes-prevent`/`changes-allow`)
+reads as locked, not as awake. The steam is two straight ticks rather
+than wisps because a curve that thin aliases into grey mush at 16px.
+
 `dark-mode-symbolic` is a half-filled disc rather than a crescent on
 purpose. It sits beside Night Light in the toggle grid, and Adwaita's
 `night-light-symbolic` is already a moon — two moons in one grid say

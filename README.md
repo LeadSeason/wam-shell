@@ -14,25 +14,39 @@ volume the OSD shows and the same one the sleep timer restores.
 - **A panel**, per monitor or per `[[panel]]` config entry: workspaces,
   clock (with a Google Calendar popover), window title, system stats,
   tray, keyboard layout, media, a Harvest timer, a sleep-timer
-  countdown, and a quick-settings button.
+  countdown, and a quick-settings button. Configurable height, and it
+  can float off the screen edge (`bar_floating`).
+- **A launcher** that is also a command palette and a clipboard
+  history: applications by default, `>` for every shell command with its
+  arguments, `:` for the clipboard.
+- **A session menu** — lock, suspend, hibernate, log out, restart, shut
+  down — that hides what the machine cannot actually do.
 - **Quick settings** — audio and brightness sliders with per-device
   panes, Wi-Fi, wired, Bluetooth (including pairing), VPN, power
   profiles, night light, sway gaps, a media player card and the tray.
 - **A notification center and banners.** By default the shell *is* the
   notification daemon; it steps aside if another one is already running.
   Banners honour the sender's own `expire_timeout`, fold per app, and
-  never bury a critical.
+  never bury a critical. Middle-click a banner to snooze it for ten
+  minutes; mute a chatty app from its row in the center, and it keeps
+  collecting there without interrupting again.
 - **Service integrations** that merge into the same notification center:
   GitHub notifications, Todoist due tasks, ProtonMail unread mail (via
   Bridge's local IMAP), YouTube subscription uploads, and Google
   Calendar. Each is one lib module behind a shared provider interface —
   see [docs/Providers.md](docs/Providers.md).
 - **A sleep timer** that pauses playback, dims the screen, and survives
-  a shell restart or crash.
+  a shell restart or crash — and its opposite, a keep-awake toggle that
+  holds off the idle timeout and shows a cup on the bar while it does.
+- **Screenshots and screen recording**: region, focused window (the
+  compositor supplies the geometry, so there is no rectangle to draw) or
+  whole screen, saved and copied at once.
 - **An OSD** for volume, microphone, brightness, keyboard layout and
   lock keys, with per-kind durations.
 - **Theming** from scss: six themes ship, `theme` picks one, and
-  `scss/user.scss` is yours and never overwritten.
+  `scss/user.scss` is yours and never overwritten. Shadows and the bar's
+  wash follow the palette rather than being fixed, and
+  `[appearance] density` tightens or loosens every space in the shell.
 
 ## Install
 
@@ -124,6 +138,14 @@ turn one on and read what it asks for.
   once; no compositor config edits.
 - `wam status` — install location, current commit, runtime and autostart
   state at a glance.
+- `wam doctor` — **run this before reporting that a feature does
+  nothing.** Checks every runtime dependency the shell can use — the
+  typelibs it imports at startup, the daemons the panel reads, who owns
+  the notification bus name, the fonts, and the helper binaries behind
+  the optional features (cliphist, grim, slurp, wf-recorder) — and for
+  each one says what its absence costs you and the command that fixes
+  it. Exits non-zero only when something the shell genuinely needs is
+  missing, so it is usable from a script.
 - `wam version` — the installed shell's commit (hash, branch, date).
 
 ## Driving it from the compositor
@@ -132,13 +154,25 @@ The shell answers requests on its instance name, so keybinds toggle
 things without knowing anything about its internals:
 
 ```shell
+ags request -i wam-shell launcher        # apps, shell commands, clipboard
+ags request -i wam-shell session         # lock/suspend/log out/restart/shut down
 ags request -i wam-shell notifications   # toggle the notification center
 ags request -i wam-shell qSettings       # toggle quick settings
 ags request -i wam-shell "qsPane wifi"   # open straight onto a pane
 ags request -i wam-shell "sleep-timer 30"
+ags request -i wam-shell keep-awake      # hold off idle and suspend
+ags request -i wam-shell "screenshot region"   # or window, or screen
+ags request -i wam-shell record          # start/stop a screen recording
+ags request -i wam-shell clipboard       # clipboard history (needs cliphist)
 ags request -i wam-shell style           # recompile the stylesheet
 ags request -i wam-shell help            # every command, with help
 ```
+
+The launcher is also the shell's **command palette**: `>` in its entry
+searches every command in that list — the same descriptions `help`
+prints — and passes arguments through, so `>sleep-timer 30` works
+without remembering which keybind you gave it. `:` switches it to the
+clipboard history.
 
 ## Documentation
 

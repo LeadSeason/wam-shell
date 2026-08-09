@@ -1,6 +1,7 @@
 import { Gtk } from "ags/gtk4"
 import { createComputed, For } from "gnim"
 import { ensureLayoutSource, flag, LayoutSource } from "../../../lib/kbLayout"
+import { createScrollStepper } from "../../../lib/scrollStep"
 
 // Keyboard layout indicator. Bar shows the active layout's flag, clicking
 // opens a dropdown of all configured layouts with flag and name; picking
@@ -18,6 +19,18 @@ function LayoutDropdown({ source }: { source: LayoutSource }) {
         return flag(code) || code.toUpperCase() || "⌨"
     })
 
+    // scroll cycles layouts without opening the dropdown. WRAPPING here,
+    // unlike the workspace steppers: the layout list is short and fixed,
+    // and cycling between two is the entire point — stopping at the end
+    // of a two-item list would make one direction dead half the time.
+    const step = createScrollStepper()
+    const cycle = (dir: -1 | 0 | 1) => {
+        if (dir === 0) return
+        const count = layouts.get().length
+        if (count < 2) return
+        source.switchTo((activeIndex.get() + dir + count) % count)
+    }
+
     return (
         <menubutton
             cssClasses={["keyboardLayout"]}
@@ -26,6 +39,13 @@ function LayoutDropdown({ source }: { source: LayoutSource }) {
                 (i, ns) => ns[i] ?? "Keyboard layout",
             )}
         >
+            <Gtk.EventControllerScroll
+                flags={Gtk.EventControllerScrollFlags.VERTICAL}
+                onScroll={(controller, _dx, dy) => {
+                    cycle(step(controller, dy))
+                    return true
+                }}
+            />
             <label label={labelText} />
             <popover
                 hasArrow={false}

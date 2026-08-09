@@ -121,6 +121,7 @@ export default function Toast({
     onActivate,
     onDismiss,
     onAction,
+    onSnooze,
 }: {
     data: RowData
     countdown: Accessor<number>
@@ -135,6 +136,8 @@ export default function Toast({
     onActivate: () => void
     onDismiss: () => void
     onAction: (id: string) => void
+    /** middle-click: take it off screen now, show it again later */
+    onSnooze?: () => void
 }) {
     // the row aligns by the headline's base direction; the body needs an
     // explicit RLM so short LTR runs inside it follow suit
@@ -264,7 +267,13 @@ export default function Toast({
             />
             {/* right or middle click anywhere dismisses */}
             <Gtk.GestureClick button={3} onReleased={onDismiss} />
-            <Gtk.GestureClick button={2} onReleased={onDismiss} />
+            {/* Middle-click SNOOZES where it used to be a second way to
+            dismiss — both spare buttons did the same thing, so one of
+            them was free. The banner comes back in ten minutes, which
+            is the answer to "not now" that dismissing cannot give: a
+            dismissed banner is gone, and remembering to open the centre
+            later is the part nobody does. */}
+            <Gtk.GestureClick button={2} onReleased={onSnooze ?? onDismiss} />
 
             {/* The urgency spine, as an inset pill rather than a border
             on the card. As a border it had to square that side off — a

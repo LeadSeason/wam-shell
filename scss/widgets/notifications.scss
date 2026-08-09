@@ -21,7 +21,8 @@
 // (window card), .header, .windowTitle, .filtersRow, .zone/.needs/.feed,
 // .zoneTitle, .zoneHeader, .dayDivider, .group/.groupHead/.groupRows,
 // .centerRow, .art. Shared within a row: .appName, .appIcon, .summary,
-// .body, .time, .actions, .dismiss, .count, .critical/.low (urgency),
+// .body, .time, .actions, .dismiss, .muteApp, .mutedMark, .count,
+// .critical/.low (urgency),
 // .rtl.
 
 // ---------------------------------------------------------------- type
@@ -61,13 +62,22 @@
         @include u.button-quiet(1px 6px);
     }
 
-    button.dismiss {
+    button.dismiss,
+    button.muteApp {
         // strip the theme's button minimum (~24px): this slot swaps with
         // the timestamp, and a taller button makes the row jiggle on
         // every hover
         min-height: 0;
         min-width: 0;
         padding: 0;
+    }
+
+    // a muted app's rows still arrive; the mark says they will not
+    // interrupt. Dim, because it is a property of the row rather than
+    // anything asking to be acted on
+    .mutedMark {
+        color: t.$subtext0;
+        opacity: s.$quiet-opacity;
     }
 
     // a resting background so they read as buttons — the quiet button

@@ -18,11 +18,16 @@ import NotificationPopups from "./src/widgets/notifications/popups"
 import { useOurs } from "./src/lib/notifd"
 // registers the "metrics" request command (inert unless WAM_SHELL_METRICS=1)
 import "./src/lib/metrics"
+// register their request commands at import (screenshot/record, keep-awake)
+import "./src/lib/capture"
+import "./src/lib/idleInhibit"
 // request-driven windows register their toggle command at import and
 // build their window lazily on first use instead of at startup
 import "./src/widgets/notifications"
 import "./src/widgets/mediaPopup"
 import "./src/widgets/harvestPopup"
+import "./src/widgets/sessionMenu"
+import "./src/widgets/launcher"
 import { init as initHarvest } from "./src/lib/harvest"
 import { init as initGcal } from "./src/lib/gcal"
 import { init as initGitHub } from "./src/lib/github"

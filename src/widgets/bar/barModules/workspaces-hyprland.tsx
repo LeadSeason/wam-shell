@@ -3,6 +3,7 @@ import AstalHyprland from "gi://AstalHyprland?version=0.1"
 import { hyprDispatch } from "../../../lib/hyprDispatch"
 import Config from "../../../config"
 import { createIconResolver } from "../../../lib/appIcon"
+import { createScrollStepper, stepThrough } from "../../../lib/scrollStep"
 import { For, createBinding, createState, onCleanup } from "gnim"
 import { Gtk } from "ags/gtk4"
 
@@ -76,8 +77,31 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
     hook(hyprland.workspaces)
     compute()
 
+    // scroll switches to the next/previous workspace ON THIS MONITOR —
+    // the same list the bar is showing, so what a notch does is always
+    // visible. With hide_empty on that means occupied workspaces only,
+    // which is the useful set to walk anyway.
+    const step = createScrollStepper()
+    const scrollToNeighbour = (dir: -1 | 0 | 1) => {
+        const list = hyprlandWorkspacesList.get()
+        const focused = list.find(ws => ws.id === hyprland.focusedWorkspace?.id)
+        const target = stepThrough(list, focused, dir)
+        if (!target) return
+        hyprDispatch(`hl.dsp.focus({workspace="${target.id}"})`, [
+            "workspace",
+            String(target.id),
+        ]).catch(e => console.error("workspace scroll:", e))
+    }
+
     return (
         <box cssName={"workspaces"}>
+            <Gtk.EventControllerScroll
+                flags={Gtk.EventControllerScrollFlags.VERTICAL}
+                onScroll={(controller, _dx, dy) => {
+                    scrollToNeighbour(step(controller, dy))
+                    return true
+                }}
+            />
             <For each={hyprlandWorkspacesList}>
                 {workspace => {
                     const focused = createBinding(hyprland, "focusedWorkspace").as(focusedWs =>
