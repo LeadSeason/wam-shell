@@ -5,6 +5,7 @@ import { Accessor, createState } from "gnim"
 import { isFile } from "./utils"
 import { configHome } from "./paths"
 import { timeoutAddSeconds, sourceRemove, trackHttp } from "./metrics"
+import { MAX_BODY_BYTES } from "./httpJson"
 import { writeFileAtomic } from "./atomicWrite"
 import { secretsAvailable, secretStore, secretLookup, secretClear } from "./secretStore"
 import { warnPerms, loadCredentials as loadEnvCredentials } from "./credentials"
@@ -203,7 +204,8 @@ function loadCredentials(): Credentials | null {
     return null
 }
 
-const session = new Soup.Session({ timeout: 20 })
+const SESSION_TIMEOUT_SEC = 20
+const session = new Soup.Session({ timeout: SESSION_TIMEOUT_SEC })
 
 // shared HTTP for the OAuth endpoints AND consumer API calls. never
 // log anything beyond method + url + status: headers/bodies carry
@@ -227,11 +229,38 @@ export function googleRequest(
         const bytes = new GLib.Bytes(new TextEncoder().encode(body))
         msg.set_request_body_from_bytes("application/x-www-form-urlencoded", bytes)
     }
-    session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (_s, res) => {
+    // same two guards as lib/httpJson, and for the same reasons:
+    // send_and_read buffers the whole body before the callback runs, and
+    // Soup's session `timeout` is an IDLE timeout rather than a deadline.
+    // got-headers, not a read next to the send: the response headers do
+    // not exist yet at that point
+    const cancellable = new Gio.Cancellable()
+    let timedOut = false
+    msg.connect("got-headers", () => {
+        const declared = Number(msg.get_response_headers().get_one("Content-Length")) || 0
+        if (declared > MAX_BODY_BYTES) cancellable.cancel()
+    })
+    const deadline = timeoutAddSeconds(
+        "googleAuth:deadline",
+        GLib.PRIORITY_DEFAULT,
+        SESSION_TIMEOUT_SEC * 3,
+        () => {
+            timedOut = true
+            cancellable.cancel()
+            return GLib.SOURCE_REMOVE
+        },
+    )
+
+    session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, cancellable, (_s, res) => {
+        if (!timedOut) sourceRemove(deadline)
         let reply: Reply
         try {
             const bytes = session.send_and_read_finish(res)
-            if (bytes) trackHttp(url, bytes.get_size())
+            const size = bytes?.get_size() ?? 0
+            if (bytes) trackHttp(url, size)
+            if (size > MAX_BODY_BYTES) {
+                throw new Error(`response body over ${MAX_BODY_BYTES} bytes`)
+            }
             const text = bytes ? new TextDecoder().decode(bytes.get_data() ?? new Uint8Array()) : ""
             let json: any = null
             try {
