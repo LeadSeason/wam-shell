@@ -1,0 +1,38 @@
+@use "active-theme" as t;
+@use "../conf.scss" as s;
+@use "../ui.scss" as u;
+
+window.Launcher {
+    background: transparent;
+    color: t.$text;
+
+    .launcherCard {
+        @include u.surface;
+        padding: s.$popup-padding;
+        // Fixed, not natural: the card must not resize as the result
+        // list changes under the pointer. A launcher that grows and
+        // shrinks per keystroke moves the row you were aiming at.
+        min-width: 520px;
+    }
+
+    .launcherEntry {
+        font-size: s.$font-title;
+    }
+
+    // A list, so it gets the list treatment: nothing at rest, paint on
+    // hover, accent for the one that is selected. Selection here is
+    // driven by the keyboard rather than the pointer, so `.selected`
+    // uses the same accent fill an active row gets elsewhere — it means
+    // "this is the one Enter runs".
+    .launcherRow {
+        @include u.row;
+
+        &.selected {
+            @include u.row-active;
+        }
+    }
+
+    .launcherDesc {
+        @include u.subtitle;
+    }
+}

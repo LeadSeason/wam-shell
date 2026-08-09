@@ -57,7 +57,7 @@
 # arch_updates_threshold = 50
 
 # ════════════════════════════════════════════════════════════════════
-# Appearance — Dark Style themes
+# Appearance — Dark Style themes, density
 # ════════════════════════════════════════════════════════════════════
 
 # Themes applied when the Dark Style quick settings toggle flips.
@@ -68,10 +68,17 @@
 # light_theme - applied when it turns off. default "catppuccin-latte"
 # follow_system - also follow the system color scheme at startup, so
 #                 Dark Style survives a shell restart. default true
+# density - how much air the shell gets: "compact", "comfortable" or
+#           "relaxed". default "comfortable". Scales SPACING only —
+#           padding and gaps — so text and icons stay the size they
+#           were; "compact" is for small screens, not for small type.
+#           Changing it recompiles the stylesheet on the next start
+#           (or `ags request -i wam-shell style` to apply it now).
 # [appearance]
 # dark_theme = "catppuccin-mocha"
 # light_theme = "catppuccin-latte"
 # follow_system = true
+# density = "comfortable"
 
 # ════════════════════════════════════════════════════════════════════
 # Panels
@@ -83,6 +90,23 @@
 #                ignored when [[panel]] blocks are defined
 # bar_monitors = ["Acer X34 P"]
 
+# bar_height - the panel's height in pixels. default 30. A MINIMUM, not
+#              a cap: GTK never allocates a widget less than its content
+#              needs, so a panel carrying tray icons and a 16px glyph
+#              stays about 38px however small a number goes here. Raise
+#              it freely; lowering it past the content does nothing
+# bar_floating - detach the panel from the screen edge, so it reads as a
+#                floating bar rather than a border of the screen. the
+#                window keeps its full width and its exclusive zone —
+#                nothing tucks in underneath. default false
+# bar_float_margin - the gap that leaves, in pixels, when bar_floating is
+#                on. added to the panel's height rather than taken out of
+#                it, so turning floating on never shortens the strip.
+#                default 6
+# bar_height = 30
+# bar_floating = false
+# bar_float_margin = 6
+
 # [[panel]] - multiple configurable panels
 # Each [[panel]] block spawns a bar on the matching monitors with its
 # own edge and widget layout. When no [[panel]] block is defined the
@@ -92,6 +116,10 @@
 # position - "top" or "bottom". default "top"
 # class - extra css class on the panel window, for per-panel styling
 #         in scss (e.g. class = "laptop" -> window.Bar.laptop). optional
+# height - this panel's height in pixels. defaults to bar_height
+# floating - detach this panel from the edge. defaults to bar_floating,
+#            so one machine can float the laptop's panel and dock the
+#            external monitor's
 # left/center/right - widget lists. available widgets:
 #                osicon, workspaces, clock, stats, tray, quicksettings,
 #                language, notifications, media, sleeptimer, harvest,
@@ -626,6 +654,27 @@
 # popup_width = 460
 # transient_apps = ["Spotify"]
 # popup_providers = []
+
+# ════════════════════════════════════════════════════════════════════
+# Keep awake (idle inhibitor)
+# ════════════════════════════════════════════════════════════════════
+
+# The "Keep Awake" quick settings toggle, the bar's cup indicator and
+# the `keep-awake` request command all drive this. By default it takes a
+# logind inhibitor lock ("idle:sleep", mode "block") — no helper process,
+# and it is released automatically if the shell ever dies.
+#
+# That covers logind's own idle actions and hypridle (which honours
+# systemd inhibitors unless you set ignore_systemd_inhibit). swayidle
+# does NOT look at logind inhibitors: on sway, point `command` at
+# something that speaks the Wayland idle-inhibit protocol instead.
+#
+# command - run this instead of taking the lock. It is started when keep
+#           awake goes on and killed when it goes off, so it must BLOCK
+#           for as long as it should inhibit. default [] (use the lock)
+# [idle_inhibit]
+# command = ["wlinhibit"]
+# command = ["systemd-inhibit", "--what=idle", "--who=wam-shell", "--why=Keep awake", "sleep", "infinity"]
 
 # ════════════════════════════════════════════════════════════════════
 # On-screen display

@@ -9,8 +9,10 @@ import AstalBattery from "gi://AstalBattery?version=0.1"
 import { Accessor, createBinding, createComputed, createState, onCleanup } from "gnim"
 import Config from "../../config"
 import { isFile } from "../../lib/utils"
-import { confirmDialog } from "../dialog"
+import CommandRegistry from "../../lib/requestHandler"
 import { qsVisible } from "./MediaSection"
+
+const registry = CommandRegistry.get_default()
 
 // avatar sources, in order: configured absolute path, the login avatar
 // from AccountsService, the OS icon (same as the panel's osIcon)
@@ -265,38 +267,16 @@ export function HeaderSection() {
                 tooltipText={"Lock session"}
                 onClicked={lock}
             />
-            <button
-                iconName={"system-log-out-symbolic"}
-                tooltipText={"Log out"}
-                onClicked={async () => {
-                    if (
-                        await confirmDialog({
-                            text: "Log out?",
-                            subtext: "Ends the current session",
-                            yesButton: "Log out",
-                        })
-                    )
-                        sessionId &&
-                            execAsync(["loginctl", "terminate-session", sessionId]).catch(e =>
-                                console.warn("logout failed:", e),
-                            )
-                }}
-            />
+            {/* Two buttons where there were three, and they cover six
+            actions instead of three. Log out and Shut down used to sit
+            here directly, with suspend, hibernate and restart existing
+            nowhere in the shell at all. The session menu owns the whole
+            set now; Lock stays inline because it is the one you reach
+            for without deciding anything. */}
             <button
                 iconName={"system-shutdown-symbolic"}
-                tooltipText={"Shut down"}
-                onClicked={async () => {
-                    if (
-                        await confirmDialog({
-                            text: "Shut down?",
-                            subtext: "Powers off the machine",
-                            yesButton: "Shut down",
-                        })
-                    )
-                        execAsync(["systemctl", "poweroff"]).catch(e =>
-                            console.warn("poweroff failed:", e),
-                        )
-                }}
+                tooltipText={"Session…"}
+                onClicked={() => registry.execute(["session"], true)}
             />
         </box>
     )

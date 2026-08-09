@@ -1,6 +1,6 @@
 import { Gtk } from "ags/gtk4"
 import { createComputed } from "gnim"
-import { count, dnd } from "../../../lib/notifd"
+import { count, dnd, toggleDnd } from "../../../lib/notifd"
 import { providers } from "../../../lib/notificationProviders"
 import type { ProviderItem } from "../../../lib/notificationProviders"
 import CommandRegistry from "../../../lib/requestHandler"
@@ -33,13 +33,26 @@ export default function Notify() {
     )
 
     return (
-        <box cssClasses={["swayNC"]} spacing={4}>
+        <box
+            cssClasses={["swayNC"]}
+            spacing={4}
+            // the bell already SHOWS do-not-disturb (the icon swaps), so
+            // it is the obvious place to toggle it — the alternative is
+            // opening the centre to reach a switch that mutes the thing
+            // you opened it to look at
+            tooltipText={dnd.as(v =>
+                v
+                    ? "Do not disturb is on — right-click to turn it off"
+                    : "Notifications — right-click for do not disturb",
+            )}
+        >
             <Gtk.GestureClick
                 button={1}
                 {...pressable(() => {
                     registry.execute(["notifications"], true)
                 })}
             />
+            <Gtk.GestureClick button={3} onPressed={() => toggleDnd()} />
             <image iconName={icon} />
             {/* hidden at zero rather than showing a "0": an empty inbox
                 should look like an empty bell, not like a readout */}

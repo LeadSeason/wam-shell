@@ -8,6 +8,7 @@ import { DropdownButton } from "./ToggleButton"
 import Config from "../../../config"
 import { setThemeLive } from "../../../lib/style"
 import hyprsunset, { setNightLightEnabled, tempBackend } from "../../../lib/hyprsunset"
+import { inhibited, toggleIdleInhibit } from "../../../lib/idleInhibit"
 
 const has = (bin: string) => GLib.find_program_in_path(bin) !== null
 
@@ -89,6 +90,23 @@ export function DarkStyleButton() {
                 // the shell itself follows (appearance.dark/light_theme)
                 setThemeLive(next ? Config.appearance.darkTheme : Config.appearance.lightTheme)
             }}
+        />
+    )
+}
+
+/** Keep awake: hold off the idle timeout and automatic suspend.
+ *
+ *  A plain toggle with no dropdown — there is nothing to configure once
+ *  it is on, and the one thing worth saying (that it is holding) is
+ *  already the subtitle. */
+export function KeepAwakeButton() {
+    return (
+        <DropdownButton
+            icon={"caffeine-symbolic"}
+            label={"Keep Awake"}
+            subtitle={inhibited.as(v => (v ? "Holding" : "Off"))}
+            isActive={inhibited}
+            activate={toggleIdleInhibit}
         />
     )
 }

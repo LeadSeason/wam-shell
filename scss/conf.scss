@@ -1,3 +1,6 @@
+@use "sass:math";
+@use "active-tuning" as tuning;
+
 // Design tokens: the values, with no dependency on a theme.
 //
 // This file is pure numbers and font stacks, so anything may `@use` it.
@@ -14,15 +17,39 @@
 // One scale, smallest to largest. `$padding*` are the tight
 // widget-internal values the bar was built on; `$gap*` are the layout
 // values everything since uses.
-$padding-small: 3px;
-$padding: 5px;
+//
+// Every value below goes through `space()`, which applies the density
+// multiplier from `[appearance] density` — `active-tuning.scss` is
+// generated into the cache dir next to `active-theme.scss` (see
+// `lib/styleCompile.ts`). Density is a SPACE axis only: radii, type and
+// icon sizes are deliberately left alone, because scaling those too
+// stops being "tighter" and becomes "smaller", which is what the font
+// size is for.
+//
+// Rounded to whole pixels, and never below 1px: a padding that lands on
+// 0 turns a button into its own label, and GTK will happily do it.
+@function space($v) {
+    @if $v == 0 {
+        @return 0;
+    }
+    @return math.max(1px, math.round($v * tuning.$density));
+}
 
-$gap-small: 4px;
-$gap: 8px;
-$gap-large: 12px;
+$padding-small: space(3px);
+$padding: space(5px);
+
+$gap-small: space(4px);
+$gap: space(8px);
+$gap-large: space(12px);
 
 // gap between panel widgets (left/center/right sections)
-$bar-widget-spacing: 6px;
+$bar-widget-spacing: space(6px);
+
+// The gap between a FLOATING panel and the screen edge (`bar_floating`).
+// Not density-scaled: it is a number the user set, not one of ours. The
+// window's height request adds the same value — see the note in
+// src/widgets/bar/index.tsx.
+$bar-float-margin: tuning.$bar-float-margin;
 
 // ---------------------------------------------------- shape and outline
 //
@@ -93,19 +120,25 @@ $transition-time: 200ms;
 // instant swap (slider fills, a widget going warm)
 $transition-slow: 300ms;
 
+// One easing curve, for the same reason there is one shadow. GTK's
+// default is `ease`, which is slow at BOTH ends: a hover that eases in
+// reads as the shell thinking about it. This is the usual "fast out,
+// slow in" — it leaves immediately and settles.
+$ease: cubic-bezier(0.2, 0, 0, 1);
+
 // ---------------------------------------------------------- measurements
 //
 // Padding presets, so a button's footprint says what kind of button it
 // is instead of being whatever looked right in that one file.
 $btn-padding: 1px $padding; // the default: dense, inline, in a row of others
 $btn-padding-icon: $gap-small; // square, icon-only, no label
-$btn-padding-lg: $gap-small 10px; // stands alone and carries a label
-$chip-padding: $padding-small 10px; // a pill you pick from a set
+$btn-padding-lg: $gap-small space(10px); // stands alone and carries a label
+$chip-padding: $padding-small space(10px); // a pill you pick from a set
 
 // A list row, and the tighter variant for dense lists (the harvest
 // timeline, profile options) where the same figure wastes a screenful.
-$row-padding: 7px $gap;
-$row-padding-tight: $gap-small 6px;
+$row-padding: space(7px) $gap;
+$row-padding-tight: $gap-small space(6px);
 
 // A card inside a popup, and the popup itself.
 $card-padding: $gap $gap-large;

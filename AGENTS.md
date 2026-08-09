@@ -148,6 +148,27 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   `lib/styleCompile.ts` is display-free so `wam install`/`update` can
   precompile it (`scripts/precompile-style.ts`), and `lib/style.ts` only
   decides when to compile and applies the result.
+- **A fullscreen layer-shell window does not paint its own background.**
+  The compositor sizes the SURFACE, but GTK still allocates the window's
+  content by natural size, so `window.Foo { background-color: … }` on an
+  overlay whose child is a centred card paints a full-width band the
+  height of that card and leaves the rest of the screen untouched. Put
+  the fill on a child with `hexpand`/`vexpand` instead (`.sessionScrim`).
+  While you are there: a non-expanding child of a horizontal box gets its
+  natural width at the START edge, so `halign: CENTER` alone centres it
+  inside a cell that is already exactly its own width — it needs
+  `hexpand` too, or it stays pinned left.
+- **No gate compiles the scss, so verify it by hand and verify it for
+  every theme.** Compile `style.scss` once per file in `scss/theme/`
+  (copy it in as `active-theme.scss`, and generate an `active-tuning.scss`
+  — `lib/styleCompile.ts` writes both), then load each result through
+  GTK's own parser (`Gtk.CssProvider.load_from_path` + the
+  `parsing-error` signal) and diff the selector sets against the previous
+  run. Two things this catches that reading the diff does not: a rule GTK
+  silently drops, and a **dart-sass deprecation** — those go to stderr
+  with a zero exit, so a compile that "succeeded" can still print two
+  warnings into the user's log on every single start (the `if()` function
+  did exactly that).
 - Icons: always prefer symbolic icon names (`-symbolic`) over
   full-color ones wherever possible. `pan-down`/`pan-up` is an expander,
   `go-next`/`go-previous` is navigation — don't mix them, and never give
