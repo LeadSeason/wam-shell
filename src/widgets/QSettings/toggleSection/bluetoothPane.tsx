@@ -9,6 +9,7 @@ import { pairingRequest, setBtPaneOpen } from "../../../lib/bluetoothAgent"
 import { PromptContent } from "../../bluetoothPairing"
 import { startDiscoveryAsync, stopDiscoveryAsync, cancelDiscoveryRetry } from "./bluez"
 import { DeviceRow } from "./bluetoothDeviceRow"
+import { createDelayer } from "../../delay"
 
 interface btPaneProps {
     /** current pane name, discovery runs while this pane is visible */
@@ -46,6 +47,8 @@ export function BtSwitch() {
 }
 
 function BluetoothWidgetBody({ pane, name }: btPaneProps) {
+    // tracked and cancelled on teardown (see widgets/delay.ts)
+    const delay = createDelayer("bluetoothPane")
     // non-null: the wrapper only mounts this body with an adapter
     const adapter = bluetooth.adapter!
 
@@ -61,9 +64,9 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
         setScanning(true)
         setRescanning(true)
         const token = ++rescanToken
-        setTimeout(() => {
+        delay(3000, () => {
             if (token === rescanToken) setRescanning(false)
-        }, 3000)
+        })
     }
 
     // adapter.discovering is a proxy property that provably goes stale

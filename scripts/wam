@@ -216,6 +216,8 @@ start_detached() {
             --property=WorkingDirectory="$ROOT" \
             --property=Restart=always \
             --property=RestartSec=2 \
+            --property=RestartSteps=6 \
+            --property=RestartMaxDelaySec=60 \
             --property=StartLimitIntervalSec=0 \
             --property=ExecStartPre="/usr/bin/env bash $ROOT/scripts/wait-compositor.sh" \
             -- "$(command -v ags)" run app.tsx && return 0
@@ -522,6 +524,16 @@ ExecStartPre=/usr/bin/env bash $ROOT/scripts/wait-compositor.sh
 ExecStart=$(command -v ags) run app.tsx
 Restart=always
 RestartSec=2
+# Never giving up needs a backoff to go with it, or a shell that can
+# NEVER start (a stale WAYLAND_DISPLAY in the user manager's environment
+# is the realistic one, and it was found the hard way -- 105 restarts,
+# ~0.8s of CPU each, every two seconds, forever) becomes a spin instead
+# of a failure. RestartSteps/RestartMaxDelaySec ramp 2s -> 60s, so a
+# transient crash still comes back in two seconds and a permanent one
+# settles at one attempt a minute. systemd >= 254; older versions ignore
+# the two keys and keep the flat RestartSec, which is the old behaviour.
+RestartSteps=6
+RestartMaxDelaySec=60
 
 [Install]
 WantedBy=$target

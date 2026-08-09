@@ -9,6 +9,7 @@ import { Gtk } from "ags/gtk4"
 import Pango from "gi://Pango?version=1.0"
 import { known } from "./savedNetworks"
 import { securityOf, bandOf, channelOf, ApRow, PasswordPrompt, WifiPrompt } from "./wifiApRow"
+import { createDelayer } from "../../delay"
 
 interface wifiPaneProps {
     /** current pane name, rescans when this pane becomes visible */
@@ -138,6 +139,8 @@ export function WifiWidget({ pane, name }: wifiPaneProps) {
 }
 
 function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPaneProps) {
+    // tracked and cancelled on teardown (see widgets/delay.ts)
+    const delay = createDelayer("wifiPane")
     // scan whenever this pane becomes visible — same pulse feedback as
     // the rescan button so the refresh is visible
     // (subscribe callbacks receive no value, read it).
@@ -179,12 +182,12 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
             return GLib.SOURCE_CONTINUE
         })
         const token = ++rescanToken
-        setTimeout(() => {
+        delay(3000, () => {
             if (token === rescanToken) {
                 setRescanning(false)
                 stopSpin()
             }
-        }, 3000)
+        })
     }
 
     const [prompt, setPrompt] = createState<WifiPrompt | null>(null)
