@@ -54,7 +54,9 @@ out="$(printf '%s\n' "$raw" | grep -E "$COVERED" || true)"
 # anything TS2304 outside the covered paths, appended rather than merged
 # so a covered-path error is never reported twice
 extra="$(printf '%s\n' "$raw" | grep -F "$ALWAYS" | grep -vE "$COVERED" || true)"
-[ -n "$extra" ] && out="$(printf '%s\n%s' "$out" "$extra")"
+# ${out:+…} so the common case — nothing in the covered paths, one
+# undefined name in a widget — does not lead with a blank line
+[ -n "$extra" ] && out="${out:+$out$'\n'}$extra"
 
 if [ -n "$out" ]; then
     printf '%s\n' "$out"
