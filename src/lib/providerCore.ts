@@ -84,8 +84,10 @@ export function openUrl(url: string, logTag: string): void {
  */
 export function createRefreshGate(minAgeMs: number, poll: () => void) {
     let lastAttempt = 0
+    let backoffUntil = 0
     return {
         refresh() {
+            if (Date.now() < backoffUntil) return
             if (Date.now() - lastAttempt < minAgeMs) return
             lastAttempt = Date.now()
             poll()
@@ -94,5 +96,84 @@ export function createRefreshGate(minAgeMs: number, poll: () => void) {
         touch() {
             lastAttempt = Date.now()
         },
+        /** true while a 429/503 backoff is in force — the scheduled poll
+         *  checks this too, so the timer does not walk straight past it */
+        blocked() {
+            return Date.now() < backoffUntil
+        },
+        /** how much longer, in whole seconds (0 when not blocked) */
+        blockedFor() {
+            return Math.max(0, Math.ceil((backoffUntil - Date.now()) / 1000))
+        },
+        /** hold every poll off for this long */
+        backOff(seconds: number) {
+            backoffUntil = Math.max(backoffUntil, Date.now() + seconds * 1000)
+        },
+        clearBackoff() {
+            backoffUntil = 0
+        },
     }
+}
+
+/**
+ * How long to wait after a rate-limited or overloaded reply.
+ *
+ * Every provider here polls on a fixed interval and treats a failure as
+ * "try again next time", which is right for a transient 500 and wrong
+ * for a 429: the server has said, in a header, exactly how long to stop
+ * for, and re-asking on schedule is what turns a short limit into a long
+ * one. Nothing in the tree read that header.
+ *
+ * Three sources, in order:
+ *  - `Retry-After` as a delay in seconds (the common form)
+ *  - `Retry-After` as an HTTP date (the spec allows it; GitHub uses it
+ *    for secondary limits)
+ *  - a doubling fallback keyed on how many times in a row we have been
+ *    told to back off, for the servers that say 429 and nothing else
+ *
+ * Clamped at both ends: never less than a second (a 0 would busy-loop),
+ * never more than an hour (a server asking for a day is not something to
+ * honour silently on a desktop, and the next shell restart clears it).
+ *
+ * @param header the raw Retry-After value, "" when absent
+ * @param consecutive how many backoffs in a row, 1 for the first
+ * @param nowMs injected so the date branch is testable
+ */
+export function retryAfterSeconds(header: string, consecutive: number, nowMs = Date.now()): number {
+    const MIN = 1
+    const MAX = 3600
+    const clamp = (n: number) => Math.min(MAX, Math.max(MIN, Math.round(n)))
+
+    const raw = header.trim()
+    if (raw) {
+        // a bare integer is a delay in seconds
+        if (/^\d+$/.test(raw)) return clamp(Number(raw))
+        // otherwise an HTTP date; past dates mean "now", not a negative wait
+        const at = Date.parse(raw)
+        if (!Number.isNaN(at)) return clamp((at - nowMs) / 1000)
+    }
+    // no usable header: 30s, 60s, 120s, … capped
+    return clamp(30 * 2 ** Math.max(0, consecutive - 1))
+}
+
+/** statuses that mean "stop asking for a while", not "this request
+ *  failed". 429 is the rate limit; 503 is an overloaded or maintenance
+ *  server, which re-asking on schedule does not help either */
+export function isBackoffStatus(status: number): boolean {
+    return status === 429 || status === 503
+}
+
+/**
+ * A wait, for the empty state to show a human.
+ *
+ * "retrying in 40m" answers the question a rate-limited provider raises
+ * ("is it broken, or is it waiting?"), which "Couldn't sync" does not.
+ * Coarse on purpose: it is read once, and a countdown to the second
+ * would need a ticking clock for a number nobody is watching.
+ */
+export function formatWait(seconds: number): string {
+    if (seconds < 60) return `${Math.max(1, Math.round(seconds))}s`
+    if (seconds < 3600) return `${Math.round(seconds / 60)}m`
+    const hours = seconds / 3600
+    return `${hours < 10 ? hours.toFixed(1).replace(/\.0$/, "") : Math.round(hours)}h`
 }

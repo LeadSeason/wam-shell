@@ -8,7 +8,14 @@ import { createJsonClient, USER_AGENT } from "./httpJson"
 import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { Provider, ProviderItem, registerProvider } from "./notificationProviders"
 import { addProviderPopup, removePopup, removePopupDeferred } from "./notifd"
-import { createRefreshGate, newArrivals, openUrl } from "./providerCore"
+import {
+    createRefreshGate,
+    formatWait,
+    isBackoffStatus,
+    newArrivals,
+    openUrl,
+    retryAfterSeconds,
+} from "./providerCore"
 import { registerDispose } from "./lifecycle"
 
 // re-exported so the unit suite can pin it against Todoist's own
@@ -407,10 +414,22 @@ function fetchTasks(cursor: string, acc: any[]) {
             )
             return
         }
+        // rate limited or overloaded: honour the wait the server asked
+        // for instead of re-asking on our own schedule
+        if (isBackoffStatus(r.status)) {
+            backoffs++
+            const wait = retryAfterSeconds(r.header("Retry-After"), backoffs)
+            gate.backOff(wait)
+            setStatus(`Todoist is rate limiting — retrying in ${formatWait(wait)}`)
+            console.warn(`Todoist: ${r.status}; backing off ${wait}s`)
+            return // keep stale items
+        }
         if (!r.ok || !Array.isArray(r.json?.results)) {
             setStatus("Couldn't sync Todoist — retrying next poll")
             return // keep stale items
         }
+        backoffs = 0
+        gate.clearBackoff()
         setStatus(null)
         const merged = acc.concat(r.json.results)
         // v1 paginates at 50 via next_cursor; a cursor means more pages
@@ -433,8 +452,14 @@ function fetchReminders(taskList: any[]) {
     })
 }
 
+// consecutive 429/503s, for the doubling fallback when the server sends
+// no Retry-After. Reset by the first clean poll
+let backoffs = 0
+
 export function poll() {
     if (!active || authFailed || pollInFlight) return
+    // the SCHEDULED poll respects the backoff too, not just refresh()
+    if (gate.blocked()) return
     pollInFlight = true
     gate.touch()
     fetchTasks("", [])

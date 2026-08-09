@@ -8,7 +8,15 @@ import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { Provider, ProviderItem, registerProvider } from "./notificationProviders"
 import { addProviderPopup } from "./notifd"
 import { createSeenStore } from "./seenStore"
-import { bannerCandidates, createRefreshGate, newArrivals, openUrl } from "./providerCore"
+import {
+    bannerCandidates,
+    createRefreshGate,
+    formatWait,
+    isBackoffStatus,
+    newArrivals,
+    openUrl,
+    retryAfterSeconds,
+} from "./providerCore"
 import { registerDispose } from "./lifecycle"
 
 // re-exported so the unit suite can pin these against GitHub's own
@@ -245,10 +253,23 @@ function fetchPage(page: number, acc: any[]) {
                 )
                 return
             }
+            // rate limited or overloaded: the server said how long to
+            // stop for, and re-asking on schedule is what turns a short
+            // limit into a long one
+            if (isBackoffStatus(r.status)) {
+                backoffs++
+                const wait = retryAfterSeconds(r.header("Retry-After"), backoffs)
+                gate.backOff(wait)
+                setStatus(`GitHub is rate limiting — retrying in ${formatWait(wait)}`)
+                console.warn(`GitHub: ${r.status}; backing off ${wait}s`)
+                return // keep stale items
+            }
             if (!r.ok || !Array.isArray(r.json)) {
                 setStatus("Couldn't sync GitHub — retrying next poll")
                 return // keep stale items
             }
+            backoffs = 0
+            gate.clearBackoff()
             setStatus(null)
             const modified = r.header("Last-Modified")
             if (modified) lastModified = modified
@@ -267,8 +288,15 @@ function fetchPage(page: number, acc: any[]) {
     )
 }
 
+// consecutive 429/503s, for the doubling fallback when the server sends
+// no Retry-After. Reset by the first clean poll
+let backoffs = 0
+
 export function poll() {
     if (!active || authFailed || pollInFlight) return
+    // a backoff the SCHEDULED poll must respect too: gating only
+    // refresh() would let the timer walk straight past it
+    if (gate.blocked()) return
     pollInFlight = true
     gate.touch()
     fetchPage(1, [])
