@@ -132,7 +132,16 @@ function commandRows(rest: string): Row[] {
 // launcher must never do is answer a typed command line with an empty
 // list — `htop` is not a .desktop file and never will be.
 function runRow(query: string): Row[] {
-    const argv = GLib.shell_parse_argv(query)[1]
+    // THROWS on an unbalanced quote — GJS surfaces the GError, and this
+    // runs from the entry's changed handler, so typing a single `"` blew
+    // up inside the keystroke rather than simply matching nothing. A
+    // half-typed quoted argument is a normal thing to have on screen.
+    let argv: string[] | null = null
+    try {
+        argv = GLib.shell_parse_argv(query)[1]
+    } catch {
+        return []
+    }
     if (!argv || argv.length === 0) return []
     if (!GLib.find_program_in_path(argv[0]!)) return []
     return [
