@@ -31,15 +31,37 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # by tests and are GTK-free enough to check
 COVERED='^(src/lib/|src/config\.ts|tests/|src/widgets/notifications/(feed|rowData)\.ts)'
 
+# ONE error code is reported everywhere, src/widgets included: TS2304,
+# "Cannot find name". The scope above exists because the JSX prop
+# typings are incomplete, and every error that produces is a false
+# positive about something that works at runtime. TS2304 is the
+# opposite — an identifier that does not exist is a ReferenceError the
+# moment the line runs, and no cast or typing gap can make it anything
+# else.
+#
+# It earned its own line: #229 was four of these in the sway workspaces
+# widget, left behind when a refactor deleted the declaration and kept
+# the uses. The widget threw on construction for every sway and i3 user,
+# and the gate could not see it — the smoke test only ever boots on the
+# developer's own compositor, which was hyprland.
+ALWAYS='error TS2304'
+
 TSC=(npx -y -p typescript@5.9 tsc)
 [ -x node_modules/.bin/tsc ] && TSC=(node_modules/.bin/tsc)
 
-out="$("${TSC[@]}" --noEmit 2>&1 | grep -E "$COVERED" || true)"
+raw="$("${TSC[@]}" --noEmit 2>&1)"
+out="$(printf '%s\n' "$raw" | grep -E "$COVERED" || true)"
+# anything TS2304 outside the covered paths, appended rather than merged
+# so a covered-path error is never reported twice
+extra="$(printf '%s\n' "$raw" | grep -F "$ALWAYS" | grep -vE "$COVERED" || true)"
+# ${out:+…} so the common case — nothing in the covered paths, one
+# undefined name in a widget — does not lead with a blank line
+[ -n "$extra" ] && out="${out:+$out$'\n'}$extra"
 
 if [ -n "$out" ]; then
     printf '%s\n' "$out"
-    printf 'FAIL typecheck: %s error(s) in the covered paths\n' "$(printf '%s\n' "$out" | grep -c 'error TS')"
+    printf 'FAIL typecheck: %s error(s) in the covered paths, or an undefined name anywhere\n' "$(printf '%s\n' "$out" | grep -c 'error TS')"
     exit 1
 fi
 
-echo "ok   typecheck: no errors in src/lib, src/config.ts or tests"
+echo "ok   typecheck: no errors in src/lib, src/config.ts or tests, and no undefined names anywhere"
