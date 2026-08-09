@@ -236,8 +236,13 @@ function fetchPage(page: number, acc: any[]) {
         r => {
             pollInFlight = false
             // unchanged; keep current items, and clear any error from a
-            // previous failed poll
+            // previous failed poll. A 304 is a SUCCESSFUL poll, so it
+            // resets the backoff history too — otherwise a rate limit
+            // followed by quiet 304s left the counter high and the next
+            // 429 waited as if the limits had never stopped
             if (r.status === 304) {
+                backoffs = 0
+                gate.clearBackoff()
                 setStatus(null)
                 return
             }

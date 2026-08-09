@@ -4,7 +4,7 @@ import Soup from "gi://Soup?version=3.0"
 import { Accessor, createState } from "gnim"
 import { isFile } from "./utils"
 import { configHome } from "./paths"
-import { timeoutAddSeconds, sourceRemove, trackHttp } from "./metrics"
+import { timeoutAddSeconds, sourceRemove, idleAdd, trackHttp } from "./metrics"
 import { MAX_BODY_BYTES } from "./httpJson"
 import { writeFileAtomic } from "./atomicWrite"
 import { secretsAvailable, secretStore, secretLookup, secretClear } from "./secretStore"
@@ -464,6 +464,42 @@ export function createGoogleAuth(opts: {
     // hand-rolled listener needed a captured-listener check for
     let authServer: Soup.Server | null = null
     let authTimeout = 0
+    // servers whose disconnect is queued on an idle (see finishAuth),
+    // keyed by source id. A map rather than one handle: cancelling a
+    // pending teardown to make room for a newer one would strand the
+    // older server listening forever
+    const pendingTeardowns = new Map<number, Soup.Server>()
+
+    /**
+     * Stop the redirect server, one idle turn from now.
+     *
+     * `authServer` is cleared immediately so the module's state is
+     * consistent the moment this returns — a second finishAuth, or an
+     * `authenticate()` starting a new flow, must not see the old server.
+     * The disconnect itself rides an idle so libsoup can finish writing
+     * the response it is in the middle of.
+     */
+    function teardownServer() {
+        const server = authServer
+        authServer = null
+        if (!server) return
+        let source = 0
+        source = idleAdd("googleAuth:serverTeardown", GLib.PRIORITY_DEFAULT_IDLE, () => {
+            pendingTeardowns.delete(source)
+            server.disconnect()
+            return GLib.SOURCE_REMOVE
+        })
+        pendingTeardowns.set(source, server)
+    }
+
+    /** run every queued teardown NOW (shutdown: there is no later idle) */
+    function flushTeardowns() {
+        for (const [source, server] of pendingTeardowns) {
+            sourceRemove(source)
+            server.disconnect()
+        }
+        pendingTeardowns.clear()
+    }
     const [authBusy, setAuthBusy] = createState(false)
     let redirectUri: string | null = null
     let authUrl = ""
@@ -477,10 +513,19 @@ export function createGoogleAuth(opts: {
             sourceRemove(authTimeout)
             authTimeout = 0
         }
-        if (authServer) {
-            authServer.disconnect()
-            authServer = null
-        }
+        // Deferred one idle turn, and it has to be: finishAuth is reached
+        // FROM INSIDE the server's own handler, and disconnect() closes
+        // every connection — including the one whose response libsoup has
+        // not written yet. Tearing down synchronously gives the browser
+        // "Connection terminated unexpectedly" instead of the completion
+        // page, which reads as a failed sign-in even though the code was
+        // captured and exchanged. (Measured, not assumed: a synchronous
+        // disconnect from a handler reliably reproduces it.)
+        //
+        // Same shape as removePopupDeferred in lib/notifd — destroying the
+        // thing currently being dispatched to — and tracked for the same
+        // reason: an untracked source outlives dispose().
+        teardownServer()
         authInProgress = false
         setAuthBusy(false)
         authUrl = ""
@@ -739,6 +784,10 @@ export function createGoogleAuth(opts: {
                 authServer.disconnect()
                 authServer = null
             }
+            // teardown is normally deferred one idle turn (see
+            // finishAuth); at shutdown there is no later idle, so any
+            // queued one runs here or the socket outlives the module
+            flushTeardowns()
             // a mid-flow dispose would otherwise leave the consumer's
             // sign-in button spinning forever
             authInProgress = false
