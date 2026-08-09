@@ -1,6 +1,6 @@
 import Sway, { Node } from "../lib/sway"
 
-import { For, createBinding, createState } from "gnim"
+import { For, createBinding, createState, onCleanup } from "gnim"
 import { Astal, Gtk, Gdk } from "ags/gtk4"
 import Graphene from "gi://Graphene"
 import Fuse from "fuse.js"
@@ -50,11 +50,13 @@ export default function Scratchpad() {
         includeScore: true,
     })
 
-    createBinding(sway, "tree").subscribe(() => {
-        const nodes = scratchpadNodes()
-        setApps(nodes)
-        fuse.setCollection(nodes)
-    })
+    onCleanup(
+        createBinding(sway, "tree").subscribe(() => {
+            const nodes = scratchpadNodes()
+            setApps(nodes)
+            fuse.setCollection(nodes)
+        }),
+    )
 
     function search(text: string) {
         if (text.length < 1) {

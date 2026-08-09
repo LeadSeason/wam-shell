@@ -6,7 +6,7 @@ import { configHome } from "./paths"
 import { writeFileAtomic } from "./atomicWrite"
 import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { GoogleAccount, createGoogleAuth, googleRequest } from "./googleAuth"
-import { createRefreshGate } from "./providerCore"
+import { createRefreshGate, formatWait, isBackoffStatus, retryAfterSeconds } from "./providerCore"
 import { WEEKDAYS } from "./relTime"
 import { registerDispose } from "./lifecycle"
 
@@ -90,9 +90,31 @@ function request(method: string, url: string, opts: { bearer?: string }, cb: (r:
     googleRequest(method, url, opts, r => {
         if (!r.ok)
             console.warn(`GCal: ${method} ${url.split("?")[0]} -> ${r.status || "network error"}`)
+        // rate limited or overloaded: hold off the next sync rather than
+        // arriving again on the fixed poll interval as if nothing was
+        // said. Recorded from any request in the fan-out — one calendar
+        // being limited means the account is
+        if (isBackoffStatus(r.status)) {
+            backoffs++
+            const wait = retryAfterSeconds("", backoffs)
+            backoffUntil = Math.max(backoffUntil, Date.now() + wait * 1000)
+            console.warn(`GCal: ${r.status}; holding off syncs for ${formatWait(wait)}`)
+        } else if (r.ok) {
+            backoffs = 0
+            backoffUntil = 0
+        }
         cb(r)
     })
 }
+
+// consecutive 429/503s, and the instant the next sync may run.
+//
+// gcal keeps a plain fixed-interval timer rather than the providers'
+// refresh gate -- it is the clock popover's data, not a notification
+// provider -- so the hold-off lives here instead of in providerCore's
+// gate. Same rule, one less mechanism to introduce.
+let backoffs = 0
+let backoffUntil = 0
 
 // ---------------------------------------------------------------- state
 
@@ -175,6 +197,14 @@ export function dayKey(ms: number): string {
     return `${d.getFullYear()}-${mo}-${dy}`
 }
 
+// NB: on a spring-forward date in a zone that transitions AT midnight,
+// this instant does not exist and JS resolves it to 01:00 — so an
+// all-day event starting on such a date gets a startMs an hour late.
+// Harmless as things stand, because dayKey() re-derives the calendar day
+// from the timestamp and lands on the right one either way, and nothing
+// renders an all-day event's clock time. Called out because the DST
+// handling in eventDays() right below is careful and commented, and a
+// reader will otherwise assume this line got the same treatment.
 function localMidnight(y: number, m: number, d: number): number {
     return new Date(y, m, d).getTime()
 }
@@ -451,6 +481,9 @@ function syncAccount(
 let pendingFocus: { y: number; m: number } | null = null
 
 export function sync(focus?: { y: number; m: number }) {
+    // a 429/503 asked us to stop for a while; the fixed poll timer must
+    // respect that too, not just walk past it on the next tick
+    if (Date.now() < backoffUntil) return
     if (!active || auth.getAccounts().length === 0) return
     if (syncInFlight) {
         pendingFocus = focus ?? pendingFocus

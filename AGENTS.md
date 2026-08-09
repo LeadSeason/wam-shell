@@ -157,6 +157,34 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   one FlowBox is visible at a glance. Draw it on Adwaita's grid instead
   (`assets/icons/README.md`).
 
+## Libraries vs hand-rolled
+
+Reach for the platform before writing the thing yourself: libsoup, GLib,
+Gio, Pango and the Astal libraries are already dependencies and already
+solve most of what a shell needs. `Soup.Server` replaced a hand-written
+loopback HTTP server in `googleAuth`; `GLib.Uri.parse_params` replaced a
+query-string parser; `Soup.form_encode_hash` builds form bodies. When
+adding one, prefer a dependency-free package that bundles cleanly under
+esbuild (`smol-toml`) over one that pulls half of node in.
+
+Two things in this tree are hand-rolled on purpose, and both have a note
+at the top of the file saying so. Do not "fix" them:
+
+- **The IMAP client** (`lib/protonmail.ts`). Every JS IMAP library is
+  built on `node:net`, which GJS does not have and esbuild cannot shim
+  into a Gio socket — the transport is exactly the part a library would
+  supply, and it is the part that cannot work here.
+- **The test framework** (`tests/framework.ts`). `pnpm test` bundles the
+  whole suite into one executable with `ags bundle`; there is no runtime
+  module loader for jasmine-gjs to hook and no CLI to hand a spec glob
+  to.
+
+And one where the library exists and is deliberately not used: the
+consent URL in `googleAuth` is built by hand rather than with
+`Soup.form_encode_hash`, because that takes a GHashTable and so does not
+preserve parameter order (and encodes space as `+`). Both are legal;
+neither is worth an auth URL that comes out shuffled between runs.
+
 ## Formatting
 
 - Prettier is the formatter; config lives in `.prettierrc` (there is

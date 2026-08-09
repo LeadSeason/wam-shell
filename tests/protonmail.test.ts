@@ -7,6 +7,7 @@ import {
     newArrivals,
     idleEventKind,
     isBridgeDown,
+    isLoopbackHost,
 } from "../src/lib/protonmail"
 
 test("protonmail decodeWords: base64 and quoted-printable", () => {
@@ -96,4 +97,31 @@ test("protonmail isBridgeDown: refused connections only", () => {
     eq(isBridgeDown({ message: "IMAP parse error" }), false)
     eq(isBridgeDown({ auth: true }), false)
     eq(isBridgeDown(null), false)
+})
+
+// what decides whether a cleartext IMAP LOGIN is acceptable: a remote
+// host without tls is refused outright, so getting this wrong either
+// disables a working provider or leaks a password
+test("protonmail isLoopbackHost: the whole 127/8 block and both v6 spellings", () => {
+    eq(isLoopbackHost("127.0.0.1"), true)
+    eq(isLoopbackHost("127.1.2.3"), true) // the bridge can listen anywhere in 127/8
+    eq(isLoopbackHost("localhost"), true)
+    eq(isLoopbackHost("LocalHost"), true) // case, and surrounding space
+    eq(isLoopbackHost("  127.0.0.1  "), true)
+    eq(isLoopbackHost("::1"), true)
+    eq(isLoopbackHost("[::1]"), true) // bracketed, as a host:port string carries it
+    eq(isLoopbackHost("0:0:0:0:0:0:0:1"), true)
+})
+
+test("protonmail isLoopbackHost: anything reachable from elsewhere is remote", () => {
+    eq(isLoopbackHost("192.168.1.10"), false) // a LAN address IS remote here
+    eq(isLoopbackHost("10.0.0.5"), false)
+    eq(isLoopbackHost("mail.example.com"), false)
+    eq(isLoopbackHost("::"), false)
+    eq(isLoopbackHost(""), false)
+    // not a v4 address at all, and must not be read as one
+    eq(isLoopbackHost("127.0.0.1.evil.com"), false)
+    eq(isLoopbackHost("1270.0.0.1"), false)
+    // octet out of range: malformed, so not trusted
+    eq(isLoopbackHost("127.0.0.999"), false)
 })

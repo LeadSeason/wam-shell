@@ -1,6 +1,6 @@
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
-import toml from "toml"
+import { parse as parseTomlText } from "smol-toml"
 import { createState } from "gnim"
 import { execAsync } from "ags/process"
 import { readFile } from "ags/file"
@@ -46,10 +46,23 @@ function readRawFile(path?: string): string {
     }
 }
 
+// smol-toml, not the `toml` package: that one implements TOML 0.4 and
+// was last published in 2018, so a DOTTED KEY (`tray.spacing = 3` — a
+// 0.5 feature, and the spelling anyone who has written TOML this decade
+// reaches for) was a parse ERROR: "Expected "=" ... but "." found".
+//
+// Which matters more than it sounds, because of what happens next: the
+// throw is caught here and the whole document becomes {}. One dotted key
+// anywhere in the file therefore discarded the user's ENTIRE config and
+// ran the shell on defaults, with a single line in a log to say so.
+//
+// smol-toml is TOML 1.0.0 compliant, has no dependencies, and is
+// maintained. It still rejects genuinely invalid documents (a redefined
+// key is still an error) — it just does not reject valid ones.
 function parseToml(raw: string): Record<string, any> {
     if (!raw) return {}
     try {
-        return toml.parse(raw)
+        return parseTomlText(raw) as Record<string, any>
     } catch (err) {
         console.error("Failed parsing TOML:", err)
     }
@@ -480,6 +493,19 @@ function getProtonmailConfig() {
         pollMinutes: r.num("poll_minutes", 2, { positive: true, floor: 1 }),
         host: r.str("host", "127.0.0.1", { nonEmpty: true }),
         port: r.num("port", 1143, { positive: true }),
+        // IMAP LOGIN sends the bridge password in the clear. On loopback
+        // that is a hop between two processes owned by the same user and
+        // is how the bridge is meant to be used; off it, it is a password
+        // on the wire. So `host` alone no longer decides: a non-loopback
+        // host REQUIRES tls, and lib/protonmail refuses to start
+        // otherwise rather than quietly transmitting it
+        tls: r.bool("tls", false),
+        // the bridge presents a self-signed certificate, so a strict
+        // handshake against a remote one fails. This accepts it anyway:
+        // still defeats passive sniffing, does NOT defeat an active MITM.
+        // Deliberately its own key so opting out of verification is a
+        // thing the user wrote down
+        tlsInsecure: r.bool("tls_insecure", false),
     }
 }
 

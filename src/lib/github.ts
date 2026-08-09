@@ -8,7 +8,15 @@ import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { Provider, ProviderItem, registerProvider } from "./notificationProviders"
 import { addProviderPopup } from "./notifd"
 import { createSeenStore } from "./seenStore"
-import { bannerCandidates, createRefreshGate, newArrivals, openUrl } from "./providerCore"
+import {
+    bannerCandidates,
+    createRefreshGate,
+    formatWait,
+    isBackoffStatus,
+    newArrivals,
+    openUrl,
+    retryAfterSeconds,
+} from "./providerCore"
 import { registerDispose } from "./lifecycle"
 
 // re-exported so the unit suite can pin these against GitHub's own
@@ -228,8 +236,13 @@ function fetchPage(page: number, acc: any[]) {
         r => {
             pollInFlight = false
             // unchanged; keep current items, and clear any error from a
-            // previous failed poll
+            // previous failed poll. A 304 is a SUCCESSFUL poll, so it
+            // resets the backoff history too — otherwise a rate limit
+            // followed by quiet 304s left the counter high and the next
+            // 429 waited as if the limits had never stopped
             if (r.status === 304) {
+                backoffs = 0
+                gate.clearBackoff()
                 setStatus(null)
                 return
             }
@@ -245,10 +258,23 @@ function fetchPage(page: number, acc: any[]) {
                 )
                 return
             }
+            // rate limited or overloaded: the server said how long to
+            // stop for, and re-asking on schedule is what turns a short
+            // limit into a long one
+            if (isBackoffStatus(r.status)) {
+                backoffs++
+                const wait = retryAfterSeconds(r.header("Retry-After"), backoffs)
+                gate.backOff(wait)
+                setStatus(`GitHub is rate limiting — retrying in ${formatWait(wait)}`)
+                console.warn(`GitHub: ${r.status}; backing off ${wait}s`)
+                return // keep stale items
+            }
             if (!r.ok || !Array.isArray(r.json)) {
                 setStatus("Couldn't sync GitHub — retrying next poll")
                 return // keep stale items
             }
+            backoffs = 0
+            gate.clearBackoff()
             setStatus(null)
             const modified = r.header("Last-Modified")
             if (modified) lastModified = modified
@@ -267,8 +293,15 @@ function fetchPage(page: number, acc: any[]) {
     )
 }
 
+// consecutive 429/503s, for the doubling fallback when the server sends
+// no Retry-After. Reset by the first clean poll
+let backoffs = 0
+
 export function poll() {
     if (!active || authFailed || pollInFlight) return
+    // a backoff the SCHEDULED poll must respect too: gating only
+    // refresh() would let the timer walk straight past it
+    if (gate.blocked()) return
     pollInFlight = true
     gate.touch()
     fetchPage(1, [])

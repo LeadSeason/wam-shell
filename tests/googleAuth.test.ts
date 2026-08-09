@@ -3,15 +3,15 @@ import {
     buildAuthUrl,
     generateCodeVerifier,
     generateState,
+    encodeForm,
     parseRedirectParams,
     pkceChallenge,
-    requestTarget,
     stateMatches,
 } from "../src/lib/googleAuth"
 
 // googleAuth's pure, network-free parts: PKCE + state generation, the
-// consent URL shape, and the redirect parsing/validation the accept
-// loop gates on. No live OAuth flow here.
+// consent URL shape, and the redirect parsing/validation the redirect
+// server gates on. No live OAuth flow here.
 
 test("googleAuth code verifier: 43 base64url chars (32 random bytes)", () => {
     const v = generateCodeVerifier()
@@ -64,34 +64,47 @@ test("googleAuth stateMatches: exact match, missing or foreign rejected", () => 
     eq(stateMatches("nonce-1", ""), false)
 })
 
-test("googleAuth parseRedirectParams: code/error/state from the target", () => {
-    eq(parseRedirectParams("/?code=4%2F0Af-x&state=st-1&scope=sc"), {
+test("googleAuth parseRedirectParams: code/error/state out of a query string", () => {
+    // takes the QUERY only, without "?" -- Soup.Server hands us
+    // msg.get_uri().get_query(), so nothing has to find it in a raw
+    // request line any more
+    eq(parseRedirectParams("code=4%2F0Af-x&state=st-1&scope=sc"), {
         code: "4/0Af-x",
         error: null,
         state: "st-1",
     })
-    eq(parseRedirectParams("/?error=access_denied&state=st-1"), {
+    eq(parseRedirectParams("error=access_denied&state=st-1"), {
         code: null,
         error: "access_denied",
         state: "st-1",
     })
-    // favicon and bare hits carry nothing
-    eq(parseRedirectParams("/favicon.ico"), { code: null, error: null, state: null })
-    eq(parseRedirectParams("/"), { code: null, error: null, state: null })
+    // favicon and bare hits carry no query at all
+    eq(parseRedirectParams(""), { code: null, error: null, state: null })
     // empty values are junk, not a redirect
-    eq(parseRedirectParams("/?code=&state=st-1"), { code: null, error: null, state: "st-1" })
-    // malformed percent-encoding drops just that param
-    eq(parseRedirectParams("/?code=%E0%A4%A&state=st-1"), {
+    eq(parseRedirectParams("code=&state=st-1"), { code: null, error: null, state: "st-1" })
+})
+
+test("googleAuth parseRedirectParams: malformed encoding yields nothing at all", () => {
+    // GLib.Uri.parse_params rejects the whole string rather than the one
+    // bad pair, so state comes back null too -- a deliberate difference
+    // from the hand-rolled parser this replaced. The outcome is
+    // unchanged: with no code and no error the handler answers 404 and
+    // keeps listening either way, and a query we cannot decode is not
+    // our redirect. Strict is the right side to err on here -- the
+    // relaxed flag would hand back a MANGLED code to exchange.
+    eq(parseRedirectParams("code=%E0%A4%A&state=st-1"), {
         code: null,
         error: null,
-        state: "st-1",
+        state: null,
     })
 })
 
-test("googleAuth requestTarget: GET request line only", () => {
-    eq(requestTarget("GET /?code=x HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"), "/?code=x")
-    eq(requestTarget("GET /favicon.ico HTTP/1.1\r\n\r\n"), "/favicon.ico")
-    eq(requestTarget("POST / HTTP/1.1\r\n\r\n"), null)
-    eq(requestTarget("garbage with no structure"), null)
-    eq(requestTarget(""), null)
+test("googleAuth encodeForm: form-urlencoded body, + for space", () => {
+    // Soup's rules, not ours: `+` for space is correct for
+    // application/x-www-form-urlencoded, which is what the token
+    // endpoint takes. Order is NOT pinned -- form_encode_hash takes a
+    // GHashTable and returns the pairs in whatever order it iterates,
+    // which is why buildAuthUrl does not use it
+    eq(encodeForm({ a: "x y" }), "a=x+y")
+    eq(encodeForm({ "k/1": "v&2" }), "k%2F1=v%262")
 })
