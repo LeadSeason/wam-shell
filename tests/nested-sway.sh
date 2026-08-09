@@ -45,14 +45,6 @@ is_nested() {
     tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | grep -qF -- "$CONFIG"
 }
 
-nested_pid() {
-    local pid
-    pid=$(cat "$PIDFILE" 2>/dev/null) || return 1
-    [ -n "$pid" ] || return 1
-    is_nested "$pid" || return 1
-    printf '%s\n' "$pid"
-}
-
 # Every sway that is OURS, found by scanning rather than by trusting the pid
 # file — the file is written after the compositor is spawned, so anything that
 # interrupts start() in between (a failed preflight, a killed test run, a
@@ -197,6 +189,9 @@ EOF
         tail -15 "$SWAY_LOG" >&2
         return 1
     }
+    # A record for whoever is debugging a stuck run, NOT a source of truth:
+    # nothing reads it back, because reading it back is what let an orphaned
+    # compositor survive a `stop` that reported success. Reap by scan.
     printf '%s\n' "$pid" >"$PIDFILE"
 
     # wait for its IPC socket
