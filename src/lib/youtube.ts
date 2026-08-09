@@ -450,11 +450,32 @@ function fetchDisplayedThumbs() {
     }
 }
 
+/**
+ * What one account's sweep saw.
+ *
+ * `failures` rather than a bare "did it work": a sweep is one HTTP call
+ * per subscribed channel, and the interesting case is the partial one.
+ * Reporting only "did anything come back" made a sweep where 274 of 275
+ * channels 403'd on a quota day look like a clean success, because the
+ * one that answered put a video in the list — so the centre's ~50 rows
+ * were replaced by that single video and the failure backoff was reset.
+ * The caller needs both numbers to tell a complete picture from a
+ * fragment of one.
+ */
+interface SweepResult {
+    videos: ProviderItem[]
+    /** channel fetches that failed for a reason other than 404 (a 404 is
+     *  a deleted or private channel — an absence, not a failure) */
+    failures: number
+}
+
+/** a sweep that could not run at all (discovery failed with no cache) */
+const SWEEP_FAILED: SweepResult = { videos: [], failures: 1 }
+
 // every subscribed channel's latest uploads, merged
-function sweepAccount(account: GoogleAccount, cb: (videos: ProviderItem[] | null) => void) {
+function sweepAccount(account: GoogleAccount, cb: (result: SweepResult) => void) {
     const chs = channelsByAccount.get(account.email) ?? []
     const out: ProviderItem[] = []
-    let anyFailure = false
     let failures = 0
     let lastFailStatus = 0
     runPool(
@@ -472,7 +493,6 @@ function sweepAccount(account: GoogleAccount, cb: (videos: ProviderItem[] | null
                     } else if (!r.ok) {
                         // summarized once at sweep end: hundreds of
                         // identical warnings (e.g. a quota day) are spam
-                        anyFailure = true
                         failures++
                         lastFailStatus = r.status
                     } else {
@@ -500,7 +520,7 @@ function sweepAccount(account: GoogleAccount, cb: (videos: ProviderItem[] | null
                     `YouTube: ${account.email}: ${failures}/${chs.length} channel fetches failed (last status ${lastFailStatus || "network"})`,
                 )
             }
-            cb(out.length > 0 || !anyFailure ? out : null)
+            cb({ videos: out, failures })
         },
     )
 }
@@ -603,15 +623,23 @@ export function poll() {
         const seenIds = new Set<string>()
         let pending = accounts.length
         let failedAccounts = 0
-        const onAccountDone = (
-            account: (typeof accounts)[number],
-            videos: ProviderItem[] | null,
-        ) => {
-            // a totally failed sweep keeps that account's previous
-            // rows (transient errors must not blank the center);
-            // a successful one is authoritative, even when smaller
-            if (videos === null) failedAccounts++
-            for (const v of videos ?? prev.filter(p => itemAccounts.get(p.id) === account.email)) {
+        const onAccountDone = (account: (typeof accounts)[number], result: SweepResult) => {
+            const previous = () => prev.filter(p => itemAccounts.get(p.id) === account.email)
+            // Only a sweep that reached EVERY channel is a complete
+            // picture of the account, and only a complete picture may
+            // replace what is on screen. A partial sweep is additive
+            // instead: what it managed to see, unioned with the rows it
+            // could not re-verify. Dropping those would blank the centre
+            // on a transient error, which is exactly what this guards
+            // against — and taking the fragment as authoritative is how
+            // one surviving channel out of 275 used to do it.
+            const rows = result.failures === 0 ? result.videos : [...result.videos, ...previous()]
+            // the backoff is for an account that is genuinely down, not
+            // one flaky channel: escalate only when nothing came back at
+            // all. A partial sweep keeps its rows without lengthening
+            // the interval towards 8h
+            if (result.failures > 0 && result.videos.length === 0) failedAccounts++
+            for (const v of rows) {
                 if (seenIds.has(v.id)) continue
                 seenIds.add(v.id)
                 merged.push(v)
@@ -654,8 +682,8 @@ export function poll() {
             // discovery failed with no cache for this account: its sweep
             // can't run — treat it as a failed account, not an
             // authoritative empty success (an outage would look healthy)
-            if (failedDiscovery.has(account.email)) onAccountDone(account, null)
-            else sweepAccount(account, videos => onAccountDone(account, videos))
+            if (failedDiscovery.has(account.email)) onAccountDone(account, SWEEP_FAILED)
+            else sweepAccount(account, result => onAccountDone(account, result))
         }
     }
     const failedDiscovery = new Set<string>()
@@ -716,7 +744,6 @@ if (active) {
         displayName: "YouTube",
         items,
         refresh,
-        dispose,
         status,
         signIn: () => auth.authenticate(),
         signInVisible: auth.accounts.as(a => a.length === 0),
