@@ -103,7 +103,10 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
             keymode={Astal.Keymode.NONE}
             anchor={anchor}
             visible={false}
-            application={app}
+            // no `application={app}`: this window is per-monitor and is
+            // destroyed by the <For> in app.tsx when a monitor goes away,
+            // which is the #223 crash path. See the long note in
+            // widgets/bar/index.tsx — same reason, same fix.
             {...margin}
         >
             <revealer

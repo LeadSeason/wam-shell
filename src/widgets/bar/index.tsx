@@ -1,4 +1,3 @@
-import app from "ags/gtk4/app"
 import { Astal, Gtk, Gdk } from "ags/gtk4"
 
 import Config, { PanelConfig } from "../../config"
@@ -86,6 +85,26 @@ export default function Bar({
 }) {
     const { TOP, BOTTOM, LEFT, RIGHT } = Astal.WindowAnchor
 
+    // NO `application={app}` — deliberately, and it is load-bearing (#223).
+    //
+    // Setting it is what puts the window into the Gtk.Application, and
+    // that is the only reason `gtk_window_destroy` emits `window-removed`,
+    // which reaches `gtk_application_impl_wayland_window_forget` and
+    // segfaults on GTK 4.22's xdg-session-management (SEGV_MAPERR — the
+    // toplevel is already freed). Any monitor going away destroys this
+    // window through the per-monitor <For> in app.tsx, so an undock took
+    // the whole shell down.
+    //
+    // Reordering the teardown does not help: `set_application(null)`
+    // before `destroy()` emits `window-removed` too and crashes one frame
+    // earlier. Staying out of the app is the fix.
+    //
+    // What it costs: `app.get_window()` / `toggle_window()` cannot reach
+    // the bars (they all share name="bar" and are never toggled by name),
+    // and they no longer appear in `app.windows` — whose one consumer,
+    // popupFocus, asks `is_active`, which a layer surface with no keyboard
+    // interactivity is never true for. Windows the user actually focuses
+    // are still added explicitly in app.tsx.
     const win = (anchor: number, children: JSX.Element, extraClass = "") => (
         <window
             visible
@@ -97,7 +116,6 @@ export default function Bar({
             gdkmonitor={gdkMonitor}
             exclusivity={Astal.Exclusivity.EXCLUSIVE}
             anchor={anchor}
-            application={app}
             heightRequest={30}
         >
             {children}
