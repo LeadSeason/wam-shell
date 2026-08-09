@@ -1,0 +1,58 @@
+@use "active-theme" as t;
+@use "../conf.scss" as s;
+@use "../ui.scss" as u;
+
+window.SessionMenu {
+    background: transparent;
+    color: t.$text;
+
+    // A scrim, unlike every other popup in the shell, and it earns the
+    // exception: this is the one surface where a misread click logs you
+    // out. Dimming what is behind it says "this is modal" before the
+    // pointer has to work it out from the layout.
+    //
+    // On the box rather than the window — see the note at the widget:
+    // the window node's background only covered the card's own band.
+    .sessionScrim {
+        background-color: rgba(0, 0, 0, 0.35);
+    }
+
+    .sessionCard {
+        @include u.surface;
+        padding: s.$popup-padding;
+    }
+
+    .sessionTitle {
+        @include u.eyebrow;
+    }
+
+    // Tiles, not rows: six of them side by side, each a target you aim
+    // at rather than a line you read. The icon carries the meaning and
+    // the label confirms it, so both are centred over one another.
+    .sessionTile {
+        @include u.button-quiet(s.$gap-large);
+        // driven by the keyboard as often as the pointer — Escape and
+        // the arrows are wired up in the widget, and the ring is what
+        // makes that visible
+        @include u.focus-ring;
+        min-width: 84px;
+
+        label {
+            font-size: s.$font-small;
+        }
+
+        // The two that cannot be undone by waking the machine up. Warm
+        // on hover only: colouring them at rest would make the menu read
+        // as a warning, when five of the six are perfectly ordinary.
+        &.session-reboot:hover,
+        &.session-poweroff:hover {
+            background-color: t.$red30;
+            border-color: t.$red30;
+        }
+        &.session-reboot:active,
+        &.session-poweroff:active {
+            background-color: t.$red50;
+            border-color: t.$red50;
+        }
+    }
+}

@@ -98,6 +98,26 @@ class CommandRegistry {
         }
     }
 
+    /**
+     * Every registered command, in registration order.
+     *
+     * The launcher's palette renders this — which is the point of every
+     * entry carrying a `description`. Until now the only reader was
+     * `help`, which formats them into a wall of text for a terminal; the
+     * same list is what makes the shell's own commands searchable from
+     * inside the shell.
+     *
+     * A copy, not the live array: a caller iterating this must not be
+     * able to reorder or drop the registry's own entries.
+     */
+    list(): { name: string; aliases: string[]; description: string }[] {
+        return this.commands.map(cmd => ({
+            name: cmd.name[0],
+            aliases: [...cmd.name],
+            description: cmd.description ?? "",
+        }))
+    }
+
     help(argv: string[]): string {
         const command = argv.shift()
         if (command) {

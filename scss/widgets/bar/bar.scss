@@ -3,18 +3,53 @@
 @use "../../conf.scss" as s;
 @use "../../ui.scss" as u;
 
+// The bar's wash, derived from the theme rather than picked: $crust is
+// whatever the palette calls its deepest surface, with a warm and a cool
+// hue mixed into it. See the note at the gradient itself.
+$wash-warm: u.rgb-of(color.mix(t.$peach, t.$crust, 25%));
+$wash-cool: u.rgb-of(color.mix(t.$blue, t.$crust, 15%));
+
+// The bar's own fill: the theme base, a wash over it, and a grain
+// texture so a 30px slab of flat colour has something to catch the
+// light on. A mixin because the floating variant re-applies it after
+// `surface()`, whose background shorthand would otherwise drop the
+// image.
+@mixin bar-wash {
+    // solid theme base: translucency over the wallpaper washed
+    // text out
+    background-color: t.$base;
+    // Both gradient stops are the theme's own deepest surface with a hue
+    // mixed in, rather than colours of their own: the literal
+    // brown-to-navy this replaced was picked against one dark theme and
+    // applied to all six, which tinted both LIGHT themes a muddy blue
+    // that belonged to neither palette. Mixing into $crust keeps the
+    // wash dark on dark themes and light on light ones, where a vignette
+    // would just look like dirt.
+    background-image: url("./assets/grain.webp"),
+        radial-gradient(ellipse at bottom, rgba($wash-warm, 0.2), rgba($wash-cool, 0.3) 100%);
+}
+
 window.Bar {
     background: transparent;
     color: t.$text;
     transition-duration: s.$transition-time;
 
     >centerbox {
-        // solid theme base: translucency over the wallpaper washed
-        // text out
-        background-color: t.$base;
-        background-image: url("./assets/grain.webp"),
-            radial-gradient(ellipse at bottom, rgba(72, 40, 5, 0.2), rgba(2, 4, 66, 0.3) 100%);
+        @include bar-wash;
         transition: background-color s.$transition-slow;
+    }
+
+    // A floating panel: the same strip, pulled off the screen edge.
+    //
+    // The WINDOW stays full width and transparent, so its exclusive zone
+    // still covers the margin and nothing tucks in underneath — only the
+    // centerbox moves. It gets the shell's window silhouette, because
+    // that is what it now is: something drawn over the desktop rather
+    // than a border of it.
+    &.floating > centerbox {
+        @include u.surface(t.$base, s.$radius-large);
+        @include bar-wash;
+        margin: s.$bar-float-margin;
     }
 
     // outdoor mode: dark solid so the bar stays readable at 150% gamma
@@ -44,7 +79,7 @@ window.Bar {
     // .sysStats { margin-right: 12px; }
     // classes: .osIcon, workspaces, clock button, .sysStats, .sleepTimer, .trayItem,
     // .QSettings, .keyboardLayout, .swayNC, .media, .harvest, .brightness,
-    // .windowTitle, .batteryPercent
+    // .windowTitle, .batteryPercent, .recordingDot
 
     // the panel's plain widgets: no frame until the pointer arrives
     clock button,
@@ -58,6 +93,14 @@ window.Bar {
     .tray-attention {
         color: t.$accent;
         margin-left: 2px;
+    }
+
+    // A recording in progress. Red, and the one thing on the bar that is
+    // allowed to be: the failure mode this indicator exists for is
+    // forgetting a recording is running, so it has to read as a warning
+    // rather than as another status glyph.
+    .recordingDot {
+        color: t.$red;
     }
 
     // the panel's two pills: framed by default so they read as clickable

@@ -11,6 +11,7 @@ import {
     popupTimerVersion,
     removePopupDeferred,
     setPopupHovered,
+    snoozePopup,
 } from "../../lib/notifd"
 import Toast from "./Toast"
 import { fromDesktop, fromItem } from "./rowData"
@@ -117,6 +118,9 @@ export default function PopupRow({ group }: { group: PopupEntry[] }) {
             if (p.desktop) p.desktop.dismiss()
             else p.item!.dismiss()
         },
+        // snoozePopup does its own deferred removal — a second one here
+        // would race it for the same key
+        onSnooze: () => snoozePopup(p.key),
         onAction: (id: string) => {
             removePopupDeferred(p.key)
             if (p.desktop) {

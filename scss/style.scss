@@ -7,6 +7,8 @@
 @use "widgets/tooltip.scss";
 @use "widgets/QSettings.scss";
 @use "widgets/dialog.scss";
+@use "widgets/sessionMenu.scss";
+@use "widgets/launcher.scss";
 @use "widgets/osd.scss";
 @use "widgets/notifications.scss";
 @use "widgets/paneEmpty.scss";
@@ -21,7 +23,18 @@
 * {
     all: unset; // Unset all user provided style. Since we are
     font-family: s.$font-ui;
+    // Only the properties that carry FEEDBACK animate.
+    //
+    // GTK's default `transition-property` is `all`, so a bare duration
+    // here put every animatable property on every node on the same
+    // 200ms ramp — including sizes, margins and paddings. That is why a
+    // slider's fill trailed the pointer instead of tracking it, and why
+    // a revealer's contents arrived after the revealer did. Naming the
+    // four that should move leaves layout instant and keeps colour
+    // changes soft.
+    transition-property: background-color, border-color, color, opacity;
     transition-duration: s.$transition-time;
+    transition-timing-function: s.$ease;
 }
 
 // Everything the shell renders is prose EXCEPT the readouts below, where

@@ -138,6 +138,9 @@ usage: wam <command>
                    the log — with paths, usernames, emails and tokens
                    redacted. [--lines N] [--file [PATH]] [--copy]
   status           install, runtime and autostart state at a glance
+  doctor           check every runtime dependency and say what is missing,
+                   what it costs you, and the command that fixes it —
+                   exits non-zero when something the shell NEEDS is gone
   version          installed commit of the shell
 EOF
 }
@@ -1185,6 +1188,227 @@ cmd_report() {
     return 0
 }
 
+# --- doctor ---------------------------------------------------------------------
+#
+# `wam report` says what the state IS, for someone else to read.
+# `wam doctor` says what is WRONG, with the command that fixes it.
+#
+# They answer different questions and both are worth having: report is
+# for the issue tracker, doctor is for the ten minutes before opening
+# one. Nearly everything reported as "feature X does nothing" is a
+# missing runtime dependency — the shell talks to a dozen daemons and
+# helper binaries, each of which is optional right up until you use the
+# thing that needs it, and a missing one is silent by design.
+DOCTOR_FAILS=0
+DOCTOR_WARNS=0
+
+# ok = fine, warn = an optional feature is unavailable, fail = something
+# the shell needs to work at all
+d_ok() { printf '  \033[1;32mok\033[0m    %-22s %s\n' "$1" "${2:-}"; }
+d_warn() {
+    DOCTOR_WARNS=$((DOCTOR_WARNS + 1))
+    printf '  \033[1;33mwarn\033[0m  %-22s %s\n' "$1" "${2:-}"
+}
+d_fail() {
+    DOCTOR_FAILS=$((DOCTOR_FAILS + 1))
+    printf '  \033[1;31mfail\033[0m  %-22s %s\n' "$1" "${2:-}"
+}
+
+# a binary that must be there, and one that only matters for a feature
+d_need() {
+    local bin="$1" what="$2" fix="$3"
+    if command -v "$bin" >/dev/null; then
+        d_ok "$bin" "$(command -v "$bin")"
+    else
+        d_fail "$bin" "$what — $fix"
+    fi
+}
+d_want() {
+    local bin="$1" what="$2" fix="$3"
+    if command -v "$bin" >/dev/null; then
+        d_ok "$bin" "$(command -v "$bin")"
+    else
+        d_warn "$bin" "$what — $fix"
+    fi
+}
+
+# A GObject typelib the shell imports. Missing ones are the worst class
+# of failure here: the import throws at STARTUP, so the whole shell is
+# gone rather than one feature, and the traceback names a .typelib rather
+# than the package that ships it.
+d_typelib() {
+    local name="$1" pkg="$2"
+    local found=""
+    local dir
+    for dir in /usr/lib/girepository-1.0 /usr/lib64/girepository-1.0 \
+        /usr/local/lib/girepository-1.0 "${XDG_DATA_HOME:-$HOME/.local/share}/gir-1.0"; do
+        [[ -f "$dir/$name.typelib" ]] && found="$dir/$name.typelib" && break
+    done
+    if [[ -n "$found" ]]; then
+        d_ok "$name" "$found"
+    else
+        d_fail "$name" "typelib missing — install $pkg"
+    fi
+}
+
+cmd_doctor() {
+    local session="${XDG_CURRENT_DESKTOP:-${DESKTOP_SESSION:-unknown}}"
+
+    printf '\033[1m the shell itself\033[0m\n'
+    d_need ags "the shell will not start" "wam install"
+    d_need gjs "ags runs on it" "install gjs"
+    # sass is the one runtime dependency whose absence is invisible until
+    # the style cache goes cold — then the shell starts unstyled, which
+    # reads as broken rather than as a missing package
+    if command -v sass >/dev/null; then
+        d_ok sass "$(command -v sass)"
+    elif [[ -f "$LOG_DIR/style.css" ]]; then
+        d_warn sass "cached stylesheet still works; theme changes need it — install dart-sass"
+    else
+        d_fail sass "the shell will start UNSTYLED — install dart-sass, then: wam restart"
+    fi
+    # required even on non-sway sessions: the sway modules are imported
+    # at startup, so a missing typelib takes the whole shell down
+    d_typelib i3ipc-1.0 "i3ipc-glib (AUR: i3ipc-glib-git) — imported even on hyprland"
+    d_typelib Gtk4LayerShell-1.0 "gtk4-layer-shell"
+    d_typelib AstalIO-0.1 "astal-io"
+    d_typelib Astal-4.0 "astal4"
+
+    printf '\033[1m compositor\033[0m\n'
+    case "${session,,}" in
+        *hyprland*)
+            d_ok session "hyprland"
+            d_need hyprctl "workspaces, window title, screenshots" "install hyprland"
+            d_typelib AstalHyprland-0.1 "astal-hyprland"
+            d_want hyprsunset "night light and outdoor mode" "install hyprsunset"
+            ;;
+        *sway* | *i3*)
+            d_ok session "$session"
+            d_need swaymsg "workspaces, gaps, window title" "install sway"
+            ;;
+        *)
+            d_warn session "$session — workspaces and window title need hyprland, sway or i3"
+            ;;
+    esac
+
+    printf '\033[1m services the panel reads\033[0m\n'
+    d_typelib AstalWp-0.1 "astal-wireplumber (the volume slider and OSD)"
+    d_want wireplumber "audio: volume, per-device panes, the OSD" "install wireplumber"
+    if [[ -d /sys/class/power_supply ]] && compgen -G "/sys/class/power_supply/BAT*" >/dev/null; then
+        if command -v upowerd >/dev/null || [[ -S /run/dbus/system_bus_socket ]] &&
+            gdbus introspect --system --dest org.freedesktop.UPower \
+                --object-path /org/freedesktop/UPower &>/dev/null; then
+            d_ok upower "battery, charge estimates, the avatar ring"
+        else
+            d_fail upower "this machine HAS a battery and nothing reports it — install upower"
+        fi
+    else
+        d_ok battery "none — the header shows uptime and load instead"
+    fi
+    if gdbus introspect --system --dest net.hadess.PowerProfiles \
+        --object-path /net/hadess/PowerProfiles &>/dev/null ||
+        gdbus introspect --system --dest org.freedesktop.UPower.PowerProfiles \
+            --object-path /org/freedesktop/UPower/PowerProfiles &>/dev/null; then
+        d_ok power-profiles "power-profiles-daemon is answering"
+    else
+        d_warn power-profiles "the power profile tile will be empty — install power-profiles-daemon"
+    fi
+
+    printf '\033[1m notifications\033[0m\n'
+    local owner=""
+    owner="$(gdbus call --session --dest org.freedesktop.DBus \
+        --object-path /org/freedesktop/DBus \
+        --method org.freedesktop.DBus.GetNameOwner \
+        org.freedesktop.Notifications 2>/dev/null || true)"
+    if [[ -z "$owner" ]]; then
+        d_warn daemon "nobody owns org.freedesktop.Notifications — start the shell"
+    elif running; then
+        # Whether it is OURS cannot be read off the bus name, but the
+        # shell logs the answer at startup, and that is the line that
+        # matters: another daemon holding the name means the shell's own
+        # banners and centre are inert.
+        if wam_log_says "Notifications: using the system daemon"; then
+            d_warn daemon "another daemon owns notifications; the shell defers to it
+                          ([notifications] daemon = \"wam-shell\" to force ours)"
+        else
+            d_ok daemon "the shell is the notification daemon"
+        fi
+    else
+        d_ok daemon "owned (the shell is not running, so this is someone else's)"
+    fi
+
+    printf '\033[1m optional features\033[0m\n'
+    d_want cliphist "clipboard history (launcher \":\")" "install cliphist"
+    d_want wl-copy "clipboard history and screenshot copying" "install wl-clipboard"
+    if command -v cliphist >/dev/null; then
+        if pgrep -f "wl-paste.*cliphist" >/dev/null 2>&1; then
+            d_ok "cliphist store" "the watcher is running"
+        else
+            d_warn "cliphist store" "nothing is recording — add to the compositor config:
+                          exec-once = wl-paste --watch cliphist store"
+        fi
+    fi
+    d_want grim "screenshots" "install grim"
+    d_want slurp "region screenshots and recordings" "install slurp"
+    d_want wf-recorder "screen recording" "install wf-recorder"
+    # Captured, not piped into `grep -q`. This script runs under
+    # `set -o pipefail`, and a -q grep closes the pipe on its first
+    # match — fc-list then dies of SIGPIPE and the whole pipeline
+    # reports failure. It reported the font missing on a machine that
+    # had it installed, which is precisely the wrong answer for a
+    # command whose entire job is telling you what is missing.
+    local families
+    families="$(fc-list : family 2>/dev/null || true)"
+    if [[ "${families,,}" == *"symbols nerd font"* ]]; then
+        d_ok fonts "Symbols Nerd Font is installed"
+    else
+        d_warn fonts "the bar's glyphs will be boxes — run: wam install"
+    fi
+
+    printf '\033[1m service integrations\033[0m\n'
+    # Presence only. Never the contents, and never a verification call:
+    # `wam doctor` is a thing people paste into issues.
+    local cfg_dir
+    cfg_dir="${XDG_CONFIG_HOME:-$HOME/.config}/wam-shell"
+    local svc
+    for svc in github todoist protonmail google harvest; do
+        if [[ -f "$cfg_dir/$svc.env" ]]; then
+            d_ok "$svc.env" "present"
+        else
+            d_ok "$svc.env" "absent (that provider stays off)"
+        fi
+    done
+
+    printf '\n'
+    if ((DOCTOR_FAILS > 0)); then
+        printf '\033[1;31m%d problem(s)\033[0m and %d warning(s). The fails are what to fix first.\n' \
+            "$DOCTOR_FAILS" "$DOCTOR_WARNS"
+        return 1
+    fi
+    if ((DOCTOR_WARNS > 0)); then
+        printf '\033[1;33mNo problems, %d optional feature(s) unavailable.\033[0m\n' "$DOCTOR_WARNS"
+        return 0
+    fi
+    printf '\033[1;32mEverything the shell can use is installed.\033[0m\n'
+    return 0
+}
+
+# grep the shell's log for a startup line, wherever this start method put
+# it. Used by doctor to read answers the shell already worked out at
+# startup rather than re-deriving them here and disagreeing.
+wam_log_says() {
+    local needle="$1" loc tail=""
+    loc="$(log_location)"
+    # captured rather than piped into `grep -q`, for the SIGPIPE reason
+    # spelled out at the font check above
+    if [[ "$loc" == journal:* ]]; then
+        tail="$(journalctl --user -u "${loc#journal:}" -n 200 --no-pager 2>/dev/null || true)"
+    elif [[ -f "$loc" ]]; then
+        tail="$(tail -n 200 "$loc" 2>/dev/null || true)"
+    fi
+    [[ "$tail" == *"$needle"* ]]
+}
+
 cmd_version() {
     if [[ ! -d "$ROOT/.git" ]]; then
         echo "wam-shell: not installed"
@@ -1307,6 +1531,7 @@ case "${1:-}" in
         cmd_config "$@"
         ;;
     status) cmd_status ;;
+    doctor) cmd_doctor ;;
     logs)
         shift
         cmd_logs "$@"
