@@ -174,6 +174,62 @@ prints — and passes arguments through, so `>sleep-timer 30` works
 without remembering which keybind you gave it. `:` switches it to the
 clipboard history.
 
+### Keybinds
+
+None of these are bound for you — the shell does not touch your
+compositor config, so nothing it can do has a key until you give it one.
+A starting set, which is what the surfaces were designed around:
+
+```conf
+# ~/.config/hypr/hyprland.conf
+bind = SUPER, D, exec, ags request -i wam-shell launcher
+bind = SUPER, Escape, exec, ags request -i wam-shell session
+bind = SUPER, N, exec, ags request -i wam-shell notifications
+bind = SUPER, S, exec, ags request -i wam-shell qSettings
+bind = SUPER SHIFT, V, exec, ags request -i wam-shell clipboard
+bind = SUPER SHIFT, C, exec, ags request -i wam-shell keep-awake
+bind = SUPER SHIFT, R, exec, ags request -i wam-shell record
+bind = , Print, exec, ags request -i wam-shell "screenshot region"
+bind = SUPER, Print, exec, ags request -i wam-shell "screenshot window"
+bind = SHIFT, Print, exec, ags request -i wam-shell "screenshot screen"
+```
+
+```conf
+# ~/.config/sway/config
+bindsym $mod+d exec ags request -i wam-shell launcher
+bindsym $mod+Escape exec ags request -i wam-shell session
+bindsym $mod+n exec ags request -i wam-shell notifications
+bindsym $mod+s exec ags request -i wam-shell qSettings
+bindsym $mod+Shift+v exec ags request -i wam-shell clipboard
+bindsym $mod+Shift+c exec ags request -i wam-shell keep-awake
+bindsym $mod+Shift+r exec ags request -i wam-shell record
+bindsym Print exec ags request -i wam-shell "screenshot region"
+bindsym $mod+Print exec ags request -i wam-shell "screenshot window"
+bindsym Shift+Print exec ags request -i wam-shell "screenshot screen"
+```
+
+Four notes on these:
+
+- **`-i wam-shell` is the instance name**, not a fixed string. If you set
+  `instance_name` in the config, every one of these has to match it.
+  `ags request` does say so (`error: instance "…" is not runnning`), but
+  a keybind's stderr goes to the compositor's log, so from the keyboard
+  the bind simply does nothing.
+- **A request is a toggle where the surface is one.** Pressing the
+  launcher bind while the launcher is up closes it; pressing the
+  clipboard bind while it is up in app mode *switches* it to the
+  clipboard rather than dismissing it, so the bind you pressed is the
+  one that answers.
+- **`record` needs no second bind to stop.** The same request stops a
+  running recording — and stopping it is what finalises the file, so
+  reach for the key rather than for `pkill`.
+- **`clipboard` needs cliphist** and a recorder running:
+  `exec-once = wl-paste --watch cliphist store` on Hyprland,
+  `exec wl-paste --watch cliphist store` on sway. The shell deliberately
+  does not start it for you — silently recording everything you copy is
+  not a thing to switch on for someone. `wam doctor` reports whether it
+  is running.
+
 ## Documentation
 
 | | |
