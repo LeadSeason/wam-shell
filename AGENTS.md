@@ -148,6 +148,23 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   `lib/styleCompile.ts` is display-free so `wam install`/`update` can
   precompile it (`scripts/precompile-style.ts`), and `lib/style.ts` only
   decides when to compile and applies the result.
+- **A button nested inside a button gets no click — the OUTER one fires.**
+  Measured both ways with a synthetic click on a plain window: with a box
+  root, clicking an inner button fires only that button; with a button
+  root, clicking the inner button fires only the ROW. Reasoning about it
+  the other way round (that the inner button "claims" the sequence) is
+  what shipped an inert × in the notification centre. The fix is to claim
+  the sequence explicitly, in the CAPTURE phase, on the inner button:
+
+      <Gtk.GestureClick button={1}
+          propagationPhase={Gtk.PropagationPhase.CAPTURE}
+          onPressed={g => g.set_state(Gtk.EventSequenceState.CLAIMED)} />
+
+  Clicking the row BODY still activates it. Both halves are worth
+  re-checking whenever a button gains a button child — and they are
+  checkable: drive the real widget in a nested compositor, where
+  `swaymsg seat - cursor set/press` synthesises the click in the same
+  coordinate space the shell is rendering into.
 - **A fullscreen layer-shell window does not paint its own background.**
   The compositor sizes the SURFACE, but GTK still allocates the window's
   content by natural size, so `window.Foo { background-color: … }` on an
