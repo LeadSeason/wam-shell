@@ -16,6 +16,9 @@ WAM_BIN="$HOME/.local/bin/wam"
 # just before dispatch — see resolve_instance_paths() at the bottom.
 INSTANCE="wam-shell"
 LOG_DIR="$HOME/.cache/wam-shell"
+# set by compile_style when dart-sass is absent, so `wam install` can say
+# so at the END, where it is read, rather than only mid-run
+SASS_MISSING=0
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() {
@@ -71,7 +74,16 @@ pnpm_install() {
 # first run, it just pays for it there.
 compile_style() {
     command -v ags >/dev/null || return 0
-    command -v sass >/dev/null || { log "sass not found — skipping style precompile"; return 0; }
+    # Not a quiet skip. Without sass there is no stylesheet at all on a
+    # cold cache, so the shell's first start is UNSTYLED -- which reads
+    # as a broken install, not a missing package. This used to scroll
+    # past mid-install among the pnpm output; it is repeated at the end
+    # of `wam install` where it can be seen, and `wam status` reports it.
+    if ! command -v sass >/dev/null; then
+        SASS_MISSING=1
+        log "WARNING: dart-sass not found — the shell will start UNSTYLED"
+        return 0
+    fi
     [[ -f "$ROOT/scripts/precompile-style.ts" ]] || return 0
 
     local tmp
@@ -273,6 +285,14 @@ cmd_install() {
         *":$HOME/.local/bin:"*) ;;
         *) log "NOTE: ~/.local/bin is not on PATH" ;;
     esac
+    if ((SASS_MISSING)); then
+        printf '\033[1;33mwarning:\033[0m %s\n' \
+            "dart-sass is not installed, so no stylesheet could be built and the
+  shell will start UNSTYLED. Install it and restart:
+    arch:   sudo pacman -S dart-sass
+    fedora: see https://github.com/sass/dart-sass/releases
+  then: wam restart" >&2
+    fi
     log "Done. Start now with: wam start — or autostart on login: wam autostart enable"
     log "The shell now lives in $ROOT; the clone may be deleted."
 }
@@ -838,6 +858,20 @@ cmd_status() {
     printf 'autostart: %s / %s\n' \
         "$(systemctl --user is-enabled "$SERVICE" 2>&1 || true)" \
         "$(systemctl --user is-active "$SERVICE" 2>&1 || true)"
+    # sass is a RUNTIME dependency of a desktop shell, and its absence is
+    # invisible until the stylesheet cache goes cold — then the shell
+    # starts unstyled, which reads as broken rather than as a missing
+    # package. Name it here, where someone looking at a wrong-looking
+    # shell will actually see it.
+    if command -v sass >/dev/null; then
+        printf 'sass:      %s\n' "$(command -v sass)"
+    elif [[ -f "$LOG_DIR/style.css" ]]; then
+        printf 'sass:      NOT INSTALLED — the cached stylesheet still works, but\n'
+        printf '           any style or theme change needs it (arch: dart-sass)\n'
+    else
+        printf 'sass:      NOT INSTALLED and no cached stylesheet — the shell will\n'
+        printf '           start UNSTYLED. install dart-sass, then: wam restart\n'
+    fi
 }
 
 # The shell logs to two different places depending on how it was

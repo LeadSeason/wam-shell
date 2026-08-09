@@ -202,6 +202,14 @@ export function dayKey(ms: number): string {
     return `${d.getFullYear()}-${mo}-${dy}`
 }
 
+// NB: on a spring-forward date in a zone that transitions AT midnight,
+// this instant does not exist and JS resolves it to 01:00 — so an
+// all-day event starting on such a date gets a startMs an hour late.
+// Harmless as things stand, because dayKey() re-derives the calendar day
+// from the timestamp and lands on the right one either way, and nothing
+// renders an all-day event's clock time. Called out because the DST
+// handling in eventDays() right below is careful and commented, and a
+// reader will otherwise assume this line got the same treatment.
 function localMidnight(y: number, m: number, d: number): number {
     return new Date(y, m, d).getTime()
 }

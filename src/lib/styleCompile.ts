@@ -173,6 +173,13 @@ export function cssIsFresh(userScss: string): boolean {
     }
 }
 
+/** is dart-sass on PATH at all? The difference between "your scss is
+ *  broken" and "the compiler is missing", which the caller reports
+ *  differently because the fixes are nothing alike. */
+export function sassAvailable(): boolean {
+    return GLib.find_program_in_path("sass") !== null
+}
+
 /** blocking compile. Returns false when sass could not be run at all. */
 export function compileSync(): boolean {
     try {

@@ -28,6 +28,15 @@ export { newArrivals }
 // ENVELOPE → LOGOUT per poll) for one poll interval, then retries
 // IDLE; a server that refuses IDLE polls permanently. Both paths share
 // the same login/search/fetch/parse code (ImapSession).
+//
+// WHY THIS IS HAND-ROLLED, so nobody spends an afternoon finding out:
+// there is no IMAP library to use here. imapflow, node-imap and every
+// other JS client is built on `node:net`, which GJS does not have and
+// esbuild cannot shim into a Gio socket — the whole transport is the
+// part that would have to be replaced, which is the part a library is
+// for. The parsing helpers below are pure and tested; the transport is
+// Gio streams because that is the only option, not because a library
+// was overlooked.
 
 const WEBMAIL = "https://mail.proton.me/u/0/inbox"
 const MAX_ITEMS = 20
