@@ -45,12 +45,21 @@ is_nested() {
     tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | grep -qF -- "$CONFIG"
 }
 
-nested_pid() {
+# Every sway that is OURS, found by scanning rather than by trusting the pid
+# file — the file is written after the compositor is spawned, so anything that
+# interrupts start() in between (a failed preflight, a killed test run, a
+# sandbox where the cleanup itself could not run) orphans a compositor that
+# `stop` then cannot see. Found exactly that way: a nested sway from a failed
+# run was still up half an hour later, and `stop` reported success because the
+# pid file it reads had been cleaned up around it.
+#
+# is_nested is what makes the scan safe: it matches on OUR config path in the
+# process's argv, so a real sway session can never be selected.
+nested_pids() {
     local pid
-    pid=$(cat "$PIDFILE" 2>/dev/null) || return 1
-    [ -n "$pid" ] || return 1
-    is_nested "$pid" || return 1
-    printf '%s\n' "$pid"
+    for pid in $(pgrep -x sway 2>/dev/null); do
+        is_nested "$pid" && printf '%s\n' "$pid"
+    done
 }
 
 # The socket to drive, verified rather than trusted: it must be the one our own
@@ -180,6 +189,9 @@ EOF
         tail -15 "$SWAY_LOG" >&2
         return 1
     }
+    # A record for whoever is debugging a stuck run, NOT a source of truth:
+    # nothing reads it back, because reading it back is what let an orphaned
+    # compositor survive a `stop` that reported success. Reap by scan.
     printf '%s\n' "$pid" >"$PIDFILE"
 
     # wait for its IPC socket
@@ -246,8 +258,10 @@ EOF
 
 stop() {
     ags quit -i "$INSTANCE" 2>/dev/null
+
+    # by scan, not by pid file: see nested_pids
     local pid
-    if pid=$(nested_pid); then
+    for pid in $(nested_pids); do
         kill "$pid" 2>/dev/null
         local i=0
         while [ "$i" -lt 25 ] && is_nested "$pid"; do
@@ -255,7 +269,7 @@ stop() {
             sleep 0.2
         done
         is_nested "$pid" && kill -9 "$pid" 2>/dev/null
-    fi
+    done
 
     # Wait for the INSTANCE to go too, not just the compositor. The shell
     # outlives its wayland connection by a moment, and `stop` returning early
