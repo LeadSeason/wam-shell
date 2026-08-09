@@ -272,6 +272,8 @@ pnpm start            # restart the shell from this checkout
 pnpm typecheck        # scoped tsc over src/lib, src/config.ts, tests
 pnpm test             # unit suite, bundled and run under gjs
 pnpm test:smoke       # boots an isolated instance, asserts a clean start
+pnpm test:smoke:sway  # the same inside a nested sway (needs sway installed)
+pnpm verify:scss      # compile every theme, through GTK's own CSS parser
 pnpm perf             # A/B perf comparison against the merge-base
 ```
 

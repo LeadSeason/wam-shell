@@ -22,6 +22,7 @@
     "verify:scss": "bash scripts/verify-scss.sh",
     "test": "bash tests/run.sh",
     "test:smoke": "bash tests/smoke.sh",
+    "test:smoke:sway": "bash tests/smoke-sway.sh",
     "test:perf": "bash tests/perf/run.sh",
     "perf": "bash tests/perf/compare.sh",
     "perf:install-hook": "bash tests/perf/install-hook.sh"
