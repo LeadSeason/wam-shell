@@ -12,10 +12,10 @@ import { isPinned } from "../../lib/trayPinned"
 import { acquireHyprsunsetWatch } from "../../lib/hyprsunset"
 import { hideOnFocusLoss } from "../../lib/popupFocus"
 import { closeOtherPopups, registerPopup } from "../../lib/exclusivePopups"
-import { idleAdd } from "../../lib/metrics"
+import { idleAdd, sourceRemove } from "../../lib/metrics"
 import { pressable } from "../pressable"
 
-import { createBinding, createState } from "gnim"
+import { createBinding, createState, onCleanup } from "gnim"
 import { hookPlayers } from "../../lib/mpris"
 import { ToggleSection } from "./toggleSection"
 import { HeaderSection } from "./HeaderSection"
@@ -107,13 +107,22 @@ export default function QSettings() {
     // main into one settle.
     const [paneSettled, setPaneSettled] = createState("main")
     let settleSource: number | null = null
-    pane.subscribe(() => {
-        if (settleSource !== null) return
-        settleSource = idleAdd("qs:pane-settled", GLib.PRIORITY_DEFAULT_IDLE, () => {
+    onCleanup(
+        pane.subscribe(() => {
+            if (settleSource !== null) return
+            settleSource = idleAdd("qs:pane-settled", GLib.PRIORITY_DEFAULT_IDLE, () => {
+                settleSource = null
+                setPaneSettled(pane.get())
+                return GLib.SOURCE_REMOVE
+            })
+        }),
+    )
+    // the idle above outlives the subscription it was armed from
+    onCleanup(() => {
+        if (settleSource !== null) {
+            sourceRemove(settleSource)
             settleSource = null
-            setPaneSettled(pane.get())
-            return GLib.SOURCE_REMOVE
-        })
+        }
     })
 
     // The floor a short pane (wired, vpn) is held at, so navigating
@@ -337,6 +346,17 @@ export default function QSettings() {
                             $={self => {
                                 paneStack = self
                                 self.visibleChildName = "main"
+                                // Not wrapped in onCleanup, unlike the
+                                // pane subscription in the component
+                                // body: this runs inside a widget-ref
+                                // callback, which is not setup scope.
+                                // Safe because QSettings is a
+                                // session-lifetime singleton — one
+                                // window, built once in app.tsx, never
+                                // per-monitor and never rebuilt. If that
+                                // ever changes, this leaks one
+                                // subscription per rebuild with nothing
+                                // to point at.
                                 // subscribe callbacks receive no value, read it
                                 pane.subscribe(() => {
                                     const target = pane.get()
