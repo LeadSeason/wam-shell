@@ -158,17 +158,18 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   natural width at the START edge, so `halign: CENTER` alone centres it
   inside a cell that is already exactly its own width — it needs
   `hexpand` too, or it stays pinned left.
-- **No gate compiles the scss, so verify it by hand and verify it for
-  every theme.** Compile `style.scss` once per file in `scss/theme/`
-  (copy it in as `active-theme.scss`, and generate an `active-tuning.scss`
-  — `lib/styleCompile.ts` writes both), then load each result through
-  GTK's own parser (`Gtk.CssProvider.load_from_path` + the
-  `parsing-error` signal) and diff the selector sets against the previous
-  run. Two things this catches that reading the diff does not: a rule GTK
-  silently drops, and a **dart-sass deprecation** — those go to stderr
-  with a zero exit, so a compile that "succeeded" can still print two
-  warnings into the user's log on every single start (the `if()` function
-  did exactly that).
+- **No gate compiles the scss. `pnpm verify:scss` does** — run it after
+  touching anything under `scss/`. It compiles `style.scss` once per
+  theme (generating the `active-theme.scss` and `active-tuning.scss` that
+  `lib/styleCompile.ts` writes at runtime) and loads each result through
+  GTK's own parser, so it catches a rule GTK silently drops and a theme
+  that broke while the one you happen to be running is fine. It also
+  treats a **dart-sass deprecation as a failure**: those go to stderr
+  with a zero exit, so a compile that "succeeded" can still print
+  warnings into the user's log on every single start — the `if()`
+  function did exactly that. Pass an output directory to keep the
+  compiled css and a selector set per theme; a change meant to alter
+  values and not structure should show an empty selector diff.
 - Icons: always prefer symbolic icon names (`-symbolic`) over
   full-color ones wherever possible. `pan-down`/`pan-up` is an expander,
   `go-next`/`go-previous` is navigation — don't mix them, and never give
