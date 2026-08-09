@@ -201,12 +201,26 @@ EOF
     # the real screens — stop before anything is dispatched at it. The failure
     # is otherwise silent: it starts, the tests pass, and the only symptom is
     # the session misbehaving later for no visible reason.
-    local physical
-    physical=$(ctl -t get_outputs -r 2>/dev/null |
-        python3 -c 'import json,sys
-try: outs=json.load(sys.stdin)
-except Exception: outs=[]
-print(" ".join(o["name"] for o in outs if not o["name"].startswith(("WL-","HEADLESS-"))))' 2>/dev/null)
+    #
+    # It fails CLOSED. An unparseable answer, or no jq to parse it with, means
+    # the check did not run — and a safety check that cannot run must not
+    # report "nothing physical here", which is exactly what an empty result
+    # from a missing parser looks like.
+    command -v jq >/dev/null || {
+        echo "jq is required to verify the nested outputs — refusing to continue" >&2
+        stop
+        return 1
+    }
+    local outputs physical
+    outputs=$(ctl -t get_outputs -r 2>/dev/null)
+    if ! printf '%s' "$outputs" | jq -e 'type == "array"' >/dev/null 2>&1; then
+        echo "could not read the nested sway's outputs — refusing to continue" >&2
+        stop
+        return 1
+    fi
+    physical=$(printf '%s' "$outputs" |
+        jq -r '.[] | select(.name | (startswith("WL-") or startswith("HEADLESS-")) | not) | .name' |
+        tr '\n' ' ')
     if [ -n "${physical// /}" ]; then
         echo "refusing to continue: nested sway opened physical output(s): $physical" >&2
         echo "the DRM backend came up — WLR_BACKENDS/LIBSEAT_BACKEND are not taking effect" >&2
