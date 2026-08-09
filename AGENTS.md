@@ -361,6 +361,17 @@ neither is worth an auth URL that comes out shuffled between runs.
   to make a gate green makes the code worse and hides the next real one.
   If the JSX typings improve upstream, widen `COVERED` in
   `scripts/typecheck.sh` instead.
+- **One error code is reported everywhere, `src/widgets` included:
+  TS2304, "Cannot find name."** The scope exists because incomplete JSX
+  prop typings produce false positives about things that work at
+  runtime; an identifier that does not exist is the opposite — a
+  `ReferenceError` the moment the line runs, which no typing gap can
+  explain away. Issue #229 was four of these in the sway workspaces
+  widget, left behind when a refactor deleted a declaration and kept its
+  uses: the widget threw on construction for every sway and i3 user, and
+  every gate was green, because the smoke test only ever boots on the
+  developer's own compositor. Add an error code to `ALWAYS` only when it
+  has that property — a runtime failure that cannot be a false positive.
 - Because the scope is narrow, `tsconfig.json` can afford to be stricter
   than `strict`: `noUnusedLocals`, `noUnusedParameters` and
   `noFallthroughCasesInSwitch` are on. An intentionally unused parameter
