@@ -1,11 +1,9 @@
 import { Gtk, Gdk } from "ags/gtk4"
 import GdkPixbuf from "gi://GdkPixbuf?version=2.0"
-import Graphene from "gi://Graphene?version=1.0"
 import Pango from "gi://Pango?version=1.0"
-import { Accessor, createState, onCleanup } from "gnim"
+import { Accessor, createComputed, createState } from "gnim"
 import { rtlAlign, safeMarkup } from "../../lib/utils"
 import { relTime, nowSec } from "../../lib/relTime"
-import { paintPress } from "../pressable"
 import type { RowData } from "./rowData"
 
 // The center's row — a browsing surface, where the banner is a glancing
@@ -92,215 +90,258 @@ export default function CenterRow({
         if (rtl) self.set_direction(Gtk.TextDirection.RTL)
     }
 
-    let row: Gtk.Box | null = null
-    const buttons: Gtk.Widget[] = []
-    let pressOnButton = false
-    onCleanup(() => {
-        row = null
-    })
-
     // the dismiss button appears on hover. Driven by a motion controller
     // rather than CSS :hover — layer-shell surfaces don't get reliable
     // :hover state
     const [hovered, setHovered] = createState(false)
+    // ...and on focus, so the strip exists for the keyboard too. One
+    // accessor for both: every `visible` below is asking "is this the row
+    // being dealt with", and pointer or keyboard is the same answer
+    const [focused, setFocused] = createState(false)
+    const active = createComputed([hovered, focused], (h, f) => h || f)
+
+    // Delete dismisses. Enter and Space are the button's own activation,
+    // which is the entire reason the root below is a button.
+    const onKey = (_e: Gtk.EventControllerKey, keyValue: number) => {
+        if (keyValue === Gdk.KEY_Delete || keyValue === Gdk.KEY_BackSpace) {
+            onDismiss()
+            return true
+        }
+        return false
+    }
 
     return (
-        <box
-            $={self => {
-                row = self
-                mirror(self)
-            }}
+        // A BUTTON, not a box, and the reason is keyboard reach: GTK4 will
+        // not put a plain box in the focus chain however focusable you
+        // mark it (`gtk_widget_set_focusable` alone is not enough —
+        // measured: `child_focus(TAB_FORWARD)` returns false for a
+        // focusable box and true for a button, mapped or not). The centre
+        // could be OPENED from the keyboard and then not read with it:
+        // Tab skipped every row in the list.
+        //
+        // Three hacks left with the box, and that is the tell that this is
+        // the right shape rather than a workaround:
+        //
+        //   - `paintPress` — a button has :active natively. The manual
+        //     painting existed only because a box gets none.
+        //   - the press hit-test against a `buttons` array — a nested
+        //     button claims the click sequence itself, so the row no
+        //     longer has to work out whether the press was really meant
+        //     for Dismiss.
+        //   - activation on release — that is what a button does.
+        <button
+            $={self => mirror(self)}
             cssClasses={["centerRow", data.urgency, ...(rtl ? ["rtl"] : [])]}
+            onClicked={onActivate}
+            onNotifyHasFocus={self => setFocused(self.has_focus)}
         >
             <Gtk.EventControllerMotion
                 onEnter={() => setHovered(true)}
                 onLeave={() => setHovered(false)}
             />
-            <Gtk.GestureClick
-                button={1}
-                onPressed={(g, _n, x, y) => {
-                    pressOnButton = buttons.some(w => {
-                        if (!row) return false
-                        const [, rect] = w.compute_bounds(row)
-                        return rect.contains_point(new Graphene.Point({ x, y }))
-                    })
-                    // the row is a box, so GTK paints no press for it
-                    // (see pressable) — and it acts on RELEASE, which
-                    // left the whole click unanswered until whatever
-                    // the notification opens got around to appearing.
-                    // Not on the row's own buttons: those are real
-                    // buttons, and GTK already propagates their :active
-                    // up into the row (measured), so the row lights
-                    // either way — a second flag would only be one this
-                    // handler then has to remember to clear
-                    if (!pressOnButton) paintPress(g, true)
-                }}
-                onReleased={g => {
-                    paintPress(g, false)
-                    if (!pressOnButton) onActivate()
-                }}
-                onCancel={g => paintPress(g, false)}
-                onEnd={g => paintPress(g, false)}
-            />
+            <Gtk.EventControllerKey onKeyPressed={onKey} />
+            {/* the button consumes primary; these two are still ours */}
             <Gtk.GestureClick button={3} onReleased={() => (onSecondary ?? onDismiss)()} />
             <Gtk.GestureClick button={2} onReleased={onDismiss} />
 
-            {/* the urgency mark, inset rather than a border on the row —
-            as a border it forced the row's corners square and made the
-            one urgent item the only differently shaped thing in the
-            list. Same reasoning as the banner's spine */}
-            {data.urgency === "critical" && <box cssClasses={["spine"]} />}
-            <box orientation={Gtk.Orientation.VERTICAL} spacing={4} hexpand>
-                <box spacing={8} $={mirror}>
-                    <image
-                        cssClasses={["appIcon"]}
-                        iconName={data.iconName}
-                        pixelSize={16}
-                        valign={Gtk.Align.START}
-                    />
-                    <box orientation={Gtk.Orientation.VERTICAL} spacing={1} hexpand>
-                        <box spacing={6} $={mirror}>
-                            <label
-                                cssClasses={["appName"]}
-                                label={data.appName || "unknown"}
-                                xalign={0}
-                                maxWidthChars={20}
-                                ellipsize={Pango.EllipsizeMode.END}
-                            />
-                            <label hexpand />
-                            {/* the age and the dismiss button share one slot,
+            {/* A button takes ONE child, where the box took as many as
+            it was given — so the spine and the content are wrapped
+            together here rather than being siblings of the root. */}
+            <box $={mirror} hexpand>
+                {/* the urgency mark, inset rather than a border on the row
+                — as a border it forced the row's corners square and made
+                the one urgent item the only differently shaped thing in
+                the list. Same reasoning as the banner's spine */}
+                {data.urgency === "critical" && <box cssClasses={["spine"]} />}
+                <box orientation={Gtk.Orientation.VERTICAL} spacing={4} hexpand>
+                    <box spacing={8} $={mirror}>
+                        <image
+                            cssClasses={["appIcon"]}
+                            iconName={data.iconName}
+                            pixelSize={16}
+                            valign={Gtk.Align.START}
+                        />
+                        <box orientation={Gtk.Orientation.VERTICAL} spacing={1} hexpand>
+                            <box spacing={6} $={mirror}>
+                                <label
+                                    cssClasses={["appName"]}
+                                    label={data.appName || "unknown"}
+                                    xalign={0}
+                                    maxWidthChars={20}
+                                    ellipsize={Pango.EllipsizeMode.END}
+                                />
+                                <label hexpand />
+                                {/* the age and the dismiss button share one slot,
                         so hovering a row cannot shift the list under the
                         pointer */}
-                            {/* a muted app still collects rows here —
+                                {/* a muted app still collects rows here —
                             that is the point of muting rather than
                             blocking — so the list has to say which ones
                             will not interrupt again */}
-                            {appMuted && (
-                                <image
-                                    cssClasses={["mutedMark"]}
-                                    iconName="notifications-disabled-symbolic"
-                                    pixelSize={12}
-                                    visible={appMuted}
-                                    tooltipText={`${data.appName} is muted`}
+                                {appMuted && (
+                                    <image
+                                        cssClasses={["mutedMark"]}
+                                        iconName="notifications-disabled-symbolic"
+                                        pixelSize={12}
+                                        visible={appMuted}
+                                        tooltipText={`${data.appName} is muted`}
+                                    />
+                                )}
+                                <label
+                                    cssClasses={["time"]}
+                                    label={nowSec.as(n => relTime(data.time, n))}
+                                    visible={active.as(a => !a)}
                                 />
-                            )}
-                            <label
-                                cssClasses={["time"]}
-                                label={nowSec.as(n => relTime(data.time, n))}
-                                visible={hovered.as(h => !h)}
-                            />
-                            {/* Beside Dismiss rather than behind a
+                                {/* Beside Dismiss rather than behind a
                             right-click, because both of this row's
                             spare buttons are already spoken for
                             (secondary and middle both dismiss) — and a
                             mute nobody can find is a mute nobody
                             uses. */}
-                            {onMuteApp && (
+                                {onMuteApp && (
+                                    <button
+                                        cssClasses={["muteApp"]}
+                                        visible={active}
+                                        tooltipText={appMuted?.as(m =>
+                                            m
+                                                ? `Let ${data.appName} interrupt again`
+                                                : `Stop ${data.appName} interrupting`,
+                                        )}
+                                        onClicked={onMuteApp}
+                                    >
+                                        {/* A click on a button nested inside a button reaches the
+                                        OUTER one, not this: measured, both ways round, with a
+                                        synthetic click on a plain window — the row activated and
+                                        Dismiss never fired, which is how the first attempt at this
+                                        shipped an inert ×. Claiming the sequence in the CAPTURE
+                                        phase is what stops it: the press is taken before the outer
+                                        button's gesture sees it, so this button gets its click and
+                                        the row does not activate. Clicking the row BODY still
+                                        activates it — also measured. */}
+                                        <Gtk.GestureClick
+                                            button={1}
+                                            propagationPhase={Gtk.PropagationPhase.CAPTURE}
+                                            onPressed={(g: Gtk.GestureClick) =>
+                                                g.set_state(Gtk.EventSequenceState.CLAIMED)
+                                            }
+                                        />
+                                        <image
+                                            iconName={
+                                                appMuted?.as(m =>
+                                                    m
+                                                        ? "preferences-system-notifications-symbolic"
+                                                        : "notifications-disabled-symbolic",
+                                                ) ?? "notifications-disabled-symbolic"
+                                            }
+                                        />
+                                    </button>
+                                )}
                                 <button
-                                    $={self => {
-                                        buttons.push(self)
-                                    }}
-                                    cssClasses={["muteApp"]}
-                                    visible={hovered}
-                                    tooltipText={appMuted?.as(m =>
-                                        m
-                                            ? `Let ${data.appName} interrupt again`
-                                            : `Stop ${data.appName} interrupting`,
-                                    )}
-                                    onClicked={onMuteApp}
+                                    cssClasses={["dismiss"]}
+                                    visible={active}
+                                    tooltipText={dismissLabel}
+                                    onClicked={onDismiss}
                                 >
-                                    <image
-                                        iconName={
-                                            appMuted?.as(m =>
-                                                m
-                                                    ? "preferences-system-notifications-symbolic"
-                                                    : "notifications-disabled-symbolic",
-                                            ) ?? "notifications-disabled-symbolic"
+                                    {/* A click on a button nested inside a button reaches the
+                                    OUTER one, not this: measured, both ways round, with a
+                                    synthetic click on a plain window — the row activated and
+                                    Dismiss never fired, which is how the first attempt at this
+                                    shipped an inert ×. Claiming the sequence in the CAPTURE
+                                    phase is what stops it: the press is taken before the outer
+                                    button's gesture sees it, so this button gets its click and
+                                    the row does not activate. Clicking the row BODY still
+                                    activates it — also measured. */}
+                                    <Gtk.GestureClick
+                                        button={1}
+                                        propagationPhase={Gtk.PropagationPhase.CAPTURE}
+                                        onPressed={(g: Gtk.GestureClick) =>
+                                            g.set_state(Gtk.EventSequenceState.CLAIMED)
                                         }
                                     />
+                                    <image iconName="window-close-symbolic" />
                                 </button>
+                            </box>
+                            {data.summary !== "" && (
+                                <label
+                                    cssClasses={["summary"]}
+                                    label={data.summary}
+                                    xalign={rtl ? 1 : 0}
+                                    hexpand
+                                    maxWidthChars={38}
+                                    wrap
+                                    lines={2}
+                                    ellipsize={Pango.EllipsizeMode.END}
+                                />
                             )}
-                            <button
-                                $={self => {
-                                    buttons.push(self)
-                                }}
-                                cssClasses={["dismiss"]}
-                                visible={hovered}
-                                tooltipText={dismissLabel}
-                                onClicked={onDismiss}
-                            >
-                                <image iconName="window-close-symbolic" />
-                            </button>
+                            {data.body !== "" && (
+                                <label
+                                    cssClasses={["body"]}
+                                    label={bodyMarkup}
+                                    useMarkup
+                                    xalign={rtl ? 1 : 0}
+                                    hexpand
+                                    maxWidthChars={44}
+                                    wrap
+                                    lines={3}
+                                    ellipsize={Pango.EllipsizeMode.END}
+                                />
+                            )}
                         </box>
-                        {data.summary !== "" && (
-                            <label
-                                cssClasses={["summary"]}
-                                label={data.summary}
-                                xalign={rtl ? 1 : 0}
-                                hexpand
-                                maxWidthChars={38}
-                                wrap
-                                lines={2}
-                                ellipsize={Pango.EllipsizeMode.END}
-                            />
-                        )}
-                        {data.body !== "" && (
-                            <label
-                                cssClasses={["body"]}
-                                label={bodyMarkup}
-                                useMarkup
-                                xalign={rtl ? 1 : 0}
-                                hexpand
-                                maxWidthChars={44}
-                                wrap
-                                lines={3}
-                                ellipsize={Pango.EllipsizeMode.END}
-                            />
-                        )}
                     </box>
-                </box>
 
-                {/* artwork sits under the text, indented to the text column:
+                    {/* artwork sits under the text, indented to the text column:
             beside it, a 16:9 thumbnail would either squeeze the words
             into a gutter or set the row's height all by itself */}
-                {art && (
-                    <box
-                        cssClasses={["art"]}
-                        halign={Gtk.Align.START}
-                        marginStart={24}
-                        overflow={Gtk.Overflow.HIDDEN}
-                    >
-                        <Gtk.Picture
-                            paintable={art}
-                            contentFit={Gtk.ContentFit.COVER}
-                            canShrink
-                            widthRequest={ART_W}
-                            heightRequest={ART_H}
-                        />
-                    </box>
-                )}
+                    {art && (
+                        <box
+                            cssClasses={["art"]}
+                            halign={Gtk.Align.START}
+                            marginStart={24}
+                            overflow={Gtk.Overflow.HIDDEN}
+                        >
+                            <Gtk.Picture
+                                paintable={art}
+                                contentFit={Gtk.ContentFit.COVER}
+                                canShrink
+                                widthRequest={ART_W}
+                                heightRequest={ART_H}
+                            />
+                        </box>
+                    )}
 
-                {data.actions.length > 0 && (
-                    <box
-                        cssClasses={["actions"]}
-                        spacing={6}
-                        marginStart={24}
-                        halign={Gtk.Align.START}
-                        $={mirror}
-                    >
-                        {data.actions.map(a => (
-                            <button
-                                $={self => {
-                                    buttons.push(self)
-                                }}
-                                onClicked={() => onAction(a.id)}
-                            >
-                                <label label={a.label} />
-                            </button>
-                        ))}
-                    </box>
-                )}
+                    {data.actions.length > 0 && (
+                        <box
+                            cssClasses={["actions"]}
+                            spacing={6}
+                            marginStart={24}
+                            halign={Gtk.Align.START}
+                            $={mirror}
+                        >
+                            {data.actions.map(a => (
+                                <button onClicked={() => onAction(a.id)}>
+                                    {/* A click on a button nested inside a button reaches the
+                                    OUTER one, not this: measured, both ways round, with a
+                                    synthetic click on a plain window — the row activated and
+                                    Dismiss never fired, which is how the first attempt at this
+                                    shipped an inert ×. Claiming the sequence in the CAPTURE
+                                    phase is what stops it: the press is taken before the outer
+                                    button's gesture sees it, so this button gets its click and
+                                    the row does not activate. Clicking the row BODY still
+                                    activates it — also measured. */}
+                                    <Gtk.GestureClick
+                                        button={1}
+                                        propagationPhase={Gtk.PropagationPhase.CAPTURE}
+                                        onPressed={(g: Gtk.GestureClick) =>
+                                            g.set_state(Gtk.EventSequenceState.CLAIMED)
+                                        }
+                                    />
+                                    <label label={a.label} />
+                                </button>
+                            ))}
+                        </box>
+                    )}
+                </box>
             </box>
-        </box>
+        </button>
     )
 }
