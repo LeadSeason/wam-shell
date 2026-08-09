@@ -99,6 +99,42 @@ async function geometryFor(mode: ShotMode): Promise<string | null | undefined> {
     return undefined
 }
 
+/**
+ * The connector of the output the user is looking at ("eDP-1"), or null.
+ *
+ * grim with neither `-g` nor `-o` captures the whole LAYOUT — every
+ * monitor composited into one image, with a hole where the desktops do
+ * not line up. On a single-monitor machine that is the same picture, so
+ * it looks correct right up until someone plugs in a second screen and
+ * "screenshot screen" starts handing back a 5000px strip.
+ */
+async function focusedOutput(): Promise<string | null> {
+    try {
+        if (Config.desktopSession === "hyprland") {
+            const monitors = JSON.parse(await execAsync(["hyprctl", "monitors", "-j"]))
+            const focused = Array.isArray(monitors) ? monitors.find(m => m?.focused) : null
+            return focused?.name ?? null
+        }
+        if (Config.desktopSession === "sway" || Config.desktopSession === "i3") {
+            const outputs = JSON.parse(await execAsync(["swaymsg", "-t", "get_outputs"]))
+            const focused = Array.isArray(outputs) ? outputs.find(o => o?.focused) : null
+            return focused?.name ?? null
+        }
+    } catch (e) {
+        // not fatal: fall back to the whole layout, which is right on the
+        // single-monitor machines this can happen on
+        console.warn("capture: could not resolve the focused output:", e)
+    }
+    return null
+}
+
+/** `-o <connector>` for the focused output, or nothing when unknown.
+ *  grim and wf-recorder spell the flag the same way. */
+async function outputArgs(): Promise<string[]> {
+    const output = await focusedOutput()
+    return output ? ["-o", output] : []
+}
+
 function findFocused(node: any): any {
     if (node?.focused) return node
     for (const child of [...(node?.nodes ?? []), ...(node?.floating_nodes ?? [])]) {
@@ -155,7 +191,9 @@ export async function screenshot(mode: ShotMode = "region"): Promise<string> {
     if (geometry === undefined && mode !== "screen") return "cancelled"
 
     const path = `${outputDir("Screenshots")}/Screenshot_${stamp()}.png`
-    const argv = geometry ? ["grim", "-g", geometry, path] : ["grim", path]
+    // no geometry means the whole screen, and "the screen" is the one
+    // being looked at — see focusedOutput
+    const argv = geometry ? ["grim", "-g", geometry, path] : ["grim", ...(await outputArgs()), path]
 
     try {
         await execAsync(argv)
@@ -200,7 +238,10 @@ export async function toggleRecording(mode: ShotMode = "screen"): Promise<string
 
     const path = `${outputDir("Recordings")}/Recording_${stamp()}.mp4`
     const argv = ["wf-recorder", "-f", path]
+    // same as the screenshot path: a region is a region, and everything
+    // else means the output being looked at rather than all of them
     if (geometry) argv.push("-g", geometry)
+    else argv.push(...(await outputArgs()))
 
     try {
         recorder = Gio.Subprocess.new(argv, Gio.SubprocessFlags.NONE)

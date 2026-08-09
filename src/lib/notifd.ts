@@ -347,11 +347,6 @@ export function snoozePopup(key: string): boolean {
     return true
 }
 
-/** is this banner waiting to come back? */
-export function isSnoozed(key: string): boolean {
-    return snoozed.has(key)
-}
-
 // hovering ANY banner freezes every countdown: if a banner above the
 // hovered one expired mid-interaction, the stack would shift and yank
 // the hovered banner out from under the pointer
