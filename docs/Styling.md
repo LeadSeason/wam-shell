@@ -264,3 +264,35 @@ Two conventions keep the names coherent:
 `scripts/style-watch.sh` watches `scss/` and triggers `reloadStyle` on
 every change. Run it in a terminal alongside `ags run app.tsx` for
 instant feedback.
+
+## Checking it: `pnpm verify:scss`
+
+None of the project's five gates compile the scss — they cover
+TypeScript, and a shell that starts is a shell that started, styled or
+not. So this exists:
+
+```sh
+pnpm verify:scss
+```
+
+It compiles `style.scss` against **every** theme in `scss/theme/` and
+loads each result through GTK's own CSS parser. That is three failures
+it catches which reading the diff does not:
+
+- a declaration GTK refuses — its parser reports the error and drops the
+  rule, and the shell simply renders without it;
+- a theme that stopped compiling while the one you are running is fine,
+  which is five themes out of six, most of the time;
+- a **dart-sass deprecation**, which exits zero. A compile can succeed
+  and still print warnings into every user's log on every start.
+
+Pass a directory to keep the output:
+
+```sh
+git stash && pnpm verify:scss /tmp/before && git stash pop
+pnpm verify:scss /tmp/after
+diff /tmp/before/catppuccin-mocha.selectors /tmp/after/catppuccin-mocha.selectors
+```
+
+A change meant to alter values and not structure should show an empty
+selector diff. `DENSITY=0.8 pnpm verify:scss` checks a compact build.
