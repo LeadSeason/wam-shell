@@ -379,11 +379,27 @@
 #                default 2
 # host - bridge IMAP host. default "127.0.0.1"
 # port - bridge IMAP port. default 1143
+# tls - speak STARTTLS before logging in. default false.
+#       IMAP LOGIN sends the bridge password in the CLEAR. On 127.0.0.1
+#       that is a hop between two of your own processes and is how the
+#       bridge is meant to be used, so the default is off. Point `host`
+#       at another machine and the same password crosses a network, so
+#       the provider REFUSES to start there unless this is true — it
+#       will not quietly transmit it. A server that then declines
+#       STARTTLS is an error, never a downgrade to cleartext.
+# tls_insecure - accept the bridge's certificate without verifying it.
+#       default false. Proton Mail Bridge signs its own certificate, so
+#       a strict handshake against a remote bridge fails; this makes it
+#       succeed. It still keeps the password off the wire, but it does
+#       NOT prove you are talking to your bridge — only use it on a
+#       network you trust.
 # [protonmail]
 # enabled = false
 # poll_minutes = 2
 # host = "127.0.0.1"
 # port = 1143
+# tls = false
+# tls_insecure = false
 
 # [youtube] - YouTube notifications in the notification center: new
 #             uploads from your subscriptions (the YouTube home feed)
