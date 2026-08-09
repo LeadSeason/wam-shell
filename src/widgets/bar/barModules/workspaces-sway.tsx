@@ -2,6 +2,7 @@ import Gdk from "gi://Gdk?version=4.0"
 import Sway, { Node } from "../../../lib/sway"
 import Config from "../../../config"
 import { createIconResolver } from "../../../lib/appIcon"
+import { createScrollStepper, stepThrough } from "../../../lib/scrollStep"
 import { Accessor, For, With, createBinding, createComputed, onCleanup } from "gnim"
 import { Gtk } from "ags/gtk4"
 import GObject from "ags/gobject"
@@ -131,8 +132,25 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
     })
     onCleanup(unsubPrune)
 
+    // scroll switches to the next/previous workspace on this output —
+    // the same list the bar is showing (see the hyprland twin)
+    const step = createScrollStepper()
+    const scrollToNeighbour = (dir: -1 | 0 | 1) => {
+        const list = swayWorkspacesList.get()
+        const focused = list.find(ws => ws.id === sway.focused)
+        const target = stepThrough(list, focused, dir)
+        if (target) focus_workspace(sway, target)
+    }
+
     return (
         <box cssName={"workspaces"}>
+            <Gtk.EventControllerScroll
+                flags={Gtk.EventControllerScrollFlags.VERTICAL}
+                onScroll={(controller, _dx, dy) => {
+                    scrollToNeighbour(step(controller, dy))
+                    return true
+                }}
+            />
             <For each={swayWorkspacesList}>
                 {workspace => {
                     const focused = createBinding(sway, "focused").as(id =>

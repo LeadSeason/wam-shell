@@ -10,6 +10,8 @@ import AstalBattery from "gi://AstalBattery?version=0.1"
 import ArchUpdates from "../../../lib/archUpdates"
 import trayNeedsAttention from "../../../lib/trayAttention"
 import vpnStatus from "../../../lib/vpn"
+import { inhibited } from "../../../lib/idleInhibit"
+import { recording } from "../../../lib/capture"
 import Brightness from "../../../lib/brightness"
 import { alarming } from "../../../lib/sleepTimer"
 import { execAsync, timeoutAdd, sourceRemove } from "../../../lib/metrics"
@@ -197,6 +199,33 @@ function powerProfile() {
     ) as Gtk.Image // TS Jank,
 }
 
+// only visible while holding, like the VPN indicator below: a
+// keep-awake you forgot about is the failure mode, so it has to be
+// visible on the bar rather than only inside quick settings
+function keepAwakeIndicator() {
+    return (
+        <image
+            iconName={"caffeine-symbolic"}
+            visible={inhibited}
+            tooltipText={"Keep awake is on — the screen will not idle"}
+        />
+    ) as Gtk.Image // TS Jank
+}
+
+// A recording in progress is the one shell state that MUST be visible:
+// the whole failure mode is forgetting it is running. Its own class so
+// scss can make it red and pulse it.
+function recordingIndicator() {
+    return (
+        <image
+            cssClasses={["recordingDot"]}
+            iconName={"media-record-symbolic"}
+            visible={recording}
+            tooltipText={"Recording — run `record` again to stop"}
+        />
+    ) as Gtk.Image // TS Jank
+}
+
 function vpnIndicator() {
     // only visible while connected, like GNOME
     return (
@@ -337,6 +366,8 @@ function ButtonLabel() {
             )}
             {brightnessWidget()}
             {Config.quicksettings.powerProfileOnPanel && powerProfile()}
+            {keepAwakeIndicator()}
+            {recordingIndicator()}
             {vpnIndicator()}
             {bat.isPresent && <Battery />}
             {/* Bound, not read once: the daemon probe in config.ts is

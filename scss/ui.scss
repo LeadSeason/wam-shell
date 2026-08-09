@@ -1,6 +1,9 @@
 @use "active-theme" as t;
 @use "conf.scss" as s;
 @use "sass:color";
+@use "sass:map";
+@use "sass:math";
+@use "sass:meta";
 
 // The shell's shared appearance, as mixins.
 //
@@ -23,10 +26,57 @@
 $border-color: color.mix(t.$surface0, transparent, 60%);
 $rule-color: color.mix(t.$surface0, transparent, 45%);
 
+// --------------------------------------------------------------- color
+
+/// Collapse a colour to plain integer rgb.
+///
+/// Sass keeps the space a colour was BUILT in, and several themes define
+/// their surfaces with `hsl()` — so anything mixed from one serialises
+/// as `rgb(29.7073039216%, 22.7465196078%, …)`. GTK parses that, but
+/// twelve decimals of percentage cannot be eyeballed against a palette
+/// and turns a diff of the compiled sheet into noise. Derived colours go
+/// through here.
+@function rgb-of($c) {
+    @return rgb(
+        math.round(color.channel($c, "red", $space: rgb)),
+        math.round(color.channel($c, "green", $space: rgb)),
+        math.round(color.channel($c, "blue", $space: rgb))
+    );
+}
+
+// ---------------------------------------------------------------- depth
+//
+// Is the active theme a light one? Asked once, here, because several
+// decisions downstream turn on it and re-deriving it per sheet is how a
+// palette ends up half-inverted.
+$is-light: color.channel(t.$base, "lightness", $space: hsl) > 50%;
+
 // One shadow for every floating surface. Popups used to carry three
 // different ones, which made the notification center look like it was
 // hovering a centimetre above the quick settings beside it.
+//
+// It cannot be one VALUE, though. The same 35% black that reads as
+// depth over a dark base reads as soot on a light one, and the shell
+// ships two light themes — every popup in latte and gruvbox-light wore
+// a dark halo for as long as this was a literal.
+//
+// A theme may declare its own `$shadow` and it wins; otherwise the
+// strength follows the theme's own base lightness, so a hand-written
+// theme (docs/Styling.md) gets a sane one without knowing this variable
+// exists.
+//
+// Written as `@if` rather than the `if()` function: dart-sass 1.101
+// deprecated that spelling, and a shell that prints two deprecation
+// warnings into the user's log on every single compile has taught them
+// to ignore the log.
+$theme-vars: meta.module-variables("t");
 $shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+@if $is-light {
+    $shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+@if map.has-key($theme-vars, "shadow") {
+    $shadow: map.get($theme-vars, "shadow");
+}
 
 // --------------------------------------------------------- interaction
 //
@@ -69,11 +119,20 @@ $press-surface: t.$surface1;
 
 /// The default button: no frame at rest, accent under the pointer.
 /// Used wherever a button sits among others in a row or a popup.
+///
+/// Carries the focus ring, and therefore so does every button in the
+/// shell — `button-framed`, `button-accent`, `icon-button` and `chip`
+/// are all built on this one. It used to be opt-in, and three sheets
+/// opted in: everywhere else, tabbing through a popup moved a selection
+/// that was completely invisible, which is indistinguishable from
+/// keyboard navigation not working at all.
 @mixin button-quiet($padding: s.$btn-padding) {
     background-color: transparent;
     border: solid s.$border transparent;
     border-radius: s.$radius;
     padding: $padding;
+
+    @include focus-ring;
 
     &:hover {
         background-color: $hover-accent;

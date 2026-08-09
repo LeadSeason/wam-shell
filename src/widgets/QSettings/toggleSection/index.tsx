@@ -5,7 +5,7 @@ import { PowerProfilesButton } from "./powerProfile"
 import { WifiButton } from "./wifi"
 import { BluetoothButton } from "./bluetooth"
 import { WiredButton } from "./wired"
-import { NightLightButton, DarkStyleButton } from "./miscToggles"
+import { NightLightButton, DarkStyleButton, KeepAwakeButton } from "./miscToggles"
 import { SleepTimerButton, SleepTimerWidget } from "./sleepTimer"
 import { VpnButton } from "./vpn"
 
@@ -44,6 +44,10 @@ export function ToggleSection({ onNavigate }: { onNavigate: (pane: string) => vo
                         setActiveDropdown={setActiveDropdownIndex}
                         dropdownIndex={2}
                     />
+                    {/* next to the sleep timer on purpose: they are the
+                    same axis pointed opposite ways — one puts the
+                    machine down early, the other refuses to let it go */}
+                    <KeepAwakeButton />
                 </Gtk.FlowBox>
                 <SwayGapsWidget activeDropdown={activeDropdownIndex} dropdownIndex={1} />
                 <SleepTimerWidget activeDropdown={activeDropdownIndex} dropdownIndex={2} />

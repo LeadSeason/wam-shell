@@ -94,6 +94,15 @@ Rules of thumb:
   the inverse. Keep the role semantics, not specific hues.
 - Widget styles must use these tokens — never hardcode hex in
   `scss/widgets/`.
+- Light and dark are told apart from `$base`'s own lightness, so a
+  theme does not have to declare which it is. Two things follow from
+  it: the drop shadow under every floating surface (12% black on a
+  light theme, 35% on a dark one) and the bar's wash, which is mixed
+  from `$crust`, `$peach` and `$blue` rather than being a colour of its
+  own.
+- A theme **may** set `$shadow` to overrule the inferred one — for a
+  palette where neither default lands. Nothing else in a theme file is
+  optional; everything above is required.
 
 ## Your own overrides: `scss/user.scss`
 
@@ -121,7 +130,7 @@ theme dependency, so anything may `@use` it:
 | space | `$padding-small` `$padding` `$gap-small` `$gap` `$gap-large` `$bar-widget-spacing` |
 | shape | `$radius-small` `$radius` `$radius-large` `$radius-pill`, `$border` `$hairline` |
 | type | `$font-tiny` `$font-small` `$font-title` `$font-display`, `$weight-medium` `$weight-bold`, `$font-ui` `$font-mono` |
-| states | `$disabled-opacity` `$quiet-opacity`, `$transition-time` `$transition-slow` |
+| states | `$disabled-opacity` `$quiet-opacity`, `$transition-time` `$transition-slow` `$ease` |
 | presets | `$btn-padding{,-icon,-lg}` `$chip-padding` `$row-padding{,-tight}` `$card-padding` `$popup-padding` `$popup-margin` |
 | sizes | `$icon` `$icon-medium` `$icon-large`, `$slider-height` `$meter-height` `$seek-height` `$pill-size` |
 
@@ -129,6 +138,32 @@ Which radius to use is decided by **what the thing is**, not by how big
 it looks: `$radius-small` for inline marks, `$radius` for buttons, rows
 and cards, `$radius-large` for anything that is a window, `$radius-pill`
 for anything whose ends should be round.
+
+### Density
+
+Every space token goes through `space()`, which multiplies it by
+`[appearance] density` — `compact` (×0.8), `comfortable` (×1, default)
+or `relaxed` (×1.2), rounded to whole pixels and floored at 1px:
+
+```toml
+[appearance]
+density = "compact"
+```
+
+It is a **space** axis only. Type, icon and radius tokens are
+deliberately outside it: scaling those too stops being "tighter" and
+becomes "smaller", which is what a font size is for.
+
+The multiplier reaches sass the same way the theme does — the shell
+writes `~/.cache/wam-shell/active-tuning.scss` (`$density: 0.8;`) before
+compiling, and `conf.scss` `@use`s it by bare name through the load
+path. A density change touches no scss mtime, so, like a theme change,
+it forces the compile that the freshness sweep would otherwise skip.
+Anything writing a token that comes from `config.toml` rather than from
+a theme belongs in that generated file.
+
+Only ever use `space()` on a **new** token in `conf.scss`. A widget
+sheet should be spending tokens, not multiplying them a second time.
 
 **`scss/ui.scss` is what the values add up to** — the theme-aware
 mixins. Include these instead of restating them:

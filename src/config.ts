@@ -254,6 +254,19 @@ function getBluetoothConfig() {
     }
 }
 
+function getIdleInhibitConfig() {
+    const r = createReader(configData, "idle_inhibit", { sectionOnly: true })
+    return {
+        // Run this instead of taking a logind inhibitor lock, for
+        // sessions whose idle daemon ignores logind (swayidle does).
+        // Held for as long as keep-awake is on and killed when it goes
+        // off, so the command must BLOCK — `wlinhibit`, or
+        // `["systemd-inhibit", "--what=idle", "sleep", "infinity"]`.
+        // Empty (the default) uses the built-in lock.
+        command: r.strList("command", []),
+    }
+}
+
 function getMediaConfig() {
     const r = createReader(configData, "media")
     return {
@@ -273,6 +286,12 @@ function getMediaConfig() {
     }
 }
 
+// The spacing multiplier behind `[appearance] density`, applied to the
+// scss space scale (`space()` in scss/conf.scss). Named rather than
+// numeric on purpose: a free-form multiplier invites 0.3, which compiles
+// perfectly and produces a shell with no padding anywhere.
+const DENSITY = { compact: 0.8, comfortable: 1, relaxed: 1.2 } as const
+
 function getAppearanceConfig() {
     const r = createReader(configData, "appearance")
     // a theme name is only valid if the stylesheet exists: a typo must
@@ -287,6 +306,10 @@ function getAppearanceConfig() {
         lightTheme: themeOr("light_theme", "catppuccin-latte"),
         // also follow the system color scheme at startup
         followSystem: r.bool("follow_system", true),
+        // how much air the whole shell gets. Spacing only — radii, type
+        // and icon sizes stay put, because scaling those as well stops
+        // being "tighter" and becomes "smaller"
+        density: DENSITY[r.oneOf("density", ["compact", "comfortable", "relaxed"], "comfortable")],
     }
 }
 
@@ -620,6 +643,8 @@ export interface PanelConfig {
     monitors: string[]
     position: "top" | "bottom"
     class: string
+    height: number
+    floating: boolean
     left: string[]
     center: string[]
     right: string[]
@@ -670,10 +695,19 @@ function getPanelsConfig(): PanelConfig[] {
                 return false
             })
 
+        // geometry falls back to the top-level keys, so a machine with
+        // one floating panel and one docked one says so per panel, and
+        // one with the same everywhere says it once
+        const height = typeof entry.height === "number" && entry.height > 0 ? entry.height : null
+        if (entry.height !== undefined && height === null)
+            console.error(`Config "panel[${i}].height" must be a positive number`)
+
         return {
             monitors: strList(entry.monitors, []),
             position: position as "top" | "bottom",
             class: typeof entry.class === "string" ? entry.class : "",
+            height: height ?? barHeight,
+            floating: typeof entry.floating === "boolean" ? entry.floating : barFloating,
             left: checkWidgets(strList(entry.left, ["osicon", "workspaces"])),
             center: checkWidgets(strList(entry.center, ["clock"])),
             right: checkWidgets(
@@ -706,6 +740,19 @@ function pendingUpdatesPath(cacheDir: string): string {
 // the top-level keys that belong to no section
 const topLevel = createReader(configData, "")
 
+// Panel geometry. Read here rather than in the class body because
+// `getPanelsConfig` needs them as its per-panel defaults, and a
+// [[panel]] table is parsed before any static is assigned.
+//
+// The height is the widget strip's own; a floating panel's margin is
+// ADDED to the window on top of it (src/widgets/bar/index.tsx), so
+// detaching a panel never quietly shortens it. The same margin reaches
+// scss through active-tuning.scss — one config key, two consumers, no
+// second literal.
+const barHeight = topLevel.num("bar_height", 30, { min: 1 })
+const barFloating = topLevel.bool("bar_floating", false)
+const barFloatMargin = topLevel.num("bar_float_margin", 6, { min: 0 })
+
 export default class Config {
     // a truthy non-string (e.g. instance_name = 5) would poison the bus
     // name and every path derived from it
@@ -724,8 +771,12 @@ export default class Config {
     static quicksettings = getQSettingsConfig()
     static bluetooth = getBluetoothConfig()
     static media = getMediaConfig()
+    static idleInhibit = getIdleInhibitConfig()
     static hyprsunset = getHyprsunsetConfig()
     static barMonitors = getBarMonitors()
+    static barHeight = barHeight
+    static barFloating = barFloating
+    static barFloatMargin = barFloatMargin
     static panels = getPanelsConfig()
     static theme = resolveTheme(configData)
     static appearance = getAppearanceConfig()

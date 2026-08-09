@@ -105,18 +105,35 @@ export default function Bar({
     // popupFocus, asks `is_active`, which a layer surface with no keyboard
     // interactivity is never true for. Windows the user actually focuses
     // are still added explicitly in app.tsx.
+    // Geometry: per-panel when the [[panel]] table says so, the
+    // top-level keys otherwise. `heightRequest` is a floor and not a
+    // cap — GTK allocates at least what the content needs, so a panel
+    // full of tray icons measures ~38px whatever small number is asked
+    // for here. Documented as such in config.toml.
+    //
+    // A floating panel's margin is drawn by scss on the centerbox, but
+    // the WINDOW has to grow by it — otherwise the margin comes out of
+    // the strip's own height and `bar_height` stops meaning what it
+    // says. Both sides read `bar_float_margin`: scss gets it through
+    // active-tuning.scss (see lib/styleCompile.ts).
+    const height = panel?.height ?? Config.barHeight
+    const floating = panel?.floating ?? Config.barFloating
+    const windowHeight = height + (floating ? 2 * Config.barFloatMargin : 0)
+
     const win = (anchor: number, children: JSX.Element, extraClass = "") => (
         <window
             visible
             name="bar"
             class={hyprsunset.outdoor.as(v =>
-                ["Bar", extraClass, v ? "outdoor" : ""].filter(Boolean).join(" "),
+                ["Bar", extraClass, floating ? "floating" : "", v ? "outdoor" : ""]
+                    .filter(Boolean)
+                    .join(" "),
             )}
             namespace="bar"
             gdkmonitor={gdkMonitor}
             exclusivity={Astal.Exclusivity.EXCLUSIVE}
             anchor={anchor}
-            heightRequest={30}
+            heightRequest={windowHeight}
         >
             {children}
         </window>
