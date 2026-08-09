@@ -95,6 +95,10 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
         for (const id of cacheKeys) wsIconCache.delete(id)
     })
 
+    // connector can be null at construction (monitor still initializing):
+    // make it a computed dep so the list recomputes when it arrives
+    const displayName = createBinding(monitor, "connector")
+
     const swayWorkspacesList = createComputed(
         [
             createBinding(sway, "wss"),
