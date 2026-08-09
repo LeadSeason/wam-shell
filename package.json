@@ -30,7 +30,7 @@
     "ags": "link:.sys/ags",
     "fuse.js": "^7.1.0",
     "gnim": "link:.sys/gnim",
-    "toml": "^3.0.0"
+    "smol-toml": "^1.7.1"
   },
   "devDependencies": {
     "prettier": "^3.8.1"

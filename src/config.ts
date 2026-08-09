@@ -1,6 +1,6 @@
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
-import toml from "toml"
+import { parse as parseTomlText } from "smol-toml"
 import { createState } from "gnim"
 import { execAsync } from "ags/process"
 import { readFile } from "ags/file"
@@ -46,10 +46,23 @@ function readRawFile(path?: string): string {
     }
 }
 
+// smol-toml, not the `toml` package: that one implements TOML 0.4 and
+// was last published in 2018, so a DOTTED KEY (`tray.spacing = 3` — a
+// 0.5 feature, and the spelling anyone who has written TOML this decade
+// reaches for) was a parse ERROR: "Expected "=" ... but "." found".
+//
+// Which matters more than it sounds, because of what happens next: the
+// throw is caught here and the whole document becomes {}. One dotted key
+// anywhere in the file therefore discarded the user's ENTIRE config and
+// ran the shell on defaults, with a single line in a log to say so.
+//
+// smol-toml is TOML 1.0.0 compliant, has no dependencies, and is
+// maintained. It still rejects genuinely invalid documents (a redefined
+// key is still an error) — it just does not reject valid ones.
 function parseToml(raw: string): Record<string, any> {
     if (!raw) return {}
     try {
-        return toml.parse(raw)
+        return parseTomlText(raw) as Record<string, any>
     } catch (err) {
         console.error("Failed parsing TOML:", err)
     }
