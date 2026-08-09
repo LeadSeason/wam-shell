@@ -21,6 +21,11 @@ let started = false
 let generation = 0
 let activeConn: Gio.SocketConnection | null = null
 let retrySource = 0
+// onUnavailable is a one-way door for the caller (kbLayout starts a
+// polling fallback that owns a timer), and several failure paths can
+// reach the terminal branch of retry(). Latch it so the fallback is
+// started at most once per watch.
+let unavailable = false
 
 interface Handlers {
     // reply to the seed request: the full GET_INPUTS array
@@ -45,6 +50,7 @@ function frame(type: number, payload: string): GLib.Bytes {
 export function watchSwayInputs(handlers: Handlers) {
     if (started) return
     started = true
+    unavailable = false
     const path = GLib.getenv("I3SOCK")
     if (!path) {
         handlers.onUnavailable()
@@ -99,13 +105,15 @@ function connect(path: string, handlers: Handlers, attempt: number) {
             // seed the initial state once subscribed
             send(TYPE_GET_INPUTS, "", () => {}),
         )
-        readLoop(conn, path, handlers)
+        readLoop(conn, path, handlers, attempt)
     })
 }
 
 function retry(path: string, handlers: Handlers, attempt: number) {
     if (!started) return
     if (attempt + 1 >= MAX_RETRIES) {
+        if (unavailable) return
+        unavailable = true
         handlers.onUnavailable()
         return
     }
@@ -119,9 +127,21 @@ function retry(path: string, handlers: Handlers, attempt: number) {
     })
 }
 
-function readLoop(conn: Gio.SocketConnection, path: string, handlers: Handlers) {
+function readLoop(conn: Gio.SocketConnection, path: string, handlers: Handlers, attempt: number) {
     const stream = new Gio.DataInputStream({ base_stream: conn.get_input_stream() })
     let leftover = new Uint8Array(0)
+    // Has this connection ever delivered a well-formed frame?
+    //
+    // A drop AFTER that is a fresh situation (sway restarted, the socket
+    // moved) and deserves the full retry budget again. A connection that
+    // is accepted and immediately EOFs has proven nothing — and resetting
+    // the counter for it is what turned a stale or half-open $I3SOCK into
+    // an endless 2-second reconnect loop that never reached
+    // onUnavailable(), so the poll fallback never started and the layout
+    // indicator stayed frozen for the whole session.
+    let healthy = false
+    // where the next failure resumes counting from
+    const nextAttempt = () => (healthy ? 0 : attempt)
 
     // false when the stream desynced and a reconnect was started:
     // the caller must not schedule another read on the old connection
@@ -135,7 +155,7 @@ function readLoop(conn: Gio.SocketConnection, path: string, handlers: Handlers) 
             if (MAGIC.some((b, i) => leftover[i] !== b)) {
                 leftover = new Uint8Array(0)
                 conn.close(null)
-                retry(path, handlers, 0)
+                retry(path, handlers, nextAttempt())
                 return false
             }
             const dv = new DataView(leftover.buffer, leftover.byteOffset, 14)
@@ -144,6 +164,8 @@ function readLoop(conn: Gio.SocketConnection, path: string, handlers: Handlers) 
             const type = dv.getUint32(10, true)
             const payload = leftover.slice(14, 14 + len)
             leftover = leftover.slice(14 + len)
+            // a complete, correctly-framed reply: the socket works
+            healthy = true
             let json: any = null
             try {
                 json = JSON.parse(new TextDecoder().decode(payload))
@@ -173,7 +195,7 @@ function readLoop(conn: Gio.SocketConnection, path: string, handlers: Handlers) 
             // caller drops to the poll fallback
             if (!bytes || bytes.get_size() === 0) {
                 conn.close(null)
-                return retry(path, handlers, 0)
+                return retry(path, handlers, nextAttempt())
             }
             if (feed(bytes.get_data()!)) read()
         })

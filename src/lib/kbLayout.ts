@@ -195,6 +195,11 @@ function swaySource(msgCmd: string): LayoutSource {
     // the 10s swaymsg poll, only as a fallback: spawns swaymsg/i3msg for
     // the shell's lifetime when the raw IPC stream is unavailable
     function startPollFallback() {
+        // swayInput latches onUnavailable, but this owns a timer for the
+        // rest of the session: a second call would overwrite
+        // swayPollUnsub and strand the first subscriber's 10s poll where
+        // dispose() can never reach it. Cheap to guard on both sides
+        if (swayPollUnsub) return
         const poll = createPoll("", 10000, async () => {
             // swallow failures (binary missing, IPC down): keep old value
             try {
