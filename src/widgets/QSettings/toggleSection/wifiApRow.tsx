@@ -5,6 +5,7 @@ import { execAsync } from "../../../lib/metrics"
 import { Gtk } from "ags/gtk4"
 import Pango from "gi://Pango?version=1.0"
 import { savedNetworks, profileId } from "./savedNetworks"
+import { createDelayer } from "../../delay"
 
 // NM 80211ApSecurityFlags key-mgmt bits
 const KEY_MGMT_PSK = 0x100
@@ -82,14 +83,17 @@ export function ApRow({
     )
     const isKnown = savedNetworks.as(map => map.has(ap.ssid))
 
+    // tracked and cancelled on teardown (see widgets/delay.ts)
+    const delay = createDelayer("wifiApRow")
+
     function fail(msg: string, e: unknown) {
         console.warn(`wifi: ${msg}:`, e)
         setConnectingBssid(null)
         setError(msg)
         const token = ++errorToken
-        setTimeout(() => {
+        delay(4000, () => {
             if (token === errorToken) setError("")
-        }, 4000)
+        })
     }
 
     const status = createComputed(
@@ -149,13 +153,13 @@ export function ApRow({
                 fail("Connection failed", e)
             })
         // bluez-grade hang guard: NM may never answer on some failures
-        setTimeout(() => {
+        delay(45_000, () => {
             if (attempt !== connectAttempt) return
             if (connectingBssid.get() === ap.bssid) {
                 restore()
                 fail("Connection failed", "timed out")
             }
-        }, 45_000)
+        })
     }
 
     function onClick() {

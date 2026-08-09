@@ -7,6 +7,7 @@ import { batteryPercentValue } from "../../../lib/utils"
 import { connect, disconnect } from "../../../lib/metrics"
 import { dismissPairingPrompt } from "../../../lib/bluetoothAgent"
 import { pairDeviceAsync, removeDeviceAsync } from "./bluez"
+import { createDelayer } from "../../delay"
 
 // null when PipeWire/WirePlumber is absent (see SliderSection's guard);
 // the profile selector below dereferences wp.audio, so guard every use
@@ -18,6 +19,8 @@ const wp = AstalWp.get_default()
  *  cannot grab the seat inside a layer-shell window with keymode
  *  EXCLUSIVE and close instantly */
 function ProfileSelector({ wpDev }: { wpDev: AstalWp.Device }) {
+    // tracked and cancelled on teardown (see widgets/delay.ts)
+    const delay = createDelayer("btProfileSelector")
     // the switch takes ~1s to apply; mark the clicked profile pending
     // until activeProfileId catches up (5s safety timeout)
     const [pendingProfile, setPendingProfile] = createState<number | null>(null)
@@ -57,9 +60,9 @@ function ProfileSelector({ wpDev }: { wpDev: AstalWp.Device }) {
                                 if (p.active || pendingProfile.get() !== null) return
                                 setPendingProfile(p.index)
                                 const token = ++pendingToken
-                                setTimeout(() => {
+                                delay(5000, () => {
                                     if (token === pendingToken) setPendingProfile(null)
-                                }, 5000)
+                                })
                                 wpDev.activeProfileId = p.index
                             }}
                         />
@@ -116,6 +119,8 @@ interface DeviceRowProps {
 }
 
 export function DeviceRow({ device, pauseDiscovery, maybeScan }: DeviceRowProps) {
+    // tracked and cancelled on teardown (see widgets/delay.ts)
+    const delay = createDelayer("btDeviceRow")
     const [pending, setPending] = createState<"" | "pairing" | "connecting" | "disconnecting">("")
     const [error, setError] = createState("")
     const [detailsOpen, setDetailsOpen] = createState(false)
@@ -127,9 +132,9 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan }: DeviceRowProps)
         setPending("")
         setError(msg)
         const token = ++errorToken
-        setTimeout(() => {
+        delay(4000, () => {
             if (token === errorToken) setError("")
-        }, 4000)
+        })
     }
 
     const status = createComputed(
@@ -198,7 +203,7 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan }: DeviceRowProps)
                 setPending("connecting")
                 connectDevice()
             })
-            setTimeout(() => {
+            delay(30_000, () => {
                 // clean up this attempt's handler no matter what: a
                 // superseded attempt must not leave it armed to
                 // double-connect on success
@@ -212,7 +217,7 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan }: DeviceRowProps)
                     dismissPairingPrompt(device.address)
                     maybeScan()
                 }
-            }, 30_000)
+            })
             pairDeviceAsync(device).catch(e => {
                 if (handlerId) {
                     disconnect(device, handlerId)

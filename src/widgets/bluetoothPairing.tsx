@@ -1,5 +1,5 @@
 import { Astal, Gtk, Gdk } from "ags/gtk4"
-import { With } from "gnim"
+import { With, onCleanup } from "gnim"
 import { pairingRequest, btPaneOpen, PairingRequest } from "../lib/bluetoothAgent"
 import { hideOnFocusLoss } from "../lib/popupFocus"
 
@@ -88,8 +88,8 @@ export default function BluetoothPairing() {
         if (pairingRequest.get() !== null && !btPaneOpen.get()) win.present()
         else win.hide()
     }
-    pairingRequest.subscribe(updateVisibility)
-    btPaneOpen.subscribe(updateVisibility)
+    onCleanup(pairingRequest.subscribe(updateVisibility))
+    onCleanup(btPaneOpen.subscribe(updateVisibility))
 
     function onKey(_e: Gtk.EventControllerKey, keyValue: number) {
         if (keyValue === Gdk.KEY_Escape) pairingRequest.get()?.respond(false)

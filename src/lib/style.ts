@@ -1,7 +1,13 @@
 import Config, { reloadTheme } from "../config"
 import app from "ags/gtk4/app"
 import CommandRegistry from "./requestHandler"
-import { compileAsync, compileSync, planCompile, syncActiveTheme } from "./styleCompile"
+import {
+    compileAsync,
+    compileSync,
+    planCompile,
+    sassAvailable,
+    syncActiveTheme,
+} from "./styleCompile"
 
 // The display-side half of styling: deciding when to compile, and
 // applying the result to the running app. Everything that actually
@@ -19,7 +25,19 @@ export function compileScss() {
         // This is the ONE blocking path left, and `wam install` /
         // `wam update` precompile precisely so users do not hit it —
         // see scripts/precompile-style.ts
-        if (!compileSync()) console.error("Failed to compile styles; starting unstyled")
+        if (!compileSync()) {
+            // Name the actual cause and the actual fix. "Failed to
+            // compile styles" sent people looking at their scss, when
+            // the overwhelmingly common reason is that dart-sass is not
+            // installed at all — an entirely unstyled shell reads as
+            // broken rather than as a missing package, and nothing said
+            // which. `wam status` reports the same thing.
+            console.error(
+                sassAvailable()
+                    ? "Failed to compile styles; starting unstyled. Check scss/user.scss and the theme for syntax errors."
+                    : "dart-sass is not installed, so there is no stylesheet to show and the shell is starting UNSTYLED. Install it (arch: pacman -S dart-sass) and run `wam restart`.",
+            )
+        }
         return
     }
     // a stale sheet is still a sheet: show it, and swap in the fresh one

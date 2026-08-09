@@ -16,6 +16,9 @@ WAM_BIN="$HOME/.local/bin/wam"
 # just before dispatch — see resolve_instance_paths() at the bottom.
 INSTANCE="wam-shell"
 LOG_DIR="$HOME/.cache/wam-shell"
+# set by compile_style when dart-sass is absent, so `wam install` can say
+# so at the END, where it is read, rather than only mid-run
+SASS_MISSING=0
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 die() {
@@ -71,7 +74,16 @@ pnpm_install() {
 # first run, it just pays for it there.
 compile_style() {
     command -v ags >/dev/null || return 0
-    command -v sass >/dev/null || { log "sass not found — skipping style precompile"; return 0; }
+    # Not a quiet skip. Without sass there is no stylesheet at all on a
+    # cold cache, so the shell's first start is UNSTYLED -- which reads
+    # as a broken install, not a missing package. This used to scroll
+    # past mid-install among the pnpm output; it is repeated at the end
+    # of `wam install` where it can be seen, and `wam status` reports it.
+    if ! command -v sass >/dev/null; then
+        SASS_MISSING=1
+        log "WARNING: dart-sass not found — the shell will start UNSTYLED"
+        return 0
+    fi
     [[ -f "$ROOT/scripts/precompile-style.ts" ]] || return 0
 
     local tmp
@@ -101,7 +113,10 @@ usage: wam <command>
                    --force stashes local changes, hard-resets to the
                    remote and drops the cached stylesheet — for when a
                    normal update refuses because the tree has diverged
-  start            start the shell (no-op when already running)
+  start            start the shell (no-op when already running). Runs it
+                   as a supervised transient systemd unit where there is
+                   a user manager, so a crash restarts instead of leaving
+                   the desktop bare; unsupervised otherwise
   stop             stop the shell
   restart          stop, then start
   force-start      kill EVERY ags instance, then start (stale-instance broom)
@@ -115,8 +130,9 @@ usage: wam <command>
                    list template options your file predates (diff),
                    rewrite it as latest template + your values (sync)
   logs [-f]        the shell's log, from wherever this start method put
-                   it: the journal under autostart, $LOG_DIR/shell.log
-                   after 'wam start'. -f follows
+                   it: the journal under autostart or a supervised
+                   'wam start', $LOG_DIR/shell.log when neither could be
+                   used. -f follows
   report           one paste-ready block for a bug report: versions,
                    status, the options you set, and a bounded slice of
                    the log — with paths, usernames, emails and tokens
@@ -185,10 +201,51 @@ install_wam_script() {
 running() { ags list 2>/dev/null | grep -qxF "$INSTANCE"; }
 service_enabled() { systemctl --user is-enabled "$SERVICE" &>/dev/null; }
 
+# `wam start` used to be a bare `setsid nohup ags run` with nothing
+# watching it, so any crash left the user with no bar, tray, notifications
+# or OSD until they noticed and typed `wam start` again. That is not a
+# theoretical gap: #223 fires on any monitor going away (undock, unplug,
+# output reconfigure) and #225 on a startup race with the compositor
+# socket, and neither is rare.
+#
+# systemd-run gives the same supervision the autostart unit has without
+# requiring the user to enable autostart, and it keeps `wam logs` reading
+# one place (the journal). The transient unit is named after the instance
+# so two instances don't collide, and `wam stop` knows to look for it.
+#
+# Falls back to the old detached spawn wherever systemd is not the
+# session manager -- a TTY exec, a container, a non-systemd distro.
 start_detached() {
+    if have_systemd_user; then
+        # a previous run's unit may still exist as inactive/failed, and
+        # systemd-run refuses to reuse the name
+        reset_transient
+        log "Starting wam-shell as transient unit $(transient_unit) (logs: wam logs)"
+        systemd-run --user --quiet \
+            --unit="$(transient_unit)" \
+            --description="wam-shell (transient, started by wam start)" \
+            --property=Type=simple \
+            --property=WorkingDirectory="$ROOT" \
+            --property=Restart=always \
+            --property=RestartSec=2 \
+            --property=RestartSteps=6 \
+            --property=RestartMaxDelaySec=60 \
+            --property=StartLimitIntervalSec=0 \
+            --property=ExecStartPre="/usr/bin/env bash $ROOT/scripts/wait-compositor.sh" \
+            -- "$(command -v ags)" run app.tsx && return 0
+        log "systemd-run failed — falling back to an unsupervised start"
+    fi
     mkdir -p "$LOG_DIR"
-    log "Starting wam-shell (log: $LOG_DIR/shell.log)"
+    log "Starting wam-shell unsupervised (log: $LOG_DIR/shell.log)"
     (cd "$ROOT" && setsid nohup ags run app.tsx >"$LOG_DIR/shell.log" 2>&1 &)
+}
+
+# is there a systemd user manager to talk to at all? `systemctl --user`
+# exits non-zero with "Failed to connect to bus" without one, which is
+# the case on a TTY exec, in a container, and on non-systemd distros
+have_systemd_user() {
+    command -v systemd-run >/dev/null &&
+        systemctl --user show-environment >/dev/null 2>&1
 }
 
 # --- install / update ---------------------------------------------------------
@@ -228,6 +285,14 @@ cmd_install() {
         *":$HOME/.local/bin:"*) ;;
         *) log "NOTE: ~/.local/bin is not on PATH" ;;
     esac
+    if ((SASS_MISSING)); then
+        printf '\033[1;33mwarning:\033[0m %s\n' \
+            "dart-sass is not installed, so no stylesheet could be built and the
+  shell will start UNSTYLED. Install it and restart:
+    arch:   sudo pacman -S dart-sass
+    fedora: see https://github.com/sass/dart-sass/releases
+  then: wam restart" >&2
+    fi
     log "Done. Start now with: wam start — or autostart on login: wam autostart enable"
     log "The shell now lives in $ROOT; the clone may be deleted."
 }
@@ -360,6 +425,12 @@ cmd_stop() {
         systemctl --user stop "$SERVICE"
         return
     fi
+    # a transient unit carries Restart=always too: `ags quit` alone would
+    # be answered by an immediate respawn two seconds later
+    if transient_active; then
+        systemctl --user stop "$(transient_unit)"
+        return
+    fi
     if running; then
         ags quit -i "$INSTANCE" || true
     else
@@ -373,11 +444,38 @@ cmd_restart() {
         systemctl --user restart "$SERVICE"
         return
     fi
-    if running; then
+    if transient_active; then
+        # not `systemctl restart`: the transient unit's ExecStart is
+        # frozen at whatever `wam start` recorded, so an update would be
+        # restarted into the OLD command. Tear it down and make a new one
+        systemctl --user stop "$(transient_unit)"
+        reset_transient
+    elif running; then
         ags quit -i "$INSTANCE" || true
         sleep 1
     fi
     start_detached
+}
+
+# A transient unit lingers in "failed"/"inactive" after it stops, and
+# systemd-run refuses to create a unit that already exists. Clearing it
+# is what makes start-after-stop work.
+reset_transient() {
+    systemctl --user reset-failed "$(transient_unit)" 2>/dev/null || true
+    systemctl --user stop "$(transient_unit)" 2>/dev/null || true
+}
+
+# The unit name `wam start` uses. Deliberately NOT "$INSTANCE.service":
+# that is exactly $SERVICE for the default instance, so systemd-run would
+# collide with the autostart unit file ("Unit wam-shell.service already
+# exists") for anyone who has ever run `wam autostart enable`, even after
+# disabling it.
+transient_unit() {
+    printf '%s-run.service\n' "$INSTANCE"
+}
+
+transient_active() {
+    systemctl --user is-active "$(transient_unit)" &>/dev/null
 }
 
 cmd_force_start() {
@@ -386,6 +484,12 @@ cmd_force_start() {
         log "Stopping the service first (Restart=always would respawn it)"
         systemctl --user stop "$SERVICE"
     fi
+    # same for a transient unit from `wam start`, for the same reason
+    if transient_active; then
+        log "Stopping the transient unit first (Restart=always would respawn it)"
+        systemctl --user stop "$(transient_unit)"
+    fi
+    reset_transient
     log "Quitting all ags instances"
     local inst
     for inst in $(ags list 2>/dev/null); do
@@ -420,13 +524,36 @@ write_unit() {
 Description=wam-shell (ags desktop shell)
 After=$target
 PartOf=$target
+# systemd's defaults are DefaultStartLimitIntervalSec=10s and
+# DefaultStartLimitBurst=5. With RestartSec=2 a shell that dies AT
+# STARTUP restarts at t=0,2,4,6,8 -- five starts inside the ten-second
+# window -- and the unit lands in "failed" with start-limit-hit, where
+# it stays until someone runs \`systemctl --user reset-failed\`. That is
+# exactly the shape of #225 (astal segfaults when the Hyprland IPC
+# socket is not ready yet), i.e. the restart policy gives up precisely
+# in the case it exists for. Never give up; the wait below is what
+# actually breaks the loop.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 WorkingDirectory=$ROOT
+# Don't race the compositor (#225). Always exits 0 -- a delay, never a
+# gate; see the header of the script itself.
+ExecStartPre=/usr/bin/env bash $ROOT/scripts/wait-compositor.sh
 ExecStart=$(command -v ags) run app.tsx
 Restart=always
 RestartSec=2
+# Never giving up needs a backoff to go with it, or a shell that can
+# NEVER start (a stale WAYLAND_DISPLAY in the user manager's environment
+# is the realistic one, and it was found the hard way -- 105 restarts,
+# ~0.8s of CPU each, every two seconds, forever) becomes a spin instead
+# of a failure. RestartSteps/RestartMaxDelaySec ramp 2s -> 60s, so a
+# transient crash still comes back in two seconds and a permanent one
+# settles at one attempt a minute. systemd >= 254; older versions ignore
+# the two keys and keep the flat RestartSec, which is the old behaviour.
+RestartSteps=6
+RestartMaxDelaySec=60
 
 [Install]
 WantedBy=$target
@@ -731,6 +858,20 @@ cmd_status() {
     printf 'autostart: %s / %s\n' \
         "$(systemctl --user is-enabled "$SERVICE" 2>&1 || true)" \
         "$(systemctl --user is-active "$SERVICE" 2>&1 || true)"
+    # sass is a RUNTIME dependency of a desktop shell, and its absence is
+    # invisible until the stylesheet cache goes cold — then the shell
+    # starts unstyled, which reads as broken rather than as a missing
+    # package. Name it here, where someone looking at a wrong-looking
+    # shell will actually see it.
+    if command -v sass >/dev/null; then
+        printf 'sass:      %s\n' "$(command -v sass)"
+    elif [[ -f "$LOG_DIR/style.css" ]]; then
+        printf 'sass:      NOT INSTALLED — the cached stylesheet still works, but\n'
+        printf '           any style or theme change needs it (arch: dart-sass)\n'
+    else
+        printf 'sass:      NOT INSTALLED and no cached stylesheet — the shell will\n'
+        printf '           start UNSTYLED. install dart-sass, then: wam restart\n'
+    fi
 }
 
 # The shell logs to two different places depending on how it was
@@ -745,9 +886,16 @@ cmd_status() {
 # still resolves after a crash, which is exactly when it is wanted).
 # `wam logs` and `wam report` share it so they can never disagree about
 # which log a user is being shown.
+# Where this start method put the log: "journal:<unit>" or a file path.
+# The unit is part of the answer now that `wam start` runs the shell as a
+# transient systemd unit named after the instance — a bare "journal" left
+# cmd_logs guessing, and it guessed $SERVICE, which is empty for anyone
+# who never enabled autostart.
 log_location() {
     if systemctl --user is-active "$SERVICE" &>/dev/null || service_enabled; then
-        printf 'journal\n'
+        printf 'journal:%s\n' "$SERVICE"
+    elif transient_active; then
+        printf 'journal:%s\n' "$(transient_unit)"
     else
         printf '%s\n' "$LOG_DIR/shell.log"
     fi
@@ -759,17 +907,18 @@ cmd_logs() {
 
     local src
     src="$(log_location)"
-    if [[ "$src" == "journal" ]]; then
-        log "journal: $SERVICE"
+    if [[ "$src" == journal:* ]]; then
+        local unit="${src#journal:}"
+        log "journal: $unit"
         if ((follow)); then
-            journalctl --user -u "$SERVICE" -f
+            journalctl --user -u "$unit" -f
         else
-            journalctl --user -u "$SERVICE" -b --no-pager
+            journalctl --user -u "$unit" -b --no-pager
         fi
         return
     fi
 
-    [[ -f "$src" ]] || die "no logs: autostart is off and $src does not exist
+    [[ -f "$src" ]] || die "no logs: the shell is not running under systemd and $src does not exist
   start the shell with 'wam start', or enable autostart and use the journal"
     log "file: $src"
     if ((follow)); then

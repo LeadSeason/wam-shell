@@ -3,7 +3,10 @@ import {
     BANNER_HORIZON_SEC,
     bannerCandidates,
     createRefreshGate,
+    formatWait,
+    isBackoffStatus,
     newArrivals,
+    retryAfterSeconds,
 } from "../src/lib/providerCore"
 import { Provider, providers, registerProvider } from "../src/lib/notificationProviders"
 
@@ -122,4 +125,77 @@ test("notificationProviders: a duplicate name is ignored, the first wins", () =>
     registerProvider({ ...stub("test-dupe"), iconName: "different" })
     eq(providers.filter(p => p.name === "test-dupe").length, 1)
     eq(providers.find(p => p.name === "test-dupe"), first)
+})
+
+// --- rate-limit backoff ----------------------------------------------
+
+test("retryAfterSeconds: a bare integer is a delay in seconds", () => {
+    eq(retryAfterSeconds("60", 1), 60)
+    eq(retryAfterSeconds("  120  ", 1), 120)
+})
+
+test("retryAfterSeconds: an HTTP date is honoured, and the past means now", () => {
+    const now = Date.parse("Sun, 09 Aug 2026 12:00:00 GMT")
+    eq(retryAfterSeconds("Sun, 09 Aug 2026 12:01:00 GMT", 1, now), 60)
+    // a date already gone must not become a negative (or zero) wait
+    eq(retryAfterSeconds("Sun, 09 Aug 2026 11:00:00 GMT", 1, now), 1)
+})
+
+test("retryAfterSeconds: no usable header doubles per consecutive failure", () => {
+    eq(retryAfterSeconds("", 1), 30)
+    eq(retryAfterSeconds("", 2), 60)
+    eq(retryAfterSeconds("", 3), 120)
+    // garbage is the same as absent, not a throw
+    eq(retryAfterSeconds("soon", 1), 30)
+})
+
+test("retryAfterSeconds: clamped at both ends", () => {
+    // 0 would busy-loop
+    eq(retryAfterSeconds("0", 1), 1)
+    // a server asking for a day is not honoured silently on a desktop
+    eq(retryAfterSeconds("86400", 1), 3600)
+    // and the doubling fallback cannot run away either
+    eq(retryAfterSeconds("", 20), 3600)
+})
+
+test("isBackoffStatus: rate limit and overload only", () => {
+    eq(isBackoffStatus(429), true)
+    eq(isBackoffStatus(503), true)
+    // ordinary failures keep the old "retry next poll" behaviour
+    eq(isBackoffStatus(500), false)
+    eq(isBackoffStatus(401), false)
+    eq(isBackoffStatus(200), false)
+})
+
+test("refresh gate: a backoff blocks refresh until cleared", () => {
+    let polls = 0
+    const gate = createRefreshGate(0, () => polls++)
+    gate.refresh()
+    eq(polls, 1)
+    gate.backOff(60)
+    eq(gate.blocked(), true)
+    gate.refresh()
+    eq(polls, 1) // still 1: the backoff held it
+    gate.clearBackoff()
+    eq(gate.blocked(), false)
+    gate.refresh()
+    eq(polls, 2)
+})
+
+test("refresh gate: backOff never shortens an existing hold", () => {
+    const gate = createRefreshGate(0, () => {})
+    gate.backOff(600)
+    const long = gate.blockedFor()
+    gate.backOff(1) // a shorter one must not win
+    eq(gate.blockedFor() >= long - 1, true)
+})
+
+test("formatWait: coarse, and never rounds down to zero", () => {
+    eq(formatWait(1), "1s")
+    eq(formatWait(45), "45s")
+    eq(formatWait(0.4), "1s")
+    eq(formatWait(90), "2m")
+    eq(formatWait(2400), "40m")
+    eq(formatWait(3600), "1h")
+    eq(formatWait(5400), "1.5h")
 })

@@ -1,6 +1,6 @@
 import { Gtk } from "ags/gtk4"
 import Pango from "gi://Pango?version=1.0"
-import { Accessor, For, createComputed, createState } from "gnim"
+import { Accessor, For, createComputed, createState, onCleanup } from "gnim"
 import { qsVisible } from "../MediaSection"
 import vpnStatus, {
     accountInfo,
@@ -85,25 +85,29 @@ export function VpnPane({ pane, name }: { pane: Accessor<string>; name: string }
     if (!hasMullvad) return <></>
 
     // refresh on pane open; never on a timer
-    pane.subscribe(() => {
-        if (pane.get() === name) {
-            refreshPaneData()
-            ensureLocations()
-            refreshExpiry()
-        }
-    })
+    onCleanup(
+        pane.subscribe(() => {
+            if (pane.get() === name) {
+                refreshPaneData()
+                ensureLocations()
+                refreshExpiry()
+            }
+        }),
+    )
 
     const [pickerOpen, setPickerOpen] = createState(false)
     const [query, setQuery] = createState("")
 
     // closed popup = collapsed picker next open, like the toggle
     // section's reset on hide
-    qsVisible.subscribe(() => {
-        if (!qsVisible.get()) {
-            setPickerOpen(false)
-            setQuery("")
-        }
-    })
+    onCleanup(
+        qsVisible.subscribe(() => {
+            if (!qsVisible.get()) {
+                setPickerOpen(false)
+                setQuery("")
+            }
+        }),
+    )
     const filtered = createComputed([locations, query], (locs, q) =>
         locs.filter(l => !q || `${l.country} ${l.city}`.toLowerCase().includes(q.toLowerCase())),
     )

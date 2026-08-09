@@ -17,9 +17,9 @@ importers:
       gnim:
         specifier: link:.sys/gnim
         version: link:.sys/gnim
-      toml:
-        specifier: ^3.0.0
-        version: 3.0.0
+      smol-toml:
+        specifier: ^1.7.1
+        version: 1.7.1
     devDependencies:
       prettier:
         specifier: ^3.8.1
@@ -36,8 +36,9 @@ packages:
     engines: {node: '>=14'}
     hasBin: true
 
-  toml@3.0.0:
-    resolution: {integrity: sha512-y/mWCZinnvxjTKYhJ+pYxwD0mRLVvOtdS2Awbgxln6iEnt4rk0yBxeSBHkGJcPucRiG0e55mwWp+g/05rsrd6w==}
+  smol-toml@1.7.1:
+    resolution: {integrity: sha512-PPlsspAZ4jbMBu5DMFhfUGDQLu/vrL4SyBROVS37x8ynnVmFIs1VPBz1Co8Xks3TvpIaZXmU85y4DrQ+UyVFoQ==}
+    engines: {node: '>= 18'}
 
 snapshots:
 
@@ -45,4 +46,4 @@ snapshots:
 
   prettier@3.9.6: {}
 
-  toml@3.0.0: {}
+  smol-toml@1.7.1: {}
