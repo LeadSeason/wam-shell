@@ -336,25 +336,8 @@ window.Notifications {
 
     // ---- rows
 
-    // A `button` node now, not a box (see CenterRow.tsx: GTK4 will not
-    // put a box in the focus chain, and the centre has to be readable
-    // from the keyboard). `u.row` already gives it the list treatment —
-    // nothing at rest, surface under the pointer — and `* { all: unset }`
-    // means the button node brings no theme padding of its own with it.
-    // What it DOES bring, and what the box could never have, is a real
-    // :active for the press and a focus state to draw.
     .centerRow {
         @include u.row;
-
-        // the ring is the keyboard's version of the hover fill: it says
-        // which row Enter will open. An outline rather than u.focus-ring,
-        // whose border-color would need a 2px transparent border on every
-        // row and would widen the whole list by 4px to draw one.
-        &:focus,
-        &:focus-visible {
-            outline: s.$border solid t.$accent;
-            outline-offset: -#{s.$border};
-        }
 
         @include row-buttons;
 
