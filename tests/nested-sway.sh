@@ -53,6 +53,23 @@ nested_pid() {
     printf '%s\n' "$pid"
 }
 
+# Every sway that is OURS, found by scanning rather than by trusting the pid
+# file — the file is written after the compositor is spawned, so anything that
+# interrupts start() in between (a failed preflight, a killed test run, a
+# sandbox where the cleanup itself could not run) orphans a compositor that
+# `stop` then cannot see. Found exactly that way: a nested sway from a failed
+# run was still up half an hour later, and `stop` reported success because the
+# pid file it reads had been cleaned up around it.
+#
+# is_nested is what makes the scan safe: it matches on OUR config path in the
+# process's argv, so a real sway session can never be selected.
+nested_pids() {
+    local pid
+    for pid in $(pgrep -x sway 2>/dev/null); do
+        is_nested "$pid" && printf '%s\n' "$pid"
+    done
+}
+
 # The socket to drive, verified rather than trusted: it must be the one our own
 # instance wrote, it must still exist, and it must live in the private runtime
 # dir (i.e. it cannot be a real session's).
@@ -246,8 +263,10 @@ EOF
 
 stop() {
     ags quit -i "$INSTANCE" 2>/dev/null
+
+    # by scan, not by pid file: see nested_pids
     local pid
-    if pid=$(nested_pid); then
+    for pid in $(nested_pids); do
         kill "$pid" 2>/dev/null
         local i=0
         while [ "$i" -lt 25 ] && is_nested "$pid"; do
@@ -255,7 +274,7 @@ stop() {
             sleep 0.2
         done
         is_nested "$pid" && kill -9 "$pid" 2>/dev/null
-    fi
+    done
 
     # Wait for the INSTANCE to go too, not just the compositor. The shell
     # outlives its wayland connection by a moment, and `stop` returning early
