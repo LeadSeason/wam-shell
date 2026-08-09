@@ -209,6 +209,22 @@ export default function CenterRow({
                                         )}
                                         onClicked={onMuteApp}
                                     >
+                                        {/* A click on a button nested inside a button reaches the
+                                        OUTER one, not this: measured, both ways round, with a
+                                        synthetic click on a plain window — the row activated and
+                                        Dismiss never fired, which is how the first attempt at this
+                                        shipped an inert ×. Claiming the sequence in the CAPTURE
+                                        phase is what stops it: the press is taken before the outer
+                                        button's gesture sees it, so this button gets its click and
+                                        the row does not activate. Clicking the row BODY still
+                                        activates it — also measured. */}
+                                        <Gtk.GestureClick
+                                            button={1}
+                                            propagationPhase={Gtk.PropagationPhase.CAPTURE}
+                                            onPressed={(g: Gtk.GestureClick) =>
+                                                g.set_state(Gtk.EventSequenceState.CLAIMED)
+                                            }
+                                        />
                                         <image
                                             iconName={
                                                 appMuted?.as(m =>
@@ -226,6 +242,22 @@ export default function CenterRow({
                                     tooltipText={dismissLabel}
                                     onClicked={onDismiss}
                                 >
+                                    {/* A click on a button nested inside a button reaches the
+                                    OUTER one, not this: measured, both ways round, with a
+                                    synthetic click on a plain window — the row activated and
+                                    Dismiss never fired, which is how the first attempt at this
+                                    shipped an inert ×. Claiming the sequence in the CAPTURE
+                                    phase is what stops it: the press is taken before the outer
+                                    button's gesture sees it, so this button gets its click and
+                                    the row does not activate. Clicking the row BODY still
+                                    activates it — also measured. */}
+                                    <Gtk.GestureClick
+                                        button={1}
+                                        propagationPhase={Gtk.PropagationPhase.CAPTURE}
+                                        onPressed={(g: Gtk.GestureClick) =>
+                                            g.set_state(Gtk.EventSequenceState.CLAIMED)
+                                        }
+                                    />
                                     <image iconName="window-close-symbolic" />
                                 </button>
                             </box>
@@ -287,6 +319,22 @@ export default function CenterRow({
                         >
                             {data.actions.map(a => (
                                 <button onClicked={() => onAction(a.id)}>
+                                    {/* A click on a button nested inside a button reaches the
+                                    OUTER one, not this: measured, both ways round, with a
+                                    synthetic click on a plain window — the row activated and
+                                    Dismiss never fired, which is how the first attempt at this
+                                    shipped an inert ×. Claiming the sequence in the CAPTURE
+                                    phase is what stops it: the press is taken before the outer
+                                    button's gesture sees it, so this button gets its click and
+                                    the row does not activate. Clicking the row BODY still
+                                    activates it — also measured. */}
+                                    <Gtk.GestureClick
+                                        button={1}
+                                        propagationPhase={Gtk.PropagationPhase.CAPTURE}
+                                        onPressed={(g: Gtk.GestureClick) =>
+                                            g.set_state(Gtk.EventSequenceState.CLAIMED)
+                                        }
+                                    />
                                     <label label={a.label} />
                                 </button>
                             ))}
