@@ -6,12 +6,7 @@ import { configHome } from "./paths"
 import { writeFileAtomic } from "./atomicWrite"
 import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { GoogleAccount, createGoogleAuth, googleRequest } from "./googleAuth"
-import {
-    createRefreshGate,
-    formatWait,
-    isBackoffStatus,
-    retryAfterSeconds,
-} from "./providerCore"
+import { createRefreshGate, formatWait, isBackoffStatus, retryAfterSeconds } from "./providerCore"
 import { WEEKDAYS } from "./relTime"
 import { registerDispose } from "./lifecycle"
 

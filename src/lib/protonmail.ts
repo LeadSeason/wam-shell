@@ -366,7 +366,10 @@ async function cmd(
  * Exported for the unit tests.
  */
 export function isLoopbackHost(host: string): boolean {
-    const h = host.trim().toLowerCase().replace(/^\[|\]$/g, "")
+    const h = host
+        .trim()
+        .toLowerCase()
+        .replace(/^\[|\]$/g, "")
     if (h === "localhost" || h === "::1" || h === "0:0:0:0:0:0:0:1") return true
     const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h)
     if (!v4) return false
