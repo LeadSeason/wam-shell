@@ -2,7 +2,7 @@ import { Gtk, Gdk } from "ags/gtk4"
 import GdkPixbuf from "gi://GdkPixbuf?version=2.0"
 import Graphene from "gi://Graphene?version=1.0"
 import Pango from "gi://Pango?version=1.0"
-import { createState, onCleanup } from "gnim"
+import { Accessor, createState, onCleanup } from "gnim"
 import { rtlAlign, safeMarkup } from "../../lib/utils"
 import { relTime, nowSec } from "../../lib/relTime"
 import { paintPress } from "../pressable"
@@ -56,6 +56,10 @@ function loadArt(path: string): Gdk.Texture | null {
  *        are genuinely different promises
  * @param onSecondary right-click: dismissal for a desktop notification,
  *        a session-scoped hide for a provider item
+ * @param onMuteApp offered only for DESKTOP notifications. A provider
+ *        is muted from the centre's own filter chips, and giving its
+ *        rows a second mute would be a second mechanism for one idea —
+ *        with two places to look when something has gone quiet.
  */
 export default function CenterRow({
     data,
@@ -63,6 +67,8 @@ export default function CenterRow({
     onDismiss,
     onSecondary,
     onAction,
+    onMuteApp,
+    appMuted,
     dismissLabel = "Dismiss",
 }: {
     data: RowData
@@ -70,6 +76,8 @@ export default function CenterRow({
     onDismiss: () => void
     onSecondary?: () => void
     onAction: (id: string) => void
+    onMuteApp?: () => void
+    appMuted?: Accessor<boolean>
     dismissLabel?: string
 }) {
     const { rtl } = data
@@ -163,11 +171,55 @@ export default function CenterRow({
                             {/* the age and the dismiss button share one slot,
                         so hovering a row cannot shift the list under the
                         pointer */}
+                            {/* a muted app still collects rows here —
+                            that is the point of muting rather than
+                            blocking — so the list has to say which ones
+                            will not interrupt again */}
+                            {appMuted && (
+                                <image
+                                    cssClasses={["mutedMark"]}
+                                    iconName="notifications-disabled-symbolic"
+                                    pixelSize={12}
+                                    visible={appMuted}
+                                    tooltipText={`${data.appName} is muted`}
+                                />
+                            )}
                             <label
                                 cssClasses={["time"]}
                                 label={nowSec.as(n => relTime(data.time, n))}
                                 visible={hovered.as(h => !h)}
                             />
+                            {/* Beside Dismiss rather than behind a
+                            right-click, because both of this row's
+                            spare buttons are already spoken for
+                            (secondary and middle both dismiss) — and a
+                            mute nobody can find is a mute nobody
+                            uses. */}
+                            {onMuteApp && (
+                                <button
+                                    $={self => {
+                                        buttons.push(self)
+                                    }}
+                                    cssClasses={["muteApp"]}
+                                    visible={hovered}
+                                    tooltipText={appMuted?.as(m =>
+                                        m
+                                            ? `Let ${data.appName} interrupt again`
+                                            : `Stop ${data.appName} interrupting`,
+                                    )}
+                                    onClicked={onMuteApp}
+                                >
+                                    <image
+                                        iconName={
+                                            appMuted?.as(m =>
+                                                m
+                                                    ? "preferences-system-notifications-symbolic"
+                                                    : "notifications-disabled-symbolic",
+                                            ) ?? "notifications-disabled-symbolic"
+                                        }
+                                    />
+                                </button>
+                            )}
                             <button
                                 $={self => {
                                     buttons.push(self)

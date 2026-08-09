@@ -9,8 +9,10 @@ import notifd, {
     LOCAL_SOURCE,
     count,
     dnd,
+    mutedApps,
     mutedProviders,
     persistent,
+    toggleAppMute,
     toggleDnd,
     toggleProviderMute,
 } from "../../lib/notifd"
@@ -303,6 +305,10 @@ function ItemRow({ row }: { row: Row }) {
                 }}
                 onDismiss={() => n.dismiss()}
                 onAction={id => n.invoke(id)}
+                onMuteApp={() => toggleAppMute(n.appName)}
+                appMuted={mutedApps.as(list =>
+                    list.includes((n.appName || "unknown").toLowerCase()),
+                )}
             />
         )
     }

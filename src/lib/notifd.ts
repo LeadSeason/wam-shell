@@ -6,6 +6,7 @@ import { connect, disconnect, idleAdd, timeoutAdd, sourceRemove } from "./metric
 import Config from "../config"
 import type { ProviderItem } from "./notificationProviders"
 import { registerDispose } from "./lifecycle"
+import { writeFileAtomic } from "./atomicWrite"
 
 // Shared notification daemon state. The first instantiation becomes
 // the daemon (so swaync must not run alongside).
@@ -85,6 +86,57 @@ export const LOCAL_SOURCE = "local"
 export function toggleProviderMute(name: string) {
     const cur = mutedProviders.get()
     setMutedProviders(cur.includes(name) ? cur.filter(n => n !== name) : [...cur, name])
+}
+
+// --- per-app mute -----------------------------------------------------
+//
+// Muting the LOCAL_SOURCE above silences every desktop notification at
+// once, which is a blunt instrument: the reason to reach for it is
+// almost always one chatty application, and silencing the other twenty
+// to get at it means missing the ones that mattered.
+//
+// Persisted, unlike the provider mutes, and the difference is not an
+// inconsistency. A provider mute is a "not right now" you make while
+// looking at the centre's filter chips. "This app never needs to
+// interrupt me" is a decision about that app, and one you would have to
+// make again after every update, logout and crash if it lived in
+// memory. `[notifications] transient_apps` is the config-file sibling —
+// that one says "keep it out of the history", this one says "do not
+// let it interrupt", and they are independent on purpose.
+const mutedAppsPath = `${Config.instanceCacheDir}/muted-apps.json`
+
+function loadMutedApps(): string[] {
+    try {
+        if (!GLib.file_test(mutedAppsPath, GLib.FileTest.EXISTS)) return []
+        const [ok, bytes] = GLib.file_get_contents(mutedAppsPath)
+        if (!ok) return []
+        const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes))
+        // hand-edited or truncated: a bad file must not take the daemon
+        // down, and an empty list is the safe reading of "unknown"
+        if (!Array.isArray(parsed)) return []
+        return parsed.filter((v): v is string => typeof v === "string")
+    } catch (e) {
+        console.warn("notifd: could not read the muted-app list:", e)
+        return []
+    }
+}
+
+const [mutedApps, setMutedApps] = createState<string[]>(loadMutedApps())
+export { mutedApps }
+
+/** compared lowercased everywhere: app names arrive however the sender spelled them */
+export function isAppMuted(appName: string): boolean {
+    return mutedApps.get().includes((appName || "unknown").toLowerCase())
+}
+
+export function toggleAppMute(appName: string) {
+    const key = (appName || "unknown").toLowerCase()
+    const cur = mutedApps.get()
+    const next = cur.includes(key) ? cur.filter(n => n !== key) : [...cur, key]
+    setMutedApps(next)
+    writeFileAtomic(mutedAppsPath, JSON.stringify(next)).catch(e =>
+        console.warn("notifd: could not persist the muted-app list:", e),
+    )
 }
 
 // --- transient popups -------------------------------------------------
@@ -229,6 +281,75 @@ export function removePopup(key: string) {
     if (timers.delete(key)) bumpTimerVersion()
     setPopups(popupsState.get().filter(p => p.key !== key))
     forgetFinishedApps()
+}
+
+// --- snooze -----------------------------------------------------------
+//
+// "Not now, but do come back." The gap between dismissing a banner (it
+// is gone, and the only trace is a row in the centre you have to
+// remember to open) and letting it drain (it is gone in four seconds
+// either way). Snoozing takes the banner off screen and puts the same
+// one back later, countdown and all.
+//
+// Keyed by popup key, holding everything `addPopup` will need to admit
+// it a second time — the notification object itself stays alive in the
+// daemon's list, so this is a re-admission, not a copy.
+interface Snoozed {
+    entry: Omit<PopupEntry, "critical">
+    urgency: AstalNotifd.Urgency | null
+    expireMs: number
+    source: number
+}
+
+const snoozed = new Map<string, Snoozed>()
+
+/** how long a snooze lasts, in ms. One value, no menu: a snooze that
+ *  asks you to pick a duration is slower than reading the notification. */
+export const SNOOZE_MS = 10 * 60 * 1000
+
+/**
+ * Take a banner off screen and bring it back in ten minutes.
+ *
+ * Returns false when the key is not on screen, which is the case a
+ * double click produces: the first one already removed it.
+ */
+export function snoozePopup(key: string): boolean {
+    const entry = popupsState.get().find(p => p.key === key)
+    if (!entry || snoozed.has(key)) return false
+
+    const timer = timers.get(key)
+    // what the sender originally asked for, so the second showing drains
+    // like the first rather than inheriting the default
+    const expireMs = timer && timer.duration > 0 ? timer.duration : timer ? 0 : -1
+    const urgency = entry.critical ? AstalNotifd.Urgency.CRITICAL : null
+
+    const source = timeoutAdd("notifd:snooze", GLib.PRIORITY_DEFAULT, SNOOZE_MS, () => {
+        const held = snoozed.get(key)
+        snoozed.delete(key)
+        if (!held) return GLib.SOURCE_REMOVE
+        // The notification may have been dismissed from the centre while
+        // it was snoozed. Re-raising a banner for something the user
+        // already dealt with is worse than forgetting it.
+        if (held.entry.desktop && !notifd.get_notification(held.entry.desktop.id))
+            return GLib.SOURCE_REMOVE
+        addPopup(held.entry, held.urgency, held.expireMs)
+        return GLib.SOURCE_REMOVE
+    })
+
+    snoozed.set(key, {
+        entry: { key: entry.key, desktop: entry.desktop, item: entry.item },
+        urgency,
+        expireMs,
+        source,
+    })
+    // deferred: this is reached from a click on the banner itself
+    removePopupDeferred(key)
+    return true
+}
+
+/** is this banner waiting to come back? */
+export function isSnoozed(key: string): boolean {
+    return snoozed.has(key)
 }
 
 // hovering ANY banner freezes every countdown: if a banner above the
@@ -511,6 +632,12 @@ const notifiedId = connect(notifd, "notified", (_s: AstalNotifd.Notifd, id: numb
     // still lands in the center, it just does not interrupt. Absolute,
     // like a muted provider — a mute nobody can rely on is not a mute
     if (mutedProviders.get().includes(LOCAL_SOURCE)) return
+    // and the same, for one app rather than all of them. Absolute too,
+    // criticals included: unlike DND, which is a mood, this is a
+    // standing instruction about a specific sender — an app that is
+    // muted precisely because it shouts should not be able to shout
+    // louder to get through
+    if (isAppMuted(n.appName)) return
     // the sender's own expire_timeout leads; -1 means it deferred to us
     addPopup({ key: `desktop:${id}`, desktop: n, item: null }, n.urgency, n.expireTimeout ?? -1)
 })
@@ -540,6 +667,10 @@ export function dispose() {
     expiring.clear()
     for (const src of deferredRemoval.values()) sourceRemove(src)
     deferredRemoval.clear()
+    // a snooze outliving the module would re-admit a banner into a
+    // popup stack nothing is ticking any more
+    for (const held of snoozed.values()) sourceRemove(held.source)
+    snoozed.clear()
     disconnect(notifd, notifiedId)
     disconnect(notifd, resolvedId)
 }
