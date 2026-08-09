@@ -17,19 +17,23 @@ import { warnPerms, loadCredentials as loadEnvCredentials } from "./credentials"
 // redirect (RFC 8252) with PKCE (RFC 7636) and a per-flow state nonce,
 // one sign-in per Google account.
 //
-// Hard-won details, kept deliberately: Gio.Socket.new positional ctor
-// (the object form yields an uninitialized socket), ONE stable consent
-// page per flow (re-clicking re-opens the same page — a flow per click
-// sprinkles tabs pointing at dead ports), the accept callback captures
-// its own listener (a torn-down flow's pending accept must not fire
-// against the new one), and accept_finish returns a TUPLE in GJS.
+// The redirect receiver is a Soup.Server on a loopback port (see
+// startRedirectServer). It used to be hand-written on Gio.Socket —
+// accept loop, header accumulation, manual response framing — and the
+// long list of hard-won details that came with it (the positional
+// Gio.Socket.new ctor, accept_finish returning a TUPLE in GJS, capturing
+// the listener so a torn-down flow's pending accept could not fire
+// against the new one, accepting in a loop so a Chromium preconnect
+// could not consume the whole sign-in) were all restatements of things
+// libsoup already handles. libsoup was already a dependency of this file
+// for the token requests.
 //
-// The listener accepts in a LOOP: browsers open speculative connections
-// (Chromium preconnect that never sends a byte, /favicon.ico) and a
-// single accept would let one of those consume the whole sign-in. Only
-// a request carrying code=/error= with the flow's state ends the flow
-// (or the 120s timeout); anything else gets a minimal 404/400 and the
-// listener keeps listening.
+// What survives that rewrite, because it is ours rather than the
+// transport's: ONE stable consent page per flow (re-clicking re-opens
+// the same page — a flow per click sprinkles tabs pointing at dead
+// ports), and only a request carrying code=/error= WITH this flow's
+// state nonce ends the flow. Anything else gets a minimal 404/400 and
+// the server keeps listening; the 120s timeout is the other way out.
 //
 // Refresh tokens live in the Secret Service keyring when it is
 // available (soft dependency, see lib/secretStore.ts) and otherwise in
@@ -115,6 +119,32 @@ export function stateMatches(expected: string, got: string | null): boolean {
     return got !== null && got === expected
 }
 
+/**
+ * An `application/x-www-form-urlencoded` body.
+ *
+ * This is exactly what Soup.form_encode_hash is for, and it is the right
+ * function HERE specifically: the token endpoint takes a POST body of
+ * that content type, where `+` for space is correct and the order of the
+ * fields carries no meaning.
+ */
+export function encodeForm(fields: Record<string, string>): string {
+    return Soup.form_encode_hash(fields)
+}
+
+/**
+ * The consent URL.
+ *
+ * Deliberately NOT Soup.form_encode_hash, unlike the POST body above.
+ * It takes a GHashTable, so it does not preserve the order of the
+ * parameters — this URL comes out shuffled differently between runs,
+ * which makes it unpinnable in a test and confusing to compare in a log.
+ * It also encodes space as `+`, which Google accepts in `scope` but is
+ * a form-body convention rather than a query-string one.
+ *
+ * Neither would break the flow. Both would make an auth URL that is
+ * harder to reason about than the six lines they save, so this one stays
+ * explicit and ordered.
+ */
 export function buildAuthUrl(opts: {
     clientId: string
     redirectUri: string
@@ -122,26 +152,20 @@ export function buildAuthUrl(opts: {
     state: string
     codeChallenge: string
 }): string {
-    const params = [
-        `client_id=${encodeURIComponent(opts.clientId)}`,
-        `redirect_uri=${encodeURIComponent(opts.redirectUri)}`,
-        "response_type=code",
-        `scope=${encodeURIComponent(opts.scope)}`,
-        "access_type=offline",
-        "prompt=consent",
-        `state=${encodeURIComponent(opts.state)}`,
+    const params: [string, string][] = [
+        ["client_id", opts.clientId],
+        ["redirect_uri", opts.redirectUri],
+        ["response_type", "code"],
+        ["scope", opts.scope],
+        ["access_type", "offline"],
+        ["prompt", "consent"],
+        ["state", opts.state],
         // base64url needs no percent-encoding
-        `code_challenge=${opts.codeChallenge}`,
-        "code_challenge_method=S256",
-    ].join("&")
-    return `${AUTH_URL}?${params}`
-}
-
-// the request target of a loopback request ("GET <target> HTTP/1.1"),
-// null for non-GET garbage
-export function requestTarget(requestText: string): string | null {
-    const line = requestText.split("\r\n", 1)[0] ?? ""
-    return line.match(/^GET\s+(\S+)/)?.[1] ?? null
+        ["code_challenge", opts.codeChallenge],
+        ["code_challenge_method", "S256"],
+    ]
+    const query = params.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&")
+    return `${AUTH_URL}?${query}`
 }
 
 export interface RedirectParams {
@@ -150,22 +174,29 @@ export interface RedirectParams {
     state: string | null
 }
 
-export function parseRedirectParams(target: string): RedirectParams {
+/**
+ * The three parameters that matter, out of a redirect's query string.
+ *
+ * GLib.Uri.parse_params does the splitting and the percent-decoding,
+ * including the malformed-encoding case this used to catch by hand — it
+ * throws, and a query we cannot decode is a query with no parameters in
+ * it, which is the same answer the hand-rolled version gave.
+ *
+ * @param query the raw query string, WITHOUT the leading "?"
+ */
+export function parseRedirectParams(query: string): RedirectParams {
     const out: RedirectParams = { code: null, error: null, state: null }
-    const q = target.indexOf("?")
-    if (q < 0) return out
-    for (const pair of target.slice(q + 1).split("&")) {
-        const eq = pair.indexOf("=")
-        if (eq <= 0) continue
-        const key = pair.slice(0, eq)
-        if (key !== "code" && key !== "error" && key !== "state") continue
-        try {
-            // empty values stay null: "?code=" is junk, not a redirect
-            const value = decodeURIComponent(pair.slice(eq + 1))
-            if (value) out[key] = value
-        } catch {
-            // malformed percent-encoding: treat as absent
-        }
+    if (!query) return out
+    let params: Record<string, string>
+    try {
+        params = GLib.Uri.parse_params(query, -1, "&", GLib.UriParamsFlags.NONE)
+    } catch {
+        return out // malformed percent-encoding: treat as absent
+    }
+    for (const key of ["code", "error", "state"] as const) {
+        // empty values stay null: "?code=" is junk, not a redirect
+        const value = params[key]
+        if (value) out[key] = value
     }
     return out
 }
@@ -223,10 +254,7 @@ export function googleRequest(
     }
     if (opts.bearer) msg.get_request_headers().append("Authorization", `Bearer ${opts.bearer}`)
     if (opts.form) {
-        const body = Object.entries(opts.form)
-            .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-            .join("&")
-        const bytes = new GLib.Bytes(new TextEncoder().encode(body))
+        const bytes = new GLib.Bytes(new TextEncoder().encode(encodeForm(opts.form)))
         msg.set_request_body_from_bytes("application/x-www-form-urlencoded", bytes)
     }
     // same two guards as lib/httpJson, and for the same reasons:
@@ -430,7 +458,11 @@ export function createGoogleAuth(opts: {
     // ------------------------------------------------------- OAuth flow
 
     let authInProgress = false
-    let authListener: Gio.SocketListener | null = null
+    // the loopback receiver for the flow in flight, torn down by
+    // finishAuth/dispose. Soup.Server.disconnect() stops listening and
+    // drops every connection, which is the whole staleness story the old
+    // hand-rolled listener needed a captured-listener check for
+    let authServer: Soup.Server | null = null
     let authTimeout = 0
     const [authBusy, setAuthBusy] = createState(false)
     let redirectUri: string | null = null
@@ -445,9 +477,9 @@ export function createGoogleAuth(opts: {
             sourceRemove(authTimeout)
             authTimeout = 0
         }
-        if (authListener) {
-            authListener.close()
-            authListener = null
+        if (authServer) {
+            authServer.disconnect()
+            authServer = null
         }
         authInProgress = false
         setAuthBusy(false)
@@ -501,138 +533,78 @@ export function createGoogleAuth(opts: {
         )
     }
 
-    // ---------------------------------------------------- accept loop
+    // ------------------------------------------------- redirect receiver
 
-    // a whole request head is small; the cap only guards against junk
-    const MAX_REQUEST_BYTES = 16 * 1024
-
-    function respondAndClose(conn: Gio.SocketConnection, status: string, body: string) {
-        // Content-Length counts UTF-8 BYTES, not UTF-16 code units
-        const payload = new TextEncoder().encode(body)
-        const head =
-            `HTTP/1.1 ${status}\r\n` +
-            `Content-Type: text/html; charset=utf-8\r\n` +
-            `Content-Length: ${payload.length}\r\n` +
-            `Connection: close\r\n\r\n`
+    /**
+     * The loopback HTTP server Google redirects back to.
+     *
+     * This used to be hand-written on Gio.Socket: bind, accept in a loop
+     * so a browser preconnect could not starve the real redirect,
+     * accumulate reads until \r\n\r\n or a 16 kB cap, merge the chunks,
+     * decode, pick the request line apart with a regex, hand-build a
+     * response with a Content-Length counted in UTF-8 bytes, and thread a
+     * `listener !== authListener` staleness check through every callback
+     * so a torn-down flow's pending accept could not fire against the new
+     * one. Soup.Server does all of that, and libsoup was already a
+     * dependency of this file.
+     *
+     * What still has to be right, and is: only a request carrying code=
+     * or error= WITH this flow's state nonce ends the flow. Everything
+     * else (favicon, a stray GET /, a preconnect) gets a minimal answer
+     * and the server keeps listening.
+     */
+    function startRedirectServer(): number | null {
+        const server = new Soup.Server()
         try {
-            const headBytes = new TextEncoder().encode(head)
-            const out = new Uint8Array(headBytes.length + payload.length)
-            out.set(headBytes, 0)
-            out.set(payload, headBytes.length)
-            conn.get_output_stream().write_bytes(new GLib.Bytes(out), null)
-            conn.close(null)
-        } catch {}
-    }
+            // IPv4 loopback only: the redirect_uri Google is given is
+            // 127.0.0.1, and nothing off this machine has any business
+            // reaching an in-flight authorization code
+            server.listen_local(0, Soup.ServerListenOptions.IPV4_ONLY)
+        } catch (e) {
+            console.warn(`${logTag}: could not start the loopback listener:`, e)
+            return null
+        }
+        const uris = server.get_uris()
+        if (uris.length === 0) {
+            server.disconnect()
+            return null
+        }
 
-    // every accepted connection is read on its own while the listener
-    // immediately re-accepts: a preconnect that never sends a byte must
-    // not starve the real redirect behind it
-    function acceptLoop(listener: Gio.SocketListener) {
-        listener.accept_async(null, (_l, res) => {
-            let conn: Gio.SocketConnection | null = null
-            try {
-                // GJS: accept_finish returns [connection, source_object]
-                ;[conn] = listener.accept_finish(res) as unknown as [Gio.SocketConnection, unknown]
-            } catch {
-                conn = null
+        server.add_handler(null, (_srv, msg) => {
+            const query = msg.get_uri().get_query()
+            const params = parseRedirectParams(query ?? "")
+            const reply = (status: number, body: string) => {
+                msg.set_response(
+                    "text/html; charset=utf-8",
+                    Soup.MemoryUse.COPY,
+                    new TextEncoder().encode(body),
+                )
+                msg.set_status(status, null)
             }
-            if (!conn) return // torn down by finishAuth/dispose: stop looping
-            acceptLoop(listener)
-            readRequest(listener, conn)
-        })
-    }
 
-    // accumulate until end-of-headers (\r\n\r\n) or the cap: a single
-    // fixed-size read is not guaranteed to hold the request line
-    function readRequest(listener: Gio.SocketListener, conn: Gio.SocketConnection) {
-        const chunks: Uint8Array[] = []
-        let total = 0
-        const readMore = () => {
-            if (listener !== authListener) {
-                try {
-                    conn.close(null)
-                } catch {}
+            if (!params.code && !params.error) {
+                // favicon, a stray GET /, a preconnect: not the redirect
+                reply(404, "<h3>wam-shell: not the sign-in redirect</h3>")
                 return
             }
-            conn.get_input_stream().read_bytes_async(
-                4096,
-                GLib.PRIORITY_DEFAULT,
-                null,
-                (s, res) => {
-                    if (listener !== authListener) {
-                        try {
-                            conn.close(null)
-                        } catch {}
-                        return
-                    }
-                    let data: Uint8Array | null = null
-                    try {
-                        data = (s as Gio.InputStream).read_bytes_finish(res).get_data() ?? null
-                    } catch {
-                        data = null
-                    }
-                    if (!data || data.length === 0) {
-                        // EOF with nothing (or only a partial head): a
-                        // preconnect that closed, or the peer gave up —
-                        // nothing to answer
-                        try {
-                            conn.close(null)
-                        } catch {}
-                        return
-                    }
-                    chunks.push(data)
-                    total += data.length
-                    // decoded for the delimiter search only; ASCII
-                    // delimiters survive a split multibyte sequence
-                    const merged = new Uint8Array(total)
-                    let off = 0
-                    for (const c of chunks) {
-                        merged.set(c, off)
-                        off += c.length
-                    }
-                    const text = new TextDecoder().decode(merged)
-                    if (!text.includes("\r\n\r\n") && total < MAX_REQUEST_BYTES) {
-                        readMore()
-                        return
-                    }
-                    processRequest(conn, text)
-                },
-            )
-        }
-        readMore()
-    }
+            if (!stateMatches(pendingState, params.state)) {
+                // missing or foreign state: NEVER end the flow on it
+                console.warn(`${logTag}: redirect with a missing or mismatched state; ignoring`)
+                reply(400, "<h3>wam-shell: bad sign-in state</h3>")
+                return
+            }
+            if (params.error) {
+                console.warn(`${logTag}: sign-in denied (${params.error})`)
+                reply(200, "<h3>wam-shell: sign-in failed</h3>You can close this tab.")
+                finishAuth(false)
+                return
+            }
+            reply(200, "<h3>wam-shell: sign-in complete</h3>You can close this tab.")
+            finishAuth(true, params.code!)
+        })
 
-    function processRequest(conn: Gio.SocketConnection, text: string) {
-        const target = requestTarget(text)
-        const params = target ? parseRedirectParams(target) : null
-        if (!params || (!params.code && !params.error)) {
-            // favicon, a stray GET /, non-GET junk: not the redirect —
-            // answer minimally and keep listening
-            respondAndClose(conn, "404 Not Found", "<h3>wam-shell: not the sign-in redirect</h3>")
-            return
-        }
-        if (!stateMatches(pendingState, params.state)) {
-            // missing or foreign state: NEVER end the flow on it
-            console.warn(`${logTag}: redirect with a missing or mismatched state; ignoring`)
-            respondAndClose(conn, "400 Bad Request", "<h3>wam-shell: bad sign-in state</h3>")
-            return
-        }
-        if (params.error) {
-            console.warn(`${logTag}: sign-in denied (${params.error})`)
-            respondAndClose(
-                conn,
-                "200 OK",
-                "<h3>wam-shell: sign-in failed</h3>You can close this tab.",
-            )
-            finishAuth(false)
-            return
-        }
-        respondAndClose(
-            conn,
-            "200 OK",
-            "<h3>wam-shell: sign-in complete</h3>You can close this tab.",
-        )
-        finishAuth(true, params.code!)
+        authServer = server
+        return uris[0].get_port()
     }
 
     // -------------------------------------------------------- browser
@@ -655,34 +627,21 @@ export function createGoogleAuth(opts: {
             openConsentPage()
             return
         }
-        let port: number
-        try {
-            const sock = Gio.Socket.new(
-                Gio.SocketFamily.IPV4,
-                Gio.SocketType.STREAM,
-                Gio.SocketProtocol.DEFAULT,
-            )
-            const loopback = Gio.InetAddress.new_loopback(Gio.SocketFamily.IPV4)
-            sock.bind(new Gio.InetSocketAddress({ address: loopback, port: 0 }), false)
-            port = (sock.get_local_address() as Gio.InetSocketAddress).get_port()
-            sock.listen()
-            authListener = new Gio.SocketListener()
-            authListener.add_socket(sock, null)
-        } catch (e) {
-            console.warn(`${logTag}: could not start the loopback listener:`, e)
+        // the nonce has to exist before the server can check it: the
+        // handler reads pendingState, and a redirect arriving against an
+        // empty one would be rejected as mismatched
+        pendingVerifier = generateCodeVerifier()
+        pendingState = generateState()
+
+        const port = startRedirectServer()
+        if (port === null) {
+            pendingVerifier = ""
+            pendingState = ""
             return
         }
         authInProgress = true
         setAuthBusy(true)
         redirectUri = `http://127.0.0.1:${port}`
-        pendingVerifier = generateCodeVerifier()
-        pendingState = generateState()
-
-        // this flow's own listener, captured: a torn-down listener's
-        // pending accept resolves cancelled — silently ignore it, and
-        // never finish against the module's (possibly newer) listener
-        const listener = authListener
-        acceptLoop(listener)
 
         authUrl = buildAuthUrl({
             clientId: creds!.clientId,
@@ -776,9 +735,9 @@ export function createGoogleAuth(opts: {
                 sourceRemove(authTimeout)
                 authTimeout = 0
             }
-            if (authListener) {
-                authListener.close()
-                authListener = null
+            if (authServer) {
+                authServer.disconnect()
+                authServer = null
             }
             // a mid-flow dispose would otherwise leave the consumer's
             // sign-in button spinning forever
