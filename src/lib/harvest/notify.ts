@@ -10,9 +10,30 @@ import { Entry, formatElapsed, liveSeconds } from "./timeline"
 // than sliding away while you are looking at something else.
 // [harvest] notify = false turns it off.
 
-// the first adoption is the startup sync reporting what was already
-// running — that is state, not a change, and must not banner
+// The startup sync reports what was ALREADY running — that is state,
+// not a change, and must not banner.
+//
+// Armed explicitly by the sync once its first running-probe has landed,
+// rather than by "swallow the first transition we happen to see".
+// Inferring it from a transition is wrong on the commonest start of all:
+// with no timer running at login, `adoptRunning(null)` returns early
+// because nothing changed, `notifyTimerChange` is never reached, and the
+// latch was still unspent hours later — so the user's first REAL timer
+// start got swallowed as if it were the startup report. The one banner
+// the feature exists to raise was the one it dropped.
 let armed = false
+
+/**
+ * The startup sync has established what was already running; from here
+ * on a transition is a real one. Idempotent, and deliberately only
+ * called after a SUCCESSFUL probe: while we do not know the server's
+ * state, staying disarmed is the safe direction — a missed banner beats
+ * announcing that a timer which has been running all morning just
+ * started.
+ */
+export function armNotifications() {
+    armed = true
+}
 
 // starting is an acknowledgement — it should slide past. Stopping is
 // the one that costs money if missed, so it waits to be dismissed:
@@ -130,12 +151,9 @@ export function notifyTimerChange(
 ) {
     const banner = timerBanner(prev, next, pausedEntry)
     if (!banner) return
-    if (!armed) {
-        // the first real transition after startup is the sync
-        // reporting what was already running
-        armed = true
-        return
-    }
+    // the startup sync has not established a baseline yet: whatever
+    // this transition is, it is not news
+    if (!armed) return
     if (!Config.harvest.notify) return
     // a start supersedes the pause/stop banners still on screen
     if (!banner.urgent) closeWaiting()
