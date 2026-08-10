@@ -175,6 +175,15 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   natural width at the START edge, so `halign: CENTER` alone centres it
   inside a cell that is already exactly its own width — it needs
   `hexpand` too, or it stays pinned left.
+- **A FlowBox lays out only visible FlowBoxChildren.** Every child
+  appended to one is wrapped in a `FlowBoxChild`, so `visible` on an
+  inner box hides the content but leaves the wrapper behind as a full
+  blank cell in a homogeneous grid. Bind `visible` on an explicit
+  `<Gtk.FlowBoxChild>` instead — unlike returning `<></>`, the child
+  still holds its slot, so one that becomes visible later (an async
+  probe answering, an NM profile appearing) lands in place instead of
+  at the end of the grid. The QSettings toggle pills (`vpn.tsx`,
+  `NightLightButton`) are the reference.
 - **No gate compiles the scss. `pnpm verify:scss` does** — run it after
   touching anything under `scss/`. It compiles `style.scss` once per
   theme (generating the `active-theme.scss` and `active-tuning.scss` that

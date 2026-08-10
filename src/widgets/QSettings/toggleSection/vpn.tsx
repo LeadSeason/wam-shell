@@ -1,20 +1,25 @@
+import { Gtk } from "ags/gtk4"
 import { DropdownButton } from "./ToggleButton"
 import { isConnected, type VpnBackend } from "../../../lib/vpn"
 
 /**
  * One pill per detected VPN backend.
  *
- * Wrapped in a holder box with a bound `visible`, not returned bare —
- * see the note on NightLightButton in miscToggles: the toggle FlowBox is
- * homogeneous, so an empty-but-visible holder would reserve a blank
- * cell, while a backend that appears later (an NM profile created by its
- * vendor app on first connect) must be able to fill this slot without
- * being appended to the END of the grid.
+ * The holder is a FlowBoxChild, not a box: a FlowBox wraps every child
+ * in a FlowBoxChild and lays out only visible FLOWBOXCHILDREN, so
+ * `visible` on an inner box leaves the wrapper behind as a full blank
+ * cell in the homogeneous grid (an inactive backend did exactly that
+ * until this was the FlowBoxChild). Binding visible on the FlowBoxChild
+ * itself is what actually removes the cell — while still keeping the
+ * child inserted, so a backend that appears later (an NM profile
+ * created by its vendor app on first connect) fills its original slot
+ * instead of being appended to the END of the grid (the bug the
+ * NightLightButton note in miscToggles records).
  */
 export function VpnButton({ backend, navigate }: { backend: VpnBackend; navigate: () => void }) {
     const { status } = backend
     return (
-        <box visible={backend.active}>
+        <Gtk.FlowBoxChild visible={backend.active}>
             <DropdownButton
                 icon={backend.iconName}
                 label={backend.name}
@@ -35,6 +40,6 @@ export function VpnButton({ backend, navigate }: { backend: VpnBackend; navigate
                 }}
                 navigate={navigate}
             />
-        </box>
+        </Gtk.FlowBoxChild>
     )
 }
