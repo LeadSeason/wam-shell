@@ -22,6 +22,18 @@ export function VpnButton({ backend, navigate }: { backend: VpnBackend; navigate
         <Gtk.FlowBoxChild visible={backend.active}>
             <DropdownButton
                 icon={backend.iconName}
+                // the brand glyph carries the state: down dims, pending
+                // spins (a "blocked"/Failed tunnel is not up, so it
+                // reads as down), up needs nothing — the active pill
+                // accent already says it
+                iconClasses={status.as(s => [
+                    "vpnIcon",
+                    isConnected(s)
+                        ? "up"
+                        : s.state === "connecting" || s.state === "disconnecting"
+                          ? "pending"
+                          : "down",
+                ])}
                 label={backend.name}
                 // state word while in flux ("Connecting…" is not "Off")
                 subtitle={status.as(s =>

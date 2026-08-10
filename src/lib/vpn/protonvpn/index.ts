@@ -133,7 +133,7 @@ function connect(args: string[] = []) {
 const backend: VpnBackend = {
     id: "protonvpn",
     name: "Proton VPN",
-    iconName: "network-vpn-symbolic",
+    iconName: "protonvpn-symbolic",
     // a PATH probe, decided once: the CLI does not appear mid-session.
     // Signed-in-or-not is the pane's problem (a connect attempt fails
     // honestly as "Failed"), not the pill's

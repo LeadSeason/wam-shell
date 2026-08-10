@@ -335,7 +335,7 @@ const FEATURES: VpnFeature[] = [
 const backend: VpnBackend = {
     id: "mullvad",
     name: "Mullvad",
-    iconName: "network-vpn-symbolic",
+    iconName: "mullvad-symbolic",
     // a PATH probe, decided once: the CLI does not appear mid-session
     active: new Accessor(() => hasMullvad),
     status,
