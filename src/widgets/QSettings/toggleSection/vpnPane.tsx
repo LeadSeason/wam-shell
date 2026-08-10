@@ -50,9 +50,11 @@ export function VpnSwitch({ backend }: { backend: VpnBackend }) {
                 if (self.active === isConnected(status.get())) return
                 // same semantics as the quick settings toggle: anything
                 // but fully disconnected → disconnect (also the only way
-                // to abort a connecting attempt)
-                if (status.get().state === "disconnected") backend.connect()
-                else backend.disconnect()
+                // to abort a connecting attempt); a flip while already
+                // disconnecting is ignored
+                const s = status.get().state
+                if (s === "disconnected") backend.connect()
+                else if (s !== "disconnecting") backend.disconnect()
             }}
         />
     )
@@ -256,6 +258,20 @@ export function VpnPane({
                                                 "locRow",
                                                 ...(c === loc.id ? ["current"] : []),
                                             ])}
+                                            // one switch at a time: a pick
+                                            // starts an action (busy) or a
+                                            // reconnect (state in flux), and
+                                            // spamming rows must not stack
+                                            // either. "blocked" (the Failed
+                                            // hold) is NOT flux — a notice
+                                            // must not lock the picker
+                                            sensitive={createComputed(
+                                                [busy, status],
+                                                (b, s) =>
+                                                    !b &&
+                                                    s.state !== "connecting" &&
+                                                    s.state !== "disconnecting",
+                                            )}
                                             onClicked={() => loc.select()}
                                         >
                                             <label
