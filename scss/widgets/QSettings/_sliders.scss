@@ -71,25 +71,14 @@ window#QSettings {
     }
 
     // VPN pill icon: the brand glyph IS the identity, so connectivity
-    // is opacity and motion, not a recolor — down dims, pending spins.
-    // A spin and not a pulse because transform animations run on the
-    // compositor while opacity ones do not (the sleep timer note in
-    // bar.scss); the accent/active pill already carries "up"
+    // is opacity, not a recolor — down dims, pending flashes (driven in
+    // JS, vpn.tsx: CSS opacity animations don't run in this shell); the
+    // accent/active pill already carries "up"
     image.vpnIcon {
+        transition: opacity s.$transition-slow;
+
         &.down {
             opacity: 0.45;
-        }
-        &.pending {
-            animation: vpnIconPending 1.6s linear infinite;
-        }
-    }
-
-    @keyframes vpnIconPending {
-        from {
-            transform: rotate(0deg);
-        }
-        to {
-            transform: rotate(360deg);
         }
     }
 }

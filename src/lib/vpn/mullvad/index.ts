@@ -336,6 +336,7 @@ const backend: VpnBackend = {
     id: "mullvad",
     name: "Mullvad",
     iconName: "mullvad-symbolic",
+    iconNameDown: "mullvad-open-symbolic",
     // a PATH probe, decided once: the CLI does not appear mid-session
     active: new Accessor(() => hasMullvad),
     status,

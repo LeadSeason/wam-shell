@@ -117,7 +117,10 @@ to make it work at 16px failed — the disc reads as a coin with a bite,
 the extracted mole keeps the diagonal pose the disc dictated and reads
 as a brush stroke, and a simplified redraw had too much detail for the
 size. Mullvad already solved this problem for their own tray; the lock
-is their answer, taken verbatim.
+is their answer, taken verbatim. `mullvad-open-symbolic.svg` is the
+same lock with the shackle redrawn open (lifted right leg, relative
+arcs) for the down state — Mullvad's own tray signals unsecured by
+recolour, which a symbolic icon cannot do.
 
 One renderer lesson the mole hunt bought, recorded so it is not paid
 for twice: **GTK 4.22's built-in SVG renderer mangles ABSOLUTE arc

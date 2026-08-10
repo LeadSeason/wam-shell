@@ -90,6 +90,9 @@ export interface VpnBackend {
     id: string // registry key and pane name suffix ("mullvad")
     name: string // pill label and pane title ("Mullvad")
     iconName: string
+    /** icon for the DOWN state when the brand glyph has one (Mullvad's
+     *  open shackle); absent backends just dim iconName */
+    iconNameDown?: string
 
     // detected AND not claimed by another backend. An Accessor, not a
     // boolean: NM profiles appear at runtime (Proton creates its own on
