@@ -43,6 +43,9 @@ interface TbButtonProps {
     subtitle?: string | Accessor<string>
 
     icon?: string | Accessor<string>
+    /** state classes on the icon image (e.g. the VPN pill's
+     *  up/down/pending); undefined for everyone else */
+    iconClasses?: Accessor<string[]>
     /** overlaid band badge on the icon (e.g. "5G"); empty hides it */
     badge?: Accessor<string>
     isActive?: boolean | Accessor<boolean>
@@ -64,6 +67,7 @@ export function DropdownButton({
     label,
     subtitle = undefined,
     icon = "applications-system-symbolic",
+    iconClasses = undefined,
     badge = undefined,
     isActive = false,
     activate: activate = undefined,
@@ -112,7 +116,11 @@ export function DropdownButton({
                         else toggleDropdown()
                     })}
                 />
-                {badge ? <OverlayIcon icon={icon} badge={badge} /> : <image iconName={icon} />}
+                {badge ? (
+                    <OverlayIcon icon={icon} badge={badge} />
+                ) : (
+                    <image iconName={icon} {...(iconClasses ? { cssClasses: iconClasses } : {})} />
+                )}
                 <box orientation={Gtk.Orientation.VERTICAL} valign={Gtk.Align.CENTER} hexpand>
                     {/* bounded natural width + ellipsize: a wide fallback
                     font (missing Nerd Fonts) must not inflate the card */}
