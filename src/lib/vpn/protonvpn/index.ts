@@ -109,9 +109,15 @@ function onSnapshot(snap: NmSnapshot) {
         applyStatus({ state: "disconnected", stateLabel: "Disconnected", server: "" })
         return
     }
+    // an in-flight attempt shows Connecting, full stop: protonvpn's own
+    // activation bounces the device through a transient deactivating
+    // mid-connect, and the watch's trailing refresh now SEES it — the
+    // pill flashed "Disconnecting…" on the happy path. The CLI's exit
+    // code decides the outcome; only an actually-up tunnel overrides
+    const state = connectProc && resolved.state !== "connected" ? "connecting" : resolved.state
     applyStatus({
-        state: resolved.state,
-        stateLabel: stateLabel(resolved.state),
+        state,
+        stateLabel: stateLabel(state),
         server: serverFromProfile(resolved.server),
     })
 }
