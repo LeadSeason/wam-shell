@@ -12,10 +12,9 @@ import {
     // importing it here started a real monitor on every `pnpm test`
 } from "../src/lib/vpn/protonvpn/parse"
 
-// Formats reconstructed from proton-vpn-cli 1.0.1's installed source
-// (the CLI on the dev machine is not signed in, so the real outputs
-// were not capturable; the table shapes are tabulate "simple", which
-// the CLI's own code builds — see location_discovery.py)
+// Formats pinned against proton-vpn-cli 1.0.1's installed source and
+// then confirmed against the real CLI output once signed in (the
+// fixtures below match a live `countries list` / `config list` run)
 
 test("vpn-proton profile claim: the prefix is the whole contract", () => {
     eq(isProtonProfile("ProtonVPN SE#215"), true)
