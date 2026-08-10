@@ -194,9 +194,12 @@ const backend: VpnBackend = {
     },
     // never refused (no busy guard): this is also the only way to abort
     // an in-flight attempt, which the interface requires of it. nmcli
-    // is re-entrant, so a down concurrent with an up is legal
+    // is re-entrant, so a down concurrent with an up is legal — and the
+    // down DOES abort a mid-flight activation. currentUuid is empty for
+    // the first beat of our own attempt (the device has not appeared
+    // for the watch yet), so fall back to the attempt's target
     disconnect: () => {
-        const uuid = currentUuid.get()
+        const uuid = currentUuid.get() || lastUuid
         if (!uuid) return
         abortedSeq = actionSeq
         setBusy(true)
