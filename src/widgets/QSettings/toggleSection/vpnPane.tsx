@@ -2,57 +2,33 @@ import { Gtk } from "ags/gtk4"
 import Pango from "gi://Pango?version=1.0"
 import { Accessor, For, createComputed, createState, onCleanup } from "gnim"
 import { qsVisible } from "../MediaSection"
-import vpnStatus, {
-    accountInfo,
-    busy,
-    connect,
-    disconnect,
-    ensureLocations,
-    featureStates,
-    hasMullvad,
-    locations,
-    reconnect,
-    refreshExpiry,
-    refreshPaneData,
-    setAutoConnect,
-    setDaita,
-    setDnsBlock,
-    setLan,
-    setLocation,
-    setLockdown,
-    setQuantum,
-    verbose,
-    RelayLocation,
-} from "../../../lib/vpn"
+import { isConnected, type VpnBackend, type VpnFeature, type VpnLocation } from "../../../lib/vpn"
 
-// the VPN pane (chevron on the VPN toggle): status detail, reconnect,
+// The VPN pane (chevron on a VPN toggle): status detail, reconnect,
 // searchable location picker, feature toggles, account expiry. Data is
 // fetched on pane open only — nothing here polls.
+//
+// Every section below a backend does not supply is left out entirely
+// rather than rendered empty: a backend with no feature toggles gets no
+// Features card, one with no server catalogue gets no location picker.
+// That is what keeps this one component honest for Mullvad's full
+// surface and for a bare NetworkManager profile at the same time.
 
 const DAY_MS = 86_400_000
+const NEVER_BUSY = new Accessor(() => false)
 
-function FeatureRow({
-    label,
-    value,
-    onToggle,
-    tooltip,
-}: {
-    label: string
-    value: Accessor<boolean | null>
-    onToggle: (on: boolean) => void
-    tooltip?: string
-}) {
+function FeatureRow({ feature, busy }: { feature: VpnFeature; busy: Accessor<boolean> }) {
     return (
         <box cssClasses={["vpnFeature"]} spacing={6}>
-            <label xalign={0} hexpand label={label} tooltipText={tooltip ?? ""} />
+            <label xalign={0} hexpand label={feature.label} tooltipText={feature.tooltip ?? ""} />
             <Gtk.Switch
                 valign={Gtk.Align.CENTER}
-                active={value.as(v => v === true)}
-                sensitive={createComputed([busy, value], (b, v) => !b && v !== null)}
+                active={feature.value.as(v => v === true)}
+                sensitive={createComputed([busy, feature.value], (b, v) => !b && v !== null)}
                 onStateSet={(_s, state) => {
                     // the switch follows the accessor (read-back after the
                     // command), so the gesture only issues it
-                    onToggle(state)
+                    feature.set(state)
                     return true
                 }}
             />
@@ -60,38 +36,46 @@ function FeatureRow({
     )
 }
 
-/** the connect/disconnect switch in the VPN pane's header row */
-export function VpnSwitch() {
-    if (!hasMullvad) return <></>
+/** the connect/disconnect switch in a VPN pane's header row */
+export function VpnSwitch({ backend }: { backend: VpnBackend }) {
+    const { status } = backend
     return (
         <Gtk.Switch
             cssClasses={["paneSwitch"]}
             valign={Gtk.Align.CENTER}
-            active={vpnStatus.as(s => s.connected)}
+            visible={backend.active}
+            active={status.as(s => isConnected(s))}
             onNotifyActive={self => {
                 // idempotent: binding syncs must not toggle
-                if (self.active === vpnStatus.get().connected) return
+                if (self.active === isConnected(status.get())) return
                 // same semantics as the quick settings toggle: anything
                 // but fully disconnected → disconnect (also the only way
                 // to abort a connecting attempt)
-                if (vpnStatus.get().state === "Disconnected") connect()
-                else disconnect()
+                if (status.get().state === "disconnected") backend.connect()
+                else backend.disconnect()
             }}
         />
     )
 }
 
-export function VpnPane({ pane, name }: { pane: Accessor<string>; name: string }) {
-    if (!hasMullvad) return <></>
+export function VpnPane({
+    backend,
+    pane,
+    name,
+}: {
+    backend: VpnBackend
+    pane: Accessor<string>
+    name: string
+}) {
+    const { status, details, account, locations, features } = backend
+    const busy = backend.busy ?? NEVER_BUSY
 
     // refresh on pane open; never on a timer
     onCleanup(
         pane.subscribe(() => {
-            if (pane.get() === name) {
-                refreshPaneData()
-                ensureLocations()
-                refreshExpiry()
-            }
+            if (pane.get() !== name) return
+            backend.refreshPane?.()
+            locations?.ensure()
         }),
     )
 
@@ -108,23 +92,20 @@ export function VpnPane({ pane, name }: { pane: Accessor<string>; name: string }
             }
         }),
     )
-    const filtered = createComputed([locations, query], (locs, q) =>
-        locs.filter(l => !q || `${l.country} ${l.city}`.toLowerCase().includes(q.toLowerCase())),
-    )
-
-    // current location as "se-sto" from the relay id ("se-sto-wg-205")
-    const currentCodes = vpnStatus.as(s =>
-        s.connected ? s.relay.split("-").slice(0, 2).join("-") : "",
+    const filtered = createComputed(
+        [locations?.list ?? new Accessor<VpnLocation[]>(() => []), query],
+        (locs, q) => locs.filter(l => !q || l.label.toLowerCase().includes(q.toLowerCase())),
     )
 
     // "Stable Mole · 228 days left", amber <30d, red when expired
-    const accountText = accountInfo.as(a => {
+    const accountAcc = account ?? new Accessor(() => null)
+    const accountText = accountAcc.as(a => {
         if (!a) return ""
         const days = a.expiryMs !== null ? Math.ceil((a.expiryMs - Date.now()) / DAY_MS) : null
         const time = days === null ? "" : days < 0 ? `${-days}d overdue` : `${days} days left`
         return [a.deviceName, time].filter(Boolean).join(" · ")
     })
-    const accountClass = accountInfo.as(a => {
+    const accountClass = accountAcc.as(a => {
         if (!a || a.expiryMs === null) return ""
         const days = Math.ceil((a.expiryMs - Date.now()) / DAY_MS)
         return days < 0 ? "expired" : days <= 30 ? "expiring" : ""
@@ -136,63 +117,83 @@ export function VpnPane({ pane, name }: { pane: Accessor<string>; name: string }
             orientation={Gtk.Orientation.VERTICAL}
             spacing={10}
         >
-            {/* status card: state word, location, relay, connection
-            details, active features — the Mullvad app card's contents */}
+            {/* status card: state word, location, server, connection
+            details, account line */}
             <box cssClasses={["vpnStatus"]} orientation={Gtk.Orientation.VERTICAL} spacing={2}>
                 <label
-                    cssClasses={vpnStatus.as(s => ["vpnState", s.connected ? "on" : "off"])}
+                    cssClasses={status.as(s => ["vpnState", isConnected(s) ? "on" : "off"])}
                     xalign={0}
-                    label={vpnStatus.as(s => s.state.toUpperCase())}
+                    label={status.as(s => s.stateLabel.toUpperCase())}
                 />
                 <label
                     cssClasses={["vpnRelay"]}
                     xalign={0}
                     maxWidthChars={34}
                     ellipsize={Pango.EllipsizeMode.END}
-                    label={createComputed(
-                        [verbose, vpnStatus],
-                        (v, s) => v?.location ?? s.relay ?? "",
-                    )}
-                    visible={vpnStatus.as(s => s.connected)}
+                    label={
+                        details
+                            ? createComputed([details, status], (d, s) => d?.location ?? s.server)
+                            : status.as(s => s.server)
+                    }
+                    visible={status.as(s => isConnected(s))}
                 />
-                <label
-                    cssClasses={["dim"]}
-                    xalign={0}
-                    maxWidthChars={38}
-                    ellipsize={Pango.EllipsizeMode.END}
-                    label={verbose.as(v => v?.relay ?? "")}
-                    visible={vpnStatus.as(s => s.connected)}
-                />
-                {/* connection details, like the app's "Connection details" */}
-                <box orientation={Gtk.Orientation.VERTICAL} visible={verbose.as(v => v !== null)}>
+                {details && (
+                    <box orientation={Gtk.Orientation.VERTICAL}>
+                        <label
+                            cssClasses={["dim"]}
+                            xalign={0}
+                            maxWidthChars={38}
+                            ellipsize={Pango.EllipsizeMode.END}
+                            label={details.as(d => d?.server ?? "")}
+                            visible={status.as(s => isConnected(s))}
+                        />
+                        {/* connection details, like the app's "Connection details" */}
+                        <box
+                            orientation={Gtk.Orientation.VERTICAL}
+                            visible={details.as(d => d !== null)}
+                        >
+                            <label
+                                cssClasses={["dim"]}
+                                xalign={0}
+                                label={details.as(d => d?.protocol ?? "")}
+                            />
+                            <box>
+                                <label
+                                    cssClasses={["dim"]}
+                                    widthChars={4}
+                                    xalign={0}
+                                    label={"In"}
+                                />
+                                <label
+                                    cssClasses={["dim"]}
+                                    xalign={0}
+                                    label={details.as(d => d?.endpoint ?? "")}
+                                />
+                            </box>
+                            <box>
+                                <label
+                                    cssClasses={["dim"]}
+                                    widthChars={4}
+                                    xalign={0}
+                                    label={"Out"}
+                                />
+                                <label
+                                    cssClasses={["dim"]}
+                                    xalign={0}
+                                    label={details.as(d => d?.ip ?? "")}
+                                />
+                            </box>
+                        </box>
+                    </box>
+                )}
+                {account && (
                     <label
-                        cssClasses={["dim"]}
+                        cssClasses={accountClass.as(c => ["dim", "accountLine", ...(c ? [c] : [])])}
                         xalign={0}
-                        label={verbose.as(v => v?.protocol ?? "")}
+                        visible={accountText.as(t => t !== "")}
+                        label={accountText}
                     />
-                    <box>
-                        <label cssClasses={["dim"]} widthChars={4} xalign={0} label={"In"} />
-                        <label
-                            cssClasses={["dim"]}
-                            xalign={0}
-                            label={verbose.as(v => v?.endpoint ?? "")}
-                        />
-                    </box>
-                    <box>
-                        <label cssClasses={["dim"]} widthChars={4} xalign={0} label={"Out"} />
-                        <label
-                            cssClasses={["dim"]}
-                            xalign={0}
-                            label={verbose.as(v => v?.ip ?? "")}
-                        />
-                    </box>
-                </box>
-                <label
-                    cssClasses={accountClass.as(c => ["dim", "accountLine", ...(c ? [c] : [])])}
-                    xalign={0}
-                    visible={accountText.as(t => t !== "")}
-                    label={accountText}
-                />
+                )}
             </box>
 
             <box spacing={6}>
@@ -200,112 +201,94 @@ export function VpnPane({ pane, name }: { pane: Accessor<string>; name: string }
                 attempt too, so it shows whenever not fully disconnected */}
                 <button
                     cssClasses={["vpnAction"]}
-                    visible={vpnStatus.as(s => s.state !== "Disconnected")}
+                    visible={status.as(s => s.state !== "disconnected")}
                     sensitive={busy.as(b => !b)}
-                    onClicked={() => disconnect()}
+                    onClicked={() => backend.disconnect()}
                 >
                     <label label={"Disconnect"} />
                 </button>
                 <button
                     cssClasses={["vpnAction"]}
                     sensitive={busy.as(b => !b)}
-                    onClicked={() => reconnect()}
+                    onClicked={() => backend.reconnect()}
                 >
                     <label label={"Reconnect"} />
                 </button>
-                <button
-                    cssClasses={["vpnAction"]}
-                    onClicked={() => setPickerOpen(!pickerOpen.get())}
-                >
-                    <box spacing={4}>
-                        <label label={"Change location"} />
-                        <image
-                            iconName={pickerOpen.as(o =>
-                                o ? "pan-up-symbolic" : "pan-down-symbolic",
-                            )}
-                        />
-                    </box>
-                </button>
+                {locations && (
+                    <button
+                        cssClasses={["vpnAction"]}
+                        onClicked={() => setPickerOpen(!pickerOpen.get())}
+                    >
+                        <box spacing={4}>
+                            <label label={"Change location"} />
+                            <image
+                                iconName={pickerOpen.as(o =>
+                                    o ? "pan-up-symbolic" : "pan-down-symbolic",
+                                )}
+                            />
+                        </box>
+                    </button>
+                )}
                 <label hexpand />
             </box>
 
             {/* searchable location picker behind the button, current
             location marked */}
-            <revealer revealChild={pickerOpen}>
-                <box orientation={Gtk.Orientation.VERTICAL} spacing={6}>
-                    <Gtk.Entry
-                        cssClasses={["textInput"]}
-                        placeholderText={"Search locations…"}
-                        onChanged={self => setQuery(self.text)}
-                    />
-                    <Gtk.ScrolledWindow
-                        vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
-                        hscrollbarPolicy={Gtk.PolicyType.NEVER}
-                        propagateNaturalHeight
-                        maxContentHeight={200}
-                    >
-                        <box orientation={Gtk.Orientation.VERTICAL} spacing={2}>
-                            <For each={filtered}>
-                                {(loc: RelayLocation) => (
-                                    <button
-                                        cssClasses={currentCodes.as(c => [
-                                            "locRow",
-                                            ...(c === `${loc.countryCode}-${loc.cityCode}`
-                                                ? ["current"]
-                                                : []),
-                                        ])}
-                                        onClicked={() => setLocation(loc.countryCode, loc.cityCode)}
-                                    >
-                                        <label
-                                            xalign={0}
-                                            hexpand
-                                            maxWidthChars={30}
-                                            ellipsize={Pango.EllipsizeMode.END}
-                                            label={`${loc.city}, ${loc.country}`}
-                                        />
-                                    </button>
-                                )}
-                            </For>
-                        </box>
-                    </Gtk.ScrolledWindow>
-                </box>
-            </revealer>
+            {locations && (
+                <revealer revealChild={pickerOpen}>
+                    <box orientation={Gtk.Orientation.VERTICAL} spacing={6}>
+                        <Gtk.Entry
+                            cssClasses={["textInput"]}
+                            placeholderText={"Search locations…"}
+                            onChanged={self => setQuery(self.text)}
+                        />
+                        <Gtk.ScrolledWindow
+                            vscrollbarPolicy={Gtk.PolicyType.AUTOMATIC}
+                            hscrollbarPolicy={Gtk.PolicyType.NEVER}
+                            propagateNaturalHeight
+                            maxContentHeight={200}
+                        >
+                            <box orientation={Gtk.Orientation.VERTICAL} spacing={2}>
+                                <For each={filtered}>
+                                    {(loc: VpnLocation) => (
+                                        <button
+                                            cssClasses={locations.current.as(c => [
+                                                "locRow",
+                                                ...(c === loc.id ? ["current"] : []),
+                                            ])}
+                                            onClicked={() => loc.select()}
+                                        >
+                                            <label
+                                                xalign={0}
+                                                hexpand
+                                                maxWidthChars={30}
+                                                ellipsize={Pango.EllipsizeMode.END}
+                                                label={loc.label}
+                                            />
+                                        </button>
+                                    )}
+                                </For>
+                            </box>
+                        </Gtk.ScrolledWindow>
+                    </box>
+                </revealer>
+            )}
 
             {/* tunnel feature toggles, as a card so they read as one unit */}
-            <label cssClasses={["paneSection"]} xalign={0} label={"Features"} hexpand />
-            <box cssClasses={["vpnFeatures"]} orientation={Gtk.Orientation.VERTICAL} spacing={4}>
-                <FeatureRow
-                    label={"Quantum Resistance"}
-                    value={featureStates.as(f => f.quantum)}
-                    onToggle={setQuantum}
-                />
-                <FeatureRow
-                    label={"DAITA"}
-                    value={featureStates.as(f => f.daita)}
-                    onToggle={setDaita}
-                />
-                <FeatureRow
-                    label={"DNS Content Blocker"}
-                    value={featureStates.as(f => f.dnsBlock)}
-                    onToggle={setDnsBlock}
-                />
-                <FeatureRow
-                    label={"LAN Sharing"}
-                    value={featureStates.as(f => f.lan)}
-                    onToggle={setLan}
-                />
-                <FeatureRow
-                    label={"Lockdown Mode"}
-                    tooltip={"Blocks ALL traffic when the VPN disconnects, until you reconnect"}
-                    value={featureStates.as(f => f.lockdown)}
-                    onToggle={setLockdown}
-                />
-                <FeatureRow
-                    label={"Auto-connect"}
-                    value={featureStates.as(f => f.autoConnect)}
-                    onToggle={setAutoConnect}
-                />
-            </box>
+            {features && (
+                <box orientation={Gtk.Orientation.VERTICAL} spacing={10}>
+                    <label cssClasses={["paneSection"]} xalign={0} label={"Features"} hexpand />
+                    <box
+                        cssClasses={["vpnFeatures"]}
+                        orientation={Gtk.Orientation.VERTICAL}
+                        spacing={4}
+                    >
+                        <For each={features}>
+                            {(f: VpnFeature) => <FeatureRow feature={f} busy={busy} />}
+                        </For>
+                    </box>
+                </box>
+            )}
         </box>
     )
 }

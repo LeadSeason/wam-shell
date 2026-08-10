@@ -1,5 +1,9 @@
 import { test, eq } from "./framework"
 import {
+    locationId,
+    locationLabel,
+    mapState,
+    relayLocationId,
     parseStatusVerbose,
     parseRelayList,
     parseAccountInfo,
@@ -8,10 +12,11 @@ import {
     parseLan,
     parseLockdown,
     parseAutoConnect,
-    // lib/vpnParse, NOT lib/vpn: that one spawns `mullvad status listen`
-    // at module scope, so importing it here started a real listener
-    // against the developer's live daemon on every `pnpm test`
-} from "../src/lib/vpnParse"
+    // the backend's parse module, NOT the backend itself: that one spawns
+    // `mullvad status listen` at module scope, so importing it here
+    // started a real listener against the developer's live daemon on
+    // every `pnpm test`
+} from "../src/lib/vpn/mullvad/parse"
 
 const STATUS_V = `Connected
     Relay:                  se-sto-wg-205 (170.62.100.10:11965/UDP)
@@ -52,6 +57,20 @@ test("vpn parseRelayList: countries nest cities, relay lines skipped", () => {
         { country: "Sweden", countryCode: "se", city: "Gothenburg", cityCode: "got" },
         { country: "Sweden", countryCode: "se", city: "Stockholm", cityCode: "sto" },
     ])
+})
+
+test("vpn location id/label: picker rows, and the marker they match on", () => {
+    const locs = parseRelayList(RELAY_LIST)
+    eq(locs.map(locationLabel), ["Tirana, Albania", "Gothenburg, Sweden", "Stockholm, Sweden"])
+    eq(locs.map(locationId), ["al-tia", "se-got", "se-sto"])
+    // the whole point of the pair: the id derived from a CONNECTED relay
+    // has to equal the id derived from the LIST, or no row ever lights up
+    // as the current one and the failure is silent
+    eq(relayLocationId("se-sto-wg-205"), "se-sto")
+    eq(
+        locs.filter(l => locationId(l) === relayLocationId("se-sto-wg-205")).map(l => l.city),
+        ["Stockholm"],
+    )
 })
 
 test("vpn parseAccountInfo: expiry and device name", () => {
@@ -107,4 +126,15 @@ test("vpn parseAutoConnect: on/off", () => {
     eq(parseAutoConnect("Autoconnect: on"), true)
     eq(parseAutoConnect("Autoconnect: off"), false)
     eq(parseAutoConnect("nothing"), null)
+})
+
+test("vpn mapState: mullvad's words onto the shared enum", () => {
+    eq(mapState("Connected"), "connected")
+    eq(mapState("Connecting"), "connecting")
+    eq(mapState("Disconnecting"), "disconnecting")
+    eq(mapState("Disconnected"), "disconnected")
+    eq(mapState("Blocked"), "blocked")
+    // an unreadable state is not a safely-off one: the pill must not
+    // offer "connect" for a tunnel whose state we failed to parse
+    eq(mapState("Wat"), "blocked")
 })

@@ -28,6 +28,7 @@ import { WiredWidget, WiredSwitch } from "./toggleSection/wired"
 import { BluetoothWidget, BtSwitch } from "./toggleSection/bluetooth"
 import { PowerProfilesWidget } from "./toggleSection/powerProfile"
 import { VpnPane, VpnSwitch } from "./toggleSection/vpnPane"
+import { backends as vpnBackends, firstActiveId, vpnPaneName } from "../../lib/vpn"
 
 const registry = CommandRegistry.get_default()
 
@@ -220,11 +221,18 @@ export default function QSettings() {
         help: `qsPane <main|wifi|bluetooth|wired|vpn|powerprofiles|audioOutput|audioInput>
   Shows the popup and switches to that pane — bind it in the
   compositor to open straight into wifi, or drive it from a script.
-  An unknown name lands on main.`,
+  An unknown name lands on main.
+  VPN has one pane per backend ("vpn:mullvad"); a bare "vpn" opens
+  the first detected one, so older keybinds keep working.`,
         main: (argv: string[]) => {
             if (!win) return "QSettings, no window"
             if (!win.is_visible()) show()
-            const target = argv[0] ?? "main"
+            const arg = argv[0] ?? "main"
+            // resolve the legacy single-pane name at CALL time, not at
+            // build time: which backend is detected can change while the
+            // shell runs (an NM profile appears on its vendor app's
+            // first connect)
+            const target = arg === "vpn" ? vpnPaneName(firstActiveId()) : arg
             setPane(target)
             return `QSettings, pane ${target}`
         },
@@ -508,14 +516,31 @@ export default function QSettings() {
                                 />
                                 <WiredWidget pane={paneSettled} name="wired" />
                             </box>
-                            <box $type="named" name="vpn" orientation={Gtk.Orientation.VERTICAL}>
-                                <PaneHeader
-                                    title="VPN"
-                                    onBack={() => setPane("main")}
-                                    trailing={<VpnSwitch />}
-                                />
-                                <VpnPane pane={paneSettled} name="vpn" />
-                            </box>
+                            {/* one pane per registered VPN backend, named
+                            after it. Built for every backend, detected or
+                            not: an undetected one is simply unreachable
+                            (no pill navigates to it), and building them
+                            all keeps every visibleChildName target
+                            present, so a stale keybind can never ask the
+                            stack for a child that does not exist */}
+                            {vpnBackends.map(b => (
+                                <box
+                                    $type="named"
+                                    name={vpnPaneName(b.id)}
+                                    orientation={Gtk.Orientation.VERTICAL}
+                                >
+                                    <PaneHeader
+                                        title={b.name}
+                                        onBack={() => setPane("main")}
+                                        trailing={<VpnSwitch backend={b} />}
+                                    />
+                                    <VpnPane
+                                        backend={b}
+                                        pane={paneSettled}
+                                        name={vpnPaneName(b.id)}
+                                    />
+                                </box>
+                            ))}
                             <box
                                 $type="named"
                                 name="powerprofiles"

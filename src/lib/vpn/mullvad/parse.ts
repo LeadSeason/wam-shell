@@ -1,7 +1,7 @@
 // The `mullvad` CLI's human-readable output, parsed.
 //
 // Its own module, with no import-time side effects, so the unit suite
-// can pin these against real CLI output. lib/vpn spawns
+// can pin these against real CLI output. The backend next door spawns
 // `mullvad status listen` at module scope, which made importing it from
 // a test start a real listener against the developer's live daemon for
 // the length of the run — AGENTS.md names vpn among the modules tests
@@ -10,6 +10,30 @@
 //
 // These are all total functions over a string: null means "the CLI did
 // not say", which is different from "it said no".
+
+import type { VpnState } from "../types"
+
+/** the five tunnel state words `mullvad status` prints, as a regex
+ *  alternation — shared by the one-shot read and the listener */
+export const STATE_WORDS = "Connected|Connecting|Disconnecting|Disconnected|Blocked"
+
+/** Mullvad's vocabulary onto the shared enum. An unknown word maps to
+ *  "blocked" rather than "disconnected": a state we cannot read is not
+ *  one we should report as safely off. */
+export function mapState(word: string): VpnState {
+    switch (word) {
+        case "Connected":
+            return "connected"
+        case "Connecting":
+            return "connecting"
+        case "Disconnecting":
+            return "disconnecting"
+        case "Disconnected":
+            return "disconnected"
+        default:
+            return "blocked"
+    }
+}
 
 export interface VerboseStatus {
     relay: string
@@ -47,6 +71,22 @@ export interface RelayLocation {
     city: string
     cityCode: string
 }
+
+// The two halves of a shared VpnLocation, and the marker the pane
+// compares them against. Here rather than in the backend so the unit
+// suite can pin them: they are the reason a picker row lights up as the
+// current one, and getting either side's spelling wrong just means no
+// row ever matches — a silent failure with nothing to see in a log.
+
+/** "se-sto" — a location's identity, and the id half of a VpnLocation */
+export const locationId = (l: RelayLocation) => `${l.countryCode}-${l.cityCode}`
+
+/** "Stockholm, Sweden" — what the picker row prints and searches on */
+export const locationLabel = (l: RelayLocation) => `${l.city}, ${l.country}`
+
+/** the same identity read back off a connected relay id
+ *  ("se-sto-wg-208" -> "se-sto") */
+export const relayLocationId = (relay: string) => relay.split("-").slice(0, 2).join("-")
 
 // "Albania (al)" / "\tTirana (tia) @ 41.3°N, 19.8°W" /
 // "\t\tal-tia-wg-001 (...) - hosted by ..." — two indent levels:
