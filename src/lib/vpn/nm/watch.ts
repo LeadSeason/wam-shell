@@ -107,15 +107,18 @@ export async function refresh() {
 }
 
 // a transition prints a burst of ~10 monitor lines; one refresh after
-// the burst, not one per line. The monitor's own banner line arrives
-// just after the explicit initial refresh — a refresh that fresh is
-// skipped outright, or startup pays for the same read twice
+// the burst, not one per line. Events arriving hot on the heels of a
+// refresh must not be DROPPED — the monitor's own banner line lands
+// just after the explicit initial refresh, which is what the freshness
+// gate is for — so the re-read is armed for the freshness boundary
+// instead. Dropping it left the snapshot stale for good when the last
+// event of a burst (a teardown completing) fell inside the window
 let refreshSource = 0
 let lastRefresh = 0
 function scheduleRefresh() {
     if (refreshSource || disposed) return
-    if (Date.now() - lastRefresh < 1000) return
-    refreshSource = timeoutAdd("vpn-nm:refresh", GLib.PRIORITY_DEFAULT, 300, () => {
+    const wait = Math.max(300, 1000 - (Date.now() - lastRefresh))
+    refreshSource = timeoutAdd("vpn-nm:refresh", GLib.PRIORITY_DEFAULT, wait, () => {
         refreshSource = 0
         refresh()
         return GLib.SOURCE_REMOVE
