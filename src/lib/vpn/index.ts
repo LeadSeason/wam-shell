@@ -7,6 +7,7 @@
 // backends before the generic NetworkManager one, so a Mullvad or
 // Proton user lands on the pane that knows the most about their tunnel.
 import "./mullvad"
+import "./networkmanager"
 
 export * from "./registry"
 export * from "./types"
