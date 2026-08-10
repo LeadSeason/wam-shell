@@ -32,6 +32,7 @@ import "./todoist.test"
 import "./protonmail.test"
 import "./sleepTimerState.test"
 import "./vpn.test"
+import "./vpn-nm.test"
 import "./hyprDispatch.test"
 // summary() must come after every suite has registered. This one used to
 // sit BELOW the call, which worked only because ES imports hoist — a
