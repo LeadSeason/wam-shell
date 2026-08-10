@@ -19,7 +19,8 @@
 // Widget classes — banner: .popups (stack), .popup (row), .toast (card),
 // .toastBody, .timeoutBar (countdown), .thumb. Center: .notifications
 // (window card), .header, .windowTitle, .filtersRow, .zone/.needs/.feed,
-// .zoneTitle, .zoneHeader, .dayDivider, .group/.groupHead/.groupRows,
+// .zoneTitle, .filter (search entry), .dayDivider,
+// .group/.groupHead/.groupRows,
 // .centerRow, .art. Shared within a row: .appName, .appIcon, .summary,
 // .body, .time, .actions, .dismiss, .muteApp, .mutedMark, .count,
 // .critical/.low (urgency),
@@ -235,7 +236,11 @@ window.Notifications {
             @include u.title;
         }
 
-        // icon-only: do-not-disturb, clear all
+        // icon-only: filter by app, do-not-disturb, clear all.
+        // Search moved up here from the feed's own header (it cannot live
+        // inside the list it filters — see index.tsx), so it takes the
+        // same treatment as its two neighbours rather than the quieter
+        // one it had down there
         button {
             @include u.icon-button;
             margin: 0;
@@ -286,25 +291,6 @@ window.Notifications {
 
     .zone {
         margin-bottom: 10px;
-    }
-
-    .zoneHeader {
-        padding-right: s.$gap-small;
-
-        button.search {
-            @include u.icon-button;
-            margin: 0;
-            opacity: s.$quiet-opacity;
-
-            &:hover {
-                opacity: 1;
-            }
-            &.active {
-                opacity: 1;
-                background-color: t.$accent40;
-                border-color: t.$accent40;
-            }
-        }
     }
 
     // things needing a reply sit on a faint accent wash, so the zone

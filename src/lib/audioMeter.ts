@@ -66,6 +66,19 @@ function createMeter(direction: "output" | "input"): Meter {
     let proc: Gio.Subprocess | null = null
     let defaultHandler: number | null = null
     let holders = 0
+    // Which pipeline the handle currently belongs to.
+    //
+    // force_exit() does not make the child's stdout EOF arrive
+    // synchronously: it lands a main-loop turn later, by which time
+    // start() has already spawned the replacement and stored it in
+    // `proc`. An unconditional `proc = null` in the exit callback then
+    // clears the handle of the LIVE pipeline, so the next stop() is a
+    // no-op and the process is never killed — which on the input meter
+    // means the microphone stays open with the pane closed. Each exit
+    // callback checks it is still the current generation before
+    // touching shared state (sysstats guards the same shape with an
+    // identity check on its own handle).
+    let generation = 0
 
     const endpoint = () => {
         const wp = AstalWp.get_default()?.audio
@@ -118,6 +131,9 @@ function createMeter(direction: "output" | "input"): Meter {
     }
 
     function stop() {
+        // the retiring pipeline's EOF must not clear a handle that a
+        // later start() has already replaced
+        generation++
         proc?.force_exit()
         proc = null
         setLevel(0)
@@ -125,6 +141,7 @@ function createMeter(direction: "output" | "input"): Meter {
 
     function start() {
         stop()
+        const gen = generation
         // by node id, not by name: astal reports name = null on every
         // endpoint (description is all it fills in), so there is no
         // device name to hand pulsesrc. The id IS the pipewire node id,
@@ -165,6 +182,9 @@ function createMeter(direction: "output" | "input"): Meter {
             ],
             onLine,
             () => {
+                // a stop() or a later start() has already retired this
+                // pipeline: its EOF says nothing about the current one
+                if (gen !== generation) return
                 // the pipeline died on its own (the device vanished
                 // mid-read). Leave the bar empty; the next default change
                 // or the next acquire starts a fresh one

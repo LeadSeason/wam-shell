@@ -16,6 +16,21 @@ import {
 
 const registry = CommandRegistry.get_default()
 
+/**
+ * Swap the running stylesheet for the freshly compiled one.
+ *
+ * `reset`, always. ags's `apply_css(style, reset = false)` ADDS a
+ * Gtk.CssProvider to the display and leaves every earlier one installed,
+ * so the three call sites below were stacking a provider per reload and
+ * per Dark Style toggle. Two consequences, both reported as bugs about
+ * the wrong thing: a rule DELETED from user.scss kept applying (the old
+ * provider still had it), and every widget restyle walked a provider
+ * list that grew for the life of the session.
+ */
+function applyStylesheet() {
+    app.apply_css(Config.cssPath, true)
+}
+
 export function compileScss() {
     const { needed, cold } = planCompile()
     if (!needed) return
@@ -44,7 +59,7 @@ export function compileScss() {
     // when sass is done (app.start's css option only covers compiles
     // that finish before activation)
     compileAsync()
-        .then(() => app.apply_css(Config.cssPath))
+        .then(applyStylesheet)
         // a style failure must not take the whole shell down with it
         .catch(e => console.error("Failed to compile styles:", e))
 }
@@ -59,7 +74,7 @@ export async function reloadStyle() {
         planCompile()
         await compileAsync()
         console.log(`${Config.instanceName}: Style reloaded`)
-        app.apply_css(Config.cssPath)
+        applyStylesheet()
         return "Style reloaded"
     } catch (e) {
         console.log(e)
@@ -74,7 +89,7 @@ export function setThemeLive(theme: string) {
         Config.theme = theme
         syncActiveTheme()
         compileAsync()
-            .then(() => app.apply_css(Config.cssPath))
+            .then(applyStylesheet)
             .catch(e => console.warn("setThemeLive failed:", e))
     } catch (e) {
         console.warn("setThemeLive failed:", e)

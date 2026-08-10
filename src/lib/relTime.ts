@@ -1,6 +1,7 @@
 import GLib from "gi://GLib?version=2.0"
 import { Accessor, createState } from "gnim"
 import { timeoutAddSeconds, sourceRemove } from "./metrics"
+import { registerDispose } from "./lifecycle"
 
 // How long ago something happened, for notification rows.
 //
@@ -163,3 +164,23 @@ export function acquireClock(): () => void {
         }
     }
 }
+
+/**
+ * Stop the clock regardless of who is still holding it.
+ *
+ * Shutting down with the notification centre open (or a banner on
+ * screen) leaves a holder that will never release, so the refcount alone
+ * cannot take this source down — and a 30s timer surviving teardown
+ * fires against a module that is already gone. Idempotent, and safe when
+ * the clock was never started.
+ */
+export function dispose() {
+    if (source !== null) {
+        sourceRemove(source)
+        source = null
+    }
+    holders = 0
+}
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("relTime", dispose)

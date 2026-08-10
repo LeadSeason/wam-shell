@@ -4,7 +4,24 @@ import GLib from "gi://GLib?version=2.0"
 import { Accessor, createBinding, createState } from "gnim"
 import { connect, disconnect, idleAdd, timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
+import { providers } from "./notificationProviders"
 import type { ProviderItem } from "./notificationProviders"
+import {
+    MAX_POPUPS,
+    capPopups,
+    displayGroups,
+    groupPopups,
+    popupAppName,
+    popupDuration,
+    staleArrivalKeys,
+} from "./popupStack"
+import type { PopupEntry, PopupGroup, PopupTimer } from "./popupStack"
+// The stack's RULES live in lib/popupStack, which has no import-time
+// side effects so the unit suite can pin them without this module's
+// D-Bus probe and AstalNotifd.get_default() coming along. Re-exported
+// here because this is still the address every caller knows.
+export { capPopups, displayGroups, groupPopups, popupDuration, staleArrivalKeys }
+export type { PopupEntry, PopupGroup, PopupTimer }
 import { registerDispose } from "./lifecycle"
 import { writeFileAtomic } from "./atomicWrite"
 
@@ -147,7 +164,10 @@ export function toggleAppMute(appName: string) {
 // switch, so nothing of consequence may live in a row widget (a
 // row-owned countdown used to reset on every monitor switch). Hiding a
 // popup never dismisses the notification from the center.
-const MAX_POPUPS = 4
+//
+// The stack's pure rules (the cap, the folding, the durations) live in
+// lib/popupStack; what is left here is the state and the sources that
+// drive them.
 
 // 200ms (5fps) is visually identical to 50ms for the timeout bar but
 // a quarter of the wakeups
@@ -155,29 +175,6 @@ const TICK_MS = 200
 // a banner animates in only while it is this young: rows rebuilt on a
 // monitor switch must not replay the slide-in
 export const POPUP_SLIDE_IN_MS = 400
-
-// one banner slot: a desktop notification from our daemon, or a provider
-// item (GitHub & co.). key is unique across both: "desktop:<id>" for
-// daemon notifications, the provider's own "<provider>:<id>" otherwise
-export interface PopupEntry {
-    key: string
-    desktop: AstalNotifd.Notification | null
-    item: ProviderItem | null
-    // urgent enough that the stack must never bury it. Recorded at
-    // admission rather than read back off the notification, because a
-    // provider item carries no urgency of its own — the caller decides
-    // (todoist's due reminders raise CRITICAL for exactly this reason)
-    critical: boolean
-}
-
-export interface PopupTimer {
-    // ms; 0 = never expires (critical)
-    duration: number
-    remaining: number
-    // monotonic ms when the banner appeared
-    addedAt: number
-    expiring: boolean
-}
 
 /**
  * The banner stack, **oldest first** — admission appends.
@@ -308,6 +305,52 @@ const snoozed = new Map<string, Snoozed>()
 export const SNOOZE_MS = 10 * 60 * 1000
 
 /**
+ * Bring a snoozed banner back — through the same doors it came in by.
+ *
+ * A snooze is ten minutes of the user doing something else, which is
+ * ample time for the thing to stop being worth interrupting for, and for
+ * the user to decide they never want to hear from it again. Both of
+ * those have to be re-checked at the moment of re-admission, not at the
+ * moment of snoozing:
+ *
+ *  - **Still outstanding?** A desktop notification may have been
+ *    dismissed from the centre; a provider item may have been completed
+ *    (the Todoist task got done) or hidden. Re-raising a banner for
+ *    something already dealt with is worse than forgetting it — and a
+ *    due reminder is CRITICAL, so it comes back with no timeout at all
+ *    and has to be dismissed by hand.
+ *  - **Still allowed to interrupt?** `addPopup` is only the DND gate.
+ *    The per-source mute lives in `addProviderPopup` and the per-app
+ *    mute in the `notified` handler, so calling `addPopup` directly
+ *    walked straight past a mute applied while the banner was snoozed.
+ *
+ * The provider item is looked up fresh rather than replayed: a poll in
+ * the meantime may have replaced the object (a moved due time, an edited
+ * title), and the stale copy's actions close over the old state.
+ */
+function unsnooze(held: Snoozed) {
+    const { desktop, item } = held.entry
+    if (desktop) {
+        if (!notifd.get_notification(desktop.id)) return
+        // the two gates the `notified` handler applies
+        if (mutedProviders.get().includes(LOCAL_SOURCE)) return
+        if (isAppMuted(desktop.appName)) return
+        addPopup(held.entry, held.urgency, held.expireMs)
+        return
+    }
+    if (!item) return
+    const fresh = providers
+        .find(p => p.name === item.provider)
+        ?.items.get()
+        .find(i => i.id === item.id)
+    // completed, hidden, or aged out of the provider's list
+    if (!fresh) return
+    // applies the muted-provider gate, and re-derives the duration the
+    // same way the first admission did
+    addProviderPopup(fresh, held.urgency)
+}
+
+/**
  * Take a banner off screen and bring it back in ten minutes.
  *
  * Returns false when the key is not on screen, which is the case a
@@ -327,12 +370,7 @@ export function snoozePopup(key: string): boolean {
         const held = snoozed.get(key)
         snoozed.delete(key)
         if (!held) return GLib.SOURCE_REMOVE
-        // The notification may have been dismissed from the centre while
-        // it was snoozed. Re-raising a banner for something the user
-        // already dealt with is worse than forgetting it.
-        if (held.entry.desktop && !notifd.get_notification(held.entry.desktop.id))
-            return GLib.SOURCE_REMOVE
-        addPopup(held.entry, held.urgency, held.expireMs)
+        unsnooze(held)
         return GLib.SOURCE_REMOVE
     })
 
@@ -421,40 +459,6 @@ function ensurePopupTick() {
     })
 }
 
-/**
- * Enforce the banner cap, evicting the oldest ORDINARY banner first.
- *
- * A plain `slice(-MAX)` drops whatever is oldest, which is usually
- * right and is exactly wrong when the oldest is the one that matters: a
- * burst of four "sync complete"s would silently delete the critical
- * banner underneath them. A critical is only evicted when the whole
- * stack is critical and something has to give.
- *
- * Pure so the precedence can be pinned in tests.
- */
-export function capPopups(list: PopupEntry[], max: number): PopupEntry[] {
-    if (list.length <= max) return list
-    const out = [...list]
-    while (out.length > max) {
-        const i = out.findIndex(p => !p.critical)
-        // no ordinary banner left to sacrifice: fall back to the oldest
-        out.splice(i >= 0 ? i : 0, 1)
-    }
-    return out
-}
-
-/** one card's worth of banner: usually a single notification, more when
- *  several from one app were folded together. entries[0] is the newest
- *  and is what the card shows */
-export interface PopupGroup {
-    key: string
-    entries: PopupEntry[]
-}
-
-function popupAppName(p: PopupEntry): string {
-    return (p.desktop?.appName || p.item?.appName || "").toLowerCase()
-}
-
 // How many banners an app has actually raised during the current burst,
 // which is NOT the same as how many are on screen.
 //
@@ -467,12 +471,6 @@ function popupAppName(p: PopupEntry): string {
 // up: once its last one leaves the screen the burst is over, and the
 // next arrival starts again at one rather than resuming a stale total.
 const arrivals = new Map<string, number>()
-
-/** apps we are still counting for that have no banner left on screen */
-export function staleArrivalKeys(tracked: string[], live: string[]): string[] {
-    const alive = new Set(live)
-    return tracked.filter(app => !alive.has(app))
-}
 
 function forgetFinishedApps() {
     const live = popupsState
@@ -487,92 +485,6 @@ function forgetFinishedApps() {
 export function popupArrivals(p: PopupEntry): number {
     if (p.critical) return 1
     return arrivals.get(popupAppName(p)) ?? 1
-}
-
-/**
- * Fold banners from the same app into one card.
- *
- * The problem is a chatty app, not a busy desktop: five "sync complete"s
- * are five cards saying one thing, and they push everything else off the
- * screen. One card that says the app's name and how many is the same
- * information in a fifth of the space.
- *
- * Criticals never merge. Folding one into a group would hide the
- * headline that mattered behind whichever notification happened to
- * arrive last, and they carry no timeout, so it would hide indefinitely.
- * They also lead, ahead of everything ordinary.
- *
- * @param list newest first — NOT the order `popups` is stored in.
- *        Views want `displayGroups` instead, which owns the conversion
- */
-export function groupPopups(list: PopupEntry[]): PopupGroup[] {
-    const urgent: PopupGroup[] = []
-    const ordinary: PopupGroup[] = []
-    const byApp = new Map<string, PopupGroup>()
-    for (const p of list) {
-        if (p.critical) {
-            urgent.push({ key: p.key, entries: [p] })
-            continue
-        }
-        // an app with no name at all cannot be grouped by one: folding
-        // every anonymous notification together would merge unrelated
-        // senders into a single misleading count
-        const app = popupAppName(p)
-        const open = app === "" ? undefined : byApp.get(app)
-        if (open) {
-            open.entries.push(p)
-            continue
-        }
-        const group: PopupGroup = { key: p.key, entries: [p] }
-        if (app !== "") byApp.set(app, group)
-        ordinary.push(group)
-    }
-    return [...urgent, ...ordinary]
-}
-
-/**
- * What a banner window renders: the stored stack, folded into cards, in
- * the order they should appear on screen.
- *
- * The one place the stored order (oldest first, see `popups`) is turned
- * into the display order (newest first). Every per-monitor window used
- * to do the `.reverse()` itself, which put a convention this module owns
- * in the hands of its views — and left nothing that pins the whole
- * pipeline, since the pure halves are only ever tested in isolation.
- */
-export function displayGroups(list: PopupEntry[]): PopupGroup[] {
-    return groupPopups([...list].reverse())
-}
-
-/**
- * How long a banner stays up, in ms. 0 means it never expires.
- *
- * The sender gets the first say. The freedesktop spec gives every
- * notification an `expire_timeout`: -1 asks the server to decide, 0
- * means "leave it up", and anything positive is a request in
- * milliseconds. The shell used to ignore the field completely and apply
- * its own configured length to everything, so an app asking for a
- * twenty-second banner got five, and an app asking for a permanent one
- * got five as well.
- *
- * Only when the sender defers (-1, or a provider item, which has no such
- * field) does the configured default apply — and that default is where
- * urgency comes in: low drains twice as fast, critical does not drain.
- *
- * Pure so the precedence can be pinned in tests.
- *
- * @param expireMs the sender's request, -1 for "you decide"
- * @param total the configured default length
- */
-export function popupDuration(
-    expireMs: number,
-    urgency: AstalNotifd.Urgency | null,
-    total: number,
-): number {
-    if (expireMs === 0) return 0
-    if (expireMs > 0) return expireMs
-    if (urgency === AstalNotifd.Urgency.CRITICAL) return 0
-    return urgency === AstalNotifd.Urgency.LOW ? total / 2 : total
 }
 
 // shared banner admission: DND gate, dedupe, countdown, cap. Returns
@@ -619,7 +531,7 @@ export function addProviderPopup(item: ProviderItem, urgency: AstalNotifd.Urgenc
     addPopup({ key: item.id, desktop: null, item }, urgency)
 }
 
-const notifiedId = connect(notifd, "notified", (_s: AstalNotifd.Notifd, id: number) => {
+let notifiedId = connect(notifd, "notified", (_s: AstalNotifd.Notifd, id: number) => {
     if (!useOurs) return
     const n = notifd.get_notification(id)
     if (!n) return
@@ -646,7 +558,7 @@ const notifiedId = connect(notifd, "notified", (_s: AstalNotifd.Notifd, id: numb
 // inside GTK's dispatch to that banner, whatever the caller in
 // PopupRow does. Deferring only the call in PopupRow would have looked
 // like a fix and changed nothing.
-const resolvedId = connect(notifd, "resolved", (_s: AstalNotifd.Notifd, id: number) =>
+let resolvedId = connect(notifd, "resolved", (_s: AstalNotifd.Notifd, id: number) =>
     removePopupDeferred(`desktop:${id}`),
 )
 
@@ -666,8 +578,17 @@ export function dispose() {
     // popup stack nothing is ticking any more
     for (const held of snoozed.values()) sourceRemove(held.source)
     snoozed.clear()
-    disconnect(notifd, notifiedId)
-    disconnect(notifd, resolvedId)
+    // zeroed as they go, like every other handle above: runDisposers()
+    // can be reached twice (a shutdown signal after an explicit quit),
+    // and disconnecting a dead handler id is a GLib-CRITICAL
+    if (notifiedId) {
+        disconnect(notifd, notifiedId)
+        notifiedId = 0
+    }
+    if (resolvedId) {
+        disconnect(notifd, resolvedId)
+        resolvedId = 0
+    }
 }
 
 export default notifd

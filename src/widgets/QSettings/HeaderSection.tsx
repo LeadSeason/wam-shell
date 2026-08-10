@@ -161,9 +161,25 @@ function useBatteryLine(): { line: Accessor<string> } {
         })
     }
 
-    createBinding(bat, "timeToEmpty").subscribe(updateBatTime)
-    createBinding(bat, "timeToFull").subscribe(updateBatTime)
-    createBinding(bat, "charging").subscribe(updateBatTime)
+    // paired with onCleanup, like the pct subscription above: these hang
+    // off the AstalBattery SINGLETON, so a generation left connected
+    // outlives the header that owns it and goes on debouncing against a
+    // destroyed widget (AGENTS.md: widget subscriptions pair subscribe
+    // with onCleanup)
+    const batUnsubs = [
+        createBinding(bat, "timeToEmpty").subscribe(updateBatTime),
+        createBinding(bat, "timeToFull").subscribe(updateBatTime),
+        createBinding(bat, "charging").subscribe(updateBatTime),
+    ]
+    onCleanup(() => {
+        for (const unsub of batUnsubs) unsub()
+        // the debounce can be mid-flight when the popup is rebuilt
+        if (pendingSource !== null) {
+            sourceRemove(pendingSource)
+            pendingSource = null
+            pendingValue = null
+        }
+    })
 
     return {
         line: createComputed([batProc, batTime], (p, t) => {
@@ -216,12 +232,19 @@ function useUptimeLine(): { line: Accessor<string> } {
     // the 30s wakes entirely, and the open-time compute is fresher than
     // anything a background interval would have produced
     let stop: (() => void) | null = null
-    qsVisible.subscribe(() => {
+    const unsub = qsVisible.subscribe(() => {
         if (qsVisible.get() && !stop) stop = poll.subscribe(() => setLine(poll.get()))
         if (!qsVisible.get() && stop) {
             stop()
             stop = null
         }
+    })
+    // both of them: the visibility watch, and the poll it may be holding
+    // open at the moment the header goes away
+    onCleanup(() => {
+        unsub()
+        stop?.()
+        stop = null
     })
     return { line }
 }

@@ -1,21 +1,18 @@
-import GLib from "gi://GLib?version=2.0"
 import { createState } from "gnim"
 import Config from "../config"
 import { loadToken } from "./credentials"
 import { configHome } from "./paths"
 import { createJsonClient, USER_AGENT } from "./httpJson"
-import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { Provider, ProviderItem, registerProvider } from "./notificationProviders"
 import { addProviderPopup } from "./notifd"
 import { createSeenStore } from "./seenStore"
 import {
     bannerCandidates,
+    createPollLoop,
     createRefreshGate,
-    formatWait,
-    isBackoffStatus,
+    createSessionHide,
     newArrivals,
     openUrl,
-    retryAfterSeconds,
 } from "./providerCore"
 import { registerDispose } from "./lifecycle"
 
@@ -162,7 +159,6 @@ export { items }
 let lastModified = ""
 let pollInFlight = false
 let authFailed = false
-let pollTimer = 0
 // Banners have to survive restarts. A per-process baseline (what this
 // used to be) swallowed every thread that arrived while the shell was
 // down, and between a 15-minute poll and a shell that restarts on
@@ -176,16 +172,13 @@ const seen = createSeenStore(`${Config.instanceCacheDir}/github-seen.json`, "Git
 
 // locally hidden threads (right-click "dismiss"): session-only, no
 // service call — filtered out of every poll so they don't reappear
-// before the shell restarts
-const hiddenIds = new Set<string>()
+// before the shell restarts (lib/providerCore owns the mechanism)
+const hidden = createSessionHide(items, setItems)
 
 function attachActions(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">): ProviderItem {
     return {
         ...data,
-        hide: () => {
-            hiddenIds.add(data.id)
-            setItems(items.get().filter(i => i.id !== data.id))
-        },
+        hide: () => hidden.hide(data.id),
         dismiss: () => mutate(data, "DELETE"),
         activate: () => {
             openUrl(data.url, "GitHub")
@@ -209,7 +202,7 @@ function applyThreads(rawList: any[]) {
     const mapped: ProviderItem[] = []
     for (const raw of rawList) {
         const data = threadData(raw)
-        if (data && !hiddenIds.has(data.id)) mapped.push(attachActions(data))
+        if (data && !hidden.has(data.id)) mapped.push(attachActions(data))
     }
     // newest first, same as the center's desktop list
     mapped.sort((a, b) => b.time - a.time)
@@ -241,7 +234,6 @@ function fetchPage(page: number, acc: any[]) {
             // followed by quiet 304s left the counter high and the next
             // 429 waited as if the limits had never stopped
             if (r.status === 304) {
-                backoffs = 0
                 gate.clearBackoff()
                 setStatus(null)
                 return
@@ -249,10 +241,7 @@ function fetchPage(page: number, acc: any[]) {
             if (r.status === 401) {
                 authFailed = true
                 setStatus("GitHub token rejected — check ~/.config/wam-shell/github.env")
-                if (pollTimer) {
-                    sourceRemove(pollTimer)
-                    pollTimer = 0
-                }
+                loop.stop()
                 console.warn(
                     "GitHub: token rejected (401); provider disabled until the shell restarts",
                 )
@@ -260,20 +249,12 @@ function fetchPage(page: number, acc: any[]) {
             }
             // rate limited or overloaded: the server said how long to
             // stop for, and re-asking on schedule is what turns a short
-            // limit into a long one
-            if (isBackoffStatus(r.status)) {
-                backoffs++
-                const wait = retryAfterSeconds(r.header("Retry-After"), backoffs)
-                gate.backOff(wait)
-                setStatus(`GitHub is rate limiting — retrying in ${formatWait(wait)}`)
-                console.warn(`GitHub: ${r.status}; backing off ${wait}s`)
-                return // keep stale items
-            }
+            // limit into a long one (lib/providerCore owns the rule)
+            if (gate.noteBackoff(r, "GitHub", setStatus)) return // keep stale items
             if (!r.ok || !Array.isArray(r.json)) {
                 setStatus("Couldn't sync GitHub — retrying next poll")
                 return // keep stale items
             }
-            backoffs = 0
             gate.clearBackoff()
             setStatus(null)
             const modified = r.header("Last-Modified")
@@ -293,10 +274,6 @@ function fetchPage(page: number, acc: any[]) {
     )
 }
 
-// consecutive 429/503s, for the doubling fallback when the server sends
-// no Retry-After. Reset by the first clean poll
-let backoffs = 0
-
 export function poll() {
     if (!active || authFailed || pollInFlight) return
     // a backoff the SCHEDULED poll must respect too: gating only
@@ -312,11 +289,11 @@ export function poll() {
 const gate = createRefreshGate(60_000, poll)
 export const refresh = gate.refresh
 
+// the fixed-cadence poll (lib/providerCore owns the timer triple)
+const loop = createPollLoop("github:poll", Config.github.pollMinutes, poll)
+
 export function dispose() {
-    if (pollTimer) {
-        sourceRemove(pollTimer)
-        pollTimer = 0
-    }
+    loop.stop()
 }
 
 // -------------------------------------------------------------- startup
@@ -332,7 +309,6 @@ if (Config.github.enabled) {
         displayName: "GitHub",
         items,
         refresh,
-        dispose,
         status,
         setupHint: active
             ? null
@@ -342,16 +318,7 @@ if (Config.github.enabled) {
 
 export function init() {
     if (!active) return
-    poll()
-    pollTimer = timeoutAddSeconds(
-        "github:poll",
-        GLib.PRIORITY_DEFAULT,
-        Config.github.pollMinutes * 60,
-        () => {
-            poll()
-            return GLib.SOURCE_CONTINUE
-        },
-    )
+    loop.start()
 }
 
 // tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)

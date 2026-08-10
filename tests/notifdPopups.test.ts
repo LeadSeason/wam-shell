@@ -7,7 +7,11 @@ import {
     popupDuration,
     staleArrivalKeys,
     PopupEntry,
-} from "../src/lib/notifd"
+    // lib/popupStack, NOT lib/notifd: that one calls
+    // AstalNotifd.get_default() and a synchronous D-Bus name probe at
+    // import, so `pnpm test` could acquire org.freedesktop.Notifications
+    // inside the test binary and swallow the session's notifications
+} from "../src/lib/popupStack"
 
 const entry = (key: string, critical = false): PopupEntry => ({
     key,
@@ -101,8 +105,15 @@ test("groupPopups: same app folds, first stays the representative", () => {
         named("old", "Syncthing"),
     ])
     eq(groups.length, 1)
-    eq(groups[0].entries.map(e => e.key), ["new", "mid", "old"])
-    eq(groups[0].key, "new")
+    eq(
+        groups[0].entries.map(e => e.key),
+        ["new", "mid", "old"],
+    )
+    // the key covers the whole MEMBERSHIP, not just the representative:
+    // the view keys its For on it, and gnim reuses a child whose key did
+    // not change — so a card keyed "new" alone went on rendering "mid"
+    // and "old" in its drawer after they had expired
+    eq(groups[0].key, "new|mid|old")
 })
 
 test("groupPopups: different apps stay apart", () => {
@@ -186,7 +197,8 @@ test("displayGroups: criticals lead whatever their arrival order", () => {
     ])
     eq(
         groups.map(g => g.key),
-        ["urgent", "chatty2"],
+        // the critical stands alone; the folded pair's key names both
+        ["urgent", "chatty2|chatty1"],
     )
 })
 

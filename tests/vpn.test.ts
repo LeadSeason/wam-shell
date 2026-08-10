@@ -8,7 +8,10 @@ import {
     parseLan,
     parseLockdown,
     parseAutoConnect,
-} from "../src/lib/vpn"
+    // lib/vpnParse, NOT lib/vpn: that one spawns `mullvad status listen`
+    // at module scope, so importing it here started a real listener
+    // against the developer's live daemon on every `pnpm test`
+} from "../src/lib/vpnParse"
 
 const STATUS_V = `Connected
     Relay:                  se-sto-wg-205 (170.62.100.10:11965/UDP)
@@ -69,10 +72,10 @@ const TUNNEL_GET = `WireGuard options
 
 test("vpn parseTunnelOptions: quantum and daita states", () => {
     eq(parseTunnelOptions(TUNNEL_GET), { quantum: true, daita: true })
-    eq(
-        parseTunnelOptions(TUNNEL_GET.replace("on\n", "off\n").replace("true", "false")),
-        { quantum: false, daita: false },
-    )
+    eq(parseTunnelOptions(TUNNEL_GET.replace("on\n", "off\n").replace("true", "false")), {
+        quantum: false,
+        daita: false,
+    })
 })
 
 const DNS_GET = `Custom DNS: no

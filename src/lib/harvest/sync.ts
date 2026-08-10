@@ -7,6 +7,7 @@ import { timeoutAdd, timeoutAddSeconds, sourceRemove, connect, disconnect } from
 import { active, request, fetchAll } from "./api"
 import { Entry, Project, mapEntry, localDay, dayTimeline } from "./timeline"
 import { accountMode } from "./account"
+import { armNotifications } from "./notify"
 import {
     running,
     authDisabled,
@@ -248,6 +249,13 @@ function baseline() {
             lastApplied.running = seq
             const raw = (r.json.time_entries ?? [])[0]
             adoptRunning(raw ? mapEntry(raw) : null)
+            // this probe IS the baseline the banner latch waits for:
+            // whatever it just adopted is state, and anything after it
+            // is a real transition. Armed after the adoption, so the
+            // adoption itself stays silent — and only on a successful
+            // probe, so a failed one does not license a "timer started"
+            // banner for a timer that has been running all morning
+            armNotifications()
         }
     })
 }
