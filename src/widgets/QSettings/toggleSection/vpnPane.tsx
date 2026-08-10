@@ -262,13 +262,15 @@ export function VpnPane({
                                             // starts an action (busy) or a
                                             // reconnect (state in flux), and
                                             // spamming rows must not stack
-                                            // either
+                                            // either. "blocked" (the Failed
+                                            // hold) is NOT flux — a notice
+                                            // must not lock the picker
                                             sensitive={createComputed(
                                                 [busy, status],
                                                 (b, s) =>
                                                     !b &&
-                                                    (s.state === "connected" ||
-                                                        s.state === "disconnected"),
+                                                    s.state !== "connecting" &&
+                                                    s.state !== "disconnecting",
                                             )}
                                             onClicked={() => loc.select()}
                                         >
