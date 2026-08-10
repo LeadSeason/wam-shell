@@ -223,7 +223,20 @@ const backend: VpnBackend = {
         execAsync(["protonvpn", "disconnect"])
             .catch(() => {})
             .then(() => watch.refresh())
-            .finally(() => setBusy(false))
+            .finally(() => {
+                setBusy(false)
+                // when the teardown changed nothing in NM — an aborted
+                // attempt that never got as far as creating a profile,
+                // e.g. killed while Mullvad's lockdown had the API
+                // unreachable — no snapshot fires, and the dedupe means
+                // the synthetic Disconnecting is never reverted
+                if (!connectProc && !lastProton.some(p => p.up))
+                    applyStatus({
+                        state: "disconnected",
+                        stateLabel: "Disconnected",
+                        server: "",
+                    })
+            })
         if (killed) armAbortSweep()
     },
     reconnect: () => {
