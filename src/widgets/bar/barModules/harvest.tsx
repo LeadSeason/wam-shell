@@ -6,7 +6,8 @@ import * as Harvest from "../../../lib/harvest"
 import { sharing, enable as enableShareWatch } from "../../../lib/screenShare"
 import { setPopupAnchor } from "../../harvestPopup"
 import CommandRegistry from "../../../lib/requestHandler"
-import { timeoutAdd } from "../../../lib/metrics"
+import { timeoutAdd, sourceRemove } from "../../../lib/metrics"
+import { registerDispose } from "../../../lib/lifecycle"
 import { pressable } from "../../pressable"
 
 const registry = CommandRegistry.get_default()
@@ -52,13 +53,28 @@ function msUntilNextBoundary(): number {
     return next + 1000
 }
 
+// Both boundary timers re-arm themselves, so they live for the whole
+// session and nothing else can reach them — tracked here and torn down
+// in the disposer below, the convention every lib module with a
+// long-lived source follows (AGENTS.md). They are armed at import rather
+// than per widget, which is why the handles are module-scope too.
+let workHoursSource = 0
+let workDaysSource = 0
+
 if (Config.harvest.workStart && Config.harvest.workEnd) {
-    const arm = () =>
-        timeoutAdd("harvest:workHours", GLib.PRIORITY_DEFAULT, msUntilNextBoundary(), () => {
-            setWorkHours(withinWorkHours())
-            arm()
-            return GLib.SOURCE_REMOVE
-        })
+    const arm = () => {
+        workHoursSource = timeoutAdd(
+            "harvest:workHours",
+            GLib.PRIORITY_DEFAULT,
+            msUntilNextBoundary(),
+            () => {
+                workHoursSource = 0
+                setWorkHours(withinWorkHours())
+                arm()
+                return GLib.SOURCE_REMOVE
+            },
+        )
+    }
     arm()
 }
 
@@ -70,13 +86,35 @@ function msUntilMidnight(): number {
     d.setHours(24, 0, 0, 0)
     return d.getTime() - Date.now() + 1000
 }
-const armMidnight = () =>
-    timeoutAdd("harvest:workDays", GLib.PRIORITY_DEFAULT, msUntilMidnight(), () => {
-        setWorkDays(withinWorkDays())
-        armMidnight()
-        return GLib.SOURCE_REMOVE
-    })
+const armMidnight = () => {
+    workDaysSource = timeoutAdd(
+        "harvest:workDays",
+        GLib.PRIORITY_DEFAULT,
+        msUntilMidnight(),
+        () => {
+            workDaysSource = 0
+            setWorkDays(withinWorkDays())
+            armMidnight()
+            return GLib.SOURCE_REMOVE
+        },
+    )
+}
 if (Config.harvest.workDays.length > 0) armMidnight()
+
+// idempotent, and safe when neither timer was ever armed
+export function dispose() {
+    if (workHoursSource) {
+        sourceRemove(workHoursSource)
+        workHoursSource = 0
+    }
+    if (workDaysSource) {
+        sourceRemove(workDaysSource)
+        workDaysSource = 0
+    }
+}
+
+// tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
+registerDispose("barHarvest", dispose)
 
 // Harvest timer on the panel (lib/harvest). Visible while a timer runs
 // or is paused (any day), idle inside work days × work hours

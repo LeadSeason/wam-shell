@@ -134,7 +134,14 @@ function getDesktopSession(): string {
 function getWorkspacesConfig() {
     const r = createReader(configData, "workspaces")
     return {
-        enabled: r.bool("enabled", true),
+        // sectionOnly: "enabled" is the most generic name in the file and
+        // five sections read it. A bare top-level `enabled` (anything
+        // written above the first [table] header is top-level in TOML)
+        // would otherwise reach all of them at once, so someone disabling
+        // one widget silently disabled four more with no diagnostic — a
+        // valid boolean is never reported. Same collision class as
+        // bluetooth.notifications and tray.on_panel below
+        enabled: r.bool("enabled", true, { sectionOnly: true }),
         // NB this reads a bare top-level "position" too, which is the
         // historical behaviour and is kept deliberately — the tray is
         // the one that had to move aside (tray_position). Changing it
@@ -270,7 +277,8 @@ function getIdleInhibitConfig() {
 function getMediaConfig() {
     const r = createReader(configData, "media")
     return {
-        enabled: r.bool("enabled", false),
+        // sectionOnly — see the note on workspaces.enabled
+        enabled: r.bool("enabled", false, { sectionOnly: true }),
         showControls: r.bool("show_controls", true),
         maxWidth: r.num("max_width", 20, { positive: true }),
         // while screen sharing, hide the quick-settings player entirely
@@ -292,8 +300,8 @@ function getMediaConfig() {
 // perfectly and produces a shell with no padding anywhere.
 const DENSITY = { compact: 0.8, comfortable: 1, relaxed: 1.2 } as const
 
-function getAppearanceConfig() {
-    const r = createReader(configData, "appearance")
+function getAppearanceConfig(data: Record<string, any> = configData) {
+    const r = createReader(data, "appearance")
     // a theme name is only valid if the stylesheet exists: a typo must
     // land on the documented default rather than compiling to nothing
     const themeOr = (key: string, fallback: string) => {
@@ -317,7 +325,13 @@ function getAppearanceConfig() {
 // Dark Style left off must survive a shell restart
 function resolveTheme(data: Record<string, any>): string {
     const theme = getTheme(data)
-    const appearance = getAppearanceConfig()
+    // from the SAME document as getTheme, not the one captured at import:
+    // reloadTheme re-parses the file so a theme change applies without a
+    // restart, and with follow_system on (the default) the answer comes
+    // from dark_theme/light_theme rather than from `theme` — so reading
+    // those off the stale copy meant editing them did nothing until a
+    // full restart, while editing the bare `theme` key appeared to work
+    const appearance = getAppearanceConfig(data)
     if (!appearance.followSystem) return theme
     // new Gio.Settings({schema_id}) on a missing schema aborts the
     // process (a g_error, not a catchable exception) — look it up first
@@ -370,8 +384,9 @@ function getSleepTimerConfig() {
         // English and its clock is already numeric, so following the
         // locale here would be the only place it did. "auto" opts into it
         timeFormat: r.oneOf("time_format", ["24h", "12h", "auto"] as const, "24h") as TimeFormat,
-        // show the sleep timer toggle in quick settings
-        enabled: r.bool("enabled", true),
+        // show the sleep timer toggle in quick settings.
+        // sectionOnly — see the note on workspaces.enabled
+        enabled: r.bool("enabled", true, { sectionOnly: true }),
         // show the countdown on the panel while a timer runs.
         // Section-only, NOT the usual top-level fallback: the tray's
         // top-level on_panel key would leak in otherwise
@@ -421,7 +436,8 @@ function getHarvestConfig() {
     }
 
     return {
-        enabled: r.bool("enabled", false),
+        // sectionOnly — see the note on workspaces.enabled
+        enabled: r.bool("enabled", false, { sectionOnly: true }),
         // section-only, NOT the usual top-level fallback: the tray's
         // top-level on_panel key would leak in otherwise
         onPanel: r.bool("on_panel", true, { sectionOnly: true }),
@@ -604,7 +620,8 @@ function getOsdConfig() {
         r.num(`timeout_${key}`, Math.round(timeout * scale[kind]), { positive: true })
 
     return {
-        enabled: r.bool("enabled", true),
+        // sectionOnly — see the note on workspaces.enabled
+        enabled: r.bool("enabled", true, { sectionOnly: true }),
         position,
         // distance from the anchored edge. 140 clears the message
         // composer of a bottom-docked chat app (slack, discord), which a

@@ -102,7 +102,9 @@ const stub = (name: string): Provider => ({
     iconName: `${name}-symbolic`,
     items: { get: () => [] } as any,
     refresh: () => {},
-    dispose: () => {},
+    // no `dispose`: teardown goes through lib/lifecycle, not the
+    // registry — the interface member it used to require was implemented
+    // by every provider and called by nothing
 })
 
 test("notificationProviders: registration is append-only and ordered", () => {

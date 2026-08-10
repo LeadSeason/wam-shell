@@ -14,6 +14,7 @@ import {
     snoozePopup,
 } from "../../lib/notifd"
 import Toast from "./Toast"
+import { acquireClock } from "../../lib/relTime"
 import { fromDesktop, fromItem } from "./rowData"
 
 // Pure view over the popup controller in lib/notifd: the countdown,
@@ -53,6 +54,23 @@ export default function PopupRow({ group }: { group: PopupEntry[] }) {
     onCleanup(() => {
         rev = null
     })
+
+    // Hold the shared relative-time clock while this banner is up.
+    //
+    // The card prints an age through `nowSec`, and relTime only advances
+    // that state while someone HOLDS the clock — the centre was the sole
+    // holder, on the reasoning that a banner lives a few seconds so its
+    // "now" is still true when it disappears. True of the clock ticking;
+    // not true of the clock's starting value. With the centre shut,
+    // `nowSec` sits at whatever it was when the centre last closed (or at
+    // shell start), so a provider item that crosses the banner horizon
+    // hours later is dated against a stale "now" and reads "1h" for
+    // something ten hours old — while the centre row for the same item,
+    // opened a second later, reads "10h".
+    //
+    // Refcounted, so this costs a 30s tick only while banners are on
+    // screen, and the acquire refreshes the value before anything renders.
+    onCleanup(acquireClock())
 
     let rev: Gtk.Revealer | null = null
 

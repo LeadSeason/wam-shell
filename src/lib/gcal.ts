@@ -6,7 +6,7 @@ import { configHome } from "./paths"
 import { writeFileAtomic } from "./atomicWrite"
 import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { GoogleAccount, createGoogleAuth, googleRequest } from "./googleAuth"
-import { createRefreshGate, formatWait, isBackoffStatus, retryAfterSeconds } from "./providerCore"
+import { createRefreshGate } from "./providerCore"
 import { WEEKDAYS } from "./relTime"
 import { registerDispose } from "./lifecycle"
 
@@ -94,27 +94,37 @@ function request(method: string, url: string, opts: { bearer?: string }, cb: (r:
         // arriving again on the fixed poll interval as if nothing was
         // said. Recorded from any request in the fan-out — one calendar
         // being limited means the account is
-        if (isBackoffStatus(r.status)) {
-            backoffs++
-            const wait = retryAfterSeconds("", backoffs)
-            backoffUntil = Math.max(backoffUntil, Date.now() + wait * 1000)
-            console.warn(`GCal: ${r.status}; holding off syncs for ${formatWait(wait)}`)
-        } else if (r.ok) {
-            backoffs = 0
-            backoffUntil = 0
+        if (gate.noteBackoff(r, "GCal")) {
+            backoffGeneration = syncGeneration
+        } else if (r.ok && backoffGeneration !== syncGeneration) {
+            // A success only clears a hold-off from an EARLIER sweep.
+            //
+            // One sync fans out over every calendar of every account, and
+            // the replies interleave: Google rate-limiting one calendar
+            // while the others answer 200 is the normal shape of a quota
+            // problem, not an exception. Clearing unconditionally meant a
+            // sibling 200 erased the hold-off the 429 had just installed
+            // — so the guard in sync() was already open by the next tick
+            // and the shell kept hammering a limited API. It also reset
+            // the escalation counter, so retryAfterSeconds never got past
+            // its 30s floor and the documented 30s/60s/120s doubling
+            // never happened on the mixed sweeps that are precisely when
+            // it matters
+            gate.clearBackoff()
         }
         cb(r)
     })
 }
 
-// consecutive 429/503s, and the instant the next sync may run.
+// Which sweep installed the current hold-off, so a later reply from that
+// same fan-out cannot cancel it (see the note in request()).
 //
-// gcal keeps a plain fixed-interval timer rather than the providers'
-// refresh gate -- it is the clock popover's data, not a notification
-// provider -- so the hold-off lives here instead of in providerCore's
-// gate. Same rule, one less mechanism to introduce.
-let backoffs = 0
-let backoffUntil = 0
+// The hold-off ITSELF lives in the refresh gate, which gcal has had all
+// along — the counter and deadline that used to sit here were a second
+// copy of state providerCore already owns, and keeping the two apart is
+// what made it possible to reset one without the other.
+let syncGeneration = 0
+let backoffGeneration = -1
 
 // ---------------------------------------------------------------- state
 
@@ -483,13 +493,15 @@ let pendingFocus: { y: number; m: number } | null = null
 export function sync(focus?: { y: number; m: number }) {
     // a 429/503 asked us to stop for a while; the fixed poll timer must
     // respect that too, not just walk past it on the next tick
-    if (Date.now() < backoffUntil) return
+    if (gate.blocked()) return
     if (!active || auth.getAccounts().length === 0) return
     if (syncInFlight) {
         pendingFocus = focus ?? pendingFocus
         return
     }
     syncInFlight = true
+    // a new fan-out: replies from here on may clear an older hold-off
+    syncGeneration++
     gate.touch()
     const now = new Date()
     const y = focus?.y ?? now.getFullYear()

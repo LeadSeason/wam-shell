@@ -61,9 +61,18 @@ export function buildFeed<T extends FeedRow>(
     const flush = () => {
         if (run.length === 0) return
         blocks.push({
-            // the first row's key makes the group's identity stable
-            // across rebuilds without depending on its position
-            key: `group:${run[0].key}`,
+            // EVERY member's key, not just the first.
+            //
+            // The renderer keys its `For` on this, and gnim reuses the
+            // existing child for an unchanged key without re-invoking the
+            // factory — so a group whose identity ignored its other rows
+            // kept rendering them after they were gone: the header still
+            // counted three, the drawer still listed a dismissed
+            // notification (clicking it invoked a destroyed
+            // AstalNotifd.Notification), and the surviving row was drawn
+            // a second time by the new single-row group that took its
+            // place. The key has to change when the CONTENT does.
+            key: `group:${run.map(r => r.key).join("|")}`,
             appName: run[0].appName,
             iconName: run[0].iconName,
             rows: run,

@@ -1,7 +1,8 @@
 import { Gtk, Gdk } from "ags/gtk4"
 import GdkPixbuf from "gi://GdkPixbuf?version=2.0"
+import Gio from "gi://Gio?version=2.0"
 import Pango from "gi://Pango?version=1.0"
-import { Accessor, createComputed, createState } from "gnim"
+import { Accessor, createComputed, createState, onCleanup } from "gnim"
 import { rtlAlign, safeMarkup } from "../../lib/utils"
 import { relTime, nowSec } from "../../lib/relTime"
 import type { RowData } from "./rowData"
@@ -25,25 +26,63 @@ const ART_H = 94
 // the texture itself has to be exactly the slot: cover-scale, then
 // centre-crop, so a 4:3 thumbnail fills a 16:9 box instead of
 // letterboxing inside it
-function loadArt(path: string): Gdk.Texture | null {
+function cropToSlot(scaled: GdkPixbuf.Pixbuf): Gdk.Texture {
+    const w = Math.min(ART_W, scaled.get_width())
+    const h = Math.min(ART_H, scaled.get_height())
+    const x = Math.max(0, Math.floor((scaled.get_width() - w) / 2))
+    const y = Math.max(0, Math.floor((scaled.get_height() - h) / 2))
+    return Gdk.Texture.new_for_pixbuf(scaled.new_subpixbuf(x, y, w, h))
+}
+
+/**
+ * Decode a row's artwork OFF the main loop.
+ *
+ * The decode used to happen inline in the row constructor, which meant
+ * opening the centre on a screenful of YouTube items decoded that many
+ * JPEGs — scaling each one — before a single frame was painted, as a
+ * visible stall on the toggle. The dimensions still come from
+ * `get_file_info`, which only reads the header, but the pixels go
+ * through the async stream loader and arrive in a state the picture
+ * follows.
+ *
+ * Nothing is drawn until it lands: the art slot's `visible` is driven by
+ * the same accessor, so a row without (or before) its texture is simply
+ * a row without artwork rather than an empty reserved box.
+ */
+function loadArt(path: string): Accessor<Gdk.Texture | null> {
+    const [texture, setTexture] = createState<Gdk.Texture | null>(null)
+    let cancelled = false
+    onCleanup(() => {
+        cancelled = true
+    })
     try {
         const [, srcW, srcH] = GdkPixbuf.Pixbuf.get_file_info(path)
-        if (!srcW || !srcH) return null
+        if (!srcW || !srcH) return texture
         const scale = Math.max(ART_W / srcW, ART_H / srcH)
-        const scaled = GdkPixbuf.Pixbuf.new_from_file_at_scale(
-            path,
+        const stream = Gio.File.new_for_path(path).read(null)
+        GdkPixbuf.Pixbuf.new_from_stream_at_scale_async(
+            stream,
             Math.ceil(srcW * scale),
             Math.ceil(srcH * scale),
             true,
+            null,
+            (_s, res) => {
+                // the row can be destroyed before the decode lands (a
+                // dismissed notification, a re-keyed rebuild)
+                if (cancelled) return
+                try {
+                    const scaled = GdkPixbuf.Pixbuf.new_from_stream_finish(res)
+                    if (scaled) setTexture(cropToSlot(scaled))
+                } catch {
+                    // an unreadable or truncated thumbnail is no artwork,
+                    // not a broken row
+                }
+            },
         )
-        const w = Math.min(ART_W, scaled.get_width())
-        const h = Math.min(ART_H, scaled.get_height())
-        const x = Math.max(0, Math.floor((scaled.get_width() - w) / 2))
-        const y = Math.max(0, Math.floor((scaled.get_height() - h) / 2))
-        return Gdk.Texture.new_for_pixbuf(scaled.new_subpixbuf(x, y, w, h))
     } catch {
-        return null
+        // header unreadable: no art
     }
+    return texture
 }
 
 /**
@@ -80,6 +119,7 @@ export default function CenterRow({
 }) {
     const { rtl } = data
     const bodyMarkup = rtl ? rtlAlign(safeMarkup(data.body)) : safeMarkup(data.body)
+    // null until the async decode lands (or forever, if there is no art)
     const art = data.imagePath ? loadArt(data.imagePath) : null
 
     // every box that packs horizontally has to be told: gtk does not
@@ -298,6 +338,9 @@ export default function CenterRow({
                             halign={Gtk.Align.START}
                             marginStart={24}
                             overflow={Gtk.Overflow.HIDDEN}
+                            // no reserved empty box while the decode is in
+                            // flight, and none at all if it fails
+                            visible={art.as(t => t !== null)}
                         >
                             <Gtk.Picture
                                 paintable={art}
