@@ -8,6 +8,7 @@ import { WiredButton } from "./wired"
 import { NightLightButton, DarkStyleButton, KeepAwakeButton } from "./miscToggles"
 import { SleepTimerButton, SleepTimerWidget } from "./sleepTimer"
 import { VpnButton } from "./vpn"
+import { backends as vpnBackends, vpnPaneName } from "../../../lib/vpn"
 
 /**
  * @TODO Fix buttons being wonky
@@ -38,7 +39,17 @@ export function ToggleSection({ onNavigate }: { onNavigate: (pane: string) => vo
                     />
                     <NightLightButton />
                     <DarkStyleButton />
-                    <VpnButton navigate={() => onNavigate("vpn")} />
+                    {/* one pill per registered VPN backend, each hiding
+                    itself when undetected. A synchronous map, not a
+                    <For>: these are inserted during the initial build
+                    pass and so keep their place in the grid, where a
+                    child appended LATER goes to the end of the FlowBox
+                    (the bug the NightLightButton note in miscToggles
+                    records). Backends are all registered by now — the
+                    lib/vpn barrel imports them */}
+                    {vpnBackends.map(b => (
+                        <VpnButton backend={b} navigate={() => onNavigate(vpnPaneName(b.id))} />
+                    ))}
                     <SleepTimerButton
                         activeDropdown={activeDropdownIndex}
                         setActiveDropdown={setActiveDropdownIndex}

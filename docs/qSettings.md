@@ -18,10 +18,17 @@ It closes on ESC, on click-away, and on the panel button (it's a toggle).
   applications with playback streams: per-app volume and a mute toggle,
   so a muted app never needs pwvucontrol.
 - **Toggle section** (`quicksettings` FlowBox): Wi-Fi, Bluetooth, Wired,
-  Power Mode, Sway Gaps (sway only), Night Light, Dark Style, VPN
-  (Mullvad), Airplane Mode, Sleep Timer. Toggles with a chevron either
+  Power Mode, Sway Gaps (sway only), Night Light, Dark Style, VPN,
+  Airplane Mode, Sleep Timer. Toggles with a chevron either
   navigate to a pane (Wi-Fi, Bluetooth, Wired, Power Mode) or expand an
   inline dropdown (Sway Gaps, Sleep Timer).
+- **VPN** is one pill and one pane per detected backend
+  (`src/lib/vpn/`), so a machine with two VPNs installed gets two.
+  Each backend declares which surfaces it has — server picker, feature
+  toggles, account expiry, connection details — and the pane renders
+  only those, rather than cutting every backend down to what they all
+  share. `qsPane vpn:<backend>` opens one directly; a bare `qsPane vpn`
+  opens the first detected.
 - **Stats section** (optional, `quicksettings.show_stats`): cpu/ram/gpu/
   network graphs; the same stats can go on the panel
   (`quicksettings.stats_on_panel`).

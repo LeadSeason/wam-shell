@@ -132,7 +132,9 @@ window#QSettings {
         }
     }
 
-    // ---- VPN pane (first-class Mullvad support)
+    // ---- VPN pane, one per backend (mullvad, …). Vendor-neutral by
+    // design: a backend that supplies no features or no server
+    // catalogue simply omits those cards
     .vpnStatus {
         @include u.card;
 
@@ -150,7 +152,7 @@ window#QSettings {
             color: t.$subtext0;
         }
 
-        // the big state word, like the Mullvad app's CONNECTED banner
+        // the big state word: the backend's own wording, upper-cased
         .vpnState {
             font-weight: s.$weight-bold;
             &.on {
