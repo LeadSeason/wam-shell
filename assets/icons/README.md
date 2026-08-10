@@ -2,7 +2,10 @@
 
 The SVG icons under `hicolor/` are copied from
 [adwaita-icon-theme](https://gitlab.gnome.org/GNOME/adwaita-icon-theme)
-(GNOME Project), licensed CC-BY-SA-3.0 OR LGPL-3.0-only.
+(GNOME Project), licensed CC-BY-SA-3.0 OR LGPL-3.0-only. Exceptions:
+`protonvpn-symbolic.svg` is the simple-icons Proton VPN mark (CC0), and
+`mullvad-symbolic.svg` is the secured frame of Mullvad's own menubar
+lock (mullvadvpn-app, GPL-3.0), both recoloured to `#2e3436`.
 
 They exist so the shell's core UI icons (toggles, battery, wifi,
 volume, media controls, …) resolve even on systems whose icon theme
@@ -104,6 +107,24 @@ else: `alarm-symbolic` is the sleep timer's own metaphor sitting in the
 same grid, and the padlock pair (`changes-prevent`/`changes-allow`)
 reads as locked, not as awake. The steam is two straight ticks rather
 than wisps because a curve that thin aliases into grey mush at 16px.
+
+`protonvpn-symbolic.svg` (the VPN pills, `apps/`) is the simple-icons
+brand mark (CC0) resized onto the 16px grid: the layered triangle
+survives as-is. `mullvad-symbolic.svg` is Mullvad's own TRAY padlock
+(the secured frame of their menubar lock) rather than the mole: the
+brand mark is the mole knocked out of a filled disc, and every attempt
+to make it work at 16px failed — the disc reads as a coin with a bite,
+the extracted mole keeps the diagonal pose the disc dictated and reads
+as a brush stroke, and a simplified redraw had too much detail for the
+size. Mullvad already solved this problem for their own tray; the lock
+is their answer, taken verbatim.
+
+One renderer lesson the mole hunt bought, recorded so it is not paid
+for twice: **GTK 4.22's built-in SVG renderer mangles ABSOLUTE arc
+commands (`A`) in symbolic icons** — the same geometry with relative
+arcs (`a`) or cubics renders correctly, with absolute arcs the glyph
+collapses into a small misshapen blob. rsvg renders both forms
+identically, so check icons in the shell, not just in an image viewer.
 
 `dark-mode-symbolic` is a half-filled disc rather than a crescent on
 purpose. It sits beside Night Light in the toggle grid, and Adwaita's
