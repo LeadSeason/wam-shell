@@ -9,7 +9,7 @@ import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1"
 import AstalBattery from "gi://AstalBattery?version=0.1"
 import ArchUpdates from "../../../lib/archUpdates"
 import trayNeedsAttention from "../../../lib/trayAttention"
-import vpnStatus from "../../../lib/vpn"
+import { connectedBackend } from "../../../lib/vpn"
 import { inhibited } from "../../../lib/idleInhibit"
 import { recording } from "../../../lib/capture"
 import Brightness from "../../../lib/brightness"
@@ -227,12 +227,20 @@ function recordingIndicator() {
 }
 
 function vpnIndicator() {
-    // only visible while connected, like GNOME
+    // only visible while connected, like GNOME. One glyph for however
+    // many backends are configured — which one is up belongs in the
+    // tooltip, not in a row of near-identical padlocks on the panel
+    const connected = connectedBackend()
     return (
         <image
-            iconName={"network-vpn-symbolic"}
-            visible={vpnStatus.as(s => s.connected)}
-            tooltipText={vpnStatus.as(s => `VPN connected: ${s.relay}`)}
+            iconName={connected.as(b => b?.iconName ?? "network-vpn-symbolic")}
+            visible={connected.as(b => b !== null)}
+            tooltipText={createComputed(track => {
+                const b = track(connected)
+                if (!b) return ""
+                const server = track(b.status).server
+                return server ? `${b.name} connected: ${server}` : `${b.name} connected`
+            })}
         />
     ) as Gtk.Image // TS Jank
 }
