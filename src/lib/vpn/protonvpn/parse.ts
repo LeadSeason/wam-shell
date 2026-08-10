@@ -7,8 +7,8 @@
 // modules tests must not pull in. Same split as the mullvad backend:
 // the rules here, the machinery that runs them there.
 //
-// Formats pinned against proton-vpn-cli 1.0.1 (installed source, since
-// the CLI on the dev machine is not signed in — see the test file).
+// Formats pinned against proton-vpn-cli 1.0.1's installed source, and
+// confirmed against the real CLI output (see the test file).
 // All total functions over a string.
 
 /** Proton's official stack manages its tunnel through NetworkManager:
