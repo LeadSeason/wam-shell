@@ -1,12 +1,13 @@
-// The `nmcli` CLI's terse output, parsed.
+// The `nmcli` CLI's terse output, parsed — shared by every backend whose
+// tunnel lives in NetworkManager (the generic NM backend, and Proton,
+// whose official stack creates NM connections on connect).
 //
 // Its own module, with no import-time side effects, so the unit suite
-// can pin these against real CLI output. The backend next door spawns
-// `nmcli monitor` at module scope, which made importing it from a test
-// start a real listener against the developer's NetworkManager for the
-// length of the run — AGENTS.md names vpn among the modules tests must
-// not pull in. Same split as the mullvad backend: the rules here, the
-// machinery that runs them there.
+// can pin these against real CLI output. The watcher next door
+// (./watch) spawns `nmcli monitor` at module scope, which made
+// importing it from a test start a real monitor against the developer's
+// NetworkManager for the length of the run — AGENTS.md names vpn among
+// the modules tests must not pull in.
 //
 // All total functions over a string; "the CLI did not say" is an empty
 // list, never an exception.
@@ -35,46 +36,30 @@ export function splitTerse(line: string): string[] {
     return fields
 }
 
-/** the two connection types we treat as VPNs. "tun" is deliberately
- *  NOT one: a tun device managed outside NM (mullvad's wg0-mullvad,
- *  proton's proton0) shows up as an auto-generated tun profile, and
- *  listing those would double-expose a tunnel a vendor backend owns */
+/** the two connection types backends treat as VPNs. "tun" is
+ *  deliberately NOT one: a tun device managed outside NM (mullvad's
+ *  wg0-mullvad) shows up as an auto-generated tun profile, and listing
+ *  those would double-expose a tunnel a vendor backend owns */
 export const isVpnType = (t: string) => t === "vpn" || t === "wireguard"
 
-export interface NmProfile {
+export interface NmConnection {
     name: string
     uuid: string
+    type: string
+    device: string // "" while inactive (or activation has no device yet)
 }
 
-/** `nmcli -t -f NAME,UUID,TYPE connection show`, filtered to VPNs */
-export function parseProfiles(out: string): NmProfile[] {
-    const profiles: NmProfile[] = []
+/** `nmcli -t -f NAME,UUID,TYPE,DEVICE connection show` — ALL rows,
+ *  unfiltered. Which of them a backend owns (isVpnType, a vendor name
+ *  prefix) is that backend's call, not this parser's */
+export function parseConnections(out: string): NmConnection[] {
+    const connections: NmConnection[] = []
     for (const line of out.split("\n")) {
         if (!line) continue
-        const [name, uuid, type] = splitTerse(line)
-        if (name && uuid && isVpnType(type ?? "")) profiles.push({ name, uuid })
+        const [name, uuid, type, device] = splitTerse(line)
+        if (name && uuid) connections.push({ name, uuid, type: type ?? "", device: device ?? "" })
     }
-    return profiles
-}
-
-export interface ActiveVpn {
-    uuid: string
-    device: string
-}
-
-/** `nmcli -t -f NAME,UUID,TYPE,DEVICE connection show`, folded down to
- *  the VPNs that are UP. The plain listing already carries the device
- *  column (empty when inactive), so this and parseProfiles read ONE
- *  call's output — a separate `--active` listing would be a second
- *  spawn per refresh for the same information */
-export function parseActive(out: string): ActiveVpn[] {
-    const active: ActiveVpn[] = []
-    for (const line of out.split("\n")) {
-        if (!line) continue
-        const [, uuid, type, device] = splitTerse(line)
-        if (uuid && device && isVpnType(type ?? "")) active.push({ uuid, device })
-    }
-    return active
+    return connections
 }
 
 export interface NmDevice {
@@ -106,27 +91,32 @@ export function mapState(word: string): VpnState {
     return "blocked"
 }
 
+export interface NmProfileRef {
+    name: string
+    uuid: string
+}
+
 export interface ResolvedVpn {
     uuid: string
     server: string // profile name, what the pill and pane print
     state: VpnState
 }
 
-/** The two terse reads folded into one status. Two ways a tunnel in
- *  flux shows up: an ACTIVE connection (its device may be absent from
- *  the device listing for a beat yet), or a device mid-activation that
- *  names one of our profiles — the second is what catches an activation
- *  started outside the shell, which shows a device in the listing only
- *  once it exists. Devices naming a profile we do not track (the
- *  externally-managed tun case above) are ignored. Returns null when no
- *  tracked profile is active or activating.
+/** A snapshot folded into one status, over the connections a backend
+ *  OWNS (already filtered by the caller). Two ways a tunnel in flux
+ *  shows up: an UP connection (its device may be absent from the device
+ *  listing for a beat yet), or a device mid-activation that names one
+ *  of the owned profiles — the second is what catches an activation
+ *  started outside the shell. Devices naming a profile we do not track
+ *  (the externally-managed tun case above) are ignored. Returns null
+ *  when no owned profile is active or activating.
  *
  *  The device branch matches on the profile NAME, because that is what
  *  `device status` prints; two profiles sharing a name would resolve to
  *  the first — pathological, and noted rather than handled. */
 export function resolveStatus(
-    profiles: NmProfile[],
-    active: ActiveVpn[],
+    profiles: NmProfileRef[],
+    active: { uuid: string; device: string }[],
     devices: NmDevice[],
 ): ResolvedVpn | null {
     const first = active[0]

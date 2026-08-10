@@ -2,15 +2,15 @@ import { test, eq } from "./framework"
 import {
     isVpnType,
     mapState,
-    parseActive,
+    parseConnections,
     parseDevices,
-    parseProfiles,
     resolveStatus,
     splitTerse,
-    // the backend's parse module, NOT the backend itself: that one spawns
-    // `nmcli monitor` at module scope, so importing it here started a real
-    // monitor against the developer's NetworkManager on every `pnpm test`
-} from "../src/lib/vpn/networkmanager/parse"
+    // the shared NM parse module, NOT the watch or a backend: those spawn
+    // `nmcli monitor` at module scope, so importing them here started a
+    // real monitor against the developer's NetworkManager on every
+    // `pnpm test`
+} from "../src/lib/vpn/nm/parse"
 
 // formats captured from nmcli 1.58 (terse mode), names replaced
 
@@ -20,44 +20,63 @@ test("vpn-nm splitTerse: unescaped colons split, escaped ones do not", () => {
     // a literal backslash is escaped as "\\" — and the ":" inside the
     // name is escaped too, or it would split (that is the point)
     eq(splitTerse("C\\:\\\\vpn:uuid-2:vpn"), ["C:\\vpn", "uuid-2", "vpn"])
-    // an empty trailing field survives (active conn with no device yet)
+    // an empty trailing field survives (inactive conn, no device)
     eq(splitTerse("name:uuid:vpn:"), ["name", "uuid", "vpn", ""])
 })
 
-const PROFILES = [
-    "MyWiFi:11111111-1111-1111-1111-111111111111:802-11-wireless",
-    "lo:22222222-2222-2222-2222-222222222222:loopback",
-    "Work VPN:aaaaaaaa-0000-0000-0000-000000000001:vpn",
-    "Home WG:bbbbbbbb-0000-0000-0000-000000000002:wireguard",
+const CONNECTIONS = [
+    "MyWiFi:11111111-1111-1111-1111-111111111111:802-11-wireless:wlan0",
+    "lo:22222222-2222-2222-2222-222222222222:loopback:lo",
+    "Work VPN:aaaaaaaa-0000-0000-0000-000000000001:vpn:",
+    "Home WG:bbbbbbbb-0000-0000-0000-000000000002:wireguard:wg0",
     // terse escaping: a literal ":" inside a name arrives as "\:"
-    "vpn\\: work:cccccccc-0000-0000-0000-000000000003:wireguard",
-    "wg0-mullvad:dddddddd-0000-0000-0000-000000000004:tun",
+    "vpn\\: work:cccccccc-0000-0000-0000-000000000003:wireguard:",
+    "wg0-mullvad:dddddddd-0000-0000-0000-000000000004:tun:wg0-mullvad",
 ].join("\n")
 
-test("vpn-nm parseProfiles: only vpn and wireguard survive", () => {
-    eq(parseProfiles(PROFILES), [
-        { name: "Work VPN", uuid: "aaaaaaaa-0000-0000-0000-000000000001" },
-        { name: "Home WG", uuid: "bbbbbbbb-0000-0000-0000-000000000002" },
-        { name: "vpn: work", uuid: "cccccccc-0000-0000-0000-000000000003" },
+test("vpn-nm parseConnections: every row, devices and escapes intact", () => {
+    eq(parseConnections(CONNECTIONS), [
+        {
+            name: "MyWiFi",
+            uuid: "11111111-1111-1111-1111-111111111111",
+            type: "802-11-wireless",
+            device: "wlan0",
+        },
+        {
+            name: "lo",
+            uuid: "22222222-2222-2222-2222-222222222222",
+            type: "loopback",
+            device: "lo",
+        },
+        { name: "Work VPN", uuid: "aaaaaaaa-0000-0000-0000-000000000001", type: "vpn", device: "" },
+        {
+            name: "Home WG",
+            uuid: "bbbbbbbb-0000-0000-0000-000000000002",
+            type: "wireguard",
+            device: "wg0",
+        },
+        {
+            name: "vpn: work",
+            uuid: "cccccccc-0000-0000-0000-000000000003",
+            type: "wireguard",
+            device: "",
+        },
+        {
+            name: "wg0-mullvad",
+            uuid: "dddddddd-0000-0000-0000-000000000004",
+            type: "tun",
+            device: "wg0-mullvad",
+        },
     ])
 })
 
-test("vpn-nm parseProfiles: tun excluded — that is vendor-owned tunnels", () => {
-    // an externally-managed tunnel (mullvad's wg0-mullvad, proton's
-    // proton0) shows up as an auto-generated tun profile; listing it
-    // would double-expose a tunnel the vendor backend owns
+test("vpn-nm isVpnType: tun excluded — that is vendor-owned tunnels", () => {
+    eq(isVpnType("vpn"), true)
+    eq(isVpnType("wireguard"), true)
+    // an externally-managed tunnel (mullvad's wg0-mullvad) shows up as
+    // an auto-generated tun profile; listing it would double-expose a
+    // tunnel a vendor backend owns
     eq(isVpnType("tun"), false)
-    eq(parseProfiles("wg0-mullvad:dddddddd-0000-0000-0000-000000000004:tun"), [])
-})
-
-test("vpn-nm parseActive: only up VPNs survive, device kept", () => {
-    // the plain listing (no --active): an inactive profile has an EMPTY
-    // device field, which is what drops it here
-    const out = `MyWiFi:11111111-1111-1111-1111-111111111111:802-11-wireless:wlan0
-Home WG:bbbbbbbb-0000-0000-0000-000000000002:wireguard:wg0
-Work VPN:aaaaaaaa-0000-0000-0000-000000000001:vpn:
-`
-    eq(parseActive(out), [{ uuid: "bbbbbbbb-0000-0000-0000-000000000002", device: "wg0" }])
 })
 
 const DEVICES = `wlan0:wifi:connected:MyWiFi
@@ -90,7 +109,13 @@ test("vpn-nm mapState: nm's device words onto the shared enum", () => {
     eq(mapState("Wat"), "blocked")
 })
 
-const profiles = parseProfiles(PROFILES)
+// resolveStatus operates on the connections a backend OWNS, already
+// filtered by the caller — here, the two vpn/wireguard profiles
+const profiles = [
+    { name: "Work VPN", uuid: "aaaaaaaa-0000-0000-0000-000000000001" },
+    { name: "Home WG", uuid: "bbbbbbbb-0000-0000-0000-000000000002" },
+    { name: "vpn: work", uuid: "cccccccc-0000-0000-0000-000000000003" },
+]
 const wg = "bbbbbbbb-0000-0000-0000-000000000002"
 
 test("vpn-nm resolveStatus: active conn + connected device", () => {
@@ -121,10 +146,14 @@ test("vpn-nm resolveStatus: nothing active, device mid-activation names a profil
         [],
         [{ device: "tun0", state: "connecting (prepare)", connection: "Work VPN" }],
     )!
-    eq(r, { uuid: "aaaaaaaa-0000-0000-0000-000000000001", server: "Work VPN", state: "connecting" })
+    eq(r, {
+        uuid: "aaaaaaaa-0000-0000-0000-000000000001",
+        server: "Work VPN",
+        state: "connecting",
+    })
 })
 
-test("vpn-nm resolveStatus: nothing tracked active → null", () => {
+test("vpn-nm resolveStatus: nothing owned active → null", () => {
     // wifi/loopback/p2p devices and an unassociated disconnected device
     eq(
         resolveStatus(

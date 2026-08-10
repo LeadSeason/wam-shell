@@ -1,22 +1,17 @@
 import GLib from "gi://GLib?version=2.0"
-import Gio from "gi://Gio?version=2.0"
-import { execAsync, timeoutAdd, timeoutAddSeconds, sourceRemove } from "../../metrics"
+import { execAsync, timeoutAdd, sourceRemove } from "../../metrics"
 import { createState } from "gnim"
-import { streamLines } from "../../streamLines"
 import { registerDispose } from "../../lifecycle"
-import { registerBackend } from "../registry"
-import type { VpnBackend, VpnStatus } from "../types"
-import { parseActive, parseDevices, parseProfiles, resolveStatus, type NmProfile } from "./parse"
+import { backends, registerBackend } from "../registry"
+import { stateLabel, type VpnBackend, type VpnStatus } from "../types"
+import { isVpnType, resolveStatus, type NmProfileRef } from "../nm/parse"
+import * as watch from "../nm/watch"
+import type { NmSnapshot } from "../nm/watch"
 
-// NetworkManager VPN backend. `nmcli monitor` streams every device and
-// profile change; each one funnels into a debounced re-read of the two
-// terse listings (connection list with devices, device states), which
-// parse.ts folds into a status. The 15s poll below is the fallback for
-// when the monitor can't run (no session bus, NM down). The parsers
-// live next door in ./parse — no import-time side effects, so tests can
-// reach them without starting a real monitor.
-//
-// nmcli is re-entrant (it is a D-Bus client, not a stateful CLI), so
+// The generic NetworkManager backend: any VPN-type NM profile a vendor
+// backend has not claimed. Status rides the shared NM watch (../nm —
+// one monitor for every NM-backed backend); actions go straight to
+// nmcli, which is re-entrant (a D-Bus client, not a stateful CLI), so
 // unlike mullvad there is no command queue here — only `busy` tracking
 // around up/down so the pane's switches go insensitive mid-activation.
 
@@ -25,20 +20,17 @@ const [status, setStatus] = createState<VpnStatus>({
     stateLabel: "Disconnected",
     server: "",
 })
-const [profiles, setProfiles] = createState<NmProfile[]>([])
+const [profiles, setProfiles] = createState<NmProfileRef[]>([])
 // uuid of the profile currently up or activating — the location picker's
 // "current" marker, and disconnect()'s target
 const [currentUuid, setCurrentUuid] = createState("")
 const [busy, setBusy] = createState(false)
 
-// probe once: nmcli does not appear mid-session
-const hasNmcli = GLib.find_program_in_path("nmcli") !== null
-
 // the profile uuid `connect()` activates: the last one seen active or
 // picked, else the first in the list
 let lastUuid = ""
 
-// a failed `connection up` leaves nothing behind for refreshAll to see,
+// a failed `connection up` leaves nothing behind for a re-read to see,
 // so the next monitor line ("device removed") would stomp the Failed
 // word straight back to Disconnected. Hold it briefly instead
 let failedUntil = 0
@@ -50,8 +42,8 @@ let failedUntil = 0
 let actionSeq = 0
 let abortedSeq = 0
 
-// dedupe before notifying: refreshAll rebuilds its lists from scratch,
-// so identity alone would re-notify on every monitor line
+// dedupe before notifying: snapshots arrive rebuilt from scratch, so
+// identity alone would re-notify on every change
 let lastStatus: VpnStatus = status.get()
 function applyStatus(next: VpnStatus) {
     if (
@@ -64,16 +56,8 @@ function applyStatus(next: VpnStatus) {
     setStatus(next)
 }
 
-const STATE_LABEL: Record<VpnStatus["state"], string> = {
-    connected: "Connected",
-    connecting: "Connecting",
-    disconnecting: "Disconnecting",
-    disconnected: "Disconnected",
-    blocked: "Failed",
-}
-
-let lastProfiles: NmProfile[] = []
-function applyProfiles(next: NmProfile[]) {
+let lastProfiles: NmProfileRef[] = []
+function applyProfiles(next: NmProfileRef[]) {
     if (
         next.length === lastProfiles.length &&
         next.every((p, i) => p.uuid === lastProfiles[i].uuid && p.name === lastProfiles[i].name)
@@ -83,114 +67,40 @@ function applyProfiles(next: NmProfile[]) {
     setProfiles(next)
 }
 
-// skip overlapping refreshes: two execs per run, and a monitor burst
-// that slipped past the debounce must not stack them
-let refreshing = false
-let refreshQueued = false
+// a VPN-type profile no VENDOR backend claims. Claimed ones (proton's
+// "ProtonVPN <server>", created on every connect) are that backend's
+// tunnel — listing them here too would show the same tunnel twice
+function owned(name: string, type: string): boolean {
+    return (
+        isVpnType(type) && !backends.some(b => b.id !== "networkmanager" && b.claimsProfile?.(name))
+    )
+}
 
-async function refreshAll() {
-    if (!hasNmcli) return
-    if (refreshing) {
-        refreshQueued = true
+function onSnapshot(snap: NmSnapshot) {
+    const mine = snap.connections.filter(c => owned(c.name, c.type))
+    const list: NmProfileRef[] = mine.map(c => ({ name: c.name, uuid: c.uuid }))
+    applyProfiles(list)
+    const resolved = resolveStatus(
+        list,
+        mine.filter(c => c.device).map(c => ({ uuid: c.uuid, device: c.device })),
+        snap.devices,
+    )
+    if (!resolved) {
+        if (currentUuid.get()) setCurrentUuid("")
+        if (Date.now() >= failedUntil)
+            applyStatus({ state: "disconnected", stateLabel: "Disconnected", server: "" })
         return
     }
-    refreshing = true
-    lastRefresh = Date.now()
-    try {
-        const [profileOut, deviceOut] = await Promise.all([
-            // ONE listing for profiles and active set alike: the plain
-            // form already prints the device column (empty when
-            // inactive), so a separate --active call would be a second
-            // spawn per refresh for the same rows
-            execAsync(["nmcli", "-t", "-f", "NAME,UUID,TYPE,DEVICE", "connection", "show"]),
-            execAsync(["nmcli", "-t", "-f", "DEVICE,TYPE,STATE,CONNECTION", "device", "status"]),
-        ])
-        const list = parseProfiles(profileOut)
-        applyProfiles(list)
-        const resolved = resolveStatus(list, parseActive(profileOut), parseDevices(deviceOut))
-        if (!resolved) {
-            if (currentUuid.get()) setCurrentUuid("")
-            if (Date.now() >= failedUntil)
-                applyStatus({ state: "disconnected", stateLabel: "Disconnected", server: "" })
-            return
-        }
-        if (currentUuid.get() !== resolved.uuid) setCurrentUuid(resolved.uuid)
-        if (resolved.state === "connected") lastUuid = resolved.uuid
-        applyStatus({
-            state: resolved.state,
-            stateLabel: STATE_LABEL[resolved.state],
-            server: resolved.server,
-        })
-    } catch {
-        // NM down or not answering: leave state as is
-    } finally {
-        refreshing = false
-        if (refreshQueued) {
-            refreshQueued = false
-            refreshAll()
-        }
-    }
-}
-
-// a transition prints a burst of ~10 monitor lines; one refresh after
-// the burst, not one per line. The monitor's own banner line arrives
-// just after the explicit initial refresh — a refresh that fresh is
-// skipped outright, or startup pays for the same read twice
-let refreshSource = 0
-let lastRefresh = 0
-function scheduleRefresh() {
-    if (refreshSource || disposed) return
-    if (Date.now() - lastRefresh < 1000) return
-    refreshSource = timeoutAdd("vpn-nm:refresh", GLib.PRIORITY_DEFAULT, 300, () => {
-        refreshSource = 0
-        refreshAll()
-        return GLib.SOURCE_REMOVE
+    if (currentUuid.get() !== resolved.uuid) setCurrentUuid(resolved.uuid)
+    if (resolved.state === "connected") lastUuid = resolved.uuid
+    applyStatus({
+        state: resolved.state,
+        stateLabel: stateLabel(resolved.state),
+        server: resolved.server,
     })
 }
 
-let pollSource = 0
-// one-shot re-read armed when an activation fails (see doUp)
-let failSource = 0
-let listenProc: Gio.Subprocess | null = null
-let disposed = false
-
-function startPolling() {
-    if (pollSource || disposed) return
-    refreshAll()
-    pollSource = timeoutAddSeconds("vpn-nm:poll", GLib.PRIORITY_DEFAULT, 15, () => {
-        refreshAll()
-        return GLib.SOURCE_CONTINUE
-    })
-}
-
-// convention for lib modules with long-lived sources (see AGENTS.md)
-function dispose() {
-    disposed = true
-    if (pollSource) {
-        sourceRemove(pollSource)
-        pollSource = 0
-    }
-    if (refreshSource) {
-        sourceRemove(refreshSource)
-        refreshSource = 0
-    }
-    if (failSource) {
-        sourceRemove(failSource)
-        failSource = 0
-    }
-    listenProc?.force_exit()
-    listenProc = null
-}
-
-if (hasNmcli) {
-    // initial read; the monitor's own banner line would schedule one
-    // anyway, but which line that is is nmcli's business, not ours
-    refreshAll()
-    // on unexpected exit (NM restart) fall back to the poll for the
-    // rest of the session
-    listenProc = streamLines(["nmcli", "monitor"], scheduleRefresh, startPolling, true)
-    if (!listenProc) startPolling()
-}
+watch.subscribe(onSnapshot)
 
 // ------------------------------------------------------ actions
 
@@ -205,11 +115,11 @@ function doUp(uuid: string): Promise<void> {
         server: profiles.get().find(p => p.uuid === uuid)?.name ?? "",
     })
     return execAsync(["nmcli", "connection", "up", uuid])
-        .then(() => refreshAll())
+        .then(() => watch.refresh())
         .catch(() => {
             if (seq <= abortedSeq) {
                 // the user aborted this attempt; that is not a failure
-                refreshAll()
+                watch.refresh()
                 return
             }
             failedUntil = Date.now() + 10_000
@@ -221,7 +131,7 @@ function doUp(uuid: string): Promise<void> {
             if (failSource) sourceRemove(failSource)
             failSource = timeoutAdd("vpn-nm:failhold", GLib.PRIORITY_DEFAULT, 10_000, () => {
                 failSource = 0
-                refreshAll()
+                watch.refresh()
                 return GLib.SOURCE_REMOVE
             })
         })
@@ -256,6 +166,18 @@ function targetUuid(): string {
     return list[0]?.uuid ?? ""
 }
 
+// one-shot re-read armed when an activation fails (see doUp)
+let failSource = 0
+
+// convention for lib modules with long-lived sources (see AGENTS.md).
+// The watch has its own teardown; this is only the failhold timer
+function dispose() {
+    if (failSource) {
+        sourceRemove(failSource)
+        failSource = 0
+    }
+}
+
 const backend: VpnBackend = {
     id: "networkmanager",
     name: "NetworkManager",
@@ -281,8 +203,8 @@ const backend: VpnBackend = {
         applyStatus({ state: "disconnecting", stateLabel: "Disconnecting", server: "" })
         execAsync(["nmcli", "connection", "down", uuid])
             // refresh on failure too: the tunnel may in fact be down
-            .then(() => refreshAll())
-            .catch(() => refreshAll())
+            .then(() => watch.refresh())
+            .catch(() => watch.refresh())
             .finally(() => setBusy(false))
     },
     reconnect: () => changeTo(currentUuid.get() || targetUuid()),
@@ -300,10 +222,10 @@ const backend: VpnBackend = {
                 },
             })),
         ),
-        ensure: () => refreshAll(),
+        ensure: () => watch.refresh(),
         current: currentUuid,
     },
-    refreshPane: () => refreshAll(),
+    refreshPane: () => watch.refresh(),
     busy,
 }
 
