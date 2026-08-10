@@ -34,6 +34,25 @@ export interface VpnStatus {
  *  derived ONCE here rather than in each widget */
 export const isConnected = (s: VpnStatus) => s.state === "connected"
 
+/** display wording for a state, for backends with no vendor wording of
+ *  their own (mullvad prints the CLI's words; the NM-backed ones have
+ *  no words to print). "blocked" reads "Failed" because that is the
+ *  only way they reach it: an activation that did not take */
+export function stateLabel(s: VpnState): string {
+    switch (s) {
+        case "connected":
+            return "Connected"
+        case "connecting":
+            return "Connecting"
+        case "disconnecting":
+            return "Disconnecting"
+        case "disconnected":
+            return "Disconnected"
+        case "blocked":
+            return "Failed"
+    }
+}
+
 export interface VpnLocation {
     // stable identity for "is this the current one" — a relay id prefix
     // for mullvad, a profile uuid for NM
@@ -106,6 +125,14 @@ export interface VpnBackend {
     refreshPane?(): void
     /** a command is in flight: the pane's switches go insensitive */
     busy?: Accessor<boolean>
+
+    /** NetworkManager profiles this backend OWNS, by name — the
+     *  generic NM backend filters these out of its own list so a vendor
+     *  tunnel is not double-exposed (proton's app creates a
+     *  "ProtonVPN <server>" profile on every connect). Only the NM
+     *  backend reads this; a backend whose tunnels never touch NM does
+     *  not implement it */
+    claimsProfile?(profileName: string): boolean
 
     // NB no `dispose`. Teardown goes through lib/lifecycle's registry,
     // which each backend calls from its own module scope
