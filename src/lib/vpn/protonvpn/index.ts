@@ -127,7 +127,18 @@ function connect(args: string[] = []) {
     const seq = ++actionSeq
     setBusy(true)
     applyStatus({ state: "connecting", stateLabel: "Connecting", server: "" })
-    runProton(["connect", ...args], seq).finally(() => setBusy(false))
+    runProton(["connect", ...args], seq)
+        .then(() => {
+            // disconnect() cannot cancel an in-flight `protonvpn connect`
+            // — the CLI is stateless, and a disconnect issued before the
+            // tunnel exists no-ops. It only recorded the intent; honour
+            // it now that the tunnel is up. Keep the connect's own seq:
+            // this disconnect IS the abort, so a failure here is benign
+            // (it can only mean the tunnel never came up or is already
+            // down) and must not flash "Failed"
+            if (seq <= abortedSeq) return runProton(["disconnect"], seq)
+        })
+        .finally(() => setBusy(false))
 }
 
 const backend: VpnBackend = {
@@ -145,14 +156,20 @@ const backend: VpnBackend = {
         connect(lastCountry ? ["--country", lastCountry] : [])
     },
     // never refused (no busy guard): this is also the only way to abort
-    // an in-flight attempt, which the interface requires of it
+    // an in-flight attempt, which the interface requires of it. The
+    // abort itself is best-effort — issued mid-connect it finds no
+    // tunnel yet and no-ops, and connect() honours the recorded intent
+    // when the attempt lands. A no-op disconnect is not a failure, so
+    // this never reports "Failed": the re-read shows the truth
     disconnect: () => {
         if (status.get().state === "disconnected") return
         abortedSeq = actionSeq
-        const seq = ++actionSeq
         setBusy(true)
         applyStatus({ state: "disconnecting", stateLabel: "Disconnecting", server: "" })
-        runProton(["disconnect"], seq).finally(() => setBusy(false))
+        execAsync(["protonvpn", "disconnect"])
+            .then(() => watch.refresh())
+            .catch(() => watch.refresh())
+            .finally(() => setBusy(false))
     },
     reconnect: () => {
         if (busy.get()) return
