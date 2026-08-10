@@ -1,4 +1,5 @@
 import GLib from "gi://GLib?version=2.0"
+import Gio from "gi://Gio?version=2.0"
 import { execAsync, timeoutAdd, sourceRemove } from "../../metrics"
 import { Accessor, createComputed, createState } from "gnim"
 import { registerDispose } from "../../lifecycle"
@@ -59,6 +60,24 @@ let failedUntil = 0
 let actionSeq = 0
 let abortedSeq = 0
 
+// the in-flight `protonvpn connect` process, tracked so disconnect()
+// can KILL it: the CLI is stateless and cannot cancel its own attempt,
+// and a deferred abort leaves the tunnel up for the whole connect
+// (several seconds — or for good, when the user only clicked Proton by
+// accident while Mullvad's lockdown makes the attempt hopeless anyway)
+let connectProc: Gio.Subprocess | null = null
+
+// every Proton profile NM knew about at the last snapshot, so an abort
+// can down the up ones: killing the CLI does not cancel an NM
+// activation it already started, but `nmcli connection down` on an
+// ACTIVATING profile does
+let lastProton: { uuid: string; up: boolean }[] = []
+
+function downAllProton() {
+    for (const p of lastProton)
+        if (p.up) execAsync(["nmcli", "connection", "down", "uuid", p.uuid]).catch(() => {})
+}
+
 // dedupe before notifying: snapshots arrive rebuilt from scratch
 let lastStatus: VpnStatus = status.get()
 function applyStatus(next: VpnStatus) {
@@ -74,6 +93,7 @@ function applyStatus(next: VpnStatus) {
 
 function onSnapshot(snap: NmSnapshot) {
     const mine = snap.connections.filter(c => isProtonProfile(c.name))
+    lastProton = mine.map(c => ({ uuid: c.uuid, up: c.device !== "" }))
     const list = mine.map(c => ({ name: c.name, uuid: c.uuid }))
     const resolved = resolveStatus(
         list,
@@ -81,8 +101,12 @@ function onSnapshot(snap: NmSnapshot) {
         snap.devices,
     )
     if (!resolved) {
-        if (Date.now() >= failedUntil)
-            applyStatus({ state: "disconnected", stateLabel: "Disconnected", server: "" })
+        // an empty read must not stomp an in-flight attempt back to
+        // Disconnected: NM only learns about the profile once the CLI
+        // creates it, seconds into the connect — and disconnect()'s
+        // guard takes this state at face value
+        if (connectProc || Date.now() < failedUntil) return
+        applyStatus({ state: "disconnected", stateLabel: "Disconnected", server: "" })
         return
     }
     applyStatus({
@@ -98,9 +122,30 @@ watch.subscribe(onSnapshot)
 
 // the CLI's exit code is the result: connect/disconnect return once
 // the tunnel is up or the attempt has failed. The watch picks the
-// outcome up from NM either way; the refresh is for promptness
+// outcome up from NM either way; the refresh is for promptness.
+// Spawned by hand (not execAsync) so an in-flight connect stays
+// killable — metrics has no wrapper for this, same as nm/watch.ts
 function runProton(args: string[], seq: number): Promise<void> {
-    return execAsync(["protonvpn", ...args])
+    const proc = Gio.Subprocess.new(
+        ["protonvpn", ...args],
+        Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
+    )
+    if (args[0] === "connect") connectProc = proc
+    const done = new Promise<void>((resolve, reject) =>
+        proc.communicate_utf8_async(null, null, (_p, res) => {
+            if (proc === connectProc) connectProc = null
+            try {
+                proc.communicate_utf8_finish(res)
+                if (proc.get_successful()) resolve()
+                // no exit status here: a killed process never exited,
+                // and get_exit_status asserts WIFEXITED
+                else reject(new Error(`protonvpn ${args[0]} failed`))
+            } catch (e) {
+                reject(e)
+            }
+        }),
+    )
+    return done
         .then(() => watch.refresh())
         .catch(() => {
             if (seq <= abortedSeq) {
@@ -127,7 +172,16 @@ function connect(args: string[] = []) {
     const seq = ++actionSeq
     setBusy(true)
     applyStatus({ state: "connecting", stateLabel: "Connecting", server: "" })
-    runProton(["connect", ...args], seq).finally(() => setBusy(false))
+    runProton(["connect", ...args], seq)
+        .then(() => {
+            // safety net for the race where disconnect()'s kill landed
+            // just as the attempt exited 0: the tunnel came up behind
+            // the abort. Keep the connect's own seq — this disconnect
+            // IS the abort, so a failure here is benign (the tunnel is
+            // already down) and must not flash "Failed"
+            if (seq <= abortedSeq) return runProton(["disconnect"], seq)
+        })
+        .finally(() => setBusy(false))
 }
 
 const backend: VpnBackend = {
@@ -145,14 +199,45 @@ const backend: VpnBackend = {
         connect(lastCountry ? ["--country", lastCountry] : [])
     },
     // never refused (no busy guard): this is also the only way to abort
-    // an in-flight attempt, which the interface requires of it
+    // an in-flight attempt, which the interface requires of it — and
+    // the abort is IMMEDIATE: the connect process is killed outright
+    // (it cannot cancel itself), and every Proton profile NM knows is
+    // downed, because killing the CLI does not cancel an activation it
+    // already handed to NetworkManager (`nmcli connection down` on an
+    // activating profile does). Failures are ignored throughout: an
+    // abort that finds nothing to tear down is not a failure, and the
+    // watch re-read shows the truth
     disconnect: () => {
-        if (status.get().state === "disconnected") return
+        // no early return while a connect is in flight, whatever the
+        // displayed state: killing it IS the disconnect then
+        if (status.get().state === "disconnected" && !connectProc) return
         abortedSeq = actionSeq
-        const seq = ++actionSeq
+        const killed = connectProc !== null
+        if (connectProc) {
+            connectProc.force_exit()
+            connectProc = null
+        }
         setBusy(true)
         applyStatus({ state: "disconnecting", stateLabel: "Disconnecting", server: "" })
-        runProton(["disconnect"], seq).finally(() => setBusy(false))
+        downAllProton()
+        execAsync(["protonvpn", "disconnect"])
+            .catch(() => {})
+            .then(() => watch.refresh())
+            .finally(() => {
+                setBusy(false)
+                // when the teardown changed nothing in NM — an aborted
+                // attempt that never got as far as creating a profile,
+                // e.g. killed while Mullvad's lockdown had the API
+                // unreachable — no snapshot fires, and the dedupe means
+                // the synthetic Disconnecting is never reverted
+                if (!connectProc && !lastProton.some(p => p.up))
+                    applyStatus({
+                        state: "disconnected",
+                        stateLabel: "Disconnected",
+                        server: "",
+                    })
+            })
+        if (killed) armAbortSweep()
     },
     reconnect: () => {
         if (busy.get()) return
@@ -232,12 +317,35 @@ function refreshPane() {
 // one-shot re-read armed when an action fails (see runProton)
 let failSource = 0
 
+// a killed CLI cannot cancel an NM activation it already started: the
+// tunnel can come up AFTER the kill, behind the abort, and stay up
+// with nothing left to tear it down. Sweep once, late enough for that
+// activation to have landed and the watch to have seen it
+let abortSweepSource = 0
+function armAbortSweep() {
+    if (abortSweepSource) sourceRemove(abortSweepSource)
+    abortSweepSource = timeoutAdd("vpn-proton:abortsweep", GLib.PRIORITY_DEFAULT, 3_000, () => {
+        abortSweepSource = 0
+        // a newer action owns the state now; not our tunnel to down
+        if (abortedSeq < actionSeq) return GLib.SOURCE_REMOVE
+        downAllProton()
+        watch.refresh()
+        return GLib.SOURCE_REMOVE
+    })
+}
+
 // convention for lib modules with long-lived sources (see AGENTS.md)
 function dispose() {
     if (failSource) {
         sourceRemove(failSource)
         failSource = 0
     }
+    if (abortSweepSource) {
+        sourceRemove(abortSweepSource)
+        abortSweepSource = 0
+    }
+    connectProc?.force_exit()
+    connectProc = null
 }
 
 registerBackend(backend)

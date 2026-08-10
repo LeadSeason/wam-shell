@@ -107,15 +107,17 @@ export async function refresh() {
 }
 
 // a transition prints a burst of ~10 monitor lines; one refresh after
-// the burst, not one per line. The monitor's own banner line arrives
-// just after the explicit initial refresh — a refresh that fresh is
-// skipped outright, or startup pays for the same read twice
+// the burst, not one per line. Events arriving hot on the heels of a
+// refresh must not be DROPPED either — the last event of a burst (a
+// teardown completing) falling inside the window left the snapshot
+// stale for good — so the re-read is armed for the freshness boundary
+// instead of skipped
 let refreshSource = 0
 let lastRefresh = 0
 function scheduleRefresh() {
     if (refreshSource || disposed) return
-    if (Date.now() - lastRefresh < 1000) return
-    refreshSource = timeoutAdd("vpn-nm:refresh", GLib.PRIORITY_DEFAULT, 300, () => {
+    const wait = Math.max(300, 1000 - (Date.now() - lastRefresh))
+    refreshSource = timeoutAdd("vpn-nm:refresh", GLib.PRIORITY_DEFAULT, wait, () => {
         refreshSource = 0
         refresh()
         return GLib.SOURCE_REMOVE
@@ -152,12 +154,20 @@ function dispose() {
 }
 
 if (available) {
-    // initial read; the monitor's own banner line would schedule one
-    // anyway, but which line that is is nmcli's business, not ours
     refresh()
     // on unexpected exit (NM restart) fall back to the poll for the
-    // rest of the session
-    listenProc = streamLines(["nmcli", "monitor"], scheduleRefresh, startPolling, true)
+    // rest of the session. The monitor's banner line ("NetworkManager
+    // is running") is not an event: it lands just after the initial
+    // refresh and would arm a trailing re-read for nothing
+    listenProc = streamLines(
+        ["nmcli", "monitor"],
+        line => {
+            if (line === "NetworkManager is running") return
+            scheduleRefresh()
+        },
+        startPolling,
+        true,
+    )
     if (!listenProc) startPolling()
 }
 
