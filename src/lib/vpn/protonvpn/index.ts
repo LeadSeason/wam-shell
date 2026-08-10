@@ -109,9 +109,15 @@ function onSnapshot(snap: NmSnapshot) {
         applyStatus({ state: "disconnected", stateLabel: "Disconnected", server: "" })
         return
     }
+    // an in-flight attempt shows Connecting, full stop: protonvpn's own
+    // activation bounces the device through a transient deactivating
+    // mid-connect, and the watch's trailing refresh now SEES it — the
+    // pill flashed "Disconnecting…" on the happy path. The CLI's exit
+    // code decides the outcome; only an actually-up tunnel overrides
+    const state = connectProc && resolved.state !== "connected" ? "connecting" : resolved.state
     applyStatus({
-        state: resolved.state,
-        stateLabel: stateLabel(resolved.state),
+        state,
+        stateLabel: stateLabel(state),
         server: serverFromProfile(resolved.server),
     })
 }
@@ -260,9 +266,27 @@ const backend: VpnBackend = {
     locations: {
         // countries, not servers: the CLI offers no server catalogue
         // (`servers` prints a web link), and connect --country picks
-        // the fastest server in it — the granularity the CLI has
-        list: countries.as(list =>
-            list.map(c => ({
+        // the fastest server in it — the granularity the CLI has.
+        // Fastest (bare connect) and Random head the list; both clear
+        // the remembered country so the pill's connect follows the pick
+        list: countries.as(list => [
+            {
+                id: "fastest",
+                label: "Fastest",
+                select: () => {
+                    lastCountry = ""
+                    connect([])
+                },
+            },
+            {
+                id: "random",
+                label: "Random",
+                select: () => {
+                    lastCountry = ""
+                    connect(["--random"])
+                },
+            },
+            ...list.map(c => ({
                 id: c.code,
                 label: c.name,
                 select: () => {
@@ -270,7 +294,7 @@ const backend: VpnBackend = {
                     connect(["--country", c.code])
                 },
             })),
-        ),
+        ]),
         // fetched lazily on pane open; idempotent, and a failure (not
         // signed in) just leaves the list empty
         ensure: () => {
