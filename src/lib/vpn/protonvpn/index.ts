@@ -132,11 +132,11 @@ function runProton(args: string[], seq: number): Promise<void> {
     )
     if (args[0] === "connect") connectProc = proc
     const done = new Promise<void>((resolve, reject) =>
-        proc.communicate_utf8_async(null, null, (p, res) => {
-            if (p === connectProc) connectProc = null
+        proc.communicate_utf8_async(null, null, (_p, res) => {
+            if (proc === connectProc) connectProc = null
             try {
-                p.communicate_utf8_finish(res)
-                if (p.get_successful()) resolve()
+                proc.communicate_utf8_finish(res)
+                if (proc.get_successful()) resolve()
                 // no exit status here: a killed process never exited,
                 // and get_exit_status asserts WIFEXITED
                 else reject(new Error(`protonvpn ${args[0]} failed`))
