@@ -108,11 +108,10 @@ export async function refresh() {
 
 // a transition prints a burst of ~10 monitor lines; one refresh after
 // the burst, not one per line. Events arriving hot on the heels of a
-// refresh must not be DROPPED — the monitor's own banner line lands
-// just after the explicit initial refresh, which is what the freshness
-// gate is for — so the re-read is armed for the freshness boundary
-// instead. Dropping it left the snapshot stale for good when the last
-// event of a burst (a teardown completing) fell inside the window
+// refresh must not be DROPPED either — the last event of a burst (a
+// teardown completing) falling inside the window left the snapshot
+// stale for good — so the re-read is armed for the freshness boundary
+// instead of skipped
 let refreshSource = 0
 let lastRefresh = 0
 function scheduleRefresh() {
@@ -155,12 +154,20 @@ function dispose() {
 }
 
 if (available) {
-    // initial read; the monitor's own banner line would schedule one
-    // anyway, but which line that is is nmcli's business, not ours
     refresh()
     // on unexpected exit (NM restart) fall back to the poll for the
-    // rest of the session
-    listenProc = streamLines(["nmcli", "monitor"], scheduleRefresh, startPolling, true)
+    // rest of the session. The monitor's banner line ("NetworkManager
+    // is running") is not an event: it lands just after the initial
+    // refresh and would arm a trailing re-read for nothing
+    listenProc = streamLines(
+        ["nmcli", "monitor"],
+        line => {
+            if (line === "NetworkManager is running") return
+            scheduleRefresh()
+        },
+        startPolling,
+        true,
+    )
     if (!listenProc) startPolling()
 }
 
