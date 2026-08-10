@@ -105,14 +105,16 @@ same grid, and the padlock pair (`changes-prevent`/`changes-allow`)
 reads as locked, not as awake. The steam is two straight ticks rather
 than wisps because a curve that thin aliases into grey mush at 16px.
 
-`mullvad-symbolic.svg` and `protonvpn-symbolic.svg` (the VPN pills,
-`apps/`) are adapted from the simple-icons brand marks (CC0), resized
-onto the 16px grid. Proton's layered triangle survives as-is. Mullvad's
-mark had to be cut loose from its disc first: the simple-icons original
-is the mole knocked out of a filled circle, which at 16px rendered as a
-coin with a bite taken out — the todoist lesson again, brand glyphs
-collapse at icon size. The mole alone (normalized to its ink bbox)
-stays recognizable.
+`protonvpn-symbolic.svg` (the VPN pills, `apps/`) is the simple-icons
+brand mark (CC0) resized onto the 16px grid: the layered triangle
+survives as-is. `mullvad-symbolic.svg` is an original drawing instead —
+the helmeted mole head in profile (dome, lamp dot, snout, eye). The
+brand's real mark is the mole knocked out of a filled disc, which at
+16px renders as a coin with a bite taken out, and extracting the mole
+from it keeps the pose the disc dictated — snout down-left, angled
+across the cell — which collapses into a diagonal brush stroke at icon
+size. The todoist lesson, twice over: brand glyphs collapse at icon
+size.
 
 `dark-mode-symbolic` is a half-filled disc rather than a crescent on
 purpose. It sits beside Night Light in the toggle grid, and Adwaita's
