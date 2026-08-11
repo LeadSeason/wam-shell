@@ -144,19 +144,19 @@ function brightnessWidget() {
                 flags={Gtk.EventControllerScrollFlags.VERTICAL}
                 onScroll={(controller, _dx, dy) => {
                     show()
-                    // step depends on the device: mouse wheels deliver
-                    // one event per notch (WHEEL unit; magnitude varies
-                    // by compositor — ±2 here) → sign-based 2% per notch;
+                    // step depends on the device, same as the panel's
+                    // BrightnessSlider: mouse wheels deliver one event
+                    // per notch (WHEEL unit; magnitude varies by
+                    // compositor — ±2 here) → sign-based 2% per notch;
                     // touchpads stream small smooth deltas (SURFACE unit,
                     // ~46u per micro-adjust) → 0.1%/unit ≈ 5% per
-                    // micro-adjust. Touchpad keeps its original
-                    // direction; wheel up = brighter
+                    // micro-adjust. Scroll up = brighter on both
                     const delta =
                         controller.get_unit() === Gdk.ScrollUnit.WHEEL
                             ? dy < 0
                                 ? 0.02
                                 : -0.02
-                            : dy * 0.001
+                            : -dy * 0.001
                     brightness.screen = Math.min(1, Math.max(0.05, brightness.screen + delta))
                     return true
                 }}
