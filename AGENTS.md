@@ -351,14 +351,27 @@ neither is worth an auth URL that comes out shuffled between runs.
   frame earlier (`gtk_window_set_application` instead of
   `gtk_window_destroy`) — it emits `window-removed` too. The toplevel is
   already freed before any JS cleanup runs, so hiding first or deferring
-  to an idle are worse, not better. The only shell-side avenue left is
-  keeping the per-monitor windows out of the `Gtk.Application` entirely,
-  since the crash comes through the app's `window-removed` emission —
-  and that is a real change, not a teardown tweak.
+  to an idle are worse, not better. The fix that shipped keeps the
+  per-monitor windows out of the `Gtk.Application` entirely (no
+  `application={app}` on Bar/OSD — the crash came through the app's
+  `window-removed` emission). What it costs: those windows are not in
+  `app.windows` and `app.get_window()`/`toggle_window()` cannot reach
+  them; neither is used for per-monitor windows.
 
   When testing a candidate, check `ags list` between cycles: once the
   shell has crashed, further cycles are silent no-ops that look like a
   pass.
+- **Monitor hotplug, the non-crash half** (2026-08-11): Gdk announces a
+  new monitor with connector, description and model all still NULL —
+  they arrive in later `notify::` emissions, which neither
+  `items-changed` nor ags's `app.monitors` refires on. A `[[panel]]`
+  monitors filter matching on identity (a description substring like
+  "Acer") therefore never matched a hotplugged monitor: no bar on it
+  until the NEXT monitor change. `app.tsx` tracks the monitor list
+  itself and bumps its state on `notify::connector/description/model`.
+  Verified with `hyprctl output create headless WAMTEST` (named outputs
+  work) plus a panel filtered to `monitors = ["WAMTEST"]`: no bar at
+  birth, bar once the connector lands.
 - **A FOURTH signature** (2026-08-07, issue #225):
   `astal_hyprland_hyprland_get_default` → `g_io_stream_get_input_stream`
   on a NULL stream. astal reads from the Hyprland IPC connection without
