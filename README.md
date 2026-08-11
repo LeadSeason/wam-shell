@@ -234,6 +234,7 @@ Four notes on these:
 
 | | |
 |---|---|
+| [wiki](https://github.com/LeadSeason/wam-shell/wiki) | every config option, one page per section |
 | [docs/Architecture.md](docs/Architecture.md) | how the layers fit together |
 | [docs/Providers.md](docs/Providers.md) | the notification-center provider contract |
 | [docs/Styling.md](docs/Styling.md) | themes, `user.scss`, the class names to target |
