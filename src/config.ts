@@ -392,10 +392,10 @@ function getSleepTimerConfig() {
         // top-level on_panel key would leak in otherwise
         onPanel: r.bool("on_panel", true, { sectionOnly: true }),
         // dim the screen on fire: dim_level as a fraction of the current
-        // brightness (default half), never below the dim_floor minimum
+        // brightness (default 0.4), never below the dim_floor minimum
         dim: r.bool("dim", true),
-        dimLevel: r.num("dim_level", 0.5, { min: 0, max: 1 }),
-        dimFloor: r.num("dim_floor", 0.1, { min: 0, max: 1 }),
+        dimLevel: r.num("dim_level", 0.4, { min: 0, max: 1 }),
+        dimFloor: r.num("dim_floor", 0.15, { min: 0, max: 1 }),
         // play a soothing chime in a loop when the timer reaches 0,
         // until stopped from the pill
         alarm: r.bool("alarm", false),
