@@ -113,8 +113,10 @@ export function knownIds(prev: { id: string }[], seen: Set<string>): Set<string>
 }
 
 // the center is a notification list, not a subscriptions digest: a
-// quiet channel's ancient "latest upload" is not a notification
-const LIST_HORIZON_SEC = 30 * 86_400
+// quiet channel's ancient "latest upload" is not a notification. One
+// day: anything older has already been seen wherever the user actually
+// watches YouTube
+const LIST_HORIZON_SEC = 86_400
 
 // ---------------------------------------------------------------- state
 
@@ -188,10 +190,11 @@ function thumbPath(videoId: string): string {
 // dir's other tenants are state, not artefacts.
 //
 // So the same one-shot TTL sweep coverArt.ts does, for the same reason.
-// A month is generous next to LIST_HORIZON_SEC (30 days, the point past
-// which an upload stops being listable at all) — anything older than
-// that cannot be on screen, and a re-listed video simply re-downloads.
-const THUMB_TTL_SEC = 30 * 86_400
+// Three days is generous next to LIST_HORIZON_SEC (one day, the point
+// past which an upload stops being listable at all) — anything older
+// than that cannot be on screen, and a re-listed video simply
+// re-downloads.
+const THUMB_TTL_SEC = 3 * 86_400
 
 // Batched, and async all the way down. enumerate_children_async only
 // defers opening the directory — a next_file() loop after it still stats
@@ -510,7 +513,9 @@ function sweepAccount(account: GoogleAccount, cb: (result: SweepResult) => void)
                     done()
                 },
                 // silence per-channel failures; the summary reports them
-                [403, 404],
+                // (429 = quota/rate limited: one summary, not one line
+                // per channel)
+                [403, 404, 429],
             )
         },
         () => {
@@ -632,8 +637,14 @@ export function poll() {
             // could not re-verify. Dropping those would blank the centre
             // on a transient error, which is exactly what this guards
             // against — and taking the fragment as authoritative is how
-            // one surviving channel out of 275 used to do it.
-            const rows = result.failures === 0 ? result.videos : [...result.videos, ...previous()]
+            // one surviving channel out of 275 used to do it. Kept rows
+            // still age out at the horizon: a run of failing sweeps
+            // (a quota day) must not pin rows on screen for weeks
+            const horizonCut = Date.now() / 1000 - LIST_HORIZON_SEC
+            const rows =
+                result.failures === 0
+                    ? result.videos
+                    : [...result.videos, ...previous().filter(i => i.time >= horizonCut)]
             // the backoff is for an account that is genuinely down, not
             // one flaky channel: escalate only when nothing came back at
             // all. A partial sweep keeps its rows without lengthening
