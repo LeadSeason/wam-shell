@@ -561,8 +561,8 @@
 #       persists across restarts, so extending afterwards always
 #       restores. default true
 # dim_level - the dim target as a fraction of the current brightness.
-#             0.5 = half (default), 0.25 = quarter
-# dim_floor - absolute minimum the dim never goes below. default 0.1
+#             0.4 = default, 0.25 = quarter
+# dim_floor - absolute minimum the dim never goes below. default 0.15
 # alarm - when the timer reaches 0, play a soft chime (assets/
 #         sleep-alarm.ogg) in a loop until stopped from the pill. the
 #         sink is raised to alarm_volume and unmuted while it rings,
@@ -595,8 +595,8 @@
 # time_format = "24h"
 # on_panel = true
 # dim = true
-# dim_level = 0.5
-# dim_floor = 0.1
+# dim_level = 0.4
+# dim_floor = 0.15
 # alarm = false
 # alarm_volume = 80
 # restore_on_play = false
