@@ -25,9 +25,9 @@ import WindowTitle from "./barModules/windowTitle"
 // tray is the same on every bar
 function trayWidget() {
     if (Config.tray.onPanel) {
-        return <Tray />
+        return <Tray singleRow />
     } else if (Config.tray.alwaysOnPanel.length > 0) {
-        return <Tray filter={isPinned} />
+        return <Tray filter={isPinned} singleRow />
     }
     return null
 }
