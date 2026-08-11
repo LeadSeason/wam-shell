@@ -128,6 +128,24 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
 - After any config change, regenerate `config-override.toml`: copy of
   `config.toml` plus the user's active values appended.
 
+## Wiki
+
+- `wiki/` is the user-facing configuration reference: one page per
+  config section (`Config-<Section>.md`), indexed in `wiki/Home.md`,
+  named so the directory can be pushed verbatim to the GitHub wiki
+  (`git@github.com:LeadSeason/wam-shell.wiki.git` — copy `wiki/*.md`
+  over; the file name is the page name).
+- A change that adds, renames, removes or re-defaults a config key —
+  or changes user-visible behavior of a feature — updates the matching
+  page in the SAME commit. A new section gets a new page plus a link in
+  `Home.md`. A new user-facing feature with no config keys still gets a
+  page when a user would look for one.
+- `config.toml` stays the exhaustive reference; a wiki page carries only
+  what a user needs: a table row per key (name, type, default, what it
+  does) and at most a few bullets for setup/auth/caveats. No internal
+  reasoning or history. `wiki/Config-Workspaces.md` is the house style —
+  match it.
+
 ## Styling
 
 - Colors come from the active theme (`scss/theme/*.scss`, selected via
