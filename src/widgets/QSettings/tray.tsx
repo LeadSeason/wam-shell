@@ -10,11 +10,18 @@ export default function Tray({
     iconSize = 16,
     pill = false,
     spacing = Config.tray.spacing,
+    singleRow = false,
 }: {
     filter?: (item: AstalTray.TrayItem) => boolean
     iconSize?: number
     pill?: boolean
     spacing?: number
+    // bar only: never wrap to a second line. A wrapping FlowBox grows
+    // the whole panel — the bar's heightRequest is a floor, not a cap,
+    // so a 9th tray item used to produce a full-width strip under the
+    // bar holding the overflow icons. Quick settings wants the grid,
+    // the bar does not.
+    singleRow?: boolean
 }) {
     const [trayItems, setTrayItems] = createState([] as AstalTray.TrayItem[])
     const registry = AstalTray.get_default() // Singleton.
@@ -86,6 +93,67 @@ export default function Tray({
     const BASE = 6
     const gap = spacing > 0 ? spacing * BASE : null
 
+    const renderItem = (item: AstalTray.TrayItem) => {
+        const gicon = createBinding(item, "gicon")
+        const tooltip = createBinding(item, "tooltip_markup")
+
+        /* Isn't reactive */
+        const menuModel = Gtk.PopoverMenu.new_from_model(item.get_menu_model())
+        menuModel.set_has_arrow(false)
+
+        return (
+            <menubutton
+                $={self => {
+                    self.insert_action_group("dbusmenu", item.get_action_group())
+                    const gestureClick = new Gtk.GestureClick({
+                        button: 0, // Listen to all buttons.
+                    })
+
+                    connect(gestureClick, "pressed", (event: Gtk.GestureClick) => {
+                        // Prevent default behavior.
+                        event.set_state(Gtk.EventSequenceState.CLAIMED)
+
+                        switch (event.get_current_button()) {
+                            case Gdk.BUTTON_PRIMARY:
+                                item.activate(0, 0)
+                                break
+                            case Gdk.BUTTON_SECONDARY:
+                                self.get_popover()?.popup()
+                                break
+                            default:
+                        }
+                    })
+
+                    self.add_controller(gestureClick)
+                }}
+                tooltipMarkup={tooltip}
+                direction={Gtk.ArrowType.DOWN}
+                cssClasses={["trayItem"]}
+                css={
+                    [
+                        gap !== null ? `margin-right: ${gap}px;` : "",
+                        pill
+                            ? `min-width: ${iconSize + 12}px; min-height: ${iconSize + 12}px;`
+                            : "",
+                    ]
+                        .filter(Boolean)
+                        .join(" ") || ""
+                }
+            >
+                <image gicon={gicon} pixelSize={iconSize} />
+                {menuModel}
+            </menubutton>
+        )
+    }
+
+    if (singleRow) {
+        return (
+            <box>
+                <For each={visibleItems}>{renderItem}</For>
+            </box>
+        )
+    }
+
     return (
         <Gtk.FlowBox
             maxChildrenPerLine={8}
@@ -95,60 +163,7 @@ export default function Tray({
             // only has an effect inside the quick settings window
             cssClasses={["QSSection"]}
         >
-            <For each={visibleItems}>
-                {item => {
-                    const gicon = createBinding(item, "gicon")
-                    const tooltip = createBinding(item, "tooltip_markup")
-
-                    /* Isn't reactive */
-                    const menuModel = Gtk.PopoverMenu.new_from_model(item.get_menu_model())
-                    menuModel.set_has_arrow(false)
-
-                    return (
-                        <menubutton
-                            $={self => {
-                                self.insert_action_group("dbusmenu", item.get_action_group())
-                                const gestureClick = new Gtk.GestureClick({
-                                    button: 0, // Listen to all buttons.
-                                })
-
-                                connect(gestureClick, "pressed", (event: Gtk.GestureClick) => {
-                                    // Prevent default behavior.
-                                    event.set_state(Gtk.EventSequenceState.CLAIMED)
-
-                                    switch (event.get_current_button()) {
-                                        case Gdk.BUTTON_PRIMARY:
-                                            item.activate(0, 0)
-                                            break
-                                        case Gdk.BUTTON_SECONDARY:
-                                            self.get_popover()?.popup()
-                                            break
-                                        default:
-                                    }
-                                })
-
-                                self.add_controller(gestureClick)
-                            }}
-                            tooltipMarkup={tooltip}
-                            direction={Gtk.ArrowType.DOWN}
-                            cssClasses={["trayItem"]}
-                            css={
-                                [
-                                    gap !== null ? `margin-right: ${gap}px;` : "",
-                                    pill
-                                        ? `min-width: ${iconSize + 12}px; min-height: ${iconSize + 12}px;`
-                                        : "",
-                                ]
-                                    .filter(Boolean)
-                                    .join(" ") || ""
-                            }
-                        >
-                            <image gicon={gicon} pixelSize={iconSize} />
-                            {menuModel}
-                        </menubutton>
-                    )
-                }}
-            </For>
+            <For each={visibleItems}>{renderItem}</For>
         </Gtk.FlowBox>
     )
 }
