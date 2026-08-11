@@ -28,8 +28,8 @@ import { registerDispose } from "./lifecycle"
 // — reboots/logouts simply start empty (runtime tmpfs), which is
 // exactly the intended scope. A starting shell claims a state file
 // atomically (rename): a LIVE owner PID means another shell owns the
-// timer, so dev + service shells can't double-fire (dim-to-half twice
-// would be quarter brightness). A crashed or killed owner's PID is
+// timer, so dev + service shells can't double-fire (a second dim on
+// top of the first would stack). A crashed or killed owner's PID is
 // dead — the restart claims and adopts instead of dropping the timer.
 // An expired deadline fires the alarm on adoption (when enabled): a
 // missed wakeup is worse than a late one.
@@ -799,6 +799,13 @@ const streamAddedHandler = wpAudio
 // awake, and whatever else they touch next must have sound too. The
 // sweeps are long over by morning; this is the event-driven long tail
 function onPlayerPlaying() {
+    // a quick resume lands mid-sweep: the remaining passes would re-pause
+    // what the user just unpaused. The sweep exists for tabs that never
+    // took the pause, not for overruling a human
+    if (pauseSweepSource) {
+        sourceRemove(pauseSweepSource)
+        pauseSweepSource = 0
+    }
     if (mutedStreams.size > 0) unmuteStreams()
     // opt-in: the same wake-up signal can also bring the light back
     // (restoreDim no-ops unless a fire dimmed and nothing restored yet)
@@ -879,7 +886,7 @@ function fire() {
     // long after the timer
     muteActiveStreams()
     armPauseSweep()
-    // dim to half the current brightness, never below 10%
+    // dim to a fraction of the current brightness, never below the floor
     if (Config.sleepTimer.dim) {
         const brightness = Brightness.get_default()
         if (brightness.screenIsPresent) {
