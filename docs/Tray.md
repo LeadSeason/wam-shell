@@ -59,6 +59,15 @@ for item in $(busctl --user get-property org.kde.StatusNotifierWatcher /StatusNo
 done
 ```
 
+## Bar vs quick settings layout
+
+The tray renders as a wrapping `Gtk.FlowBox` (8 per line) inside quick
+settings, where the grid is wanted. On the bar it is a single-row `box`
+(`singleRow` prop): a wrapping FlowBox grows the whole panel, because
+the bar window's `heightRequest` is a floor and not a cap — a 9th tray
+item used to wrap onto a second line and show up as a full-width strip
+under the bar holding the overflow icons.
+
 ## Icon spacing (`tray.spacing`)
 
 `spacing` controls the gap **between tray icons** (never the gap
