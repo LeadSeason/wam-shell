@@ -1,6 +1,6 @@
 import GLib from "gi://GLib?version=2.0"
 import app from "ags/gtk4/app"
-import { createBinding, For } from "gnim"
+import { createState, For, onCleanup } from "gnim"
 
 import Bar from "./src/widgets/bar"
 import OSD from "./src/widgets/osd"
@@ -35,7 +35,7 @@ import { init as initYouTube } from "./src/lib/youtube"
 import { init as initTodoist } from "./src/lib/todoist"
 import { init as initProtonmail } from "./src/lib/protonmail"
 import { forceExitStreamedChildren } from "./src/lib/streamLines"
-import { connect } from "./src/lib/metrics"
+import { connect, disconnect } from "./src/lib/metrics"
 import { runDisposers } from "./src/lib/lifecycle"
 
 // The one place module teardown is actually called from.
@@ -106,13 +106,60 @@ function main() {
         return `monitor${id}`
     }
 
+    // Gdk announces a hotplugged monitor with connector/description/
+    // model all still null — they arrive in later notify:: emissions,
+    // which app.monitors (items-changed only) does not refire on. A
+    // [[panel]] monitors filter matching on those (a description
+    // substring like "Acer") never matched a hotplugged monitor, so it
+    // got no bar until the next monitor change came along. Track the
+    // list here and bump it when the late properties land.
+    const monitorModel = Gdk.Display.get_default()!.get_monitors()
+    function readMonitors(): Gdk.Monitor[] {
+        const out: Gdk.Monitor[] = []
+        for (let i = 0; i < monitorModel.get_n_items(); i++)
+            out.push(monitorModel.get_item(i) as Gdk.Monitor)
+        return out
+    }
+    const [monitors, setMonitors] = createState<Gdk.Monitor[]>(readMonitors())
+    const monitorHandlers = new Map<Gdk.Monitor, number[]>()
+    // a monitor whose identity is fully known gets no more identity
+    // updates — watching it would be a permanent connection that never
+    // fires, so the watchers only exist while any property is null
+    const identityKnown = (m: Gdk.Monitor) =>
+        m.get_connector() !== null && m.get_description() !== null && m.get_model() !== null
+    function syncMonitors() {
+        const current = readMonitors()
+        const present = new Set(current)
+        for (const m of current) {
+            if (identityKnown(m) || monitorHandlers.has(m)) continue
+            monitorHandlers.set(m, [
+                connect(m, "notify::connector", syncMonitors),
+                connect(m, "notify::description", syncMonitors),
+                connect(m, "notify::model", syncMonitors),
+            ])
+        }
+        for (const [m, ids] of monitorHandlers) {
+            if (present.has(m) && !identityKnown(m)) continue
+            for (const id of ids) disconnect(m, id)
+            monitorHandlers.delete(m)
+        }
+        setMonitors(current)
+    }
+    const itemsChangedHandler = connect(monitorModel, "items-changed", syncMonitors)
+    syncMonitors()
+    onCleanup(() => {
+        disconnect(monitorModel, itemsChangedHandler)
+        for (const [m, ids] of monitorHandlers) {
+            for (const id of ids) disconnect(m, id)
+        }
+        monitorHandlers.clear()
+    })
+
     const bars =
         Config.panels.length === 0 ? (
             // legacy mode: one bar per monitor, filtered by bar_monitors
             <For
-                each={createBinding(app, "monitors").as(ms =>
-                    ms.filter(m => matchMonitor(Config.barMonitors, m)),
-                )}
+                each={monitors.as(ms => ms.filter(m => matchMonitor(Config.barMonitors, m)))}
                 cleanup={win => (win as Gtk.Window).destroy()}
             >
                 {monitor => <Bar gdkMonitor={monitor} />}
@@ -120,7 +167,7 @@ function main() {
         ) : (
             // panel mode: one bar per matching [[panel]] per monitor
             <For
-                each={createBinding(app, "monitors").as(ms =>
+                each={monitors.as(ms =>
                     ms.flatMap(m =>
                         Config.panels
                             .map((panel, i) => ({ monitor: m, panel, i }))
@@ -140,13 +187,13 @@ function main() {
         )
 
     const osds = !Config.osd.enabled ? null : (
-        <For each={createBinding(app, "monitors")} cleanup={win => (win as Gtk.Window).destroy()}>
+        <For each={monitors} cleanup={win => (win as Gtk.Window).destroy()}>
             {monitor => <OSD gdkMonitor={monitor} />}
         </For>
     )
 
     const notifPopups = !(Config.notifications.popups && useOurs) ? null : (
-        <For each={createBinding(app, "monitors")} cleanup={win => (win as Gtk.Window).destroy()}>
+        <For each={monitors} cleanup={win => (win as Gtk.Window).destroy()}>
             {monitor => <NotificationPopups gdkMonitor={monitor} />}
         </For>
     )
