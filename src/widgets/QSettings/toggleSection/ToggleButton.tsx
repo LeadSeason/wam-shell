@@ -52,7 +52,9 @@ interface TbButtonProps {
     activate?: () => void
 
     /**
-     * Shown on click of the chevron.
+     * Shown on click of the chevron; also the body click when there is
+     * no `activate` and no dropdown (a navigate-only pill like Power
+     * Mode has nothing to toggle — the whole tile opens its pane).
      * navigate -> switch to a different pane, chevron points right.
      * activeDropdown/setActiveDropdown/dropdownIndex -> inline dropdown,
      * chevron points up/down. Neither -> chevron hidden.
@@ -113,6 +115,7 @@ export function DropdownButton({
                     button={1}
                     {...pressable(() => {
                         if (activate) activate()
+                        else if (navigate) navigate()
                         else toggleDropdown()
                     })}
                 />

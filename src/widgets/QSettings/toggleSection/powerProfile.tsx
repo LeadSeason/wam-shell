@@ -26,7 +26,7 @@ export function PowerProfilesButton({ navigate }: { navigate: () => void }) {
             navigate={navigate}
             icon={icon}
             label={"Power Mode"}
-            subtitle={createBinding(powerProfiles, "activeProfile")}
+            subtitle={createBinding(powerProfiles, "activeProfile").as(v => profileInfo(v).name)}
         />
     )
 }
@@ -48,7 +48,7 @@ const PROFILE_INFO: Record<string, { name: string; desc: string }> = {
     },
 }
 
-function profileInfo(id: string): { name: string; desc: string } {
+export function profileInfo(id: string): { name: string; desc: string } {
     return (
         PROFILE_INFO[id] ?? {
             name: id.charAt(0).toUpperCase() + id.slice(1).replaceAll("-", " "),

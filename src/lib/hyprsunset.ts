@@ -115,13 +115,20 @@ let pendingGamma: number | null = null
 let lastApply = 0
 function applyGamma() {
     pendingGamma = outdoor.get() ? OUTDOOR_GAMMA : Math.round(dim.get() * 100)
+    // stamped at SCHEDULE time, not when the debounced exec fires: a
+    // watcher read that resolves in between still sees the pre-apply
+    // daemon value, and with lastApply unset by the pending write its
+    // drift guard passes — so it claps `dim` back to the stale reading.
+    // The OSD refreshes on every screen change, so every sleep-timer
+    // dim spawned exactly that read; restoreDim then compared against
+    // the clapped-back level and refused to restore (2026-08-11).
+    lastApply = Date.now()
     if (gammaSource !== null) return
     gammaSource = timeoutAdd("hyprsunset:gammaApply", GLib.PRIORITY_DEFAULT, 50, () => {
         gammaSource = null
         if (pendingGamma === null) return GLib.SOURCE_REMOVE
         const gamma = pendingGamma
         pendingGamma = null
-        lastApply = Date.now()
         execAsync(["hyprctl", "hyprsunset", "gamma", String(gamma)]).catch(() => {})
         return GLib.SOURCE_REMOVE
     })

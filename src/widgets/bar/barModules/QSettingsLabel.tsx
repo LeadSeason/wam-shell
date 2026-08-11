@@ -17,6 +17,7 @@ import { alarming } from "../../../lib/sleepTimer"
 import { execAsync, timeoutAdd, sourceRemove } from "../../../lib/metrics"
 import Config, { pendingUpdates } from "../../../config"
 import { pressable } from "../../pressable"
+import { profileInfo } from "../../QSettings/toggleSection/powerProfile"
 
 const registry = CommandRegistry.get_default()
 
@@ -194,7 +195,7 @@ function powerProfile() {
         <image
             marginStart={1}
             iconName={activeProfile.as(v => `power-profile-${v}-symbolic`)}
-            tooltipText={activeProfile.as(v => `Active PowerProfile ${v}`)}
+            tooltipText={activeProfile.as(v => `Power profile: ${profileInfo(v).name}`)}
         />
     ) as Gtk.Image // TS Jank,
 }

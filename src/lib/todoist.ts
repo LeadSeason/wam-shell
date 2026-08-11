@@ -25,7 +25,8 @@ export { newArrivals }
 // due today or tomorrow merge into the center's list, and banner when
 // their time comes. Action buttons: Mark done completes the task,
 // Postpone snoozes the banner locally (snooze_minutes, capped at the
-// due time — the remote task is never touched), Dismiss closes the
+// due time — the remote task is never touched; the re-raise re-checks
+// with the API that the task is still open), Dismiss closes the
 // banner only (in the center, where there is no banner, it session-
 // hides the row). Click opens the task in the browser. Read-only plus
 // the complete endpoint; nothing here creates content. Overdue/all-day
@@ -259,6 +260,27 @@ export function snoozeDelayMs(dueMs: number, nowMs: number, snoozeMin: number): 
 
 const snoozeTimers = new Map<string, number>()
 
+// the snooze fired. "Still in items" is not proof enough: the list is
+// up to poll_minutes stale, so a task completed on another device since
+// the last poll would banner anyway. Ask the API first — v1 answers
+// 404 for a completed or deleted task. On a network/server failure,
+// fail open: a spurious reminder beats a missed one
+function reRaiseSnoozed(item: ProviderItem) {
+    const taskId = item.id.slice("todoist:".length)
+    request("GET", `/tasks/${taskId}`, r => {
+        if (r.status === 404) {
+            // completed or deleted elsewhere: drop it like a poll would
+            cancelReminder(item.id)
+            setItems(items.get().filter(i => i.id !== item.id))
+            return
+        }
+        // re-raise with the CURRENT item: a poll may have replaced
+        // the object — and a locally hidden task gets no banner
+        const fresh = items.get().find(i => i.id === item.id)
+        if (fresh) addProviderPopup(fresh, AstalNotifd.Urgency.CRITICAL)
+    })
+}
+
 // reached from the banner's "Postpone" button, i.e. from inside a click
 // on the widget this removes — deferred, see removePopupDeferred
 function snooze(item: ProviderItem) {
@@ -272,10 +294,7 @@ function snooze(item: ProviderItem) {
         Math.ceil(delayMs / 1000),
         () => {
             snoozeTimers.delete(item.id)
-            // re-raise with the CURRENT item: a poll may have replaced
-            // the object — and a task completed elsewhere gets no banner
-            const fresh = items.get().find(i => i.id === item.id)
-            if (fresh) addProviderPopup(fresh, AstalNotifd.Urgency.CRITICAL)
+            reRaiseSnoozed(item)
             return GLib.SOURCE_REMOVE
         },
     )
