@@ -339,6 +339,12 @@ function disableAuth() {
         sourceRemove(baselineTimer)
         baselineTimer = 0
     }
+    // the rollover re-arms itself every midnight: without this it keeps
+    // firing one doomed 401 a day forever after the kill-switch trips
+    if (rolloverTimer) {
+        sourceRemove(rolloverTimer)
+        rolloverTimer = 0
+    }
     console.warn("Harvest: disabling after repeated authentication failures")
     notify(
         "Harvest authentication failed",
@@ -414,6 +420,10 @@ function watchLock() {
                     }
                 },
             )
+            // disposeSync() may have run while these async calls were
+            // in flight: subscribing now would leak the signal handler
+            // (dispose already did its unsubscribe pass)
+            if (disposed) return
             lockedHintSub = Gio.DBus.system.signal_subscribe(
                 "org.freedesktop.login1",
                 "org.freedesktop.DBus.Properties",

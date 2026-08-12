@@ -427,15 +427,20 @@ export function createGoogleAuth(opts: {
     async function persistTokens() {
         try {
             const keyring = await secretsAvailable()
+            // blank only accounts whose token ACTUALLY landed in the
+            // keyring: blanking one whose store failed would leave the
+            // token nowhere and silently drop the account at the next
+            // restart (it stays in the file, at 0600 either way)
+            const stored = new Set<string>()
             if (keyring) {
                 for (const a of accounts) {
-                    if (a.refresh_token) await secretStore(serviceId, a.email, a.refresh_token)
+                    if (a.refresh_token && (await secretStore(serviceId, a.email, a.refresh_token)))
+                        stored.add(a.email)
                 }
             }
-            // with a keyring the file carries no refresh tokens (the
-            // keyring is the secret store); without one the file holds
-            // everything, at 0600 either way
-            const records = accounts.map(a => (keyring ? { ...a, refresh_token: "" } : a))
+            const records = accounts.map(a =>
+                stored.has(a.email) ? { ...a, refresh_token: "" } : a,
+            )
             await writeFileAtomic(tokensPath, JSON.stringify({ accounts: records }), {
                 private: true,
             })
