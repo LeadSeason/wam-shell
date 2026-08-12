@@ -12,10 +12,15 @@ trap 'printf "\033[1;31m[update]\033[0m Failed to run update system\n"' ERR
 # predictable world-writable path (symlink hazard, see config.ts).
 # The instance name is a flat top-level key; parse it with sed, the way
 # scripts/wam's resolve_instance_paths does — last assignment wins,
-# comment lines cannot match.
+# comment lines cannot match. The shell invokes this script as
+# ${instanceSrcDir}/scripts/archlinux-update.sh, so the repo fallback
+# candidates of Config.findConfigFile resolve against its own location.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INSTANCE="wam-shell"
 for f in "${XDG_CONFIG_HOME:-$HOME/.config}/wam-shell/config.toml" \
-    "$HOME/.config/wam-shell/config.toml"; do
+    "$HOME/.config/wam-shell/config.toml" \
+    "$ROOT/config-override.toml" \
+    "$ROOT/config.toml"; do
     if [ -r "$f" ]; then
         name="$(sed -n \
             -e 's/^[[:space:]]*instance_name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \

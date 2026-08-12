@@ -520,6 +520,10 @@ function addPopup(
         })
         setPopups(current.map(p => (p.key === entry.key ? { ...entry, critical } : p)))
         bumpTimerVersion()
+        // a swap can put a DRAINING countdown where a non-draining
+        // banner (critical, expire_timeout=0) sat — the tick stopped
+        // behind it, and without this the replacement never counts down
+        ensurePopupTick()
         return true
     }
     const duration = popupDuration(expireMs, urgency, Config.notifications.popupTimeout)

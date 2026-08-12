@@ -5,7 +5,7 @@ import Config from "../../config"
 import { loadCredentials as loadEnvCredentials } from "../credentials"
 import { configHome } from "../paths"
 import { MAX_BODY_BYTES } from "../httpJson"
-import { timeoutAddSeconds, sourceRemove, trackHttp } from "../metrics"
+import { timeoutAddSeconds, sourceRemove, trackHttp, connect } from "../metrics"
 
 // HTTP plumbing + the credential gate every other harvest module
 // imports. Nothing here owns sync state: callers decide what a reply
@@ -85,7 +85,7 @@ export function request(method: string, path: string, body: any, cb: (r: Reply) 
     // loop silently dead until restart). got-headers, not a read next
     // to the send: the response headers do not exist yet at that point
     let timedOut = false
-    msg.connect("got-headers", () => {
+    connect(msg, "got-headers", () => {
         const declared = Number(msg.get_response_headers().get_one("Content-Length")) || 0
         if (declared > MAX_BODY_BYTES) cancellable.cancel()
     })
