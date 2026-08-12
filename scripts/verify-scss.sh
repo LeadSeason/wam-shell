@@ -57,7 +57,9 @@ command -v gjs >/dev/null || {
 # spacings it came out at. DENSITY=0.8 to check a compact build too.
 : "${DENSITY:=1}"
 : "${BAR_FLOAT_MARGIN:=6px}"
-printf '$density: %s;\n$bar-float-margin: %s;\n' "$DENSITY" "$BAR_FLOAT_MARGIN" \
+: "${WS_PLAYING_PULSE:=650ms}"
+printf '$density: %s;\n$bar-float-margin: %s;\n$ws-playing-pulse: %s;\n' \
+    "$DENSITY" "$BAR_FLOAT_MARGIN" "$WS_PLAYING_PULSE" \
     >"$WORK/active-tuning.scss"
 
 fail=0
