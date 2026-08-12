@@ -151,6 +151,10 @@ function getWorkspacesConfig() {
         showLabels: r.bool("show_labels", true),
         hideEmpty: r.bool("hide_empty", false),
         collapseIcons: r.bool("collapse_icons", false),
+        playingIndicator: r.bool("playing_indicator", true),
+        // min: below ~200ms the pulse stops reading as "breathing" and
+        // starts reading as a strobe
+        playingPulseMs: r.num("playing_pulse_ms", 650, { min: 200 }),
     }
 }
 

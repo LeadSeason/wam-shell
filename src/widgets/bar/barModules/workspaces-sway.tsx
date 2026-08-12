@@ -3,6 +3,7 @@ import Sway, { Node } from "../../../lib/sway"
 import Config from "../../../config"
 import { createIconResolver } from "../../../lib/appIcon"
 import { createScrollStepper, stepThrough } from "../../../lib/scrollStep"
+import { matchesPlayingWindow, playingPlayers, playingPulse } from "../../../lib/mpris"
 import { Accessor, For, With, createBinding, createComputed, onCleanup } from "gnim"
 import { Gtk } from "ags/gtk4"
 import GObject from "ags/gobject"
@@ -220,10 +221,53 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
                         cacheKeys.add(workspace.id)
                         return box
                     })
+                    // the playing leaf, not every leaf of the playing
+                    // app (see the hyprland twin): the window title must
+                    // carry the track title. sway's tree has no global
+                    // focus recency, so the no-title-match fallback
+                    // stays conservative: a lone window of the class
+                    const playing = createComputed(
+                        [createBinding(sway, "tree"), playingPlayers],
+                        (_tree, ps) => {
+                            if (ps.length === 0) return false
+                            const wsNode = sway.tree
+                                .find(o => o.name === displayName.get())
+                                ?.nodes.find(n => n.id === workspace.id)
+                            if (!wsNode) return false
+                            const leaves = [
+                                ...(wsNode.nodes?.length ? getLeafNodes(wsNode.nodes) : []),
+                                ...(wsNode.floating_nodes?.length
+                                    ? getLeafNodes(wsNode.floating_nodes)
+                                    : []),
+                            ]
+                            const all = getLeafNodes(sway.tree)
+                            const wmOf = (n: Node) =>
+                                n.shell === "xwayland" ? n.window_properties?.class : n.app_id
+                            return leaves.some(n => {
+                                const wm = wmOf(n)
+                                if (!wm) return false
+                                const count = all.filter(
+                                    m => wmOf(m)?.toLowerCase() === wm.toLowerCase(),
+                                ).length
+                                return matchesPlayingWindow(ps, wm, n.name ?? "", count === 1)
+                            })
+                        },
+                    )
+                    // highlight the workspace itself (see the hyprland
+                    // twin): "playing" tints, "beat" pulses
+                    const classes = createComputed(
+                        [focused, playing, playingPulse],
+                        (f, p, beat) => [
+                            ...f,
+                            ...(p && Config.workspaces.playingIndicator
+                                ? ["playing", ...(beat ? ["beat"] : [])]
+                                : []),
+                        ],
+                    )
                     return (
                         <button
                             cssName={"workspace"}
-                            cssClasses={focused}
+                            cssClasses={classes}
                             onClicked={() => focus_workspace(sway, workspace)}
                         >
                             <box>

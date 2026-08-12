@@ -120,6 +120,11 @@ $transition-time: 200ms;
 // instant swap (slider fills, a widget going warm)
 $transition-slow: 300ms;
 
+// one half of the workspaces "now playing" breath — the beat timer in
+// lib/mpris runs on the same interval (`playing_pulse_ms`), so the fade
+// completes exactly as the tint flips
+$ws-playing-pulse: tuning.$ws-playing-pulse;
+
 // One easing curve, for the same reason there is one shadow. GTK's
 // default is `ease`, which is slow at BOTH ends: a hover that eases in
 // reads as the shell thinking about it. This is the usual "fast out,

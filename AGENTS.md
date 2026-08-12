@@ -191,7 +191,7 @@ so does not preserve parameter order.
 
 - Prettier is the formatter; config lives in `.prettierrc`. Run
   `node_modules/.bin/prettier --check "src/**/*.{ts,tsx}"` (`--write`
-  to fix) once at the end of a piece of work, not on every commit.
+  to fix) when a PR is about to be opened, not on every commit.
 - Imports of gnim API (`createState`, `For`, `With`, accessors) come
   from `"gnim"`, GObject from `"ags/gobject"` — not from `"ags"`.
 
@@ -206,9 +206,9 @@ so does not preserve parameter order.
 
 ## Perf gate
 
-- Run `pnpm perf` once at the end of a piece of work — before creating
-  the PR and/or merging. Include the verdict line in your summary; on a
-  regression, fix it or state why the cost is justified.
+- Run `pnpm perf` once when a PR is about to be opened — and again
+  before merging if the tree moved. Include the verdict line in your
+  summary; on a regression, fix it or state why the cost is justified.
 - It compares the working tree against the merge-base with
   origin/master. Flags: `--base <ref>`, `--scenario <name>`, `--json`.
 - Verdicts: `VERDICT: OK` (exit 0), `VERDICT: REGRESSION` (exit 1),
@@ -287,8 +287,8 @@ so does not preserve parameter order.
 
 ## No CI
 
-- There is no CI, deliberately. Five gates run LOCALLY, once, at the
-  end of a piece of work — before creating the PR and/or merging:
+- There is no CI, deliberately. Five gates run LOCALLY, once, when a PR
+  is about to be opened — and again before merging if the tree moved:
 
       prettier --check "src/**/*.{ts,tsx}"
       pnpm typecheck
@@ -313,8 +313,8 @@ so does not preserve parameter order.
 - `pnpm test` runs the unit suite: `tests/*.test.ts` bundled with
   `ags bundle`, run under `gjs` against the real modules
   (`tests/run.sh`). New suites must be registered in `tests/main.ts` —
-  the bundler needs static imports. Run once at the end of a piece of
-  work.
+  the bundler needs static imports. Run once when a PR is about to be
+  opened.
 - `pnpm test:smoke` (opt-in) boots the real shell as an isolated
   `wam-shell-test` instance and asserts a clean startup.
 - `pnpm test:smoke:sway` (opt-in) does the same inside a **nested
@@ -368,3 +368,13 @@ so does not preserve parameter order.
   was already done in this session.
 - Verify the shell starts clean before committing: `ags quit -i
   wam-shell; timeout 8 ags run app.tsx` (no Gjs-CRITICAL / JS ERROR).
+- When a change is ready for the user to SEE, restart the live shell
+  without being asked: `ags quit -i wam-shell`, then `ags run app.tsx`
+  detached (it must keep running — no `timeout`). Do not leave the user
+  staring at the old build, and do not just tell them to restart it.
+  FIRST `systemctl --user stop wam-shell.service` when it is active:
+  with `Restart=always` the service respawns the INSTALLED copy
+  (~/.local/share/wam-shell) on every quit, and that old shell races the
+  dev build for the instance name and clobbers the shared cache
+  (active-tuning.scss, style.css, the ags.js bundle) with old-code
+  artifacts — styles silently revert to a build without the new rules.
