@@ -4,7 +4,7 @@ import { hyprDispatch } from "../../../lib/hyprDispatch"
 import Config from "../../../config"
 import { createIconResolver } from "../../../lib/appIcon"
 import { createScrollStepper, stepThrough } from "../../../lib/scrollStep"
-import { matchesPlayingWindow, playingPlayers, playingPulse } from "../../../lib/mpris"
+import { matchesPlayingWindow, playingPlayers, playingPulse, titlesMatch } from "../../../lib/mpris"
 import { connect, disconnect } from "../../../lib/metrics"
 import { For, createBinding, createComputed, createState, onCleanup } from "gnim"
 import { Gtk } from "ags/gtk4"
@@ -159,9 +159,11 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
                     // window title to carry the track title, then
                     // falls back to the most recently focused window
                     // of the class (episode titles that never reach
-                    // the tab title, background tabs). Matching runs
-                    // on the unfiltered list: collapse_icons may have
-                    // dropped exactly the window that is playing
+                    // the tab title, background tabs) — but only when
+                    // NO window of the class title-matched anywhere.
+                    // Matching runs on the unfiltered list:
+                    // collapse_icons may have dropped exactly the
+                    // window that is playing
                     const playing = createComputed(
                         [createBinding(workspace, "clients"), allClients, playingPlayers],
                         (wsClients, all, ps) => {
@@ -177,12 +179,29 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
                                 if (!cur || c.focusHistoryId < cur.focusHistoryId)
                                     recent.set(cls, c)
                             }
+                            // classes whose track title landed in SOME
+                            // window title: the title answered, so the
+                            // recency fallback must stay silent for that
+                            // class — after a silent move the window
+                            // that kept focus would otherwise light the
+                            // workspace the playing window just left,
+                            // alongside the new one
+                            const answered = new Set<string>()
+                            for (const c of all) {
+                                const cls = c.class.toLowerCase()
+                                if (
+                                    !answered.has(cls) &&
+                                    ps.some(p => p.wmClass === cls && titlesMatch(p.title, c.title))
+                                )
+                                    answered.add(cls)
+                            }
                             return wsClients.some(c =>
                                 matchesPlayingWindow(
                                     ps,
                                     c.class,
                                     c.title,
-                                    recent.get(c.class.toLowerCase()) === c,
+                                    !answered.has(c.class.toLowerCase()) &&
+                                        recent.get(c.class.toLowerCase()) === c,
                                 ),
                             )
                         },
