@@ -393,6 +393,13 @@ const normTitle = (s: string) =>
         .replace(/\s+/g, " ")
         .trim()
 
+/** track title vs window title, normalized, containment either way */
+export function titlesMatch(trackTitle: string, windowTitle: string): boolean {
+    const track = normTitle(trackTitle)
+    const win = normTitle(windowTitle)
+    return !!track && !!win && (win.includes(track) || track.includes(win))
+}
+
 /** does this window belong to a playing player? The class must match,
  *  and the window title must carry the track title — a bare class
  *  match lights every window of the browser, which is all of them.
@@ -400,7 +407,12 @@ const normTitle = (s: string) =>
  *  media title is not the window title — streaming sites name the
  *  EPISODE while the tab says the series, and a background tab shows
  *  in no window title at all), the only compositor-level guess is the
- *  most recently focused window of that class. */
+ *  most recently focused window of that class. The guess is valid
+ *  only while the title TRULY has no answer: when another window of
+ *  the class did match the track, callers must pass
+ *  mostRecentOfClass=false, or the window that held focus lights up
+ *  next to the real one (a silent workspace move leaves focus — and
+ *  the fallback — on the workspace the playing window just left). */
 export function matchesPlayingWindow(
     list: PlayingPlayer[],
     wmClass: string,
@@ -408,11 +420,9 @@ export function matchesPlayingWindow(
     mostRecentOfClass: boolean,
 ): boolean {
     const cls = wmClass.toLowerCase()
-    const win = normTitle(windowTitle)
     return list.some(p => {
         if (p.wmClass !== cls) return false
-        const track = normTitle(p.title)
-        if (track && win && (win.includes(track) || track.includes(win))) return true
+        if (titlesMatch(p.title, windowTitle)) return true
         return mostRecentOfClass
     })
 }
