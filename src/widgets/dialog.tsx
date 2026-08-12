@@ -148,6 +148,13 @@ interface confirmDialogProps {
     noButton?: string
 }
 
+// The in-flight confirmDialog's resolver. A second call replaces the
+// content under the first, and with the dialog already visible there is
+// no notify::visible emission — the first promise's only resolution
+// path — so the newer call resolves the older one false instead of
+// stranding it.
+let pendingDone: ((v: boolean) => void) | null = null
+
 export async function confirmDialog({
     text = "Are you user?",
     subtext = "Your about to do some action",
@@ -161,10 +168,14 @@ export async function confirmDialog({
         // unsubscribed when the dialog resolves by any path
         let unsub: (() => void) | null = null
         const done = (v: boolean) => {
+            if (pendingDone === done) pendingDone = null
             unsub?.()
             unsub = null
             resolve(v)
         }
+
+        pendingDone?.(false)
+        pendingDone = done
 
         dialog.setContent(
             <box
