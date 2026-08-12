@@ -73,15 +73,31 @@ let lockSourceStarted = false
 // object the handler id belongs to)
 let lockKb: Gdk.Device | null = null
 let lockHandlerIds: number[] = []
+// when no keyboard exists at shell start, the seat's device-added
+// signal re-runs the ensure (hotplug)
+let lockSeat: Gdk.Seat | null = null
+let lockSeatHandlerId = 0
 
 // connect once; the seat's keyboard device lives for the whole session
 export function ensureLockSource(): void {
     if (lockSourceStarted) return
-    const kb = Gdk.Display.get_default()?.get_default_seat()?.get_keyboard()
+    const seat = Gdk.Display.get_default()?.get_default_seat()
+    const kb = seat?.get_keyboard()
     if (!kb) {
         // latch only on success: a keyboard appearing after shell start
-        // (hotplug) must not kill lock-key OSD for the whole session
-        console.error("lock keys: no GDK keyboard device, will retry on next ensure")
+        // (hotplug) must not kill lock-key OSD for the whole session —
+        // re-ensure when the seat gains a device
+        console.error("lock keys: no GDK keyboard device, will retry on device-added")
+        if (seat && !lockSeatHandlerId) {
+            lockSeat = seat
+            lockSeatHandlerId = connect(seat, "device-added", () => {
+                if (!seat.get_keyboard()) return
+                disconnect(seat, lockSeatHandlerId)
+                lockSeat = null
+                lockSeatHandlerId = 0
+                ensureLockSource()
+            })
+        }
         return
     }
     lockSourceStarted = true
@@ -272,6 +288,11 @@ export function dispose() {
         for (const id of lockHandlerIds) disconnect(lockKb, id)
         lockKb = null
         lockHandlerIds = []
+    }
+    if (lockSeat && lockSeatHandlerId) {
+        disconnect(lockSeat, lockSeatHandlerId)
+        lockSeat = null
+        lockSeatHandlerId = 0
     }
     lockSourceStarted = false
     if (hyprlandObj && hyprlandLayoutHandler) {

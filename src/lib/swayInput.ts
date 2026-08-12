@@ -78,12 +78,18 @@ function connect(path: string, handlers: Handlers, attempt: number) {
     const gen = generation
     const client = new Gio.SocketClient()
     client.connect_async(Gio.UnixSocketAddress.new(path), null, (_c, res) => {
-        if (gen !== generation) return
+        // connect_finish must run even when teardown bumped the
+        // generation mid-flight — dropping the async result
+        // unfinalised leaks the pending operation
         let conn: Gio.SocketConnection
         try {
             conn = client.connect_finish(res)
         } catch {
             return retry(path, handlers, attempt)
+        }
+        if (gen !== generation) {
+            conn.close(null)
+            return
         }
         activeConn = conn
         const out = conn.get_output_stream()
