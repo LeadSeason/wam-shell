@@ -268,8 +268,11 @@ export default function QSettings() {
             // shell runs (an NM profile appears on its vendor app's
             // first connect)
             const target = arg === "vpn" ? vpnPaneName(firstActiveId()) : arg
-            setPane(target)
-            return `QSettings, pane ${target}`
+            // gtk_stack_set_visible_child_name with a nonexistent child
+            // warns and keeps the current pane — fall back to main
+            const known = paneStack?.get_child_by_name(target) ? target : "main"
+            setPane(known)
+            return `QSettings, pane ${known}`
         },
     })
 

@@ -38,6 +38,17 @@ function stamp(): string {
     return GLib.DateTime.new_now_local().format("%Y-%m-%d_%H-%M-%S") ?? "capture"
 }
 
+// stamp() has 1s resolution, so two captures in the same second would
+// silently overwrite: take the first name nobody is using
+function uniquePath(dir: string, name: string, ext: string): string {
+    let path = `${dir}/${name}.${ext}`
+    let n = 1
+    while (GLib.file_test(path, GLib.FileTest.EXISTS)) {
+        path = `${dir}/${name}_${++n}.${ext}`
+    }
+    return path
+}
+
 function outputDir(kind: "Screenshots" | "Recordings"): string {
     const base =
         GLib.get_user_special_dir(
@@ -86,7 +97,8 @@ async function geometryFor(mode: ShotMode): Promise<string | null | undefined> {
             return `${at[0]},${at[1]} ${size[0]}x${size[1]}`
         }
         if (Config.desktopSession === "sway" || Config.desktopSession === "i3") {
-            const tree = JSON.parse(await execAsync(["swaymsg", "-t", "get_tree"]))
+            const msg = Config.desktopSession === "sway" ? "swaymsg" : "i3-msg"
+            const tree = JSON.parse(await execAsync([msg, "-t", "get_tree"]))
             const focused = findFocused(tree)
             const r = focused?.rect
             if (!r) return undefined
@@ -116,7 +128,8 @@ async function focusedOutput(): Promise<string | null> {
             return focused?.name ?? null
         }
         if (Config.desktopSession === "sway" || Config.desktopSession === "i3") {
-            const outputs = JSON.parse(await execAsync(["swaymsg", "-t", "get_outputs"]))
+            const msg = Config.desktopSession === "sway" ? "swaymsg" : "i3-msg"
+            const outputs = JSON.parse(await execAsync([msg, "-t", "get_outputs"]))
             const focused = Array.isArray(outputs) ? outputs.find(o => o?.focused) : null
             return focused?.name ?? null
         }
@@ -190,7 +203,7 @@ export async function screenshot(mode: ShotMode = "region"): Promise<string> {
     const geometry = await geometryFor(mode)
     if (geometry === undefined && mode !== "screen") return "cancelled"
 
-    const path = `${outputDir("Screenshots")}/Screenshot_${stamp()}.png`
+    const path = uniquePath(outputDir("Screenshots"), `Screenshot_${stamp()}`, "png")
     // no geometry means the whole screen, and "the screen" is the one
     // being looked at — see focusedOutput
     const argv = geometry ? ["grim", "-g", geometry, path] : ["grim", ...(await outputArgs()), path]
@@ -236,7 +249,7 @@ export async function toggleRecording(mode: ShotMode = "screen"): Promise<string
     const geometry = await geometryFor(mode)
     if (geometry === undefined && mode !== "screen") return "cancelled"
 
-    const path = `${outputDir("Recordings")}/Recording_${stamp()}.mp4`
+    const path = uniquePath(outputDir("Recordings"), `Recording_${stamp()}`, "mp4")
     const argv = ["wf-recorder", "-f", path]
     // same as the screenshot path: a region is a region, and everything
     // else means the output being looked at rather than all of them

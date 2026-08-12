@@ -248,6 +248,10 @@ function pruneThumbs() {
 }
 
 // binary fetch (the shared googleRequest is JSON-shaped); best-effort
+// send_and_read buffers the whole body, so cap it and reject non-image
+// payloads the way coverArt.ts's fetchCover does — a bogus thumbnail
+// url must not balloon memory
+const MAX_THUMB_BYTES = 10 * 1024 * 1024
 function fetchThumb(videoId: string, url: string, done: () => void) {
     const path = thumbPath(videoId)
     if (isFile(path)) return done()
@@ -255,8 +259,16 @@ function fetchThumb(videoId: string, url: string, done: () => void) {
     if (!msg) return done()
     thumbSession.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (_s, res) => {
         try {
+            const headers = msg.get_response_headers()
+            const type = headers.get_one("Content-Type") ?? ""
+            if (!type.startsWith("image/")) return done()
+            // reject a declared oversized body before finishing; the
+            // read is still fully buffered, so the byte check below
+            // stays as the actual enforcement
+            const declared = Number(headers.get_one("Content-Length")) || 0
+            if (declared > MAX_THUMB_BYTES) return done()
             const bytes = thumbSession.send_and_read_finish(res)
-            if (msg.get_status() === 200 && bytes) {
+            if (msg.get_status() === 200 && bytes && bytes.get_size() <= MAX_THUMB_BYTES) {
                 trackHttp(url, bytes.get_size())
                 // done waits for the write to land: the caller isFile-
                 // checks the thumb before pointing the row at it

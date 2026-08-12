@@ -48,12 +48,14 @@ export function VpnSwitch({ backend }: { backend: VpnBackend }) {
             onNotifyActive={self => {
                 // idempotent: binding syncs must not toggle
                 if (self.active === isConnected(status.get())) return
-                // same semantics as the quick settings toggle: anything
-                // but fully disconnected → disconnect (also the only way
-                // to abort a connecting attempt); a flip while already
-                // disconnecting is ignored
+                // same semantics as the quick settings toggle: "blocked"
+                // (the Failed hold) is down in every way that matters —
+                // offer connect so a retry is not swallowed; anything
+                // else but fully disconnected → disconnect (also the
+                // only way to abort a connecting attempt); a flip while
+                // already disconnecting is ignored
                 const s = status.get().state
-                if (s === "disconnected") backend.connect()
+                if (s === "disconnected" || s === "blocked") backend.connect()
                 else if (s !== "disconnecting") backend.disconnect()
             }}
         />

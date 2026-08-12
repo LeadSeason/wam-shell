@@ -132,25 +132,34 @@ watch.subscribe(onSnapshot)
 // Spawned by hand (not execAsync) so an in-flight connect stays
 // killable — metrics has no wrapper for this, same as nm/watch.ts
 function runProton(args: string[], seq: number): Promise<void> {
-    const proc = Gio.Subprocess.new(
-        ["protonvpn", ...args],
-        Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
-    )
-    if (args[0] === "connect") connectProc = proc
-    const done = new Promise<void>((resolve, reject) =>
-        proc.communicate_utf8_async(null, null, (_p, res) => {
-            if (proc === connectProc) connectProc = null
-            try {
-                proc.communicate_utf8_finish(res)
-                if (proc.get_successful()) resolve()
-                // no exit status here: a killed process never exited,
-                // and get_exit_status asserts WIFEXITED
-                else reject(new Error(`protonvpn ${args[0]} failed`))
-            } catch (e) {
-                reject(e)
-            }
-        }),
-    )
+    // the spawn itself can throw (the CLI uninstalled mid-session):
+    // reject instead, so the shared failure path below applies Failed +
+    // failhold and connect()'s finally resets busy — an escaping throw
+    // would leave busy stuck on forever
+    let done: Promise<void>
+    try {
+        const proc = Gio.Subprocess.new(
+            ["protonvpn", ...args],
+            Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
+        )
+        if (args[0] === "connect") connectProc = proc
+        done = new Promise<void>((resolve, reject) =>
+            proc.communicate_utf8_async(null, null, (_p, res) => {
+                if (proc === connectProc) connectProc = null
+                try {
+                    proc.communicate_utf8_finish(res)
+                    if (proc.get_successful()) resolve()
+                    // no exit status here: a killed process never exited,
+                    // and get_exit_status asserts WIFEXITED
+                    else reject(new Error(`protonvpn ${args[0]} failed`))
+                } catch (e) {
+                    reject(e)
+                }
+            }),
+        )
+    } catch (e) {
+        done = Promise.reject(e)
+    }
     return done
         .then(() => watch.refresh())
         .catch(() => {
@@ -175,6 +184,14 @@ function runProton(args: string[], seq: number): Promise<void> {
 
 function connect(args: string[] = []) {
     if (busy.get()) return
+    // "blocked" (the Failed hold) IS connectable — refusing it would
+    // swallow a retry for the whole 10s hold. Anything else (a live
+    // tunnel, an in-flight attempt) is not: the location picker's
+    // selects land here too, and this is the gate that stops a country
+    // pick against a live tunnel from flashing Failed and locking the
+    // switch for 10s
+    const s = status.get().state
+    if (s !== "disconnected" && s !== "blocked") return
     const seq = ++actionSeq
     setBusy(true)
     applyStatus({ state: "connecting", stateLabel: "Connecting", server: "" })
@@ -201,7 +218,10 @@ const backend: VpnBackend = {
     status,
 
     connect: () => {
-        if (status.get().state !== "disconnected") return
+        // "blocked" (the Failed hold) is down in every way that
+        // matters; refusing it would swallow a retry click
+        const s = status.get().state
+        if (s !== "disconnected" && s !== "blocked") return
         connect(lastCountry ? ["--country", lastCountry] : [])
     },
     // never refused (no busy guard): this is also the only way to abort
@@ -268,7 +288,10 @@ const backend: VpnBackend = {
         // (`servers` prints a web link), and connect --country picks
         // the fastest server in it — the granularity the CLI has.
         // Fastest (bare connect) and Random head the list; both clear
-        // the remembered country so the pill's connect follows the pick
+        // the remembered country so the pill's connect follows the pick.
+        // Picks route through connect(), which refuses while a tunnel
+        // is up or in flux — a connect against a LIVE tunnel just
+        // fails, flashing Failed and locking the switch for 10s
         list: countries.as(list => [
             {
                 id: "fastest",

@@ -51,10 +51,10 @@ function cropToSlot(scaled: GdkPixbuf.Pixbuf): Gdk.Texture {
  */
 function loadArt(path: string): Accessor<Gdk.Texture | null> {
     const [texture, setTexture] = createState<Gdk.Texture | null>(null)
-    let cancelled = false
-    onCleanup(() => {
-        cancelled = true
-    })
+    // cancelled on row teardown, so a destroyed row's decode does not run
+    // to completion (a dismissed notification, a re-keyed rebuild)
+    const cancellable = new Gio.Cancellable()
+    onCleanup(() => cancellable.cancel())
     try {
         const [, srcW, srcH] = GdkPixbuf.Pixbuf.get_file_info(path)
         if (!srcW || !srcH) return texture
@@ -65,11 +65,11 @@ function loadArt(path: string): Accessor<Gdk.Texture | null> {
             Math.ceil(srcW * scale),
             Math.ceil(srcH * scale),
             true,
-            null,
+            cancellable,
             (_s, res) => {
-                // the row can be destroyed before the decode lands (a
-                // dismissed notification, a re-keyed rebuild)
-                if (cancelled) return
+                // a cancelled decode finishes with an error, which the
+                // catch below reads as "no artwork"
+                if (cancellable.is_cancelled()) return
                 try {
                     const scaled = GdkPixbuf.Pixbuf.new_from_stream_finish(res)
                     if (scaled) setTexture(cropToSlot(scaled))

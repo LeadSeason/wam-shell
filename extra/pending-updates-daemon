@@ -5,7 +5,37 @@ set -euo pipefail
 # $XDG_CACHE_HOME, else ~/.cache). Never fall back to /tmp: a
 # predictable world-writable path is a symlink/planted-content hazard
 # on shared machines.
-CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/wam-shell"
+#
+# The instance name is a flat top-level key in the user's config —
+# Config.instanceCacheDir is <cache>/<instance_name>, so a renamed
+# instance reads a subdir nothing else writes. Parse it the way
+# scripts/wam's resolve_instance_paths does: sed, no toml reader, last
+# assignment wins, comment lines cannot match. Only the XDG candidates
+# are probed: this script is installed to ~/.local/bin (see the service
+# unit), so the repo-config fallbacks of Config.findConfigFile have no
+# reliable path here.
+INSTANCE="wam-shell"
+for f in "${XDG_CONFIG_HOME:-$HOME/.config}/wam-shell/config.toml" \
+    "$HOME/.config/wam-shell/config.toml"; do
+    if [[ -r "$f" ]]; then
+        name="$(sed -n \
+            -e 's/^[[:space:]]*instance_name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' \
+            -e "s/^[[:space:]]*instance_name[[:space:]]*=[[:space:]]*'\([^']*\)'.*/\1/p" \
+            "$f" | tail -1)"
+        if [[ -n "$name" ]]; then
+            INSTANCE="$name"
+        fi
+        break
+    fi
+done
+
+# GLib ignores a non-absolute XDG_CACHE_HOME; mirror that
+CACHE="${XDG_CACHE_HOME:-}"
+case "$CACHE" in
+    /*) ;;
+    *) CACHE="$HOME/.cache" ;;
+esac
+CACHE_DIR="$CACHE/$INSTANCE"
 mkdir -p "$CACHE_DIR"
 
 UPDATE_FILE="$CACHE_DIR/system_updates"

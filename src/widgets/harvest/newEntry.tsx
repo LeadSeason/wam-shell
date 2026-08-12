@@ -54,6 +54,12 @@ export function NewEntryForm({ onCancel }: { onCancel: () => void }) {
     onCleanup(unsubProjects)
 
     function start() {
+        // the actions no-op silently while a mutation is in flight or
+        // auth is disabled: bailing here keeps the notes/duration the
+        // user typed instead of clearing them for an entry that was
+        // never created. The Start button is sensitive-gated on the
+        // same state; the duration entry's onActivate is not
+        if (Harvest.busy.get() || Harvest.authDisabled.get()) return
         const p = Harvest.projects.get().find(p => p.projectId === projectSel.get())
         const t = p?.tasks.find(t => t.taskId === taskSel.get())
         if (!p || !t) return

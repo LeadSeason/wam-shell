@@ -43,6 +43,8 @@ test("safeMarkup: raw angle brackets are escaped", () => {
 test("safeMarkup: anchor tags are stripped, link text kept", () => {
     // Pango has no <a> support; web notifications wrap links in anchors
     eq(safeMarkup('<a href="https://app.todoist.com/">app.todoist.com</a>'), "app.todoist.com")
+    // a bare anchor (no attributes) strips too
+    eq(safeMarkup("<a>example.com</a>"), "example.com")
     // surrounding text (incl. RTL) and other valid markup survive
     eq(
         safeMarkup('بسم الله <a href="https://x.example/">x.example</a> <b>Today 09:00</b>'),

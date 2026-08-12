@@ -181,11 +181,36 @@ function addrDisplay(list: ImapValue): string {
 // every "* <seq> FETCH (... ENVELOPE (...) ... UID <uid>)" block in the
 // reply. The UID pair may sit anywhere in the top-level list: the
 // bridge appends it after the envelope ("... UID 42"), RFC samples
-// show it before — key off the keyword, not the position
+// show it before — key off the keyword, not the position.
+//
+// The marker scan walks the text tracking quoted strings (same
+// quote/escape rules as readValue) rather than indexOf: a subject
+// literally containing " FETCH (" must not be taken for a new block.
+// Flattened literals can still carry raw unescaped quotes — an
+// accepted edge, the same one readValue has
 export function parseFetchEnvelopes(text: string): Envelope[] {
     const out: Envelope[] = []
     let i = 0
-    while ((i = text.indexOf(" FETCH (", i)) !== -1) {
+    let inQuote = false
+    while (i < text.length) {
+        const c = text[i]
+        if (inQuote) {
+            if (c === "\\") i += 2
+            else if (c === '"') {
+                inQuote = false
+                i++
+            } else i++
+            continue
+        }
+        if (c === '"') {
+            inQuote = true
+            i++
+            continue
+        }
+        if (!text.startsWith(" FETCH (", i)) {
+            i++
+            continue
+        }
         const [fields, next] = readList(text, i + " FETCH ".length)
         i = next
         if (!Array.isArray(fields)) continue
@@ -315,7 +340,7 @@ async function readChunk(
         buf += line + "\r\n"
         if (tag === "") return buf
         if (line.startsWith(tag + " ")) return buf
-        const m = line.match(/\{(\d+)\}$/)
+        const m = line.match(/\{(\d+)\+?\}$/)
         if (m) buf += await readBytes(input, Number(m[1]), cancellable)
     }
 }

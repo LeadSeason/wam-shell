@@ -1,4 +1,4 @@
-import { Accessor, createBinding, createState, Setter } from "gnim"
+import { Accessor, createBinding, Setter } from "gnim"
 import { DropdownButton } from "./ToggleButton"
 import SwayGaps from "../../../lib/swayGaps"
 import { Gtk } from "ags/gtk4"
@@ -23,11 +23,6 @@ export function SwayGapsButton({
     if (!Config.swayGaps) return <></>
     if (Config.desktopSession !== "sway" && Config.desktopSession !== "i3") return <></>
     const swayGaps = SwayGaps.get_default()
-
-    let [active, setActive] = createState(false)
-    const toggle = () => {
-        setActive(!active.get())
-    }
 
     return (
         <DropdownButton

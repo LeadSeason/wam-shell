@@ -1,6 +1,5 @@
 import { Gtk, Gdk } from "ags/gtk4"
 import GLib from "gi://GLib?version=2.0"
-import { timeout } from "ags/time"
 import AstalWp from "gi://AstalWp?version=0.1"
 import { createBinding, createComputed, createState, onCleanup, With } from "gnim"
 import CommandRegistry from "../../../lib/requestHandler"
@@ -17,6 +16,7 @@ import { alarming } from "../../../lib/sleepTimer"
 import { execAsync, timeoutAdd, sourceRemove } from "../../../lib/metrics"
 import Config, { pendingUpdates } from "../../../config"
 import { pressable } from "../../pressable"
+import { createDelayer } from "../../delay"
 import { profileInfo } from "../../QSettings/toggleSection/powerProfile"
 
 const registry = CommandRegistry.get_default()
@@ -30,11 +30,14 @@ const registry = CommandRegistry.get_default()
 function audioWidget(driver: AstalWp.Endpoint): Gtk.MenuButton {
     // reactivity, Scrollable, Right click to mute
     const [visible, setVisible] = createState<boolean>(false)
+    // the delayer's timers die with the bar (monitor hotplug) — and it
+    // goes through lib/metrics, which timeout() from ags/time does not
+    const delay = createDelayer("bar:audioReveal")
     let count = 0
     const show = () => {
         setVisible(true)
         count++
-        timeout(750, () => {
+        delay(750, () => {
             count--
             if (count === 0 && visible.get()) {
                 setVisible(false)
@@ -116,11 +119,13 @@ function brightnessWidget() {
     const previous = createBinding(brightness, "previous")
 
     const [visible, setVisible] = createState<boolean>(false)
+    // cancelled on bar teardown, same as audioWidget above
+    const delay = createDelayer("bar:brightnessReveal")
     let count = 0
     const show = () => {
         setVisible(true)
         count++
-        timeout(750, () => {
+        delay(750, () => {
             count--
             if (count === 0 && visible.get()) {
                 setVisible(false)

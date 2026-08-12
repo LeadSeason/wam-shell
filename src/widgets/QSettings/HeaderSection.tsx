@@ -230,10 +230,15 @@ function useUptimeLine(): { line: Accessor<string> } {
     })
     // createPoll is lazy: subscribing only while the popup is open stops
     // the 30s wakes entirely, and the open-time compute is fresher than
-    // anything a background interval would have produced
+    // anything a background interval would have produced. Skipped when a
+    // battery is present — the battery line wins and the poll would be
+    // pure wake-ups (a battery appearing at runtime flips the line back,
+    // and the next popup open polls again)
+    const bat = AstalBattery.get_default()
     let stop: (() => void) | null = null
     const unsub = qsVisible.subscribe(() => {
-        if (qsVisible.get() && !stop) stop = poll.subscribe(() => setLine(poll.get()))
+        if (qsVisible.get() && !stop && !bat.isPresent)
+            stop = poll.subscribe(() => setLine(poll.get()))
         if (!qsVisible.get() && stop) {
             stop()
             stop = null
@@ -251,7 +256,16 @@ function useUptimeLine(): { line: Accessor<string> } {
 
 export function HeaderSection() {
     const bat = AstalBattery.get_default()
-    const { line } = bat.isPresent ? useBatteryLine() : useUptimeLine()
+    // both lines are built so isPresent can flip the pick at runtime (a
+    // UPS coming online mid-session): the battery line's bindings simply
+    // never fire while there is no battery, and the uptime poll stays
+    // gated off while there is one
+    const { line: batteryLine } = useBatteryLine()
+    const { line: uptimeLine } = useUptimeLine()
+    const line = createComputed(
+        [createBinding(bat, "isPresent"), batteryLine, uptimeLine],
+        (present, battery, uptime) => (present ? battery : uptime),
+    )
 
     // loginctl needs the session id; the compositor's locker handles the
     // actual Lock signal. Empty when not under systemd-logind.

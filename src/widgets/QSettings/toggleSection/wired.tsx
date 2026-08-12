@@ -147,11 +147,14 @@ function WiredPane({
         execAsync(["nmcli", "-t", "device", "show", iface])
             .then(out => {
                 const get = (key: string) =>
-                    // values may contain colons (IPv6) — split at the first
+                    // values may contain colons (IPv6) — split at the
+                    // first; terse mode escapes literal ':' as '\:',
+                    // so unescape the extracted value
                     out
                         .split("\n")
                         .find(l => l.startsWith(key))
-                        ?.slice(key.length + 1) ?? ""
+                        ?.slice(key.length + 1)
+                        .replace(/\\:/g, ":") ?? ""
                 setDetails({
                     iface,
                     ipv4: get("IP4.ADDRESS[1]"),

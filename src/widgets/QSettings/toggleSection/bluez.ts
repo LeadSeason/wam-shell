@@ -60,8 +60,8 @@ export function removeDeviceAsync(device: AstalBluetooth.Device): void {
     )
 }
 
-// the adapter's own object path is not exposed; resolve it once from
-// the ObjectManager tree by matching the adapter's address (devices[0]
+// the adapter's own object path is not exposed; resolve it from the
+// ObjectManager tree by matching the adapter's address (devices[0]
 // belongs to a random adapter on multi-adapter setups, and an empty
 // device list says nothing)
 let adapterObjectPath = "/org/bluez/hci0"
@@ -69,8 +69,10 @@ let adapterPathResolved = false
 
 function resolveAdapterPath() {
     if (adapterPathResolved) return
-    adapterPathResolved = true
     const wanted = bluetooth.adapter?.address?.toUpperCase()
+    // no adapter yet (rfkill'd, bluez down at import): leave the flag
+    // unset so the next startDiscoveryAsync retries the lookup instead
+    // of staying pinned to the /org/bluez/hci0 guess
     if (!wanted) return
     Gio.DBus.system.call(
         "org.bluez",
@@ -99,6 +101,7 @@ function resolveAdapterPath() {
                     const addr = adapter?.lookup_value("Address", null)?.get_string()[0]
                     if (addr && addr.toUpperCase() === wanted) {
                         adapterObjectPath = path
+                        adapterPathResolved = true
                         return
                     }
                 }
@@ -129,6 +132,9 @@ resolveAdapterPath()
 // discovery start/stop must also be async: the sync versions block the
 // main loop (observed 25s) when bluez is busy e.g. pairing
 export function startDiscoveryAsync(retried = false): void {
+    // retry the adapter path lookup until it succeeds: the adapter can
+    // be absent at import time (rfkill, bluez restart) and appear later
+    resolveAdapterPath()
     Gio.DBus.system.call(
         "org.bluez",
         adapterPath(),

@@ -4,14 +4,18 @@ import Config from "../../../config"
 import { createIconResolver } from "../../../lib/appIcon"
 import { createScrollStepper, stepThrough } from "../../../lib/scrollStep"
 import { matchesPlayingWindow, playingPlayers, playingPulse } from "../../../lib/mpris"
-import { Accessor, For, With, createBinding, createComputed, onCleanup } from "gnim"
+import { Accessor, For, With, createBinding, createComputed, createRoot, onCleanup } from "gnim"
 import { Gtk } from "ags/gtk4"
 import GObject from "ags/gobject"
 
 // per-workspace icon-box memo: keyed by workspace id, value is the last
 // built box + the icon list it was built from. Lets a focus/title-only
 // tree change skip rebuilding every workspace's icons.
-const wsIconCache = new Map<number, { key: string; box: Gtk.Box }>()
+// `dispose` releases the box's `wss` prop binding: the boxes are built
+// inside an accessor transform that runs from a notify callback, where
+// gnim has no scope to attach the binding's cleanup to (it logs "out of
+// tracking context"), so the cache owns the binding's lifetime.
+const wsIconCache = new Map<number, { key: string; box: Gtk.Box; dispose: () => void }>()
 
 function focus_workspace(sway: Sway, ws: any) {
     sway.message(`mouse_warping output; workspace number ${ws.num}; mouse_warping container`)
@@ -93,7 +97,10 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
     // destroyed widgets
     const cacheKeys = new Set<number>()
     onCleanup(() => {
-        for (const id of cacheKeys) wsIconCache.delete(id)
+        for (const id of cacheKeys) {
+            wsIconCache.get(id)?.dispose()
+            wsIconCache.delete(id)
+        }
     })
 
     // connector can be null at construction (monitor still initializing):
@@ -125,11 +132,13 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
     )
 
     // dead workspaces must not accumulate cache entries over the bar's
-    // lifetime: prune whenever the list recomputes
+    // lifetime: prune whenever the list recomputes, releasing the pruned
+    // box's `wss` binding (see the note on wsIconCache)
     const unsubPrune = swayWorkspacesList.subscribe(() => {
         const current = new Set(swayWorkspacesList.get().map(ws => ws.id))
         for (const id of [...cacheKeys]) {
             if (!current.has(id)) {
+                wsIconCache.get(id)?.dispose()
                 wsIconCache.delete(id)
                 cacheKeys.delete(id)
             }
@@ -203,21 +212,31 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
                         const key = iconNames.join("\u0000")
                         const cached = wsIconCache.get(workspace.id)
                         if (cached && cached.key === key) return cached.box
-                        const box = (
-                            <box
-                                cssClasses={createBinding(sway, "wss").as(wss =>
-                                    wss.find(ws => ws.id === workspace.id)?.urgent
-                                        ? ["urgent"]
-                                        : [],
-                                )}
-                                $={self => {
-                                    iconNames.forEach(name => {
-                                        self.append((<image iconName={name} />) as Gtk.Widget)
-                                    })
-                                }}
-                            />
-                        ) as Gtk.Box
-                        wsIconCache.set(workspace.id, { key, box })
+                        // a replaced box is never pruned either: release
+                        // its binding here (see the note on wsIconCache)
+                        cached?.dispose()
+                        // own root scope: built from a notify callback,
+                        // there is no ambient scope for gnim to attach
+                        // the cssClasses binding's cleanup to
+                        let disposeBox = () => {}
+                        const box = createRoot(dispose => {
+                            disposeBox = dispose
+                            return (
+                                <box
+                                    cssClasses={createBinding(sway, "wss").as(wss =>
+                                        wss.find(ws => ws.id === workspace.id)?.urgent
+                                            ? ["urgent"]
+                                            : [],
+                                    )}
+                                    $={self => {
+                                        iconNames.forEach(name => {
+                                            self.append((<image iconName={name} />) as Gtk.Widget)
+                                        })
+                                    }}
+                                />
+                            ) as Gtk.Box
+                        })
+                        wsIconCache.set(workspace.id, { key, box, dispose: disposeBox })
                         cacheKeys.add(workspace.id)
                         return box
                     })

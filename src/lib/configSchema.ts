@@ -213,7 +213,7 @@ export function numberList(
     if (
         !Array.isArray(value) ||
         value.length === 0 ||
-        value.some((p: unknown) => typeof p !== "number" || p <= 0)
+        value.some((p: unknown) => typeof p !== "number" || !Number.isFinite(p) || p <= 0)
     ) {
         report(
             `Config "${label}" must be a non-empty list of positive numbers, got ${JSON.stringify(value)}`,
