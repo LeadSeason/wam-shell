@@ -41,7 +41,6 @@ export function uses12Hour(format: TimeFormat): boolean {
 }
 
 const MINUTE_MS = 60_000
-const DAY_MS = 24 * 60 * MINUTE_MS
 
 /** `7:30`, `07:30`, `7:30pm`, `7:30 PM`, `19:30` */
 const CLOCK = /^(\d{1,2}):(\d{2})\s*([ap]\.?m\.?)?$/i
@@ -95,8 +94,13 @@ export function parseTimerInput(text: string, nowMs: number, twelveHour: boolean
         if (delta <= 0 && pm > 0) delta = pm
     }
 
-    // already gone today (or exactly now): they mean tomorrow
-    while (delta <= 0) delta += DAY_MS
+    // already gone today (or exactly now): they mean tomorrow. Advance
+    // the calendar date, not by 24h of milliseconds — an ms offset
+    // lands an hour off across a DST transition
+    while (delta <= 0) {
+        target.setDate(target.getDate() + 1)
+        delta = target.getTime() - nowMs
+    }
 
     return delta / MINUTE_MS
 }

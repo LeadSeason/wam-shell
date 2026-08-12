@@ -72,7 +72,8 @@ export function safeMarkup(s: string): string {
         return s
     } catch {
         try {
-            const noAnchors = s.replace(/<a\s[^>]*>/g, "").replaceAll("</a>", "")
+            // \b, not \s: a bare `<a>text</a>` (no attributes) strips too
+            const noAnchors = s.replace(/<a\b[^>]*>/g, "").replaceAll("</a>", "")
             Pango.parse_markup(noAnchors, -1, "\x00")
             return noAnchors
         } catch {

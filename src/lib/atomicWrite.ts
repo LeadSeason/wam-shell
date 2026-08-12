@@ -88,5 +88,13 @@ export function writeFileAtomic(
     const prev = writeChains.get(path) ?? Promise.resolve()
     const next = prev.then(run, run)
     writeChains.set(path, next)
+    // drop the entry once the tail settles and nothing newer has queued
+    // behind it — otherwise every distinct path leaves a permanent entry
+    // holding its resolved tail promise. then(cleanup, cleanup) rather
+    // than .finally: the derived promise must never reject unhandled
+    const cleanup = () => {
+        if (writeChains.get(path) === next) writeChains.delete(path)
+    }
+    next.then(cleanup, cleanup)
     return next
 }
