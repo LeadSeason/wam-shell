@@ -82,9 +82,8 @@ function StatTile({
 }) {
     // the holder is a FlowBoxChild, not the tile box: a FlowBox lays out
     // only visible FlowBoxChildren, so `visible` on the inner box leaves
-    // the wrapper behind as a full blank cell in the homogeneous grid —
-    // with show_stats off that's a hole in the MIDDLE of the grid now
-    // that the netstats tiles follow the stats ones (see vpn.tsx's note)
+    // the wrapper behind as a full blank cell in the homogeneous grid
+    // (see vpn.tsx's note)
     return (
         <Gtk.FlowBoxChild visible={visible}>
             <box cssClasses={["statTile"]} spacing={10}>
@@ -116,8 +115,36 @@ function StatTile({
     )
 }
 
-// big-number tiles: power details and (moved from the main pane) the
-// performance stats, in one 2-column grid
+// one titled group of tiles: an eyebrow (the panes' shared
+// .paneSection) over its own 2-column grid. The whole section hides
+// when every tile in it is gated off (no battery, show_stats off, …)
+function TileSection({
+    title,
+    visible = true,
+    children,
+}: {
+    title: string
+    visible?: boolean | Accessor<boolean>
+    children: Gtk.Widget | Gtk.Widget[]
+}) {
+    return (
+        <box orientation={Gtk.Orientation.VERTICAL} spacing={8} visible={visible}>
+            <label cssClasses={["paneSection"]} xalign={0} label={title} hexpand />
+            <Gtk.FlowBox
+                maxChildrenPerLine={2}
+                homogeneous
+                selectionMode={Gtk.SelectionMode.NONE}
+                columnSpacing={8}
+                rowSpacing={8}
+            >
+                {children}
+            </Gtk.FlowBox>
+        </box>
+    )
+}
+
+// big-number tiles grouped by what they measure: battery, CPU, the
+// system stats (moved from the main pane) and the network totals
 function PowerDetails() {
     const bat = AstalBattery.get_default()
 
@@ -136,13 +163,7 @@ function PowerDetails() {
 
     return (
         <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
-            <Gtk.FlowBox
-                maxChildrenPerLine={2}
-                homogeneous
-                selectionMode={Gtk.SelectionMode.NONE}
-                columnSpacing={8}
-                rowSpacing={8}
-            >
+            <TileSection title={"Battery"} visible={bat.isPresent}>
                 <StatTile
                     icon="battery-symbolic"
                     big={watts.as(r => `${Math.abs(r).toFixed(1)} W`)}
@@ -209,6 +230,11 @@ function PowerDetails() {
                     sub={"consumed today"}
                     visible={Energy.hasBatt}
                 />
+            </TileSection>
+            <TileSection
+                title={"CPU"}
+                visible={Power.hasFreq || Power.hasTemp || Power.hasFan || Power.hasPkg}
+            >
                 <StatTile
                     icon="cpu-symbolic"
                     big={Power.freqAvgMhz.as(m => `${(m / 1000).toFixed(1)} GHz`)}
@@ -240,7 +266,29 @@ function PowerDetails() {
                     sub={"CPU package"}
                     visible={Power.hasPkg}
                 />
-                {/* moved stats (gated by show_stats) */}
+            </TileSection>
+            {/* full-width tile: the active profile's energy preference,
+            live — two sub-size rows so the tile matches the others'
+            height. The governor is dropped: on pstate systems it maps
+            1:1 to the profile anyway */}
+            <box cssClasses={["statTile"]} spacing={10} visible={Power.epp.as(e => e !== "")}>
+                <image iconName="cpu-symbolic" pixelSize={20} valign={Gtk.Align.CENTER} />
+                <box
+                    orientation={Gtk.Orientation.VERTICAL}
+                    spacing={2}
+                    valign={Gtk.Align.CENTER}
+                    hexpand
+                >
+                    <label cssClasses={["statTileSub"]} xalign={0} label={"Energy preference:"} />
+                    <label
+                        cssClasses={["statTileSub"]}
+                        xalign={0}
+                        label={Power.epp.as(e => (e || "—").replaceAll("_", " "))}
+                    />
+                </box>
+            </box>
+            {/* moved stats (gated by show_stats) */}
+            <TileSection title={"System"} visible={Config.quicksettings.showStats}>
                 <StatTile
                     icon="speedometer-symbolic"
                     big={Sys.cpu.as(c => `${c}%`)}
@@ -275,6 +323,23 @@ function PowerDetails() {
                     visible={Sys.gpu.as(g => g !== null && Config.quicksettings.showStats)}
                 />
                 <StatTile
+                    icon="drive-harddisk-symbolic"
+                    big={Sys.diskRead.as(r => `↓ ${Sys.formatRate(r)}`)}
+                    sub={Sys.diskWrite.as(w => `↑ ${Sys.formatRate(w)}`)}
+                    visible={Config.quicksettings.showStats}
+                />
+                <StatTile
+                    icon="document-open-recent-symbolic"
+                    big={Sys.uptimeSeconds.as(s => Sys.formatUptime(s))}
+                    sub={"uptime"}
+                    visible={Config.quicksettings.showStats}
+                />
+            </TileSection>
+            <TileSection
+                title={"Network"}
+                visible={Config.quicksettings.showStats || Config.netstats.enabled}
+            >
+                <StatTile
                     icon="network-transmit-receive-symbolic"
                     big={Sys.netDown.as(d => `↓ ${Sys.formatRate(d)}`)}
                     sub={Sys.netUp.as(u => `↑ ${Sys.formatRate(u)}`)}
@@ -297,39 +362,7 @@ function PowerDetails() {
                     sub={Net.monthTx.as(b => `month · ↑ ${Net.formatBytes(b)}`)}
                     visible={Config.netstats.enabled}
                 />
-                <StatTile
-                    icon="drive-harddisk-symbolic"
-                    big={Sys.diskRead.as(r => `↓ ${Sys.formatRate(r)}`)}
-                    sub={Sys.diskWrite.as(w => `↑ ${Sys.formatRate(w)}`)}
-                    visible={Config.quicksettings.showStats}
-                />
-                <StatTile
-                    icon="document-open-recent-symbolic"
-                    big={Sys.uptimeSeconds.as(s => Sys.formatUptime(s))}
-                    sub={"uptime"}
-                    visible={Config.quicksettings.showStats}
-                />
-            </Gtk.FlowBox>
-            {/* full-width tile: the active profile's energy preference,
-            live — two sub-size rows so the tile matches the others'
-            height. The governor is dropped: on pstate systems it maps
-            1:1 to the profile anyway */}
-            <box cssClasses={["statTile"]} spacing={10} visible={Power.epp.as(e => e !== "")}>
-                <image iconName="cpu-symbolic" pixelSize={20} valign={Gtk.Align.CENTER} />
-                <box
-                    orientation={Gtk.Orientation.VERTICAL}
-                    spacing={2}
-                    valign={Gtk.Align.CENTER}
-                    hexpand
-                >
-                    <label cssClasses={["statTileSub"]} xalign={0} label={"Energy preference:"} />
-                    <label
-                        cssClasses={["statTileSub"]}
-                        xalign={0}
-                        label={Power.epp.as(e => (e || "—").replaceAll("_", " "))}
-                    />
-                </box>
-            </box>
+            </TileSection>
         </box>
     )
 }
