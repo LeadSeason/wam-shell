@@ -80,7 +80,12 @@ const SCREEN_HEIGHT = smallestMonitorHeight()
 // height (paneFloor below), and this stands in for the window or two
 // before anything can be measured
 const FALLBACK_PANE_HEIGHT = Math.min(520, Math.round(SCREEN_HEIGHT * 0.45))
-// a long list scrolls inside its own pane rather than growing the popup
+// a long list scrolls inside its own pane rather than growing the
+// popup. This is the build-time cap and the floor for it: once a pane
+// switch has been drawn, the paneSettled subscription below raises the
+// cap to what the card already occupies (floor minus the pane's
+// chrome), so shorter-than-the-fold content uses the dead space under
+// the card instead of scrolling next to it
 const MAX_PANE_HEIGHT = Math.min(520, Math.round(SCREEN_HEIGHT * 0.5))
 
 export default function QSettings() {
@@ -125,6 +130,36 @@ export default function QSettings() {
             settleSource = null
         }
     })
+
+    // A pane's scroller should fill the CARD before it scrolls. The
+    // fixed MAX_PANE_HEIGHT cap left dead space under any pane whose
+    // content was taller than 520px but shorter than the floor the
+    // stack is held at — the power pane's last tile row sat below the
+    // scroll fold with a hand's width of blank under it. At settle time
+    // the switch has already been drawn (the idle sits below redraw
+    // priority), so the pane's chrome — header, the wifi pane's
+    // airplane row — has a real height, and the cap can be exactly
+    // "what the card already occupies minus the chrome": taller content
+    // still scrolls, and the popup never grows.
+    onCleanup(
+        paneSettled.subscribe(() => {
+            if (paneSettled.get() === "main" || !win?.is_visible() || !paneStack) return
+            const paneBox = paneStack.get_visible_child()
+            if (!(paneBox instanceof Gtk.Box)) return
+            let scroller: Gtk.ScrolledWindow | null = null
+            let children = 0
+            let chrome = 0
+            for (let c = paneBox.get_first_child(); c; c = c.get_next_sibling()) {
+                children++
+                if (c instanceof Gtk.ScrolledWindow) scroller = c
+                else chrome += c.get_height()
+            }
+            if (!scroller || children < 2) return
+            chrome += paneBox.get_spacing() * (children - 1)
+            const cap = paneBox.get_height() - chrome
+            if (cap > 0) scroller.set_max_content_height(Math.max(MAX_PANE_HEIGHT, cap))
+        }),
+    )
 
     // The floor a short pane (wired, vpn) is held at, so navigating
     // settles the popup instead of yanking the floor out. It is the main
