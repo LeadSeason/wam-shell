@@ -166,13 +166,15 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
                         [createBinding(workspace, "clients"), allClients, playingPlayers],
                         (wsClients, all, ps) => {
                             if (ps.length === 0) return false
-                            // focusHistoryID ranks recency: 0 is the
-                            // most recently focused
+                            // focusHistoryId ranks recency: 0 is the
+                            // most recently focused (hyprctl spells the
+                            // JSON field focusHistoryID; the GObject
+                            // property camelCases to focusHistoryId)
                             const recent = new Map<string, AstalHyprland.Client>()
                             for (const c of all) {
                                 const cls = c.class.toLowerCase()
                                 const cur = recent.get(cls)
-                                if (!cur || c.focusHistoryID < cur.focusHistoryID)
+                                if (!cur || c.focusHistoryId < cur.focusHistoryId)
                                     recent.set(cls, c)
                             }
                             return wsClients.some(c =>
