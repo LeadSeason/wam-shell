@@ -9,6 +9,7 @@ import { Gtk } from "ags/gtk4"
 import Config from "../../../config"
 import * as Power from "../../../lib/powerDetails"
 import * as Sys from "../../../lib/sysstats"
+import * as Net from "../../../lib/netTotals"
 
 const hasPowerprofilesctl = GLib.find_program_in_path("powerprofilesctl") !== null
 
@@ -230,6 +231,23 @@ function PowerDetails() {
                     big={Sys.netDown.as(d => `↓ ${Sys.formatRate(d)}`)}
                     sub={Sys.netUp.as(u => `↑ ${Sys.formatRate(u)}`)}
                     visible={Config.quicksettings.showStats}
+                />
+                {/* cumulative totals: collected around the clock by
+                netTotals, independent of this pane's live-rate poll.
+                Keep `big` SHORT (just the number): a wide label flips
+                the FlowBox to one column and the overflow is clipped,
+                not scrolled — the word goes in `sub` */}
+                <StatTile
+                    icon="network-receive-symbolic"
+                    big={Net.todayRx.as(b => `↓ ${Net.formatBytes(b)}`)}
+                    sub={Net.todayTx.as(b => `today · ↑ ${Net.formatBytes(b)}`)}
+                    visible={Config.netstats.enabled}
+                />
+                <StatTile
+                    icon="x-office-calendar-symbolic"
+                    big={Net.monthRx.as(b => `↓ ${Net.formatBytes(b)}`)}
+                    sub={Net.monthTx.as(b => `month · ↑ ${Net.formatBytes(b)}`)}
+                    visible={Config.netstats.enabled}
                 />
                 <With value={Sys.gpu.as(g => g !== null && Config.quicksettings.showStats)}>
                     {present =>

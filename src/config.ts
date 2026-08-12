@@ -274,6 +274,18 @@ function getIdleInhibitConfig() {
     }
 }
 
+function getNetstatsConfig() {
+    const r = createReader(configData, "netstats", { sectionOnly: true })
+    return {
+        // track cumulative rx/tx per day (lib/netTotals); off = no poll,
+        // no store, and the QS tiles + bar module show nothing
+        enabled: r.bool("enabled", true),
+        // legacy non-[[panel]] bar layout only; panel lists name the
+        // widget directly ("netstats")
+        onPanel: r.bool("on_panel", false),
+    }
+}
+
 function getMediaConfig() {
     const r = createReader(configData, "media")
     return {
@@ -680,6 +692,7 @@ const PANEL_WIDGETS = [
     "sleeptimer",
     "harvest",
     "windowtitle",
+    "netstats",
 ]
 
 function getPanelsConfig(): PanelConfig[] {
@@ -800,6 +813,7 @@ export default class Config {
     static osd = getOsdConfig()
     static notifications = getNotificationsConfig()
     static sleepTimer = getSleepTimerConfig()
+    static netstats = getNetstatsConfig()
     static harvest = getHarvestConfig()
     static calendar = getCalendarConfig()
     static github = getGitHubConfig()

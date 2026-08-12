@@ -26,6 +26,7 @@ variables. Each page below that needs credentials says so.
 - [[Workspaces|Config-Workspaces]]
 - [[Tray|Config-Tray]]
 - [[Media|Config-Media]]
+- [[Net stats|Config-Netstats]] — cumulative bandwidth totals
 - [[Harvest|Config-Harvest]] — time tracking widget (needs a token)
 
 ### Quick settings
