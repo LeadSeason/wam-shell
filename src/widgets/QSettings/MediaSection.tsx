@@ -194,7 +194,10 @@ function Player({ player }: { player: AstalMpris.Player }) {
                         ...(c && isSmallCover(c) ? ["smallArt"] : []),
                     ])}
                     css={localCover.as(c =>
-                        c ? `background-image: url("${c.replace(/['\\]/g, "\\$&")}");` : "",
+                        // the path goes into a double-quoted CSS string:
+                        // escape the delimiter (and \ and ') or a quote
+                        // in it breaks out of the url()
+                        c ? `background-image: url("${c.replace(/["'\\]/g, "\\$&")}");` : "",
                     )}
                     tooltipText={"Focus player window"}
                 >

@@ -138,29 +138,42 @@ export function AirplaneModeRow() {
     }
     refresh()
     // reflect external changes (keybind, nm-applet): re-check when the
-    // wifi radio flips — a free reactive signal, no recurring poll
+    // wifi radio flips — a free reactive signal, no recurring poll.
+    // Derived from the adapter via With so one appearing after this row
+    // is built (USB dongle, rfkill unblock) also attaches the listener
     const net = AstalNetwork.get_default()
-    if (net?.wifi) {
-        const unsub = createBinding(net.wifi, "enabled").subscribe(refresh)
-        onCleanup(unsub)
-    }
 
     return (
-        <box cssClasses={["paneRow"]} spacing={8}>
-            <image iconName={"airplane-mode-symbolic"} pixelSize={16} />
-            <label cssClasses={["paneRowName"]} label={"Airplane mode"} xalign={0} hexpand />
-            <Gtk.Switch
-                cssClasses={["paneSwitch"]}
-                valign={Gtk.Align.CENTER}
-                active={active}
-                onNotifyActive={self => {
-                    if (self.active === active.get()) return
-                    const next = self.active
-                    execAsync(["nmcli", "radio", "all", next ? "off" : "on"])
-                        .then(() => setActive(next))
-                        .catch(() => refresh())
-                }}
-            />
-        </box>
+        <With value={createBinding(net, "wifi")}>
+            {wifi => {
+                if (wifi) {
+                    const unsub = createBinding(wifi, "enabled").subscribe(refresh)
+                    onCleanup(unsub)
+                }
+                return (
+                    <box cssClasses={["paneRow"]} spacing={8}>
+                        <image iconName={"airplane-mode-symbolic"} pixelSize={16} />
+                        <label
+                            cssClasses={["paneRowName"]}
+                            label={"Airplane mode"}
+                            xalign={0}
+                            hexpand
+                        />
+                        <Gtk.Switch
+                            cssClasses={["paneSwitch"]}
+                            valign={Gtk.Align.CENTER}
+                            active={active}
+                            onNotifyActive={self => {
+                                if (self.active === active.get()) return
+                                const next = self.active
+                                execAsync(["nmcli", "radio", "all", next ? "off" : "on"])
+                                    .then(() => setActive(next))
+                                    .catch(() => refresh())
+                            }}
+                        />
+                    </box>
+                )
+            }}
+        </With>
     )
 }
