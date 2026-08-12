@@ -4,7 +4,7 @@ import Pango from "gi://Pango?version=1.0"
 import Graphene from "gi://Graphene?version=1.0"
 import AstalApps from "gi://AstalApps?version=0.1"
 import app from "ags/gtk4/app"
-import { createRoot, createState, For } from "gnim"
+import { Accessor, createComputed, createRoot, createState, For } from "gnim"
 import CommandRegistry from "../lib/requestHandler"
 import { hideOnFocusLoss } from "../lib/popupFocus"
 import { registerPopup, closeOtherPopups } from "../lib/exclusivePopups"
@@ -106,7 +106,11 @@ function commandRows(rest: string): Row[] {
         })
 
     return matches.slice(0, MAX_ROWS).map(cmd => ({
-        key: `cmd:${cmd.name}`,
+        // the args (and the trailing space — it changes what activate
+        // passes) belong in the key: gnim's keyed For reuses the child
+        // of an unchanged key, so "sleep-timer 3" → "sleep-timer 30"
+        // would keep showing — and activating — the old row
+        key: `cmd:${cmd.name}:${args.join(" ")}${trailingSpace ? " " : ""}`,
         name: args.length > 0 ? `${cmd.name} ${args.join(" ")}` : cmd.name,
         description: cmd.description,
         icon: "system-run-symbolic",
@@ -360,16 +364,23 @@ function onClick(_e: Gtk.GestureClick, _: number, x: number, y: number) {
     if (!rect.contains_point(new Graphene.Point({ x, y }))) hide()
 }
 
-function ResultRow({ row, index }: { row: Row; index: number }) {
+// The keyed For reuses a row's child across reorders and keeps a live
+// State for its position, so the index must be read through the
+// accessor — a value captured at build time goes stale and clicks /
+// highlights land on the row that USED to sit there.
+function ResultRow({ row, index }: { row: Row; index: Accessor<number> }) {
     return (
         <box
-            cssClasses={selected.as(s => ["launcherRow", ...(s === index ? ["selected"] : [])])}
+            cssClasses={createComputed([selected, index], (s, i) => [
+                "launcherRow",
+                ...(s === i ? ["selected"] : []),
+            ])}
             spacing={10}
         >
             <Gtk.GestureClick
                 button={1}
                 onPressed={() => {
-                    setSelected(index)
+                    setSelected(index.get())
                     activateSelected()
                 }}
             />
@@ -459,9 +470,7 @@ function ensureWindow() {
                                 />
                                 <box orientation={Gtk.Orientation.VERTICAL} spacing={2}>
                                     <For each={rows} id={row => row.key}>
-                                        {(row, index) => (
-                                            <ResultRow row={row} index={index.get()} />
-                                        )}
+                                        {(row, index) => <ResultRow row={row} index={index} />}
                                     </For>
                                 </box>
                             </box>
