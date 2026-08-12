@@ -222,6 +222,22 @@ window.Bar {
                 @include u.row-active;
             }
 
+            // a workspace holding the playing window: a constant faint
+            // accent tint that pulses brighter on the shared heartbeat
+            // (the beat class flips on playingPulse in lib/mpris, the
+            // transition rounds each flip into a fade). Quieter than
+            // .active even at its peak — active says "you are here",
+            // playing only says "sound comes from there". Must follow
+            // .active so a playing focused workspace still pulses
+            &.playing {
+                background-color: t.$accent20;
+                transition: background-color s.$ws-playing-pulse ease-in-out;
+
+                &.beat {
+                    background-color: t.$accent40;
+                }
+            }
+
             // Workspace content
             >box {
 

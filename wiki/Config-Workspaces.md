@@ -13,3 +13,5 @@ level; the section wins when both are set.
 | `show_labels` | bool | `true` | Workspace number/name |
 | `hide_empty` | bool | `false` | Hide workspaces with no windows; the focused workspace always shows |
 | `collapse_icons` | bool | `false` | One icon per app per workspace, however many windows of it are open |
+| `playing_indicator` | bool | `true` | Highlight workspaces holding a currently playing media player (pulsing accent tint) |
+| `playing_pulse_ms` | int | `650` | Pulse tempo: half a breath in ms (fade and beat both run on it); min 200 |

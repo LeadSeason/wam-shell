@@ -4,7 +4,8 @@ import { hyprDispatch } from "../../../lib/hyprDispatch"
 import Config from "../../../config"
 import { createIconResolver } from "../../../lib/appIcon"
 import { createScrollStepper, stepThrough } from "../../../lib/scrollStep"
-import { For, createBinding, createState, onCleanup } from "gnim"
+import { matchesPlayingWindow, playingPlayers, playingPulse } from "../../../lib/mpris"
+import { For, createBinding, createComputed, createState, onCleanup } from "gnim"
 import { Gtk } from "ags/gtk4"
 
 export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
@@ -93,6 +94,11 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
         ]).catch(e => console.error("workspace scroll:", e))
     }
 
+    // global client list, shared by every workspace's playing-window
+    // match (the untitled-track fallback needs the global per-class
+    // window count — see matchesPlayingWindow in lib/mpris)
+    const allClients = createBinding(hyprland, "clients")
+
     return (
         <box cssName={"workspaces"}>
             <Gtk.EventControllerScroll
@@ -113,10 +119,55 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
                             (client, i, arr) => arr.findIndex(c => c.class === client.class) === i,
                         )
                     })
+                    // the playing client, not every client of the
+                    // playing app: a browser has a window on every
+                    // other workspace, so the class alone lights them
+                    // all — matchesPlayingWindow first requires the
+                    // window title to carry the track title, then
+                    // falls back to the most recently focused window
+                    // of the class (episode titles that never reach
+                    // the tab title, background tabs). Matching runs
+                    // on the unfiltered list: collapse_icons may have
+                    // dropped exactly the window that is playing
+                    const playing = createComputed(
+                        [createBinding(workspace, "clients"), allClients, playingPlayers],
+                        (wsClients, all, ps) => {
+                            if (ps.length === 0) return false
+                            // focusHistoryID ranks recency: 0 is the
+                            // most recently focused
+                            const recent = new Map<string, AstalHyprland.Client>()
+                            for (const c of all) {
+                                const cls = c.class.toLowerCase()
+                                const cur = recent.get(cls)
+                                if (!cur || c.focusHistoryID < cur.focusHistoryID)
+                                    recent.set(cls, c)
+                            }
+                            return wsClients.some(c =>
+                                matchesPlayingWindow(
+                                    ps,
+                                    c.class,
+                                    c.title,
+                                    recent.get(c.class.toLowerCase()) === c,
+                                ),
+                            )
+                        },
+                    )
+                    // highlight the workspace itself: "playing" tints
+                    // it, "beat" pulses the tint on the shared
+                    // heartbeat (playingPulse in lib/mpris)
+                    const classes = createComputed(
+                        [focused, playing, playingPulse],
+                        (f, p, beat) => [
+                            ...f,
+                            ...(p && Config.workspaces.playingIndicator
+                                ? ["playing", ...(beat ? ["beat"] : [])]
+                                : []),
+                        ],
+                    )
                     return (
                         <button
                             cssName={"workspace"}
-                            cssClasses={focused}
+                            cssClasses={classes}
                             // astal's workspace.focus() uses the legacy
                             // syntax, which 0.56 rejects — but the lua
                             // form 0.56 wants does not exist before
