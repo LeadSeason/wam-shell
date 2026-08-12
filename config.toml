@@ -159,6 +159,12 @@
 #              always shown. default false
 # collapse_icons - show each app icon only once per workspace, no matter
 #                  how many windows of that app are open. default false
+# playing_indicator - highlight workspaces holding a currently playing
+#                     media player (a gently pulsing accent tint).
+#                     default true
+# playing_pulse_ms - pulse tempo: half a breath in milliseconds (the
+#                    fade and the beat both run on it). min 200, below
+#                    that it strobes. default 650
 # [workspaces]
 # enabled = true
 # position = "left"
@@ -166,6 +172,8 @@
 # show_labels = true
 # hide_empty = false
 # collapse_icons = false
+# playing_indicator = true
+# playing_pulse_ms = 650
 
 # [tray] - system tray
 # on_panel - show tray items directly on the bar instead of inside the

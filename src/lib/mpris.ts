@@ -312,6 +312,129 @@ export function hookPlayers(hook: PlayerHook): () => void {
     }
 }
 
+// -------------------------------------------------- playing workspaces
+//
+// The workspace widgets mark the workspace holding a playing player's
+// window. MPRIS knows nothing of workspaces, so the bridge is the wm
+// class PLUS the window title: resolveWmClass's desktop-entry match
+// narrows it to the app ("Brave" -> "brave-browser"), but a browser has
+// a window on every other workspace and only one of them is making
+// noise — the playing window is the one whose title carries the track
+// (youtube tabs are titled after the video, spotify after the song).
+export interface PlayingPlayer {
+    /** wm class, lowercased — compositors and desktop entries disagree
+     *  on casing often enough (org.foo.Bar vs bar) */
+    wmClass: string
+    /** track title, "" when the player does not report one */
+    title: string
+}
+
+const [playingPlayers, setPlayingPlayers] = createState<PlayingPlayer[]>([])
+export { playingPlayers }
+
+// heartbeat for the workspace playing highlight: toggles while at
+// least one player is playing, and CSS transitions round the flips
+// into a pulse. Shared so N bars (one per monitor) do not run N
+// timers; stops outright when the music does. The interval is user
+// tempo (`playing_pulse_ms`) — the CSS fade runs on the same value,
+// generated into the stylesheet via active-tuning.scss
+const [playingPulse, setPlayingPulse] = createState(false)
+export { playingPulse }
+let pulseTimer = 0
+const syncPulse = () => {
+    const playing = playingPlayers.get().length > 0
+    if (playing && !pulseTimer) {
+        pulseTimer = timeoutAdd(
+            "mpris:playingPulse",
+            GLib.PRIORITY_DEFAULT,
+            Config.workspaces.playingPulseMs,
+            () => {
+                setPlayingPulse(!playingPulse.get())
+                return GLib.SOURCE_CONTINUE
+            },
+        )
+    } else if (!playing && pulseTimer) {
+        sourceRemove(pulseTimer)
+        pulseTimer = 0
+        setPlayingPulse(false)
+    }
+}
+
+// resolved once per player: a player's class does not change, and the
+// desktop-entry lookup is not worth repeating on every play/pause
+const wmClassCache = new Map<AstalMpris.Player, string | null>()
+
+const refreshPlayingPlayers = () => {
+    const out: PlayingPlayer[] = []
+    for (const p of players.get()) {
+        // ineligible players (private sessions) must not surface in the
+        // UI — a marker on their workspace is still surfacing them
+        if (!isEligible(p) || p.playbackStatus !== AstalMpris.PlaybackStatus.PLAYING) continue
+        if (!wmClassCache.has(p)) wmClassCache.set(p, resolveWmClass(p))
+        const wm = wmClassCache.get(p)
+        if (wm) out.push({ wmClass: wm.toLowerCase(), title: p.title ?? "" })
+    }
+    const prev = playingPlayers.get()
+    if (
+        out.length !== prev.length ||
+        out.some((p, i) => p.wmClass !== prev[i].wmClass || p.title !== prev[i].title)
+    )
+        setPlayingPlayers(out)
+    syncPulse()
+}
+
+// window/tab titles decorate the track title ("Video - YouTube",
+// "(3) Video"), and chromium truncates long ones with an ellipsis —
+// compare on a normalized core, either direction
+const normTitle = (s: string) =>
+    s
+        .toLowerCase()
+        .replace(/…|\.{3,}/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+
+/** does this window belong to a playing player? The class must match,
+ *  and the window title must carry the track title — a bare class
+ *  match lights every window of the browser, which is all of them.
+ *  When the title gives no answer (the player reports none, or the
+ *  media title is not the window title — streaming sites name the
+ *  EPISODE while the tab says the series, and a background tab shows
+ *  in no window title at all), the only compositor-level guess is the
+ *  most recently focused window of that class. */
+export function matchesPlayingWindow(
+    list: PlayingPlayer[],
+    wmClass: string,
+    windowTitle: string,
+    mostRecentOfClass: boolean,
+): boolean {
+    const cls = wmClass.toLowerCase()
+    const win = normTitle(windowTitle)
+    return list.some(p => {
+        if (p.wmClass !== cls) return false
+        const track = normTitle(p.title)
+        if (track && win && (win.includes(track) || track.includes(win))) return true
+        return mostRecentOfClass
+    })
+}
+
+hookPlayers(p => {
+    // title too: eligibility turns on it (private-session scrubbing),
+    // and the window match needs the current track title
+    const off = createBinding(p, "playbackStatus").subscribe(refreshPlayingPlayers)
+    const offTitle = createBinding(p, "title").subscribe(refreshPlayingPlayers)
+    return () => {
+        off()
+        offTitle()
+        wmClassCache.delete(p)
+        // a player that quits while playing must drop out of the list
+        refreshPlayingPlayers()
+    }
+})
+// players load async, so the initial refresh usually sees an empty
+// list; re-run when it fills (and when the dedup filter reshapes it)
+const unsubPlayingList = players.subscribe(refreshPlayingPlayers)
+refreshPlayingPlayers()
+
 function pick() {
     const override = overridePlayer.get()
     const eligible = players.get().filter(isEligible)
@@ -378,6 +501,11 @@ pick()
 export function dispose() {
     unsubSyncPlayers()
     unsubPick()
+    unsubPlayingList()
+    if (pulseTimer) {
+        sourceRemove(pulseTimer)
+        pulseTimer = 0
+    }
     for (const [p, entries] of hookedPlayers) {
         for (const e of entries) e.release()
         hookedPlayers.delete(p)
@@ -505,10 +633,29 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
     }
 
     // one mpris metadata update arrives as a separate notify per
-    // property, in no guaranteed order: recovering off the first of them
-    // would look the NEW art up under the OUTGOING title and briefly
-    // show the previous track's cover. Coalescing onto one idle pass
-    // lets the whole dict land before anything is looked up.
+    // property, in no guaranteed order — chromium bundles them with
+    // mpris:artUrl BEFORE xesam:title, and astal notifies as it applies.
+    // update() reads the live title (the upgradedFor guard), so off the
+    // art notify it applied the NEW art against the OUTGOING title: a
+    // track change whose guard still matched was swallowed outright and
+    // never re-ran (update was not subscribed to the title), leaving the
+    // previous track's recovered art up until some later emission
+    // happened to clear the guard and drop back to the 150px thumb.
+    // Which of the two any emission did was pure dict order — the same
+    // track showing blurred one moment and sharp the next. Both update
+    // and recover therefore run coalesced onto one idle pass each, once
+    // the whole dict has landed (recovering off the first notify would
+    // also look the NEW art up under the OUTGOING title and briefly
+    // show the previous track's cover).
+    let pendingUpdate = 0
+    const scheduleUpdate = () => {
+        if (pendingUpdate) return
+        pendingUpdate = idleAdd("mpris:artUpdate", GLib.PRIORITY_DEFAULT_IDLE, () => {
+            pendingUpdate = 0
+            update()
+            return GLib.SOURCE_REMOVE
+        })
+    }
     let pending = 0
     const scheduleRecover = () => {
         if (pending) return
@@ -519,12 +666,18 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
         })
     }
 
-    onCleanup(art.subscribe(update))
-    onCleanup(cover.subscribe(update))
+    onCleanup(art.subscribe(scheduleUpdate))
+    onCleanup(cover.subscribe(scheduleUpdate))
+    // a title-only change still invalidates the upgradedFor guard, so
+    // update must hear it even when browser-art recovery is opted out
+    onCleanup(title.subscribe(scheduleUpdate))
+    onCleanup(() => {
+        if (pendingUpdate) sourceRemove(pendingUpdate)
+    })
     update()
 
-    // opted out: no title subscription and no idle sources at all, not
-    // just a lookup that returns early
+    // opted out: no history lookups, retry timers or recover idles at
+    // all, not just a lookup that returns early
     if (Config.media.recoverBrowserArt) {
         onCleanup(cover.subscribe(scheduleRecover))
         onCleanup(title.subscribe(scheduleRecover))
