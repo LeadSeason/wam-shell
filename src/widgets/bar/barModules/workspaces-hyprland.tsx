@@ -5,6 +5,7 @@ import Config from "../../../config"
 import { createIconResolver } from "../../../lib/appIcon"
 import { createScrollStepper, stepThrough } from "../../../lib/scrollStep"
 import { matchesPlayingWindow, playingPlayers, playingPulse } from "../../../lib/mpris"
+import { connect, disconnect } from "../../../lib/metrics"
 import { For, createBinding, createComputed, createState, onCleanup } from "gnim"
 import { Gtk } from "ags/gtk4"
 
@@ -99,6 +100,38 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
     // window count — see matchesPlayingWindow in lib/mpris)
     const allClients = createBinding(hyprland, "clients")
 
+    // hyprland carries urgency as a transient `urgent` signal per
+    // client, not a state (sway's IPC exposes it on the workspace, which
+    // is what the sway twin binds). Track marked clients by address:
+    // focusing the window clears the mark — seeing it IS answering the
+    // request — and closed windows are pruned so reused addresses can't
+    // resurrect a mark. Per-bar state is fine: the signal is cheap and
+    // each bar only draws its own monitor
+    const [urgentClients, setUrgentClients] = createState<Set<string>>(new Set())
+    const urgentHandler = connect(hyprland, "urgent", (_h, client: AstalHyprland.Client) => {
+        const next = new Set(urgentClients.get())
+        next.add(client.address)
+        setUrgentClients(next)
+    })
+    disposers.push(() => disconnect(hyprland, urgentHandler))
+    disposers.push(
+        createBinding(hyprland, "focusedClient").subscribe(() => {
+            const focused = hyprland.focusedClient
+            if (!focused || !urgentClients.get().has(focused.address)) return
+            const next = new Set(urgentClients.get())
+            next.delete(focused.address)
+            setUrgentClients(next)
+        }),
+    )
+    disposers.push(
+        createBinding(hyprland, "clients").subscribe(() => {
+            const live = new Set(hyprland.clients.map(c => c.address))
+            const current = urgentClients.get()
+            if ([...current].every(a => live.has(a))) return
+            setUrgentClients(new Set([...current].filter(a => live.has(a))))
+        }),
+    )
+
     return (
         <box cssName={"workspaces"}>
             <Gtk.EventControllerScroll
@@ -164,6 +197,16 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
                                 : []),
                         ],
                     )
+                    // a marked client on this workspace paints the
+                    // urgency dot (same .urgent style the sway twin
+                    // uses). Unfiltered clients: collapse_icons may
+                    // have dropped the very window calling for
+                    // attention
+                    const urgent = createComputed(
+                        [createBinding(workspace, "clients"), urgentClients],
+                        (wsClients, marked) =>
+                            marked.size > 0 && wsClients.some(c => marked.has(c.address)),
+                    )
                     return (
                         <button
                             cssName={"workspace"}
@@ -182,7 +225,7 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
                                 ]).catch(e => console.error("workspace focus:", e))
                             }
                         >
-                            <box>
+                            <box cssClasses={urgent.as(u => (u ? ["urgent"] : []))}>
                                 {Config.workspaces.showLabels && (
                                     <label label={workspace.id.toString()} />
                                 )}
