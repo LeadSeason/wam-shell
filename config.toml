@@ -526,6 +526,19 @@
 # avatar = ""
 # battery_full_at = 100
 
+# [netstats] - cumulative bandwidth totals (down/up per day, kept 90
+#              days in ~/.cache/<instance>/netstats.json). unlike the
+#              live rate in the stats widgets, totals are collected
+#              around the clock — one /proc/net/dev read every 15s
+# enabled - track totals at all; false also hides the quick settings
+#           tiles and empties the bar module. default true
+# on_panel - show today's download total on the panel (legacy layout;
+#            with [[panel]] lists, add "netstats" to a list instead).
+#            default false
+# [netstats]
+# enabled = true
+# on_panel = false
+
 # [bluetooth] - bluetooth quick settings pane
 # notifications - send a notification when a device connects/disconnects
 #                 or reports low battery (<= 20%). default true

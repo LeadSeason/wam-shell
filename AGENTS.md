@@ -202,6 +202,23 @@ tweaks. Name classes after the widget (`.sysStats`, `.keyboardLayout`,
   probe answering, an NM profile appearing) lands in place instead of
   at the end of the grid. The QSettings toggle pills (`vpn.tsx`,
   `NightLightButton`) are the reference.
+- **A too-wide FlowBox child flips the grid to one column — and the
+  overflow is below the scroll fold, not gone.** A homogeneous FlowBox
+  derives its column width from the widest child's NATURAL width, and a
+  GtkLabel's natural width is its initial text (bounded only loosely by
+  `max-width-chars`); one StatTile whose big label built as
+  "↓ 3.3 MB today" (14 chars) was enough to push the power pane's grid
+  from 2 columns to 1. That alone only doubles the row count — what
+  made it look like "half the tiles vanished, giant blank area below"
+  is the pane's `Gtk.ScrolledWindow` (`maxContentHeight` ≈ 520 px): the
+  extra rows land under the fold, and the blank is the main-pane height
+  floor beneath the capped scroller. Nothing was unmounted; it
+  scrolled. Two rules fell out of this: keep a StatTile's `big` to the
+  number and put the words in `sub` (the small label), and when tiles
+  "disappear" from a pane, check column count and scroll before
+  suspecting bindings or `visible` — the diagnosis above cost a dozen
+  shell restarts because a scrolled-out tile and an unbuilt one look
+  identical in a screenshot.
 - **No gate compiles the scss. `pnpm verify:scss` does** — run it after
   touching anything under `scss/`. It compiles `style.scss` once per
   theme (generating the `active-theme.scss` and `active-tuning.scss` that

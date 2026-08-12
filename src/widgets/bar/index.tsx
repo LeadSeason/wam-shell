@@ -13,6 +13,7 @@ import Clock from "./barModules/clock"
 import SwayNC from "./barModules/swayNC"
 import KeyboardLayout from "./barModules/keyboardLayout"
 import SysStats from "./barModules/sysStats"
+import NetStats from "./barModules/netStats"
 import QSettingsLabel from "./barModules/QSettingsLabel"
 import Media from "./barModules/media"
 import SleepTimer from "./barModules/sleepTimer"
@@ -55,6 +56,10 @@ function moduleFor(name: string, gdkMonitor: Gdk.Monitor) {
             return <Clock />
         case "stats":
             return <SysStats />
+        case "netstats":
+            // enabled=false means "no tracking at all" and wins even
+            // over an authoritative panel entry
+            return Config.netstats.enabled ? <NetStats /> : null
         case "tray":
             return trayWidget()
         case "quicksettings":
@@ -170,6 +175,7 @@ export default function Bar({
             <box $type="end">
                 <SleepTimer />
                 {Config.quicksettings.statsOnPanel && <SysStats />}
+                {Config.netstats.enabled && Config.netstats.onPanel && <NetStats />}
                 {Config.media.enabled && <Media monitor={gdkMonitor} />}
                 {Config.tray.position == "left" && tray}
                 <QSettingsLabel />
