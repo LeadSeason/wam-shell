@@ -108,7 +108,11 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
     // resurrect a mark. Per-bar state is fine: the signal is cheap and
     // each bar only draws its own monitor
     const [urgentClients, setUrgentClients] = createState<Set<string>>(new Set())
-    const urgentHandler = connect(hyprland, "urgent", (_h, client: AstalHyprland.Client) => {
+    const urgentHandler = connect(hyprland, "urgent", (_h, client: AstalHyprland.Client | null) => {
+        // astal passes get_client(address) straight through: null for
+        // an address it does not track (a window that closed between
+        // the compositor's event and the lookup)
+        if (!client) return
         const next = new Set(urgentClients.get())
         next.add(client.address)
         setUrgentClients(next)
