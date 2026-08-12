@@ -129,6 +129,10 @@ function startPolling() {
 // convention for lib modules with long-lived sources (see AGENTS.md)
 function dispose() {
     disposed = true
+    // drop pending work: pump() refuses to spawn once disposed, and a
+    // cleared queue means even an in-flight command's finally finds
+    // nothing left to chain
+    cmdQueue.length = 0
     if (pollSource) {
         sourceRemove(pollSource)
         pollSource = 0
@@ -180,7 +184,10 @@ const cmdQueue: Cmd[] = []
 let cmdInFlight = false
 
 function pump() {
-    if (cmdInFlight || cmdQueue.length === 0 || !hasMullvad) return
+    // disposed: shutdown — queued callbacks chain (a toggle's cb
+    // enqueues six more commands), so without this gate commands keep
+    // spawning mid-teardown
+    if (disposed || cmdInFlight || cmdQueue.length === 0 || !hasMullvad) return
     cmdInFlight = true
     setBusy(true)
     const { args, cb } = cmdQueue.shift()!
@@ -265,9 +272,12 @@ function ensureLocations() {
 let lastExpiryFetch = 0
 function refreshExpiry() {
     if (Date.now() - lastExpiryFetch < 86_400_000) return
-    lastExpiryFetch = Date.now()
     runCmd(["account", "get"], out => {
-        if (out) setAccount(parseAccountInfo(out))
+        // stamp on SUCCESS only: a failed fetch must not burn the
+        // once-a-day budget and leave the account line blank for 24h
+        if (!out) return
+        lastExpiryFetch = Date.now()
+        setAccount(parseAccountInfo(out))
     })
 }
 
