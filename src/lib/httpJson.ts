@@ -1,7 +1,7 @@
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
 import Soup from "gi://Soup?version=3.0"
-import { trackHttp, timeoutAddSeconds, sourceRemove } from "./metrics"
+import { trackHttp, connect, timeoutAddSeconds, sourceRemove } from "./metrics"
 
 // One Soup-backed JSON client for the token-authenticated providers
 // (GitHub, Todoist). The Google services go through lib/googleAuth's
@@ -105,7 +105,7 @@ export function createJsonClient(opts: JsonClientOptions) {
         // Cancelling here aborts the transfer mid-flight. The byte check
         // in the callback stays as the real enforcement — Content-Length
         // is a claim, and a chunked response makes none at all
-        msg.connect("got-headers", () => {
+        connect(msg, "got-headers", () => {
             const declared = Number(msg.get_response_headers().get_one("Content-Length")) || 0
             if (declared > MAX_BODY_BYTES) cancellable.cancel()
         })

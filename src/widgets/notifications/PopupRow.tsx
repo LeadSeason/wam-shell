@@ -121,6 +121,10 @@ export default function PopupRow({ group }: { group: PopupEntry[] }) {
     // teardown one idle turn out, past GTK's crossing-event synthesis;
     // see the note on it in lib/notifd. The action itself still fires
     // immediately, which is what the user actually asked for.
+    // Provider callbacks are app code running inside GTK's gesture
+    // dispatch: a throwing activate/dismiss/run must not escape into the
+    // event machinery, so they are guarded the way lib/notify guards its
+    // own action handlers
     const handlers = (p: PopupEntry) => ({
         onActivate: () => {
             removePopupDeferred(p.key)
@@ -128,13 +132,22 @@ export default function PopupRow({ group }: { group: PopupEntry[] }) {
                 if (p.desktop.get_actions().some(a => a.get_id() === "default"))
                     p.desktop.invoke("default")
             } else {
-                p.item!.activate()
+                try {
+                    p.item!.activate()
+                } catch (e) {
+                    console.warn("notifications: provider activate failed:", e)
+                }
             }
         },
         onDismiss: () => {
             removePopupDeferred(p.key)
             if (p.desktop) p.desktop.dismiss()
-            else p.item!.dismiss()
+            else
+                try {
+                    p.item!.dismiss()
+                } catch (e) {
+                    console.warn("notifications: provider dismiss failed:", e)
+                }
         },
         // snoozePopup does its own deferred removal — a second one here
         // would race it for the same key
@@ -149,7 +162,11 @@ export default function PopupRow({ group }: { group: PopupEntry[] }) {
             // so the item survives in the center rather than being
             // marked done
             if (id === "dismiss") return
-            p.item!.actions?.find(a => a.id === id)?.run()
+            try {
+                p.item!.actions?.find(a => a.id === id)?.run()
+            } catch (e) {
+                console.warn("notifications: provider action failed:", e)
+            }
         },
     })
 

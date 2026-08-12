@@ -156,7 +156,10 @@ export function acquireClock(): () => void {
         // the timer running forever
         if (released) return
         released = true
-        holders--
+        // clamped: a release landing after dispose() zeroed the count
+        // must not drive it negative — the next acquire would then start
+        // the timer at a count of 0 and its release would stop it early
+        holders = Math.max(0, holders - 1)
         if (holders <= 0 && source !== null) {
             sourceRemove(source)
             source = null
