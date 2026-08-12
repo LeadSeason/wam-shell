@@ -505,10 +505,29 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
     }
 
     // one mpris metadata update arrives as a separate notify per
-    // property, in no guaranteed order: recovering off the first of them
-    // would look the NEW art up under the OUTGOING title and briefly
-    // show the previous track's cover. Coalescing onto one idle pass
-    // lets the whole dict land before anything is looked up.
+    // property, in no guaranteed order — chromium bundles them with
+    // mpris:artUrl BEFORE xesam:title, and astal notifies as it applies.
+    // update() reads the live title (the upgradedFor guard), so off the
+    // art notify it applied the NEW art against the OUTGOING title: a
+    // track change whose guard still matched was swallowed outright and
+    // never re-ran (update was not subscribed to the title), leaving the
+    // previous track's recovered art up until some later emission
+    // happened to clear the guard and drop back to the 150px thumb.
+    // Which of the two any emission did was pure dict order — the same
+    // track showing blurred one moment and sharp the next. Both update
+    // and recover therefore run coalesced onto one idle pass each, once
+    // the whole dict has landed (recovering off the first notify would
+    // also look the NEW art up under the OUTGOING title and briefly
+    // show the previous track's cover).
+    let pendingUpdate = 0
+    const scheduleUpdate = () => {
+        if (pendingUpdate) return
+        pendingUpdate = idleAdd("mpris:artUpdate", GLib.PRIORITY_DEFAULT_IDLE, () => {
+            pendingUpdate = 0
+            update()
+            return GLib.SOURCE_REMOVE
+        })
+    }
     let pending = 0
     const scheduleRecover = () => {
         if (pending) return
@@ -519,12 +538,18 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
         })
     }
 
-    onCleanup(art.subscribe(update))
-    onCleanup(cover.subscribe(update))
+    onCleanup(art.subscribe(scheduleUpdate))
+    onCleanup(cover.subscribe(scheduleUpdate))
+    // a title-only change still invalidates the upgradedFor guard, so
+    // update must hear it even when browser-art recovery is opted out
+    onCleanup(title.subscribe(scheduleUpdate))
+    onCleanup(() => {
+        if (pendingUpdate) sourceRemove(pendingUpdate)
+    })
     update()
 
-    // opted out: no title subscription and no idle sources at all, not
-    // just a lookup that returns early
+    // opted out: no history lookups, retry timers or recover idles at
+    // all, not just a lookup that returns early
     if (Config.media.recoverBrowserArt) {
         onCleanup(cover.subscribe(scheduleRecover))
         onCleanup(title.subscribe(scheduleRecover))
