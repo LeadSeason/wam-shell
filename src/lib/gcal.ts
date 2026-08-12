@@ -393,6 +393,11 @@ function apiGet(account: GoogleAccount, path: string, cb: (r: Reply) => void, re
         if (!token) return cb({ ok: false, status: 401, json: null })
         request("GET", `${API}${path}`, { bearer: token }, r => {
             if (r.status === 401 && !retried) {
+                // a concurrent retry may have already posted a refresh
+                // with the dead token and dropped the account
+                // (invalid_grant): refreshing it AGAIN would fire
+                // duplicate signed-out warnings/callbacks
+                if (!auth.getAccounts().some(a => a.email === account.email)) return cb(r)
                 // force a refresh by aging the cached token, then retry once
                 account.expires_at = 0
                 apiGet(account, path, cb, true)
@@ -451,7 +456,7 @@ function syncAccount(
 ) {
     fetchPaged(
         account,
-        `/users/me/calendarList?fields=items(id,summary,backgroundColor)`,
+        `/users/me/calendarList?fields=nextPageToken,items(id,summary,backgroundColor)`,
         "items",
         [],
         cals => {
@@ -485,15 +490,21 @@ function syncAccount(
     )
 }
 
-// the last focus requested while a sync was in flight: covered as
-// soon as the in-flight sync completes instead of waiting for the
-// next poll
+// the last focus requested while a sync was in flight or a backoff
+// hold-off was active: covered as soon as the in-flight sync completes
+// (or the hold-off ends and the poll re-syncs) instead of waiting for
+// the next poll
 let pendingFocus: { y: number; m: number } | null = null
 
 export function sync(focus?: { y: number; m: number }) {
     // a 429/503 asked us to stop for a while; the fixed poll timer must
-    // respect that too, not just walk past it on the next tick
-    if (gate.blocked()) return
+    // respect that too, not just walk past it on the next tick. Record
+    // the requested month even so: navigating to an unloaded month
+    // mid-backoff would otherwise show nothing until the poll resumes
+    if (gate.blocked()) {
+        pendingFocus = focus ?? pendingFocus
+        return
+    }
     if (!active || auth.getAccounts().length === 0) return
     if (syncInFlight) {
         pendingFocus = focus ?? pendingFocus
@@ -588,7 +599,23 @@ function writeCache(list: CalEvent[]) {
     const json = JSON.stringify({ from: loadedFrom, to: loadedTo, events: list })
     if (json === lastCacheJson) return
     lastCacheJson = json
-    writeFileAtomic(cachePath, json).catch(e => console.warn("GCal: failed writing cache:", e))
+    // personal schedule data: same 0600 treatment as the tokens file
+    writeFileAtomic(cachePath, json, { private: true }).catch(e =>
+        console.warn("GCal: failed writing cache:", e),
+    )
+}
+
+// an entry must carry the fields visibleEvents/agendaGroups dereference:
+// a corrupt-but-parseable cache would otherwise throw later, long after
+// this function swallowed the parse error it could actually diagnose
+function cacheEventOk(e: any): boolean {
+    return (
+        e !== null &&
+        typeof e === "object" &&
+        Array.isArray(e.days) &&
+        typeof e.startMs === "number" &&
+        typeof e.endMs === "number"
+    )
 }
 
 function loadCache() {
@@ -596,7 +623,7 @@ function loadCache() {
     try {
         const contents = GLib.file_get_contents(cachePath)[1]
         const data = JSON.parse(new TextDecoder().decode(contents))
-        if (Array.isArray(data?.events)) {
+        if (Array.isArray(data?.events) && data.events.every(cacheEventOk)) {
             loadedFrom = Number(data.from) || 0
             loadedTo = Number(data.to) || 0
             setEvents(data.events)
