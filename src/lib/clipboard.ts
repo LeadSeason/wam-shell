@@ -70,16 +70,16 @@ export async function history(): Promise<ClipEntry[]> {
  */
 export function copy(id: string): void {
     if (!available()) return
+    let decode: Gio.Subprocess | null = null
     try {
-        const decode = Gio.Subprocess.new(
-            ["cliphist", "decode", id],
-            Gio.SubprocessFlags.STDOUT_PIPE,
-        )
+        decode = Gio.Subprocess.new(["cliphist", "decode", id], Gio.SubprocessFlags.STDOUT_PIPE)
         const paste = Gio.Subprocess.new(["wl-copy"], Gio.SubprocessFlags.STDIN_PIPE)
         const source = decode.get_stdout_pipe()
         const sink = paste.get_stdin_pipe()
         if (!source || !sink) {
             console.warn("clipboard: could not open the decode pipe")
+            decode.force_exit()
+            decode = null
             return
         }
         sink.splice_async(
@@ -96,6 +96,9 @@ export function copy(id: string): void {
             },
         )
     } catch (e) {
+        // a wl-copy spawn failure after decode started would otherwise
+        // leave cliphist running with an unread stdout pipe
+        decode?.force_exit()
         console.warn("clipboard: copy failed:", e)
     }
 }

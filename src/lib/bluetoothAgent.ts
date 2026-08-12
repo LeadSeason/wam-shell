@@ -361,9 +361,10 @@ export function startBluetoothAgent() {
     if (!bluetooth.adapter) {
         // the adapter can appear later (rfkill at login, bluez starting
         // after the shell): retry when it shows up, once
-        const id = connect(bluetooth, "notify::adapter", () => {
+        adapterWatchId = connect(bluetooth, "notify::adapter", () => {
             if (bluetooth.adapter) {
-                disconnect(bluetooth, id)
+                disconnect(bluetooth, adapterWatchId)
+                adapterWatchId = 0
                 startBluetoothAgent()
             }
         })
@@ -389,8 +390,16 @@ export function startBluetoothAgent() {
 // convention for lib modules with long-lived sources (see AGENTS.md)
 let agentObjectId = 0
 let watchId = 0
+// notify::adapter fallback from startBluetoothAgent: tracked so a
+// dispose() while waiting for the adapter disconnects it (the handler
+// self-disconnects on success, leaving this 0)
+let adapterWatchId = 0
 
 export function dispose() {
+    if (adapterWatchId) {
+        disconnect(bluetooth, adapterWatchId)
+        adapterWatchId = 0
+    }
     if (agentObjectId) {
         Gio.DBus.system.unregister_object(agentObjectId)
         agentObjectId = 0
