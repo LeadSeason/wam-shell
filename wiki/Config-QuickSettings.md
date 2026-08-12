@@ -10,7 +10,7 @@ Section: `[quicksettings]`
 | `width` | int (px) | `440` | Popup content width |
 | `show_battery_percentage` | bool | `true` | Percentage next to the battery icon on the panel |
 | `show_device_names` | bool | `false` | Overlay the active input/output device name on the volume sliders |
-| `show_stats` | bool | `false` | Performance stats tiles (cpu/ram/gpu/network) in the power mode pane; collected only while the pane is open |
+| `show_stats` | bool | `false` | Performance stats tiles (cpu/ram+swap/gpu/network/disk/uptime) in the power mode pane; collected only while the pane is open |
 | `stats_on_panel` | bool | `false` | Resource utilization monitor (cpu/ram/gpu percentages) on the panel |
 | `stats_interval` | int (ms) | `1000` | Time between stat updates; lower is smoother graphs at higher cpu cost |
 | `power_profile_on_panel` | bool | `true` | Active power profile icon in the bar's quicksettings label |

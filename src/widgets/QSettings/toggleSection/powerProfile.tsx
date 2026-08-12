@@ -1,4 +1,4 @@
-import { Accessor, With, createBinding, createComputed, createState, onCleanup } from "gnim"
+import { Accessor, createBinding, createComputed, createState, onCleanup } from "gnim"
 import { execAsync } from "../../../lib/metrics"
 import GLib from "gi://GLib?version=2.0"
 import Pango from "gi://Pango?version=1.0"
@@ -10,6 +10,7 @@ import Config from "../../../config"
 import * as Power from "../../../lib/powerDetails"
 import * as Sys from "../../../lib/sysstats"
 import * as Net from "../../../lib/netTotals"
+import * as Energy from "../../../lib/energyTotals"
 
 const hasPowerprofilesctl = GLib.find_program_in_path("powerprofilesctl") !== null
 
@@ -189,6 +190,23 @@ function PowerDetails() {
                     )}
                     visible={bat.isPresent}
                 />
+                {/* health is full vs design capacity, read once at
+                startup — static for practical purposes */}
+                <StatTile
+                    icon="battery-full-charged-symbolic"
+                    big={`${Power.battHealthPct}%`}
+                    sub={"battery health"}
+                    visible={Power.hasBattHealth}
+                />
+                {/* Wh drawn from the battery today: tracked around the
+                clock by energyTotals (gauge deltas), independent of
+                this pane's polls */}
+                <StatTile
+                    icon="battery-action-symbolic"
+                    big={Energy.todayWh.as(w => Energy.formatWh(w))}
+                    sub={"consumed today"}
+                    visible={Energy.hasBatt}
+                />
                 <StatTile
                     icon="cpu-symbolic"
                     big={Power.freqAvgMhz.as(m => `${(m / 1000).toFixed(1)} GHz`)}
@@ -230,8 +248,29 @@ function PowerDetails() {
                 <StatTile
                     icon="memory-symbolic"
                     big={Sys.ram.as(r => `${r}%`)}
-                    sub={Sys.ramSize.as(([used, total]) => `${used}/${total} GB`)}
+                    sub={createComputed(
+                        [Sys.ramSize, Sys.swapSize],
+                        ([used, total], [sw, swTotal]) =>
+                            swTotal > 0
+                                ? `${used}/${total} GB sw ${Math.round((sw / swTotal) * 100)}%`
+                                : `${used}/${total} GB`,
+                    )}
                     visible={Config.quicksettings.showStats}
+                />
+                {/* NOT a <With>: the gpu state starts null and answers
+                ~1s in, so a conditional build appends the tile at the
+                END of the grid. A hidden FlowBoxChild (inside StatTile)
+                keeps its slot and lands in place when it appears */}
+                <StatTile
+                    icon="gpu-symbolic"
+                    big={createComputed([Sys.gpu, Sys.gpuWatts], (g, w) =>
+                        w > 0 ? `${g}% · ${Math.round(w)} W` : `${g}%`,
+                    )}
+                    sub={createComputed(
+                        [Sys.gpuTemp, Sys.vram],
+                        (t, [used, total]) => `${t}°C · ${used}/${total} MiB`,
+                    )}
+                    visible={Sys.gpu.as(g => g !== null && Config.quicksettings.showStats)}
                 />
                 <StatTile
                     icon="network-transmit-receive-symbolic"
@@ -256,22 +295,18 @@ function PowerDetails() {
                     sub={Net.monthTx.as(b => `month · ↑ ${Net.formatBytes(b)}`)}
                     visible={Config.netstats.enabled}
                 />
-                <With value={Sys.gpu.as(g => g !== null && Config.quicksettings.showStats)}>
-                    {present =>
-                        present && (
-                            <StatTile
-                                icon="gpu-symbolic"
-                                big={createComputed([Sys.gpu, Sys.gpuWatts], (g, w) =>
-                                    w > 0 ? `${g}% · ${Math.round(w)} W` : `${g}%`,
-                                )}
-                                sub={createComputed(
-                                    [Sys.gpuTemp, Sys.vram],
-                                    (t, [used, total]) => `${t}°C · ${used}/${total} MiB`,
-                                )}
-                            />
-                        )
-                    }
-                </With>
+                <StatTile
+                    icon="drive-harddisk-symbolic"
+                    big={Sys.diskRead.as(r => `↓ ${Sys.formatRate(r)}`)}
+                    sub={Sys.diskWrite.as(w => `↑ ${Sys.formatRate(w)}`)}
+                    visible={Config.quicksettings.showStats}
+                />
+                <StatTile
+                    icon="document-open-recent-symbolic"
+                    big={Sys.uptimeSeconds.as(s => Sys.formatUptime(s))}
+                    sub={"uptime"}
+                    visible={Config.quicksettings.showStats}
+                />
             </Gtk.FlowBox>
             {/* full-width tile: the active profile's energy preference,
             live — two sub-size rows so the tile matches the others'

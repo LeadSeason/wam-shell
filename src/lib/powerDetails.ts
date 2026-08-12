@@ -79,10 +79,13 @@ const tempPath = findTempPath()
 const fanPath = findFanPath()
 
 // CPU package power: RAPL energy counter (µJ, monotonically
-// increasing, wraps at max_energy_range_uj); diff / poll interval
+// increasing, wraps at max_energy_range_uj); diff / poll interval.
+// Probe with an actual READ, not an EXISTS test: since the PLATYPUS
+// side-channel the counter is mode 0400 root-only on stock kernels,
+// and an unreadable file must hide the tile, not pin it at 0.0 W
 const RAPL_PATH = "/sys/class/powercap/intel-rapl:0/energy_uj"
 const RAPL_MAX_PATH = "/sys/class/powercap/intel-rapl:0/max_energy_range_uj"
-const hasPkg = GLib.file_test(RAPL_PATH, GLib.FileTest.EXISTS)
+const hasPkg = Number(read(RAPL_PATH)) > 0
 
 // battery drain: read power_now (µW) into a ring for the trailing
 // ~5-minute average — the instantaneous rate flickers too much to
@@ -93,6 +96,26 @@ const battPath =
     ) ?? null
 const BATT_AVG_WINDOW = 100 // samples at the 3s poll interval ≈ 5 min
 const battRing: number[] = []
+
+// battery health: full vs design capacity. Charge (µAh) or energy
+// (µWh) depending on the firmware — the ratio is the same. Static
+// for practical purposes, so read once at startup, not polled
+const healthDir = ["/sys/class/power_supply/BAT0", "/sys/class/power_supply/BAT1"].find(
+    d =>
+        GLib.file_test(`${d}/charge_full`, GLib.FileTest.EXISTS) ||
+        GLib.file_test(`${d}/energy_full`, GLib.FileTest.EXISTS),
+)
+const battHealthPct = (() => {
+    if (!healthDir) return 0
+    const full =
+        Number(read(`${healthDir}/charge_full`)) || Number(read(`${healthDir}/energy_full`))
+    const design =
+        Number(read(`${healthDir}/charge_full_design`)) ||
+        Number(read(`${healthDir}/energy_full_design`))
+    return full > 0 && design > 0 ? Math.round((full / design) * 100) : 0
+})()
+export const hasBattHealth = battHealthPct > 0
+export { battHealthPct }
 
 export const hasFreq = hasCpu
 export const hasTemp = tempPath !== null
