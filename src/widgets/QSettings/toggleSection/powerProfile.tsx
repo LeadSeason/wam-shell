@@ -129,6 +129,7 @@ function PowerDetails() {
     }
 
     const watts = createBinding(bat, "energyRate")
+    const charging = createBinding(bat, "charging")
     const freqPct = createComputed([Power.freqAvgMhz, Power.freqCapMhz], (avg, cap) =>
         cap > 0 ? avg / cap : 1,
     )
@@ -144,11 +145,12 @@ function PowerDetails() {
             >
                 <StatTile
                     icon="battery-symbolic"
-                    big={watts.as(r =>
-                        r < 0 ? `+${Math.abs(r).toFixed(1)} W` : `${r.toFixed(1)} W`,
-                    )}
-                    sub={createComputed([watts, Power.battAvgWatts], (r, avg) => {
-                        const state = r < 0 ? "charging" : "discharging"
+                    big={watts.as(r => `${Math.abs(r).toFixed(1)} W`)}
+                    sub={createComputed([watts, charging, Power.battAvgWatts], (r, c, avg) => {
+                        // state from the battery, not the rate's sign:
+                        // plenty of firmware reports a POSITIVE
+                        // energyRate while charging
+                        const state = c ? "charging" : "discharging"
                         // trailing 5-minute average once the ring fills
                         return avg > 0 ? `${state} · ${avg.toFixed(1)} W` : state
                     })}
