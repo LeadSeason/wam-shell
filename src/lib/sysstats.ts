@@ -22,9 +22,13 @@ export const [gpuTemp, setGpuTemp] = createState(0)
 export const [gpuWatts, setGpuWatts] = createState(0) // package power draw, W
 export const [vram, setVram] = createState<[number, number]>([0, 0]) // used,total MiB
 export const [ramSize, setRamSize] = createState<[number, number]>([0, 0]) // used,total GB
+export const [swapSize, setSwapSize] = createState<[number, number]>([0, 0]) // used,total GB
 export const [loadAvg, setLoadAvg] = createState(0)
 export const [netDown, setNetDown] = createState(0) // bytes/s
 export const [netUp, setNetUp] = createState(0) // bytes/s
+export const [diskRead, setDiskRead] = createState(0) // bytes/s
+export const [diskWrite, setDiskWrite] = createState(0) // bytes/s
+export const [uptimeSeconds, setUptimeSeconds] = createState(0)
 
 export const [cpuHist, setCpuHist] = createState<{ v: number }[]>([])
 export const [ramHist, setRamHist] = createState<{ v: number }[]>([])
@@ -56,14 +60,56 @@ async function readRam(): Promise<number> {
     const meminfo = await readFileAsync("/proc/meminfo")
     const total = Number(meminfo.match(/MemTotal:\s+(\d+)/)?.[1] ?? 0)
     const avail = Number(meminfo.match(/MemAvailable:\s+(\d+)/)?.[1] ?? 0)
+    const swapTotal = Number(meminfo.match(/SwapTotal:\s+(\d+)/)?.[1] ?? 0)
+    const swapFree = Number(meminfo.match(/SwapFree:\s+(\d+)/)?.[1] ?? 0)
     if (!total) return 0
     const toGB = (kb: number) => Math.round((kb / 1024 / 1024) * 10) / 10
     setRamSize([toGB(total - avail), toGB(total)])
+    setSwapSize([toGB(swapTotal - swapFree), toGB(swapTotal)])
     return Math.round(100 * (1 - avail / total))
 }
 
 async function readLoadAvg(): Promise<number> {
     return Number((await readFileAsync("/proc/loadavg")).split(" ")[0]) || 0
+}
+
+async function readUptime(): Promise<number> {
+    return Math.floor(Number((await readFileAsync("/proc/uptime")).split(" ")[0]) || 0)
+}
+
+// whole disks only: partitions (nvme0n1p1, sda1, mmcblk0p1) would
+// double-count, and loop/ram/zram/dm aren't physical I/O
+const WHOLE_DISK = /^(nvme\d+n\d+|mmcblk\d+|x?vd[a-z]+|sd[a-z]+)$/
+const SECTOR_BYTES = 512
+
+// pure parser, exported for tests: sums /proc/diskstats sectors
+// (read = field 6, written = field 10) over whole disks only
+export function sumDiskSectors(text: string): { rSec: number; wSec: number } {
+    let rSec = 0,
+        wSec = 0
+    for (const line of text.split("\n")) {
+        const f = line.trim().split(/\s+/)
+        if (f.length < 10 || !WHOLE_DISK.test(f[2])) continue
+        rSec += Number(f[5]) || 0
+        wSec += Number(f[9]) || 0
+    }
+    return { rSec, wSec }
+}
+
+// same elapsed-time divisor as readNet — ticks slip
+let prevDisk: { rSec: number; wSec: number; t: number } | null = null
+async function readDisk(): Promise<[number, number]> {
+    const { rSec, wSec } = sumDiskSectors(await readFileAsync("/proc/diskstats"))
+    const now = GLib.get_monotonic_time() / 1000 // us -> ms
+    let read = 0,
+        write = 0
+    if (prevDisk && now > prevDisk.t) {
+        const dt = (now - prevDisk.t) / 1000
+        read = Math.max(0, ((rSec - prevDisk.rSec) * SECTOR_BYTES) / dt)
+        write = Math.max(0, ((wSec - prevDisk.wSec) * SECTOR_BYTES) / dt)
+    }
+    prevDisk = { rSec, wSec, t: now }
+    return [Math.round(read), Math.round(write)]
 }
 
 // the rate divisor is the actual elapsed time: ticks slip while a
@@ -108,6 +154,12 @@ const poll = createPoll("", INTERVAL, () => {
         push(ramHist.get(), setRamHist, r)
     })
     step("load", async () => setLoadAvg(await readLoadAvg()))
+    step("uptime", async () => setUptimeSeconds(await readUptime()))
+    step("disk", async () => {
+        const [read, write] = await readDisk()
+        setDiskRead(read)
+        setDiskWrite(write)
+    })
     step("net", async () => {
         const [down, up] = await readNet()
         setNetDown(down)
@@ -250,6 +302,17 @@ export function formatRate(bytesPerSec: number): string {
     if (bytesPerSec >= 1024 * 1024) return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`
     if (bytesPerSec >= 1024) return `${Math.round(bytesPerSec / 1024)} KB/s`
     return `${bytesPerSec} B/s`
+}
+
+// seconds -> "3 d 2 h" / "5 h 12 min" / "12 min" (two units, coarser
+// first — the pane tile doesn't need seconds)
+export function formatUptime(seconds: number): string {
+    const d = Math.floor(seconds / 86400)
+    const h = Math.floor((seconds % 86400) / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    if (d > 0) return `${d} d ${h} h`
+    if (h > 0) return `${h} h ${m} min`
+    return `${m} min`
 }
 
 // tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
