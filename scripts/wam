@@ -234,7 +234,7 @@ start_detached() {
             --property=RestartSteps=6 \
             --property=RestartMaxDelaySec=60 \
             --property=StartLimitIntervalSec=0 \
-            --property=ExecStartPre="/usr/bin/env bash $ROOT/scripts/wait-compositor.sh" \
+            --property=ExecStartPre="/usr/bin/env bash $(systemd_quote "$ROOT/scripts/wait-compositor.sh")" \
             -- "$(command -v ags)" run app.tsx && return 0
         log "systemd-run failed — falling back to an unsupervised start"
     fi
@@ -555,6 +555,17 @@ cmd_force_start() {
 
 # --- autostart ------------------------------------------------------------------
 
+# Quote one path for a systemd EXEC line: wrap in double quotes,
+# escaping the two characters that are special inside them. Exec lines
+# are split on whitespace, so an unquoted $ROOT with spaces breaks
+# ExecStartPre silently (the shell simply never starts). Path SETTINGS
+# (WorkingDirectory=) are the opposite — their value runs to the end of
+# the line and quotes are literal — so those stay unquoted.
+systemd_quote() {
+    local s="${1//\\/\\\\}"
+    printf '"%s"' "${s//\"/\\\"}"
+}
+
 # @param $1 directory to write into; defaults to $UNIT_DIR. The parameter
 # exists so refresh_unit can render the unit somewhere harmless and
 # compare it against the installed one without clobbering it first.
@@ -587,7 +598,7 @@ Type=simple
 WorkingDirectory=$ROOT
 # Don't race the compositor (#225). Always exits 0 -- a delay, never a
 # gate; see the header of the script itself.
-ExecStartPre=/usr/bin/env bash $ROOT/scripts/wait-compositor.sh
+ExecStartPre=/usr/bin/env bash $(systemd_quote "$ROOT/scripts/wait-compositor.sh")
 ExecStart=$(command -v ags) run app.tsx
 Restart=always
 RestartSec=2
@@ -928,7 +939,7 @@ cmd_status() {
 # from the last manual start, or none — which is how a workspace-click
 # failure sat unread in the journal.
 #
-# Prints "journal" or a path. The journal is authoritative whenever the
+# Prints "journal:<unit>" or a path. The journal is authoritative whenever the
 # unit is what is running: active first, then merely enabled (so this
 # still resolves after a crash, which is exactly when it is wanted).
 # `wam logs` and `wam report` share it so they can never disagree about
@@ -1089,13 +1100,14 @@ report_config() {
 }
 
 report_log() {
-    local lines="$1" src tmp total
+    local lines="$1" src tmp total unit
     src="$(log_location)"
     tmp="$(mktemp "${TMPDIR:-/tmp}/wam-report.XXXXXX")" || die "could not create a temp file"
 
-    if [[ "$src" == "journal" ]]; then
-        field "source:" "journal, $SERVICE, this boot"
-        journalctl --user -u "$SERVICE" -b --no-pager >"$tmp" 2>/dev/null || true
+    if [[ "$src" == journal:* ]]; then
+        unit="${src#journal:}"
+        field "source:" "journal, $unit, this boot"
+        journalctl --user -u "$unit" -b --no-pager >"$tmp" 2>/dev/null || true
     else
         field "source:" "$src"
         [[ -f "$src" ]] && { cat "$src" >"$tmp" 2>/dev/null || true; }
