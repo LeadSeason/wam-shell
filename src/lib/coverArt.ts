@@ -171,6 +171,11 @@ export function cachedCover(url: string): string {
 // keyed by url hash, so stale entries (and leftover tmp files) would
 // otherwise accumulate forever
 const COVER_TTL_SEC = 7 * 24 * 60 * 60
+// batched, and async all the way down, for the same reason youtube.ts's
+// pruneThumbs documents: a next_file() loop after enumerate_children_async
+// still stats every entry and unlinks synchronously on the main loop, at
+// startup — next_files_async yields between batches instead
+const COVER_PRUNE_BATCH = 64
 function pruneCache() {
     const dir = Gio.File.new_for_path(Config.instanceCacheDir)
     dir.enumerate_children_async(
@@ -179,19 +184,36 @@ function pruneCache() {
         GLib.PRIORITY_LOW,
         null,
         (_d, res) => {
+            let iter: Gio.FileEnumerator
             try {
-                const iter = dir.enumerate_children_finish(res)
-                const cutoff = GLib.get_real_time() / 1_000_000 - COVER_TTL_SEC
-                let info: Gio.FileInfo | null
-                while ((info = iter.next_file(null)) !== null) {
-                    const name = info.get_name()
-                    if (!name.startsWith("cover-")) continue
-                    if (info.get_attribute_uint64("time::modified") > cutoff) continue
-                    GLib.unlink(`${Config.instanceCacheDir}/${name}`)
-                }
+                iter = dir.enumerate_children_finish(res)
             } catch {
-                /* no cache dir yet: nothing to prune */
+                return // no cache dir yet: nothing to prune
             }
+            const cutoff = GLib.get_real_time() / 1_000_000 - COVER_TTL_SEC
+            const step = () => {
+                iter.next_files_async(COVER_PRUNE_BATCH, GLib.PRIORITY_LOW, null, (_i, r) => {
+                    let batch: Gio.FileInfo[]
+                    try {
+                        batch = iter.next_files_finish(r)
+                    } catch (e) {
+                        console.warn("coverArt: prune failed:", e)
+                        return
+                    }
+                    if (batch.length === 0) {
+                        iter.close_async(GLib.PRIORITY_LOW, null, null)
+                        return
+                    }
+                    for (const info of batch) {
+                        const name = info.get_name()
+                        if (!name.startsWith("cover-")) continue
+                        if (info.get_attribute_uint64("time::modified") > cutoff) continue
+                        GLib.unlink(`${Config.instanceCacheDir}/${name}`)
+                    }
+                    step()
+                })
+            }
+            step()
         },
     )
 }

@@ -83,12 +83,17 @@ export function enable() {
         () => scheduleEvaluate(),
         () => {
             if (disposed) return
-            // the monitor died: we can't know — fail closed
+            // the monitor died: we can't know — fail closed, and let
+            // the next enable() (panel reopen) restart detection
+            started = false
             setSharing(true)
         },
         true,
     )
-    if (!monitor && !disposed) setSharing(true) // fail closed
+    if (!monitor && !disposed) {
+        started = false // the spawn failed: the next enable() retries
+        setSharing(true) // fail closed
+    }
 }
 
 // convention for lib modules with long-lived sources, even though the
