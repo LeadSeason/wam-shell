@@ -42,6 +42,13 @@ let failedUntil = 0
 let actionSeq = 0
 let abortedSeq = 0
 
+// an in-flight `connection up`: from the WATCH's side the attempt is a
+// seconds-long window whose first beat still reads empty (the device
+// has not appeared), and an empty read must not stomp the synthetic
+// Connecting back to Disconnected (proton's connectProc guard,
+// protonvpn/index.ts, is the model)
+let upInFlight = false
+
 // dedupe before notifying: snapshots arrive rebuilt from scratch, so
 // identity alone would re-notify on every change
 let lastStatus: VpnStatus = status.get()
@@ -87,7 +94,7 @@ function onSnapshot(snap: NmSnapshot) {
     )
     if (!resolved) {
         if (currentUuid.get()) setCurrentUuid("")
-        if (Date.now() >= failedUntil)
+        if (!upInFlight && Date.now() >= failedUntil)
             applyStatus({ state: "disconnected", stateLabel: "Disconnected", server: "" })
         return
     }
@@ -104,11 +111,13 @@ watch.subscribe(onSnapshot)
 
 // ------------------------------------------------------ actions
 
-// the up half of every action. `connection up` is synchronous — it
-// returns once activation has completed OR failed — so there is no
-// in-flight window to manage, only the result to classify
+// the up half of every action. `connection up` returns once activation
+// has completed OR failed — but the attempt takes seconds, and the
+// watch keeps firing throughout, so the in-flight window IS tracked
+// (upInFlight) even though the caller's side is only result-classify
 function doUp(uuid: string): Promise<void> {
     const seq = ++actionSeq
+    upInFlight = true
     applyStatus({
         state: "connecting",
         stateLabel: "Connecting",
@@ -134,6 +143,9 @@ function doUp(uuid: string): Promise<void> {
                 watch.refresh()
                 return GLib.SOURCE_REMOVE
             })
+        })
+        .finally(() => {
+            upInFlight = false
         })
 }
 
