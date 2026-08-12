@@ -2,14 +2,11 @@ import AstalWp from "gi://AstalWp?version=0.1"
 import Gtk from "gi://Gtk?version=4.0"
 import Gdk from "gi://Gdk?version=4.0"
 import Pango from "gi://Pango?version=1.0"
-import { execAsync } from "../../lib/metrics"
 import Config from "../../config"
 import Brightness from "../../lib/brightness"
 import hyprsunset, { setOutdoorEnabled, OUTDOOR_GAMMA } from "../../lib/hyprsunset"
-import { Accessor, For, Setter, With, createBinding, createComputed, createState } from "gnim"
-import { qsVisible } from "./MediaSection"
+import { With, createBinding, createComputed } from "gnim"
 import { PercentEntry } from "./PercentEntry"
-import { createIconResolver } from "../../lib/appIcon"
 import { pressable } from "../pressable"
 
 interface VolSliderProps {
@@ -18,82 +15,6 @@ interface VolSliderProps {
     /** the chevron opens the audio pane, which owns devices, app
      *  volumes, routing and card profiles */
     onOpen: () => void
-}
-
-// one row per application with playback streams (grouped by app):
-// per-app volume and mute, so muted streams never need pwvucontrol.
-// Rows follow the bluetooth pane's design language
-function AppRow({
-    g,
-    resolveIcon,
-}: {
-    g: { description: string; members: AstalWp.Stream[] }
-    resolveIcon: (name: string | null | undefined) => string | null
-}) {
-    // group volume shows the loudest stream; a drag applies to all of
-    // the app's streams
-    const volume = createComputed(
-        g.members.map(s => createBinding(s, "volume")),
-        (...vs) => Math.max(...vs),
-    )
-    const muted = createComputed(
-        g.members.map(s => createBinding(s, "mute")),
-        (...ms) => ms.every(m => m),
-    )
-    return (
-        <box
-            cssClasses={["appStreamRow", "paneRow"]}
-            orientation={Gtk.Orientation.VERTICAL}
-            spacing={2}
-        >
-            <label
-                cssClasses={["paneRowName"]}
-                label={g.description}
-                xalign={0}
-                maxWidthChars={24}
-                ellipsize={Pango.EllipsizeMode.END}
-            />
-            {/* one axis: icon, slider, %, mute all vertically centered */}
-            <box spacing={8} valign={Gtk.Align.CENTER}>
-                <image
-                    valign={Gtk.Align.CENTER}
-                    iconName={resolveIcon(g.description) ?? "audio-x-generic-symbolic"}
-                />
-                <slider
-                    hexpand
-                    min={0}
-                    max={1}
-                    value={volume}
-                    onChangeValue={({ value }) => {
-                        for (const s of g.members) s.volume = value
-                    }}
-                />
-                <label
-                    cssClasses={["appStreamVol"]}
-                    widthChars={4}
-                    maxWidthChars={4}
-                    label={volume.as(v => `${Math.round(v * 100)}%`)}
-                />
-                <button
-                    cssClasses={muted.as(m => ["appMuteBtn", ...(m ? ["active"] : [])])}
-                    valign={Gtk.Align.CENTER}
-                    tooltipText={muted.as(m =>
-                        m ? `Unmute ${g.description}` : `Mute ${g.description}`,
-                    )}
-                    onClicked={() => {
-                        const unmute = g.members.every(s => s.mute)
-                        for (const s of g.members) s.mute = !unmute
-                    }}
-                >
-                    <image
-                        iconName={muted.as(m =>
-                            m ? "audio-volume-muted-symbolic" : "audio-volume-high-symbolic",
-                        )}
-                    />
-                </button>
-            </box>
-        </box>
-    )
 }
 
 function VolSlider({

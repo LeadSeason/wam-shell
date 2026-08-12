@@ -1,7 +1,7 @@
 import { Astal, Gtk, Gdk } from "ags/gtk4"
 import GLib from "gi://GLib?version=2.0"
 import app from "ags/gtk4/app"
-import { createBinding, With, onCleanup } from "gnim"
+import { createBinding, createComputed, With, onCleanup } from "gnim"
 import AstalHyprland from "gi://AstalHyprland"
 import Config from "../../config"
 import Sway from "../../lib/sway"
@@ -12,19 +12,24 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
     const { TOP, BOTTOM } = Astal.WindowAnchor
 
     // show only on the focused monitor
+    // connector can be null at hotplug time and arrives later via
+    // notify::connector (see the hyprland workspaces twin): make it a
+    // computed dep so the comparison recomputes when it lands
+    const connector = createBinding(gdkMonitor, "connector")
     let isFocused
     if (Config.desktopSession === "hyprland") {
         const hyprland = AstalHyprland.get_default()
-        isFocused = createBinding(hyprland, "focusedMonitor").as(
-            m => m?.name === gdkMonitor.get_connector(),
+        isFocused = createComputed(
+            [createBinding(hyprland, "focusedMonitor"), connector],
+            m => m?.name === connector.get(),
         )
     } else if (Config.desktopSession === "sway" || Config.desktopSession === "i3") {
         const sway = Sway.get_default()
         isFocused = sway.ok
-            ? createBinding(sway, "outputs").as(
+            ? createComputed(
+                  [createBinding(sway, "outputs"), connector],
                   outputs =>
-                      (outputs.find((o: any) => o.focused)?.name ?? null) ===
-                      gdkMonitor.get_connector(),
+                      (outputs.find((o: any) => o.focused)?.name ?? null) === connector.get(),
               )
             : app.monitors[0] === gdkMonitor
     } else {

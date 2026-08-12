@@ -257,8 +257,9 @@ function cancelDeferred(key: string) {
  * A re-add landing inside the pending window cannot resurrect the wrong
  * banner, which is the race this looks like it has: while the removal is
  * queued the entry is still in `popupsState`, so `addPopup` rejects the
- * key outright, and once the idle has run the map entry is already gone.
- * The two states never overlap.
+ * key outright (or, for a `desktop:` replacement, swaps the notification
+ * — which the pending idle then removes anyway), and once the idle has
+ * run the map entry is already gone. The two states never overlap.
  */
 export function removePopupDeferred(key: string) {
     if (deferredRemoval.has(key)) return
@@ -498,7 +499,33 @@ function addPopup(
     // DND silences popups; critical notifications still break through
     if (notifd.dontDisturb && !critical) return false
     const current = popupsState.get()
-    if (current.some(p => p.key === entry.key)) return false
+    const existing = current.find(p => p.key === entry.key)
+    if (existing) {
+        // a desktop notification with a replaces_id arrives under the
+        // SAME key: it is an update to a banner already on screen, not
+        // a new one. Swap the notification the entry shows and restart
+        // its countdown — rejecting it left the old summary/body/actions
+        // up until the original banner expired
+        if (!existing.desktop || !entry.desktop) return false
+        // a replacement landing inside the collapse window revives the
+        // banner, so the pending removal must not fire
+        cancelExpire(entry.key)
+        const duration = popupDuration(expireMs, urgency, Config.notifications.popupTimeout)
+        timers.set(entry.key, {
+            duration,
+            remaining: duration,
+            // keeps its age: an update must not replay the slide-in
+            addedAt: timers.get(entry.key)?.addedAt ?? GLib.get_monotonic_time() / 1000,
+            expiring: false,
+        })
+        setPopups(current.map(p => (p.key === entry.key ? { ...entry, critical } : p)))
+        bumpTimerVersion()
+        // a swap can put a DRAINING countdown where a non-draining
+        // banner (critical, expire_timeout=0) sat — the tick stopped
+        // behind it, and without this the replacement never counts down
+        ensurePopupTick()
+        return true
+    }
     const duration = popupDuration(expireMs, urgency, Config.notifications.popupTimeout)
     timers.set(entry.key, {
         duration,

@@ -87,13 +87,16 @@ export function VpnButton({ backend, navigate }: { backend: VpnBackend; navigate
                 )}
                 isActive={status.as(s => isConnected(s))}
                 activate={() => {
-                    // anything but fully disconnected → disconnect: this
-                    // is also the only way to abort a "Connecting"
-                    // attempt. While DISCONNECTING a click is ignored —
-                    // aborting a teardown is meaningless, and the click
-                    // would otherwise queue a connect into it
+                    // "blocked" (the Failed hold) is down in every way
+                    // that matters — offer connect so a retry click is
+                    // not swallowed for the whole 10s hold. Anything
+                    // else but fully disconnected → disconnect: this is
+                    // also the only way to abort a "Connecting" attempt.
+                    // While DISCONNECTING a click is ignored — aborting
+                    // a teardown is meaningless, and the click would
+                    // otherwise queue a connect into it
                     const s = status.get().state
-                    if (s === "disconnected") backend.connect()
+                    if (s === "disconnected" || s === "blocked") backend.connect()
                     else if (s !== "disconnecting") backend.disconnect()
                 }}
                 navigate={navigate}

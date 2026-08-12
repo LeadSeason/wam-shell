@@ -227,6 +227,8 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan }: DeviceRowProps)
                 // bluez does not reliably cancel the agent prompt when
                 // pairing fails — dismiss it ourselves
                 dismissPairingPrompt(device.address)
+                // onClick paused discovery; every exit path resumes it
+                maybeScan()
             })
         }
     }

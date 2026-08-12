@@ -56,7 +56,7 @@ function matchMonitor(wanted: string[], m: Gdk.Monitor): boolean {
     const conn = m.get_connector() ?? ""
     const model = m.get_model() ?? ""
     const desc = m.get_description() ?? ""
-    return wanted.some(w => w === conn || w === model || (w !== "" && desc.includes(w)))
+    return wanted.some(w => w !== "" && (w === conn || w === model || desc.includes(w)))
 }
 
 function main() {

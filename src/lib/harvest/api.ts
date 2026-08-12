@@ -3,7 +3,9 @@ import Gio from "gi://Gio?version=2.0"
 import Soup from "gi://Soup?version=3.0"
 import Config from "../../config"
 import { loadCredentials as loadEnvCredentials } from "../credentials"
-import { timeoutAddSeconds, sourceRemove, trackHttp } from "../metrics"
+import { configHome } from "../paths"
+import { MAX_BODY_BYTES } from "../httpJson"
+import { timeoutAddSeconds, sourceRemove, trackHttp, connect } from "../metrics"
 
 // HTTP plumbing + the credential gate every other harvest module
 // imports. Nothing here owns sync state: callers decide what a reply
@@ -21,8 +23,7 @@ interface Credentials {
 }
 
 function loadCredentials(): Credentials | null {
-    const configHome = GLib.getenv("XDG_CONFIG_HOME") || `${GLib.getenv("HOME")}/.config`
-    const path = `${configHome}/wam-shell/harvest.env`
+    const path = `${configHome}/harvest.env`
     const env = loadEnvCredentials("Harvest", ["HARVEST_TOKEN", "HARVEST_ACCOUNT_ID"], path)
     return env ? { token: env.HARVEST_TOKEN, accountId: env.HARVEST_ACCOUNT_ID } : null
 }
@@ -38,7 +39,8 @@ if (Config.harvest.enabled && !creds) {
 
 // ---------------------------------------------------------------- http
 
-const session = new Soup.Session({ timeout: 20 })
+const SESSION_TIMEOUT_SEC = 20
+const session = new Soup.Session({ timeout: SESSION_TIMEOUT_SEC })
 // in-flight HTTP cancellables so disposeHttp() can actually stop the
 // module (a late response must not re-arm polling after teardown)
 const inFlightCancellables = new Set<Gio.Cancellable>()
@@ -75,12 +77,39 @@ export function request(method: string, path: string, body: any, cb: (r: Reply) 
     }
     const cancellable = new Gio.Cancellable()
     inFlightCancellables.add(cancellable)
+    // same two guards as googleAuth's googleRequest, and for the same
+    // reasons: send_and_read buffers the whole body before the callback
+    // runs, and Soup's session `timeout` is an IDLE timeout rather than
+    // a deadline — a response trickling a byte every <20s would
+    // otherwise never complete (deltaInFlight stuck true, the delta
+    // loop silently dead until restart). got-headers, not a read next
+    // to the send: the response headers do not exist yet at that point
+    let timedOut = false
+    connect(msg, "got-headers", () => {
+        const declared = Number(msg.get_response_headers().get_one("Content-Length")) || 0
+        if (declared > MAX_BODY_BYTES) cancellable.cancel()
+    })
+    const deadline = timeoutAddSeconds(
+        "harvest:deadline",
+        GLib.PRIORITY_DEFAULT,
+        SESSION_TIMEOUT_SEC * 3,
+        () => {
+            timedOut = true
+            cancellable.cancel()
+            return GLib.SOURCE_REMOVE
+        },
+    )
     session.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, cancellable, (_s, res) => {
         inFlightCancellables.delete(cancellable)
+        if (!timedOut) sourceRemove(deadline)
         let reply: Reply
         try {
             const bytes = session.send_and_read_finish(res)
-            if (bytes) trackHttp(url, bytes.get_size())
+            const size = bytes?.get_size() ?? 0
+            if (bytes) trackHttp(url, size)
+            if (size > MAX_BODY_BYTES) {
+                throw new Error(`response body over ${MAX_BODY_BYTES} bytes`)
+            }
             const text = bytes ? new TextDecoder().decode(bytes.get_data() ?? new Uint8Array()) : ""
             let json: any = null
             try {

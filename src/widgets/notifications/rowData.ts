@@ -1,4 +1,5 @@
 import { Gtk, Gdk } from "ags/gtk4"
+import GLib from "gi://GLib?version=2.0"
 import AstalNotifd from "gi://AstalNotifd?version=0.1"
 import { createIconResolver } from "../../lib/appIcon"
 import { isRtl } from "../../lib/utils"
@@ -41,6 +42,18 @@ export interface RowData {
 
 function isPath(image: string | null): image is string {
     return !!image && (image.startsWith("/") || image.startsWith("file://"))
+}
+
+// a file:// hint is a URI, not a path: stripping the scheme alone leaves
+// the percent-encoding in place ("My%20Pics"), which decodes to nothing
+// on disk. filename_from_uri does the decode; a plain path is already one
+function imagePathOf(image: string): string | null {
+    if (!image.startsWith("file://")) return image
+    try {
+        return GLib.filename_from_uri(image)[0]
+    } catch {
+        return null // a malformed URI is no artwork, not a broken row
+    }
 }
 
 /**
@@ -91,7 +104,7 @@ export function fromDesktop(n: AstalNotifd.Notification): RowData {
         // get_image() is either a file path (a thumbnail) or an icon
         // name; only the latter belongs in the icon slot
         iconName: isPath(image) ? appIcon : image || appIcon,
-        imagePath: isPath(image) ? image.replace(/^file:\/\//, "") : null,
+        imagePath: isPath(image) ? imagePathOf(image) : null,
         time: n.get_time(),
         urgency: urgencyOf(n),
         // "default" is the whole-row click, not a button

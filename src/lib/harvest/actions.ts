@@ -208,7 +208,14 @@ export function updateEntry(
     } else if (fields.taskId !== undefined && fields.taskId !== entry.taskId && fields.taskId > 0) {
         body.task_id = fields.taskId
     }
-    if (Object.keys(body).length === 0) return true
+    // nothing to send: this includes a reassignment to a project with
+    // zero tasks (taskId 0 drops both ids above). Still report success
+    // so the caller clears its dirty state instead of leaving Save
+    // visible with no feedback
+    if (Object.keys(body).length === 0) {
+        onDone?.(true)
+        return true
+    }
     if (mutInFlight || authDisabled.get()) return false
     mutate(done => {
         request("PATCH", `/time_entries/${entry.id}`, body, r => {
