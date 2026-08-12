@@ -79,32 +79,39 @@ function StatTile({
     center?: Accessor<boolean>
     visible?: boolean | Accessor<boolean>
 }) {
+    // the holder is a FlowBoxChild, not the tile box: a FlowBox lays out
+    // only visible FlowBoxChildren, so `visible` on the inner box leaves
+    // the wrapper behind as a full blank cell in the homogeneous grid —
+    // with show_stats off that's a hole in the MIDDLE of the grid now
+    // that the netstats tiles follow the stats ones (see vpn.tsx's note)
     return (
-        <box cssClasses={["statTile"]} spacing={10} visible={visible}>
-            <image iconName={icon} pixelSize={20} valign={Gtk.Align.CENTER} />
-            <box hexpand />
-            <box
-                orientation={Gtk.Orientation.VERTICAL}
-                spacing={2}
-                valign={Gtk.Align.CENTER}
-                halign={center.as(v => (v ? Gtk.Align.CENTER : Gtk.Align.FILL))}
-            >
-                <label
-                    cssClasses={bigClasses}
-                    label={big}
-                    xalign={center.as(v => (v ? 0.5 : 1))}
-                    maxWidthChars={16}
-                    ellipsize={Pango.EllipsizeMode.END}
-                />
-                <label
-                    cssClasses={["statTileSub"]}
-                    label={sub}
-                    xalign={center.as(v => (v ? 0.5 : 1))}
-                    maxWidthChars={20}
-                    ellipsize={Pango.EllipsizeMode.END}
-                />
+        <Gtk.FlowBoxChild visible={visible}>
+            <box cssClasses={["statTile"]} spacing={10}>
+                <image iconName={icon} pixelSize={20} valign={Gtk.Align.CENTER} />
+                <box hexpand />
+                <box
+                    orientation={Gtk.Orientation.VERTICAL}
+                    spacing={2}
+                    valign={Gtk.Align.CENTER}
+                    halign={center.as(v => (v ? Gtk.Align.CENTER : Gtk.Align.FILL))}
+                >
+                    <label
+                        cssClasses={bigClasses}
+                        label={big}
+                        xalign={center.as(v => (v ? 0.5 : 1))}
+                        maxWidthChars={16}
+                        ellipsize={Pango.EllipsizeMode.END}
+                    />
+                    <label
+                        cssClasses={["statTileSub"]}
+                        label={sub}
+                        xalign={center.as(v => (v ? 0.5 : 1))}
+                        maxWidthChars={20}
+                        ellipsize={Pango.EllipsizeMode.END}
+                    />
+                </box>
             </box>
-        </box>
+        </Gtk.FlowBoxChild>
     )
 }
 
