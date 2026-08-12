@@ -4,6 +4,7 @@ import { readFileAsync } from "ags/file"
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
 import { timeoutAdd, sourceRemove } from "./metrics"
+import { sumNetDev } from "./netTotals"
 import Config from "../config"
 import { streamLines } from "./streamLines"
 import { registerDispose } from "./lifecycle"
@@ -65,28 +66,11 @@ async function readLoadAvg(): Promise<number> {
     return Number((await readFileAsync("/proc/loadavg")).split(" ")[0]) || 0
 }
 
-// /proc/net/dev: skip loopback and container/bridge interfaces
 // the rate divisor is the actual elapsed time: ticks slip while a
 // previous sample is in flight, and a fixed INTERVAL would inflate it
 let prevNet: { rx: number; tx: number; t: number } | null = null
 async function readNet(): Promise<[number, number]> {
-    let rx = 0,
-        tx = 0
-    for (const line of (await readFileAsync("/proc/net/dev")).split("\n").slice(2)) {
-        const m = line.match(/^\s*([^:]+):\s*(.*)$/)
-        if (!m) continue
-        const iface = m[1].trim()
-        if (
-            iface === "lo" ||
-            iface.startsWith("docker") ||
-            iface.startsWith("br-") ||
-            iface.startsWith("veth")
-        )
-            continue
-        const fields = m[2].split(/\s+/)
-        rx += Number(fields[0])
-        tx += Number(fields[8])
-    }
+    const { rx, tx } = sumNetDev(await readFileAsync("/proc/net/dev"))
     const now = GLib.get_monotonic_time() / 1000 // us -> ms
     let down = 0,
         up = 0

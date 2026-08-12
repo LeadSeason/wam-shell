@@ -71,14 +71,20 @@ window.Bar {
         }
     }
 
+    // cumulative bandwidth totals (today ↓/↑)
+    .netStats {
+        font-size: s.$font-small;
+        .statNet { color: t.$mauve; }
+    }
+
     // gap between panel widgets; GTK css has no box spacing, so margins
     >centerbox > box > *:not(:last-child) {
         margin-right: s.$bar-widget-spacing;
     }
     // per-widget spacing: override margins on the widget's class, e.g.
     // .sysStats { margin-right: 12px; }
-    // classes: .osIcon, workspaces, clock button, .sysStats, .sleepTimer, .trayItem,
-    // .QSettings, .keyboardLayout, .swayNC, .media, .harvest, .brightness,
+    // classes: .osIcon, workspaces, clock button, .sysStats, .netStats, .sleepTimer,
+    // .trayItem, .QSettings, .keyboardLayout, .swayNC, .media, .harvest, .brightness,
     // .windowTitle, .batteryPercent, .recordingDot
 
     // the panel's plain widgets: no frame until the pointer arrives
