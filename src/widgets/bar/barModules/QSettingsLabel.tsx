@@ -6,6 +6,7 @@ import CommandRegistry from "../../../lib/requestHandler"
 import { SliderSection } from "../../QSettings/SliderSection"
 import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1"
 import AstalBattery from "gi://AstalBattery?version=0.1"
+import { atChargeLimit } from "../../../lib/batteryCap"
 import ArchUpdates from "../../../lib/archUpdates"
 import trayNeedsAttention from "../../../lib/trayAttention"
 import { connectedBackend } from "../../../lib/vpn"
@@ -256,11 +257,11 @@ function Battery() {
     const batIcon = createBinding(bat, "batteryIconName")
 
     const batTimeConvert = (timeRemaining: number, charging: boolean): string => {
-        // at the charge limit UPower still reports a timeToFull even
-        // though nothing is charging; its charging state flickers at
-        // the cap too, so judge by percentage alone
-        const cap = Config.quicksettings.batteryFullAt
-        if (bat.percentage * 100 >= cap - 2)
+        // HELD at the charge limit UPower still reports a timeToFull
+        // even though nothing is charging; its charging state flickers
+        // at the cap too. A battery discharging at the cap is not held
+        // though — atChargeLimit, not the percentage alone
+        if (atChargeLimit(bat.percentage, bat.state))
             return `${Math.floor(bat.percentage * 100)}% · Charge limit`
 
         if (timeRemaining <= 0) return charging ? "Fully charged" : "Unknown ammount of time left"
@@ -300,6 +301,16 @@ function Battery() {
     disposers.push(
         createBinding(bat, "timeToFull").subscribe(() => {
             if (bat.get_charging()) setBatTime(batTimeConvert(bat.timeToFull, bat.get_charging()))
+        }),
+    )
+
+    // plug/unplug at the charge cap flips the tooltip (held vs draining)
+    // without any time estimate changing — UPower reports junk 0s there
+    disposers.push(
+        createBinding(bat, "state").subscribe(() => {
+            setBatTime(
+                batTimeConvert(bat.charging ? bat.timeToFull : bat.timeToEmpty, bat.charging),
+            )
         }),
     )
 
