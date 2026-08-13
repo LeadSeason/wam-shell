@@ -175,11 +175,19 @@ export function SleepTimerWidget({
                 {/* the note belongs to the alarm: no field without one.
                 Saved as it is typed (debounced), not on Enter — a
                 message typed and left unconfirmed must still be there
-                at 0 */}
+                at 0. stopAlarm clears it lib-side; the subscription
+                mirrors that here (guarded: setting the same text would
+                bounce the cursor mid-typing) */}
                 <Gtk.Entry
                     visible={alarmEnabled}
                     $={self => {
                         self.set_text(notificationText.get())
+                        // gnim subscribe callbacks get NO argument —
+                        // read the current value instead
+                        const unsub = notificationText.subscribe(() => {
+                            const v = notificationText.get()
+                            if (self.get_text() !== v) self.set_text(v)
+                        })
                         let save: ReturnType<typeof timeout> | null = null
                         const handler = connect(self, "changed", () => {
                             save?.cancel()
@@ -189,6 +197,7 @@ export function SleepTimerWidget({
                             })
                         })
                         onCleanup(() => {
+                            unsub()
                             save?.cancel()
                             disconnect(self, handler)
                         })
