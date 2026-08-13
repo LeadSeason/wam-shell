@@ -8,6 +8,7 @@ import { readFile } from "ags/file"
 import AstalBattery from "gi://AstalBattery?version=0.1"
 import { Accessor, createBinding, createComputed, createState, onCleanup } from "gnim"
 import Config from "../../config"
+import { atChargeLimit } from "../../lib/batteryCap"
 import { isFile } from "../../lib/utils"
 import CommandRegistry from "../../lib/requestHandler"
 import { qsVisible } from "./MediaSection"
@@ -36,6 +37,7 @@ function Avatar() {
     const avatar = resolveAvatar()
     const bat = AstalBattery.get_default()
     const pct = createBinding(bat, "percentage")
+    const batState = createBinding(bat, "state")
 
     function drawRing(area: Gtk.DrawingArea, cr: any, w: number, h: number) {
         if (!bat.isPresent) return
@@ -48,12 +50,12 @@ function Avatar() {
         cr.setSourceRGBA(c.red, c.green, c.blue, 0.2)
         cr.stroke()
         // show relative to the configured charge cap (battery_full_at),
-        // ceiled to 1% steps. At the charge limit itself the ring
-        // closes completely, matching the "charge limit" text
+        // ceiled to 1% steps. Held at the charge limit the ring closes
+        // completely, matching the "charge limit" text — but a battery
+        // discharging at the cap is not "held" (atChargeLimit, not the
+        // percentage alone: UPower's charging flag flickers at the cap)
         const cap = Config.quicksettings.batteryFullAt / 100
-        // judge by percentage alone: UPower's charging state flickers
-        // at the cap ("not charging" with a bogus time)
-        const atLimit = pct.get() * 100 >= Config.quicksettings.batteryFullAt - 2
+        const atLimit = atChargeLimit(pct.get(), bat.state)
         const frac = atLimit ? 1 : Math.min(1, Math.ceil((pct.get() / cap) * 100) / 100)
         if (frac > 0.005) {
             cr.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2)
@@ -98,8 +100,13 @@ function Avatar() {
                 widthRequest={48}
                 heightRequest={48}
                 $={self => {
-                    const unsub = pct.subscribe(() => self.queue_draw())
-                    onCleanup(unsub)
+                    const redraw = () => self.queue_draw()
+                    // state too: plug/unplug at the cap flips the ring
+                    // without a percentage change
+                    const unsubs = [pct.subscribe(redraw), batState.subscribe(redraw)]
+                    onCleanup(() => {
+                        for (const unsub of unsubs) unsub()
+                    })
                     self.set_draw_func(drawRing)
                 }}
             />
@@ -110,6 +117,7 @@ function Avatar() {
 function useBatteryLine(): { line: Accessor<string> } {
     const bat = AstalBattery.get_default()
     const batProc = createBinding(bat, "percentage")
+    const batState = createBinding(bat, "state")
 
     const batTimeConvert = (timeRemaining: number, charging: boolean): string => {
         // No meaningful estimate (at charge limit, or UPower has no data):
@@ -182,13 +190,13 @@ function useBatteryLine(): { line: Accessor<string> } {
     })
 
     return {
-        line: createComputed([batProc, batTime], (p, t) => {
+        line: createComputed([batProc, batTime, batState], (p, t, s) => {
             const pct = `${(p * 100).toFixed(0)}%`
-            // at the charge limit UPower still reports a bogus
-            // timeToFull although nothing is charging (a known quirk)
-            // judge by percentage alone: UPower's charging state also
-            // flickers at the cap ("not charging" with a bogus time)
-            if (p * 100 >= Config.quicksettings.batteryFullAt - 2) return `${pct} · charge limit`
+            // HELD at the charge limit UPower still reports a bogus
+            // timeToFull although nothing is charging (a known quirk).
+            // A battery discharging at the cap is not held: fall through
+            // to the (valid) time-to-empty
+            if (atChargeLimit(p, s)) return `${pct} · charge limit`
             return t ? `${pct} · ${t}` : pct
         }),
     }

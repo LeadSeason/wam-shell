@@ -20,7 +20,7 @@ Section: `[quicksettings]`
 | `min_height` | int (px) | `0` | The popup never shrinks below this when switching to a short pane (vpn, wired); `0` holds a short pane at the main pane's height; set a number only to hold short panes taller; never pads the main pane itself |
 | `show_avatar` | bool | `true` | Avatar in the popup header |
 | `avatar` | string (path) | `""` | Absolute path to the avatar image, square crop ~96x96 recommended (`scripts/prepare-avatar.sh` resizes); empty uses the login avatar from AccountsService, falling back to the OS icon |
-| `battery_full_at` | int (percent) | auto | Charge cap the header ring treats as full; auto-detected from sysfs (`charge_control_end_threshold`) when exposed, else 100; set explicitly to override |
+| `battery_full_at` | int (percent) | auto | Charge cap the header ring treats as full; auto-detected from sysfs (`charge_control_end_threshold`) when exposed, else 100; set explicitly to override. At the cap the battery UI shows "on AC"/"charge limit" only while the adapter holds it there — a battery discharging at the cap shows the drain and time left |
 
 Section: `[bluetooth]` — the bluetooth pane.
 

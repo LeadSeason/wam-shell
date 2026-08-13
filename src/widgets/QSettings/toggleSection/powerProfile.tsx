@@ -8,6 +8,7 @@ import AstalBattery from "gi://AstalBattery?version=0.1"
 import { Gtk } from "ags/gtk4"
 import Config from "../../../config"
 import * as Power from "../../../lib/powerDetails"
+import { atChargeLimit } from "../../../lib/batteryCap"
 import * as Sys from "../../../lib/sysstats"
 import * as Net from "../../../lib/netTotals"
 import * as Energy from "../../../lib/energyTotals"
@@ -157,6 +158,7 @@ function PowerDetails() {
 
     const watts = createBinding(bat, "energyRate")
     const charging = createBinding(bat, "charging")
+    const batState = createBinding(bat, "state")
     const freqPct = createComputed([Power.freqAvgMhz, Power.freqCapMhz], (avg, cap) =>
         cap > 0 ? avg / cap : 1,
     )
@@ -168,17 +170,29 @@ function PowerDetails() {
                     icon="battery-symbolic"
                     big={watts.as(r => `${Math.abs(r).toFixed(1)} W`)}
                     sub={createComputed(
-                        [watts, charging, createBinding(bat, "percentage"), Power.battAvgWatts],
-                        (r, c, pct, avg) => {
-                            // at the limit the battery holds its charge
-                            // and the ADAPTER powers the system — say so
-                            // (UPower's charging flag flickers here)
-                            if (pct * 100 >= Config.quicksettings.batteryFullAt - 2)
+                        [
+                            watts,
+                            charging,
+                            createBinding(bat, "percentage"),
+                            Power.battAvgWatts,
+                            batState,
+                        ],
+                        (r, c, pct, avg, s) => {
+                            // at the limit and HELD there by the adapter
+                            // the battery holds its charge — say so.
+                            // atChargeLimit, not the percentage alone: a
+                            // battery discharging at the cap is NOT on AC
+                            if (atChargeLimit(pct, s))
                                 return avg > 0 ? `on AC · ${avg.toFixed(1)} W` : "on AC"
                             // state from the battery, not the rate's sign:
                             // plenty of firmware reports a POSITIVE
-                            // energyRate while charging
-                            const state = c ? "charging" : "discharging"
+                            // energyRate while charging. DISCHARGING wins
+                            // over the charging flag, which flickers at
+                            // the cap — the very case that falls through
+                            const state =
+                                s === AstalBattery.State.DISCHARGING || !c
+                                    ? "discharging"
+                                    : "charging"
                             // trailing 5-minute average once the ring fills
                             return avg > 0 ? `${state} · ${avg.toFixed(1)} W` : state
                         },
@@ -187,13 +201,12 @@ function PowerDetails() {
                 />
                 <StatTile
                     icon="hourglass-symbolic"
-                    bigClasses={createBinding(bat, "percentage").as(p =>
-                        p * 100 >= Config.quicksettings.batteryFullAt - 2
-                            ? ["statTileSub"]
-                            : ["statTileValue"],
+                    bigClasses={createComputed(
+                        [createBinding(bat, "percentage"), batState],
+                        (p, s) => (atChargeLimit(p, s) ? ["statTileSub"] : ["statTileValue"]),
                     )}
-                    center={createBinding(bat, "percentage").as(
-                        p => p * 100 >= Config.quicksettings.batteryFullAt - 2,
+                    center={createComputed([createBinding(bat, "percentage"), batState], (p, s) =>
+                        atChargeLimit(p, s),
                     )}
                     big={createComputed(
                         [
@@ -201,23 +214,25 @@ function PowerDetails() {
                             createBinding(bat, "timeToFull"),
                             createBinding(bat, "charging"),
                             createBinding(bat, "percentage"),
+                            batState,
                         ],
-                        (toEmpty, toFull, charging, pct) => {
-                            // at the charge limit UPower's times are
-                            // junk (0 min) — same check as the header
-                            if (pct * 100 >= Config.quicksettings.batteryFullAt - 2)
-                                return "Charge limit"
+                        (toEmpty, toFull, charging, pct, s) => {
+                            // held at the charge limit UPower's times are
+                            // junk (0 min) — same check as the header; a
+                            // battery discharging at the cap has a valid
+                            // timeToEmpty and falls through
+                            if (atChargeLimit(pct, s)) return "Charge limit"
                             return span(Number(charging ? toFull : toEmpty))
                         },
                     )}
                     sub={createComputed(
-                        [createBinding(bat, "charging"), createBinding(bat, "percentage")],
-                        (c, pct) =>
-                            pct * 100 >= Config.quicksettings.batteryFullAt - 2
-                                ? ""
-                                : c
-                                  ? "until full"
-                                  : "at current draw",
+                        [
+                            createBinding(bat, "charging"),
+                            createBinding(bat, "percentage"),
+                            batState,
+                        ],
+                        (c, pct, s) =>
+                            atChargeLimit(pct, s) ? "" : c ? "until full" : "at current draw",
                     )}
                     visible={bat.isPresent}
                 />
