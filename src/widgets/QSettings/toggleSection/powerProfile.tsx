@@ -167,14 +167,22 @@ function PowerDetails() {
                 <StatTile
                     icon="battery-symbolic"
                     big={watts.as(r => `${Math.abs(r).toFixed(1)} W`)}
-                    sub={createComputed([watts, charging, Power.battAvgWatts], (r, c, avg) => {
-                        // state from the battery, not the rate's sign:
-                        // plenty of firmware reports a POSITIVE
-                        // energyRate while charging
-                        const state = c ? "charging" : "discharging"
-                        // trailing 5-minute average once the ring fills
-                        return avg > 0 ? `${state} · ${avg.toFixed(1)} W` : state
-                    })}
+                    sub={createComputed(
+                        [watts, charging, createBinding(bat, "percentage"), Power.battAvgWatts],
+                        (r, c, pct, avg) => {
+                            // at the limit the battery holds its charge
+                            // and the ADAPTER powers the system — say so
+                            // (UPower's charging flag flickers here)
+                            if (pct * 100 >= Config.quicksettings.batteryFullAt - 2)
+                                return avg > 0 ? `on AC · ${avg.toFixed(1)} W` : "on AC"
+                            // state from the battery, not the rate's sign:
+                            // plenty of firmware reports a POSITIVE
+                            // energyRate while charging
+                            const state = c ? "charging" : "discharging"
+                            // trailing 5-minute average once the ring fills
+                            return avg > 0 ? `${state} · ${avg.toFixed(1)} W` : state
+                        },
+                    )}
                     visible={bat.isPresent}
                 />
                 <StatTile
