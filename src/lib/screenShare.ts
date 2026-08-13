@@ -32,6 +32,25 @@ let monitor: Gio.Subprocess | null = null
 let evaluating = false
 let evaluateAgain = false
 
+// diagnostics: on every mask/unmask flip, name what the dump matched —
+// a transient grab (camera probe, portal screencast) is gone before
+// anyone can inspect the graph, so the journal is the only record
+function describeMatches(dump: string): string {
+    try {
+        const nodes = (JSON.parse(dump) as { info?: { props?: Record<string, string> } }[]).filter(
+            o => o?.info?.props?.["media.class"] === "Stream/Input/Video",
+        )
+        return nodes
+            .map(o => {
+                const p = o.info?.props ?? {}
+                return `${p["application.name"] ?? p["node.name"] ?? "unknown"} (${p["media.name"] ?? p["node.description"] ?? "?"})`
+            })
+            .join(", ")
+    } catch {
+        return "unparseable dump"
+    }
+}
+
 async function evaluate() {
     if (evaluating) {
         evaluateAgain = true
@@ -41,8 +60,16 @@ async function evaluate() {
     try {
         const out = await execAsync(["pw-dump"])
         const matches = out.match(/"media\.class": "Stream\/Input\/Video"/g)
-        setSharing((matches?.length ?? 0) > 0)
-    } catch {
+        const next = (matches?.length ?? 0) > 0
+        if (next !== sharing.get())
+            console.warn(
+                next
+                    ? `screenShare: masking — video input from: ${describeMatches(out)}`
+                    : "screenShare: unmasking — no video input streams left",
+            )
+        setSharing(next)
+    } catch (e) {
+        console.warn("screenShare: pw-dump failed, failing closed (masking):", e)
         setSharing(true) // fail closed
     } finally {
         evaluating = false
@@ -69,6 +96,49 @@ let started = false
 // with EOF, which fires the onExit callback — that fail-closed path
 // must not run for a kill we ordered ourselves
 let disposed = false
+let respawn = 0
+// backoff for monitor respawns: a dead daemon makes pw-dump -m exit
+// instantly, so a fixed retry would spin (and spam the log) for the
+// whole outage; reset as soon as a respawned monitor produces output
+let respawnDelay = 5_000
+const RESPAWN_MAX = 120_000
+
+// stderr silenced: pw-dump prints protocol noise during portal churn
+// (resource races), which would otherwise flood the shell log
+function spawnMonitor() {
+    monitor = streamLines(
+        ["pw-dump", "-m"],
+        () => {
+            respawnDelay = 5_000
+            scheduleEvaluate()
+        },
+        () => {
+            if (disposed) return
+            // the monitor died: we can't know — fail closed and respawn
+            // ourselves. Consumers call enable() once at setup, so a
+            // dead monitor otherwise meant masked until a shell restart
+            console.warn("screenShare: pw-dump -m monitor exited, masking until it respawns")
+            monitor = null
+            setSharing(true) // fail closed
+            respawn = timeoutAdd("screenShare:respawn", GLib.PRIORITY_DEFAULT, respawnDelay, () => {
+                respawn = 0
+                if (!disposed) spawnMonitor()
+                return GLib.SOURCE_REMOVE
+            })
+            respawnDelay = Math.min(respawnDelay * 2, RESPAWN_MAX)
+        },
+        true,
+    )
+    if (!monitor && !disposed) {
+        // the spawn failed (binary gone — an install-level problem, not
+        // a transient one): fail closed, no retry; streamLines warned
+        setSharing(true)
+    } else if (monitor) {
+        // baseline right away: a (re)spawned monitor clears a stale
+        // fail-closed mask instead of waiting for the next graph event
+        evaluate()
+    }
+}
 
 // started by the consumer (the Harvest panel pill): detection only runs
 // when something actually masks on it
@@ -76,24 +146,8 @@ export function enable() {
     if (started) return
     started = true
     disposed = false
-    // stderr silenced: pw-dump prints protocol noise during portal
-    // churn (resource races), which would otherwise flood the shell log
-    monitor = streamLines(
-        ["pw-dump", "-m"],
-        () => scheduleEvaluate(),
-        () => {
-            if (disposed) return
-            // the monitor died: we can't know — fail closed, and let
-            // the next enable() (panel reopen) restart detection
-            started = false
-            setSharing(true)
-        },
-        true,
-    )
-    if (!monitor && !disposed) {
-        started = false // the spawn failed: the next enable() retries
-        setSharing(true) // fail closed
-    }
+    respawnDelay = 5_000
+    spawnMonitor()
 }
 
 // convention for lib modules with long-lived sources, even though the
@@ -103,6 +157,10 @@ export function dispose() {
     if (debounce) {
         sourceRemove(debounce)
         debounce = 0
+    }
+    if (respawn) {
+        sourceRemove(respawn)
+        respawn = 0
     }
     monitor?.force_exit()
     monitor = null
