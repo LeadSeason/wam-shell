@@ -25,4 +25,5 @@ Section: `[sleep_timer]`
   retroactively — you get one notification that it expired.
 - With the alarm on, the pill also offers a text field: whatever you
   type shows as a critical, never-expiring notification when the timer
-  hits 0. It is a per-timer message, not a config key.
+  hits 0. It is a per-timer message, not a config key — stopping the
+  alarm clears it.

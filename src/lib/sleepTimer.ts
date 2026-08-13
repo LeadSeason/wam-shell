@@ -246,6 +246,10 @@ export function stopAlarm() {
     }
     if (!alarming.get()) return
     setAlarming(false)
+    // the note is a per-timer thought: a stopped alarm is the end of
+    // that timer, so the next one starts with an empty field. Past the
+    // early return on purpose — cancelling an idle timer keeps the text
+    setNotificationText("")
     if (alarmSource) {
         sourceRemove(alarmSource)
         alarmSource = 0
