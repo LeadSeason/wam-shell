@@ -17,6 +17,7 @@ const dump = {
     quicksettings: Config.quicksettings,
     bluetooth: Config.bluetooth,
     media: Config.media,
+    screenShare: Config.screenShare,
     hyprsunset: Config.hyprsunset,
     barMonitors: Config.barMonitors,
     panels: Config.panels,
