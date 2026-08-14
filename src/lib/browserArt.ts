@@ -1,6 +1,8 @@
 import GLib from "gi://GLib?version=2.0"
 import { execAsync } from "./metrics"
 import { isFile } from "./utils"
+import { writeFileAtomic } from "./atomicWrite"
+import { matchThumbId } from "./thumbMatch"
 import Config from "../config"
 
 // Chromium downloads media-session artwork itself, downscales it to a
@@ -13,6 +15,12 @@ import Config from "../config"
 // in its own history db. Match the track title against it, and for
 // youtube the video id in the url names the full-size thumbnail
 // directly.
+//
+// When the title cannot match at all — a title-rewriting extension
+// (DeArrow) makes the media session report a title that exists nowhere
+// in history — the recovery falls back to pixels: the extension leaves
+// the artwork alone, so the 150px thumb still IS one of the recently
+// visited watch pages' thumbnails, and thumbMatch finds which.
 //
 // Deliberately youtube-only. Any other site would need its page fetched
 // and og:image scraped, which does not survive a js-rendered player —
@@ -95,9 +103,11 @@ const LIKE_ESCAPE = String.raw` ESCAPE '\'`
 /** the full-size art url for a track a chromium browser is playing, or
  *  "" when its page is not in any history db (or is not youtube).
  *
- *  The returned url still goes through downloadCover, so maxresdefault
- *  falling back to sd/hq is already handled there. */
-export function recoverBrowserArt(title: string): Promise<string> {
+ *  thumbPath is chromium's own 150px temp file: the fallback for titles
+ *  that no history row carries (see the header comment). The returned
+ *  url still goes through downloadCover, so maxresdefault falling back
+ *  to sd/hq is already handled there. */
+export function recoverBrowserArt(title: string, thumbPath = ""): Promise<string> {
     if (!title || !Config.media.recoverBrowserArt) return Promise.resolve("")
     const hit = memo.get(title)
     if (hit) return Promise.resolve(hit)
@@ -124,7 +134,39 @@ export function recoverBrowserArt(title: string): Promise<string> {
                 ),
             Promise.resolve(""),
         )
-        .then(url => remember(title, artForWatchUrl(url)))
+        .then(url => {
+            const art = artForWatchUrl(url)
+            if (art || !thumbPath) return remember(title, art)
+            return snapshotThumb(thumbPath).then(stable =>
+                recentWatchIds(dbs!).then(ids =>
+                    matchThumbId(stable, ids).then(id =>
+                        remember(title, id ? `${THUMB_BASE}${id}/maxresdefault.jpg` : ""),
+                    ),
+                ),
+            )
+        })
+}
+
+// chromium deletes the temp thumb on its own schedule while mpris still
+// reports the path — observed mid-track, not just on track change — and
+// the thumbnail tier needs the pixels for the whole retry ramp. Keep a
+// copy, taken on first sight (a shell that starts after the deletion
+// simply has nothing to match with until the next track). Keyed by
+// CONTENT, not path: the temp name may be reused for a later track, and
+// a stale copy would match the wrong video. cover- prefixed so
+// coverArt's weekly prune collects it.
+function snapshotThumb(path: string): Promise<string> {
+    try {
+        const [ok, bytes] = GLib.file_get_contents(path)
+        if (!ok) return Promise.resolve(path)
+        const hash = GLib.compute_checksum_for_bytes(GLib.ChecksumType.MD5, new GLib.Bytes(bytes))
+        const copy = `${Config.instanceCacheDir}/cover-bthumb-${hash}`
+        if (isFile(copy)) return Promise.resolve(copy)
+        return writeFileAtomic(copy, bytes).then(() => copy)
+    } catch {
+        // already gone: the tier gets the original path and misses
+        return Promise.resolve(path)
+    }
 }
 
 /** the history lookup for a track title, ranked best match first.
@@ -168,12 +210,64 @@ export function historyQuery(title: string): string {
     )
 }
 
+const WATCH_ID_RE = /[?&]v=([\w-]{6,})/
+const THUMB_BASE = "https://i.ytimg.com/vi/"
+
 /** i.ytimg thumbnail url for a youtube watch url, "" for anything else.
  *  Exported for the tests: the db half needs a browser, this half is
  *  pure string work. */
 export function artForWatchUrl(url: string): string {
-    const id = url.match(/[?&]v=([\w-]{6,})/)
-    return id ? `https://i.ytimg.com/vi/${id[1]}/maxresdefault.jpg` : ""
+    const id = url.match(WATCH_ID_RE)
+    return id ? `${THUMB_BASE}${id[1]}/maxresdefault.jpg` : ""
+}
+
+// the thumbnail tier's reach: a watch page visited longer ago than this
+// is a tab that could not still be open and playing
+const RECENT_WINDOW_SEC = 24 * 60 * 60
+// wide enough that the playing page survives a browsing burst pushing
+// it down the recency list: rows, not videos — youtube writes two rows
+// per visit (&sttick / &pp variants), and dedup happens after the read
+const RECENT_ROWS = 400
+
+/** the recent-watch-visits lookup behind the thumbnail tier, newest
+ *  first. Exported for the tests: the db half needs a browser, the sql
+ *  is pure string work. last_visit_time rides along so rows from
+ *  several dbs can still be merged newest-first. */
+export function recentWatchIdsQuery(): string {
+    // chrome counts microseconds since 1601-01-01
+    const cutoff = Math.floor((Date.now() / 1000 - RECENT_WINDOW_SEC + 11644473600) * 1e6)
+    return (
+        "SELECT url, last_visit_time FROM urls " +
+        `WHERE url LIKE '%youtube.com/watch?v=%' AND last_visit_time > ${cutoff} ` +
+        `ORDER BY last_visit_time DESC LIMIT ${RECENT_ROWS};`
+    )
+}
+
+/** distinct video ids of recently visited watch pages across every
+ *  history db, most recent first — the candidate set the thumbnail
+ *  tier matches against. The title tier can stop at the first db that
+ *  answers; candidates have to be merged, or a second profile's rows
+ *  would silently never be tried. */
+function recentWatchIds(dbs: string[]): Promise<string[]> {
+    return Promise.all(
+        dbs.map(db =>
+            execAsync(["sqlite3", "-readonly", `file:${db}?immutable=1`, recentWatchIdsQuery()])
+                .then(out => out.trim())
+                .catch(() => ""),
+        ),
+    ).then(outs => {
+        const visits: [number, string][] = []
+        for (const out of outs)
+            for (const line of out.split("\n")) {
+                const sep = line.lastIndexOf("|")
+                const id = sep > 0 && line.slice(0, sep).match(WATCH_ID_RE)
+                if (id) visits.push([Number(line.slice(sep + 1)), id[1]])
+            }
+        visits.sort((a, b) => b[0] - a[0])
+        const ids: string[] = []
+        for (const [, id] of visits) if (!ids.includes(id)) ids.push(id)
+        return ids
+    })
 }
 
 function remember(title: string, url: string): Promise<string> {

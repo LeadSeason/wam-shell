@@ -17,3 +17,7 @@ Section: `[media]`.
 - `recover_browser_art` reads the browser's history database read-only,
   and only YouTube rows. Set it to `false` to leave your history
   untouched.
+- When no history row carries the track title (e.g. an extension like
+  DeArrow rewrites titles), the recovery falls back to pixel-matching
+  the small cover against the thumbnails of recently visited watch
+  pages. Title-rewriting extensions leave the artwork untouched.
