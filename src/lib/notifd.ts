@@ -16,6 +16,7 @@ import {
     staleArrivalKeys,
 } from "./popupStack"
 import type { PopupEntry, PopupGroup, PopupTimer } from "./popupStack"
+import { booleanHint } from "./utils"
 // The stack's RULES live in lib/popupStack, which has no import-time
 // side effects so the unit suite can pin them without this module's
 // D-Bus probe and AstalNotifd.get_default() coming along. Re-exported
@@ -61,6 +62,48 @@ export const useOurs =
     mode === "wam-shell" ? true : mode === "system" ? false : !detectSystemDaemon()
 if (!useOurs) console.log("Notifications: using the system daemon")
 
+// The daemon restores its persisted notifications at startup and its
+// state flush re-reads each one's transient hint through astal's typed
+// getter: an entry stored with a mistyped (int32) transient hint logs
+// a GLib critical on every flush AND is wrongly persisted as
+// non-transient. Rewrite such hints as proper booleans once, before
+// the daemon reads them. New mistyped arrivals still trip the daemon's
+// flush until astal itself is patched — this only cleans the store.
+function sanitizePersistedTransientHints() {
+    try {
+        // new Gio.Settings({schema_id}) on a missing schema aborts the
+        // process (a g_error, not a catchable exception) — look it up
+        // first, same guard as the other gsettings readers
+        const schema = Gio.SettingsSchemaSource.get_default()?.lookup("io.astal.notifd", true)
+        if (!schema || !schema.has_key("notifications")) return
+        const settings = new Gio.Settings({ settings_schema: schema })
+        const stored = settings.get_value("notifications")
+        const out = new GLib.VariantBuilder(new GLib.VariantType("av"))
+        let dirty = false
+        for (let i = 0; i < stored.n_children(); i++) {
+            const entry = stored.get_child_value(i)
+            // each child is a 'v' wrapping the notification dict
+            const dict = entry.get_type_string() === "v" ? entry.get_variant() : entry
+            const hints = dict.lookup_value("hints", null)
+            const t = hints?.lookup_value("transient", null)
+            if (!hints || !t || t.get_type_string() !== "i") {
+                out.add_value(entry)
+                continue
+            }
+            const hd = new GLib.VariantDict(hints)
+            hd.insert_value("transient", new GLib.Variant("b", t.get_int32() !== 0))
+            const ed = new GLib.VariantDict(dict)
+            ed.insert_value("hints", hd.end())
+            out.add_value(new GLib.Variant("v", ed.end()))
+            dirty = true
+        }
+        if (dirty) settings.set_value("notifications", out.end())
+    } catch (e) {
+        console.warn("Notifications: persisted-state sanitize failed:", e)
+    }
+}
+if (useOurs) sanitizePersistedTransientHints()
+
 const notifd = AstalNotifd.get_default()
 
 const notifications = createBinding(notifd, "notifications")
@@ -68,10 +111,12 @@ const notifications = createBinding(notifd, "notifications")
 // ones with the spec `transient` hint ("excluded from persistency" —
 // attention-only events like a device connecting) and apps filtered out
 // via notifications.transient_apps. Popups are unaffected by both.
+// booleanHint, not n.transient: senders exist that put an int32 in the
+// hint, and astal's getter logs a GLib critical on every such read
 export const persistent: Accessor<AstalNotifd.Notification[]> = notifications.as(list =>
     list.filter(
         n =>
-            !n.transient &&
+            !booleanHint(n.get_hint("transient")) &&
             !Config.notifications.transientApps.includes((n.appName || "unknown").toLowerCase()),
     ),
 )
