@@ -198,6 +198,12 @@ so does not preserve parameter order.
 ## Resources
 
 - Widget subscriptions pair `subscribe` with `onCleanup`.
+- Prefer imperative `createState` over array-form `createComputed` for
+  derived display values: its dep cache keys on falsy checks, and an
+  initially-falsy dep (`""`, `[]`) can leave the computed stale —
+  observed twice (`eligiblePlayers` in `lib/mpris.ts`, and the enriched
+  media subtitle in `lib/mediaMeta.ts`, where the title label updated
+  on resolution and the sub never did).
 - Lib modules with long-lived sources expose a `dispose()` and REGISTER
   it: `registerDispose("<module>", dispose)` from `lib/lifecycle.ts`,
   run by `app.tsx` on `shutdown`. Singletons register from inside
