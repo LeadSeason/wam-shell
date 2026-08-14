@@ -208,7 +208,8 @@
 #        case-insensitively against the stream's application.name and
 #        node.name. For ambient screen consumers without an audience
 #        (a Hue light sync), not for hiding real casts from yourself.
-#        huenicorn is always ignored, built in. default []
+#        `wam screen-share` lists the names live. huenicorn is always
+#        ignored, built in. default []
 # [screen_share]
 # ignore_apps = []
 
