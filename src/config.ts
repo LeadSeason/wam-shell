@@ -312,6 +312,11 @@ function getMediaConfig() {
         // and take its og:image. Only runs when recover_browser_art is
         // on, and only for tracks the youtube tiers cannot resolve
         recoverSiteArt: r.bool("recover_site_art", true),
+        // a browser track titled just "Episode 1" carries no
+        // information — the series name only exists in the tab title.
+        // Look the playing page up in history (same read-only query as
+        // recover_site_art) and show the series name instead
+        enrichTitles: r.bool("enrich_titles", true),
     }
 }
 
