@@ -10,6 +10,7 @@ import { timeoutAdd, sourceRemove } from "../lib/metrics"
 import { hideOnFocusLoss } from "../lib/popupFocus"
 import { closeOtherPopups, registerPopup } from "../lib/exclusivePopups"
 import { monitorAlive } from "../lib/utils"
+import { enrichedMeta } from "../lib/mediaMeta"
 import {
     activePlayer,
     bindSeekScale,
@@ -103,6 +104,10 @@ function PopupContent({ player }: { player: AstalMpris.Player }) {
     const length = lengthState(player)
     const canSeek = createBinding(player, "canSeek")
 
+    // enriched labels (lib/mediaMeta): a generic browser title like
+    // "Episode 1" shows the series name instead, episode label as sub
+    const meta = enrichedMeta(player)
+
     const shuffleClass = createBinding(player, "shuffleStatus").as(s =>
         s === AstalMpris.Shuffle.ON ? ["active"] : [""],
     )
@@ -148,14 +153,14 @@ function PopupContent({ player }: { player: AstalMpris.Player }) {
             </box>
             <label
                 cssClasses={["title"]}
-                label={createBinding(player, "title").as(t => t || "Unknown title")}
+                label={meta.title.as(t => t || "Unknown title")}
                 halign={Gtk.Align.CENTER}
                 maxWidthChars={30}
                 ellipsize={Pango.EllipsizeMode.END}
             />
             <label
                 cssClasses={["artist"]}
-                label={createBinding(player, "artist").as(a => a || "")}
+                label={meta.sub}
                 halign={Gtk.Align.CENTER}
                 maxWidthChars={34}
                 ellipsize={Pango.EllipsizeMode.END}

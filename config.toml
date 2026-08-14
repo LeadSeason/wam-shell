@@ -243,6 +243,12 @@
 #           the youtube lookup cannot resolve. Works on
 #           server-rendered pages; a js-rendered shell with no meta
 #           tags still falls back to the 150px thumb. default true
+# enrich_titles - a browser track titled just "Episode 1" carries no
+#           information: the series name only exists in the tab title.
+#           With this on, the playing page is looked up in the
+#           browser's history (the same read-only query as
+#           recover_site_art) and the widget shows the series name,
+#           with the episode label as the subtitle. default true
 # [media]
 # enabled = false
 # show_controls = true
@@ -251,6 +257,7 @@
 # hide_private_sessions = true
 # recover_browser_art = true
 # recover_site_art = true
+# enrich_titles = true
 
 # [harvest] - Harvest time tracking (getharvest.com): running timer on
 #             the panel + a picker popup (start/stop/resume/notes/new

@@ -14,6 +14,7 @@ import {
     scrollActivePlayer,
 } from "../../../lib/mpris"
 import { createIconResolver } from "../../../lib/appIcon"
+import { enrichedMeta } from "../../../lib/mediaMeta"
 import { popupAnchor, setPopupAnchor } from "../../mediaPopup"
 import { pressable } from "../../pressable"
 
@@ -34,10 +35,11 @@ function MediaWidget({
     const position = positionState(player)
     const trackLength = lengthState(player)
 
-    const label = createComputed(
-        [createBinding(player, "title"), createBinding(player, "artist")],
-        (title, artist) =>
-            artist ? `${title || "Unknown title"} - ${artist}` : title || player.identity || "",
+    // enriched labels (lib/mediaMeta): a generic browser title like
+    // "Episode 1" shows the series name instead, episode label as sub
+    const meta = enrichedMeta(player)
+    const label = createComputed([meta.title, meta.sub], (title, sub) =>
+        sub ? `${title || "Unknown title"} - ${sub}` : title || player.identity || "",
     )
 
     let mediaBox: Gtk.Box
