@@ -200,6 +200,18 @@
 # always_on_panel = ["TelegramDesktop"]
 # popup_icon_size = 22
 
+# [screen_share] - the screen-share mask behind [media] and [harvest]
+#        hide_when_screen_sharing. Any PipeWire video-input stream
+#        (portal screencast, camera grab) counts as sharing. All keys
+#        are section-only.
+# ignore_apps - apps whose grabs never count as sharing, matched
+#        case-insensitively against the stream's application.name and
+#        node.name. For ambient screen consumers without an audience
+#        (a Hue light sync), not for hiding real casts from yourself.
+#        huenicorn is always ignored, built in. default []
+# [screen_share]
+# ignore_apps = []
+
 # [media] - media controls (mpris) on the panel + popup
 # enabled - show the media widget in the classic (non-[[panel]]) bar
 #           layout. default false. [[panel]] lists always render it
@@ -209,7 +221,8 @@
 #           hide the quick-settings player entirely (title, artist and
 #           cover would otherwise be visible to viewers). starts the
 #           screen-share monitor (pw-dump) even without the harvest
-#           mask. default false
+#           mask. apps in [screen_share] ignore_apps never count as
+#           sharing. default false
 # hide_private_sessions - hide browser private/incognito playback:
 #           browsers scrub the track title to an anonymized "<X> is
 #           playing media" placeholder, and such tracks are treated as
@@ -270,9 +283,10 @@
 # hide_when_screen_sharing - "streaming mode": while screen sharing,
 #           hide the elapsed and the pause button and mask project/task
 #           (tooltip included); the pill shows only a blinking icon, so
-#           viewers can't tell a timer is running. set false to disable
-#           the mask entirely — the screen-share monitor (pw-dump) then
-#           never starts. default true
+#           viewers can't tell a timer is running. apps in
+#           [screen_share] ignore_apps never count as sharing. set false
+#           to disable the mask entirely — the screen-share monitor
+#           (pw-dump) then never starts. default true
 # notify - post a notification whenever a timer starts, pauses or
 #          stops, wherever it happened: this shell, the harvest web app
 #          or the phone. Starting is an acknowledgement — low urgency,

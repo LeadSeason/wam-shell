@@ -1,6 +1,7 @@
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
 import { createState } from "gnim"
+import Config from "../config"
 import { execAsync, timeoutAdd, sourceRemove } from "./metrics"
 import { streamLines } from "./streamLines"
 import { registerDispose } from "./lifecycle"
@@ -20,10 +21,18 @@ import { registerDispose } from "./lifecycle"
 //
 // Over-masking is accepted: a camera grab (a call with the camera on)
 // counts too. TODO: discriminate portal screencasts from v4l2 grabs
-// via the link target if that ever bothers anyone.
+// via the link target if that ever bothers anyone. Ambient grabbers
+// with no audience (a Hue light sync) are ignored: the universal ones
+// in ALWAYS_IGNORED below, personal ones in [screen_share] ignore_apps.
 
 const [sharing, setSharing] = createState(false)
 export { sharing }
+
+// grabs that never have viewers, whoever runs them — matched like
+// ignore_apps (case-insensitive, against application.name and node.name;
+// huenicorn's pw-stream sets only node.name). Additions need the same
+// "ambient consumer, never an audience" justification
+const ALWAYS_IGNORED = ["huenicorn", "huenicornstream"]
 
 let debounce = 0
 let monitor: Gio.Subprocess | null = null
@@ -32,23 +41,39 @@ let monitor: Gio.Subprocess | null = null
 let evaluating = false
 let evaluateAgain = false
 
-// diagnostics: on every mask/unmask flip, name what the dump matched —
-// a transient grab (camera probe, portal screencast) is gone before
-// anyone can inspect the graph, so the journal is the only record
-function describeMatches(dump: string): string {
+export type VideoInput = { app: string; node: string; media: string }
+
+// The video-input streams in a pw-dump, or null when the dump does not
+// parse — exported for tests. Props can be sparse: a pw-stream client
+// may set node.name without application.name (both are matched against
+// screen_share.ignore_apps)
+export function parseVideoInputs(dump: string): VideoInput[] | null {
     try {
-        const nodes = (JSON.parse(dump) as { info?: { props?: Record<string, string> } }[]).filter(
-            o => o?.info?.props?.["media.class"] === "Stream/Input/Video",
-        )
-        return nodes
-            .map(o => {
-                const p = o.info?.props ?? {}
-                return `${p["application.name"] ?? p["node.name"] ?? "unknown"} (${p["media.name"] ?? p["node.description"] ?? "?"})`
-            })
-            .join(", ")
+        return (JSON.parse(dump) as { info?: { props?: Record<string, string> } }[])
+            .map(o => o?.info?.props)
+            .filter(
+                (p): p is Record<string, string> =>
+                    !!p && p["media.class"] === "Stream/Input/Video",
+            )
+            .map(p => ({
+                app: p["application.name"] ?? "",
+                node: p["node.name"] ?? "",
+                media: p["media.name"] ?? p["node.description"] ?? "",
+            }))
     } catch {
-        return "unparseable dump"
+        return null
     }
+}
+
+// ignoreApps is already lowercased (src/config.ts) — exported for tests
+export function ignoredVideoInput(v: VideoInput, ignoreApps: string[]): boolean {
+    const app = v.app.toLowerCase()
+    const node = v.node.toLowerCase()
+    return [...ALWAYS_IGNORED, ...ignoreApps].some(i => i === app || i === node)
+}
+
+function describe(v: VideoInput): string {
+    return `${v.app || v.node || "unknown"} (${v.media || "?"})`
 }
 
 async function evaluate() {
@@ -59,12 +84,20 @@ async function evaluate() {
     evaluating = true
     try {
         const out = await execAsync(["pw-dump"])
-        const matches = out.match(/"media\.class": "Stream\/Input\/Video"/g)
-        const next = (matches?.length ?? 0) > 0
+        const parsed = parseVideoInputs(out)
+        const active = parsed?.filter(v => !ignoredVideoInput(v, Config.screenShare.ignoreApps))
+        // an unparseable dump must not silently unmask: fall back to the
+        // raw count, which knows nothing about the ignore list
+        const rawCount = out.match(/"media\.class": "Stream\/Input\/Video"/g)?.length ?? 0
+        const next = active ? active.length > 0 : rawCount > 0
+        // diagnostics: on every mask/unmask flip, name what the dump
+        // matched — a transient grab (camera probe, portal screencast)
+        // is gone before anyone can inspect the graph, so the journal
+        // is the only record
         if (next !== sharing.get())
             console.warn(
                 next
-                    ? `screenShare: masking — video input from: ${describeMatches(out)}`
+                    ? `screenShare: masking — video input from: ${active ? active.map(describe).join(", ") : "unparseable dump"}`
                     : "screenShare: unmasking — no video input streams left",
             )
         setSharing(next)
