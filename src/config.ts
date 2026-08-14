@@ -310,6 +310,18 @@ function getMediaConfig() {
     }
 }
 
+function getScreenShareConfig() {
+    // sectionOnly section-wide, like the service sections: a new key has
+    // no historical flat spelling to keep alive
+    const r = createReader(configData, "screen_share", { sectionOnly: true })
+    return {
+        // apps whose video-input streams never count as sharing (ambient
+        // screen grabs like a Hue light sync), matched case-insensitively
+        // against application.name and node.name
+        ignoreApps: r.strList("ignore_apps", []).map(a => a.toLowerCase()),
+    }
+}
+
 // The spacing multiplier behind `[appearance] density`, applied to the
 // scss space scale (`space()` in scss/conf.scss). Named rather than
 // numeric on purpose: a free-form multiplier invites 0.3, which compiles
@@ -805,6 +817,7 @@ export default class Config {
     static quicksettings = getQSettingsConfig()
     static bluetooth = getBluetoothConfig()
     static media = getMediaConfig()
+    static screenShare = getScreenShareConfig()
     static idleInhibit = getIdleInhibitConfig()
     static hyprsunset = getHyprsunsetConfig()
     static barMonitors = getBarMonitors()
