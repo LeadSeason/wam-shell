@@ -6,7 +6,10 @@ import {
     escapeLike,
     historyQuery,
     isBrowserThumb,
+    ogImageFromHtml,
     recentWatchIdsQuery,
+    sitePageQuery,
+    slugifyTitle,
 } from "../src/lib/browserArt"
 import { isSmallCover } from "../src/lib/coverArt"
 import { thumbDiff } from "../src/lib/thumbMatch"
@@ -122,6 +125,76 @@ test("recentWatchIdsQuery: recent watch visits, newest first", () => {
     eq(q.includes("url LIKE '%youtube.com/watch?v=%'"), true)
     eq(q.includes("last_visit_time >"), true)
     eq(q.includes("ORDER BY last_visit_time DESC"), true)
+})
+
+test("slugifyTitle: the url form of a track title", () => {
+    eq(slugifyTitle("Fang of Smoldering Insanity"), "fang-of-smoldering-insanity")
+    // punctuation runs collapse to one dash, edge dashes are trimmed
+    eq(slugifyTitle("  Dropkick — EP 5!! "), "dropkick-ep-5")
+})
+
+test("slugifyTitle: no latin alphanumerics, no slug", () => {
+    // a contentless slug would substring-match every url in history
+    eq(slugifyTitle("♫♪♫"), "")
+    eq(slugifyTitle(""), "")
+})
+
+test("sitePageQuery: youtube rows stay out of the site tier", () => {
+    // youtube is covered by the earlier tiers; fetching a watch page
+    // for its og:image would pull a megabyte of shell per track
+    const q = sitePageQuery("Some Track")
+    eq(q.includes("url NOT LIKE '%youtube.com/%'"), true)
+    eq(q.includes("title = 'Some Track'"), true)
+    eq(q.includes("title LIKE 'Some Track - %'"), true)
+    eq(q.includes("last_visit_time >"), true)
+})
+
+test("sitePageQuery: the slug tier rides the url column", () => {
+    // the media session reports the episode title, the tab title the
+    // series — the url is what carries the episode title
+    eq(
+        sitePageQuery("Fang of Smoldering Insanity").includes(
+            "url LIKE '%fang-of-smoldering-insanity%'",
+        ),
+        true,
+    )
+    // a generic or contentless slug would hit unrelated recent urls
+    eq(sitePageQuery("Trailer").includes("OR url LIKE"), false)
+    eq(sitePageQuery("♫♪♫").includes("OR url LIKE"), false)
+})
+
+test("ogImageFromHtml: attribute order does not matter", () => {
+    eq(
+        ogImageFromHtml('<meta property="og:image" content="https://cdn.example/a.jpg">'),
+        "https://cdn.example/a.jpg",
+    )
+    eq(
+        ogImageFromHtml('<meta content="https://cdn.example/b.jpg" property="og:image">'),
+        "https://cdn.example/b.jpg",
+    )
+})
+
+test("ogImageFromHtml: og wins over twitter, twitter is the fallback", () => {
+    const html =
+        '<meta name="twitter:image" content="https://cdn.example/t.jpg">' +
+        '<meta property="og:image" content="https://cdn.example/og.jpg">'
+    eq(ogImageFromHtml(html), "https://cdn.example/og.jpg")
+    eq(
+        ogImageFromHtml('<meta name="twitter:image" content="https://cdn.example/t.jpg">'),
+        "https://cdn.example/t.jpg",
+    )
+})
+
+test("ogImageFromHtml: entities are decoded, relative urls skipped", () => {
+    eq(
+        ogImageFromHtml(
+            '<meta property="og:image" content="https://cdn.example/a.jpg?x=1&amp;y=2">',
+        ),
+        "https://cdn.example/a.jpg?x=1&y=2",
+    )
+    // a relative og:image says nothing about which host to ask
+    eq(ogImageFromHtml('<meta property="og:image" content="/storage/a.jpg">'), "")
+    eq(ogImageFromHtml("<html><head><title>no art here</title></head></html>"), "")
 })
 
 function solid(rgba: number, alpha = false): GdkPixbuf.Pixbuf {
