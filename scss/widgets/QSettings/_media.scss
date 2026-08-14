@@ -90,10 +90,17 @@ window#QSettings {
 
         // the gradient cannot know what the artwork does underneath it:
         // a shadow keeps the title readable over a busy cover (posters
-        // with their own lettering are the hard case)
+        // with their own lettering are the hard case). The halo has to
+        // CONTRAST with the glyphs: the text is light in a dark theme
+        // and dark in a light one, so the same black shadow that lifts
+        // light glyphs off the art just fattens dark ones into a smudge
+        $glyph-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+        @if u.$is-light {
+            $glyph-shadow: 0 1px 3px color.mix(t.$base, transparent, 85%);
+        }
         .mediaTitle,
         .mediaArtist {
-            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+            text-shadow: $glyph-shadow;
         }
         // an rtl track reads from the right: the timestamps stay in
         // clock order (elapsed, then total) — only the text flips
