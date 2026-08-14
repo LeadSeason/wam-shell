@@ -14,6 +14,7 @@ Section: `[media]`.
 | `hide_private_sessions` | bool | `true` | Hide browser private/incognito playback (such tracks count as no track) |
 | `recover_browser_art` | bool | `true` | Chromium downscales cover art to 150px; with this on, the track title is looked up in the browser's history to find the full-size thumbnail |
 | `recover_site_art` | bool | `true` | Non-YouTube half of the above: find the playing page in history by the track title slugged into its URL, fetch it, use its `og:image`. Only runs when `recover_browser_art` is on |
+| `enrich_titles` | bool | `true` | A browser track titled just "Episode 1" carries no information — look the playing page up in history and show the series name from its tab title instead, with the episode label as subtitle |
 
 - `recover_browser_art` reads the browser's history database read-only,
   and only YouTube rows. Set it to `false` to leave your history
