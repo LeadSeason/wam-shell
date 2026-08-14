@@ -619,7 +619,10 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
         // the pair we resolved for must still be the pair on screen when
         // the lookup and the download come back
         const stale = () => cover.get() !== artUrl || title.get() !== forTitle
-        recoverBrowserArt(forTitle)
+        // chromium's own 150px copy, for the thumbnail tier of the
+        // recovery (isBrowserThumb above guarantees a local path)
+        const thumbPath = artUrl.startsWith("file://") ? artUrl.slice(7) : artUrl
+        recoverBrowserArt(forTitle, thumbPath)
             .then(found => {
                 if (stale()) return
                 if (!found) return scheduleRetry()
