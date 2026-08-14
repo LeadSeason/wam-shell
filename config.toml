@@ -243,12 +243,13 @@
 #           the youtube lookup cannot resolve. Works on
 #           server-rendered pages; a js-rendered shell with no meta
 #           tags still falls back to the 150px thumb. default true
-# enrich_titles - a browser track titled just "Episode 1" carries no
-#           information: the series name only exists in the tab title.
-#           With this on, the playing page is looked up in the
-#           browser's history (the same read-only query as
-#           recover_site_art) and the widget shows the series name,
-#           with the episode label as the subtitle. default true
+# enrich_titles - a browser track with no artist metadata gets the
+#           series name from the playing page's tab title: the page is
+#           looked up in the browser's history (the same read-only
+#           query as recover_site_art). A track titled just "Episode 1"
+#           is replaced by the series name with the episode label as
+#           subtitle; a real title keeps the title line and the series
+#           replaces the app name on the subtitle line. default true
 # [media]
 # enabled = false
 # show_controls = true

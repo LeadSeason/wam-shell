@@ -3,12 +3,12 @@ import { Accessor, createBinding, createState, onCleanup } from "gnim"
 import Config from "../config"
 import { recentPagesForTitle } from "./browserArt"
 
-// A browser track whose media-session title carries no information:
-// the site reports the episode NUMBER as the whole title ("Episode 1",
-// album repeats it, artist empty), and the series name only exists in
-// the tab title. The history lookup behind browserArt already finds
-// the playing page — the tab title comes back with it, so the widget
-// can show the series instead of the bare number.
+// A browser track whose media-session metadata has no artist: the
+// series name only exists in the playing page's tab title, and the
+// track title can even be a bare counter ("Episode 1", album repeats
+// it). The history lookup behind browserArt already finds the playing
+// page — the tab title comes back with it, so the widget can show the
+// series instead of the app name (or the bare number).
 
 // "Episode 1", "EP 5", "Chapter 12" — a bare counter, not a title
 const GENERIC_RE = /^(episode|ep|chapter)\s*[-.:]?\s*\d+$/i
@@ -37,11 +37,14 @@ export interface EnrichedMeta {
     sub: Accessor<string>
 }
 
-/** display labels for a player, enriching generic browser track titles
- *  with the series name from the playing page's tab title. Lookups are
- *  keyed by art url + title: the title alone is exactly what is not
- *  unique here (every series has an "Episode 1"), but a new track
- *  always brings a new chromium thumb. */
+/** display labels for a player, enriched from the playing page's tab
+ *  title when the browser reports no artist. A bare counter title
+ *  ("Episode 1") is REPLACED by the series name with the counter as
+ *  subtitle; a real title ("Golden Raana Farming") keeps the title line
+ *  and the series name takes the subtitle over the app-name fallback.
+ *  Lookups are keyed by art url + title: the title alone is exactly
+ *  what is not unique here (every series has an "Episode 1"), but a
+ *  new track always brings a new chromium thumb. */
 export function enrichedMeta(player: AstalMpris.Player): EnrichedMeta {
     const title = createBinding(player, "title")
     const artist = createBinding(player, "artist")
@@ -57,9 +60,14 @@ export function enrichedMeta(player: AstalMpris.Player): EnrichedMeta {
 
     const sync = () => {
         const t = title.get() ?? ""
-        if (series) {
+        if (series && isGenericTitle(t)) {
+            // a bare counter is not a title: the series takes the title
+            // line, the counter becomes the subtitle
             setOutTitle(series)
             setSub(t)
+        } else if (series) {
+            setOutTitle(t)
+            setSub(series)
         } else {
             setOutTitle(t)
             setSub(artist.get() ?? "")
@@ -69,7 +77,7 @@ export function enrichedMeta(player: AstalMpris.Player): EnrichedMeta {
     const maybeEnrich = () => {
         const t = title.get() ?? ""
         // an artist means the player reported real metadata; leave it be
-        if (!Config.media.enrichTitles || !isGenericTitle(t) || artist.get()) {
+        if (!Config.media.enrichTitles || !t || artist.get()) {
             lookedUp = ""
             if (series) {
                 series = ""
@@ -84,8 +92,8 @@ export function enrichedMeta(player: AstalMpris.Player): EnrichedMeta {
                 const found = rows
                     .map(r => seriesFromTabTitle(r.title))
                     // a derived name that still carries the track title
-                    // isolated nothing — it would only rephrase the generic
-                    // label, so reject it
+                    // isolated nothing ("Video Title - YouTube" is not a
+                    // series), so reject it
                     .find(s => s && !s.toLowerCase().includes(t.toLowerCase()))
                 if (lookedUp === key) {
                     series = found ?? ""
