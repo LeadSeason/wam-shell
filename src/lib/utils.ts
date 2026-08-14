@@ -27,6 +27,22 @@ export function monitorAlive(monitor: Gdk.Monitor): boolean {
     return false
 }
 
+// a notification hint that should be a boolean per the spec, but is not
+// always one: senders exist that put an int32 there, and astal's typed
+// getters (n.transient & co) log a GLib critical on EVERY read of such
+// a hint, treating it as absent. Read the raw variant and accept both.
+export function booleanHint(v: GLib.Variant | null): boolean {
+    if (!v) return false
+    switch (v.get_type_string()) {
+        case "b":
+            return v.get_boolean()
+        case "i":
+            return v.get_int32() !== 0
+        default:
+            return false
+    }
+}
+
 // AstalBluetooth's batteryPercentage is a FRACTION (0..1, like AstalWp
 // volume and brightness.screen), the gir's "percentage" comment
 // notwithstanding — a 90% device reports 0.9 and the UI printed "0.9%".
