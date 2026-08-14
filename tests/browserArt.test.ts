@@ -1,8 +1,15 @@
 import GdkPixbuf from "gi://GdkPixbuf?version=2.0"
 import GLib from "gi://GLib?version=2.0"
 import { test, eq } from "./framework"
-import { artForWatchUrl, escapeLike, historyQuery, isBrowserThumb } from "../src/lib/browserArt"
+import {
+    artForWatchUrl,
+    escapeLike,
+    historyQuery,
+    isBrowserThumb,
+    recentWatchIdsQuery,
+} from "../src/lib/browserArt"
 import { isSmallCover } from "../src/lib/coverArt"
+import { thumbDiff } from "../src/lib/thumbMatch"
 
 const TMP = GLib.getenv("WAM_TEST_TMP")!
 
@@ -105,4 +112,41 @@ test("isSmallCover: a missing file or a remote url is never small", () => {
     eq(isSmallCover(`file://${TMP}/cover-does-not-exist.png`), false)
     eq(isSmallCover("https://i.ytimg.com/vi/abc/maxresdefault.jpg"), false)
     eq(isSmallCover(""), false)
+})
+
+test("recentWatchIdsQuery: recent watch visits, newest first", () => {
+    const q = recentWatchIdsQuery()
+    // candidates come from the url column alone — titles are exactly
+    // what this tier cannot trust
+    eq(q.includes("SELECT url, last_visit_time FROM urls"), true)
+    eq(q.includes("url LIKE '%youtube.com/watch?v=%'"), true)
+    eq(q.includes("last_visit_time >"), true)
+    eq(q.includes("ORDER BY last_visit_time DESC"), true)
+})
+
+function solid(rgba: number, alpha = false): GdkPixbuf.Pixbuf {
+    const buf = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, alpha, 8, 64, 36)!
+    buf.fill(rgba)
+    return buf
+}
+
+test("thumbDiff: identical art differs by nothing, opposites by 255", () => {
+    eq(thumbDiff(solid(0x336699ff), solid(0x336699ff)), 0)
+    eq(thumbDiff(solid(0x000000ff), solid(0xffffffff)), 255)
+})
+
+test("thumbDiff: a near colour is a small diff, a far one is not", () => {
+    const near = thumbDiff(solid(0x000000ff), solid(0x0a0a0aff))
+    const far = thumbDiff(solid(0x336699ff), solid(0xcc6633ff))
+    eq(near, 10)
+    // (153 + 0 + 102) / 3 — an unrelated thumbnail lives here, the
+    // acceptance band sits far below it
+    eq(far, 85)
+})
+
+test("thumbDiff: an alpha channel on one side does not count as content", () => {
+    // (semi-transparent art would premultiply under the scaler, but the
+    // sources this compares — jpeg candidates, chromium's rgb png —
+    // never carry one)
+    eq(thumbDiff(solid(0x336699ff), solid(0x336699ff, true)), 0)
 })

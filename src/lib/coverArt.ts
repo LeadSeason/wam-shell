@@ -81,7 +81,7 @@ export function artCandidates(url: string): string[] {
     return out
 }
 
-function fetchCover(url: string): Promise<Uint8Array> {
+export function fetchImage(url: string): Promise<Uint8Array> {
     return new Promise((resolve, reject) => {
         const msg = Soup.Message.new("GET", url)
         if (!msg) return reject(new Error(`invalid cover url: ${url}`))
@@ -114,7 +114,7 @@ function fetchCover(url: string): Promise<Uint8Array> {
 // ends with the url the player gave us, so a cdn that has stopped
 // speaking our size tokens still lands on the art it does have.
 function fetchLargest(urls: string[]): Promise<Uint8Array> {
-    return fetchCover(urls[0]).catch(e => {
+    return fetchImage(urls[0]).catch(e => {
         if (urls.length === 1) throw e
         return fetchLargest(urls.slice(1))
     })
