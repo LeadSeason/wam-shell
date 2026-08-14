@@ -243,8 +243,13 @@ export function ogImageFromHtml(html: string): string {
 /** the page candidates for a track, best match first: the youtube
  *  tiers minus the youtube filter, plus the slug tier. Exported for
  *  the tests: the db half needs a browser, the sql is pure string
- *  work. last_visit_time rides along so rows from several dbs can be
- *  merged newest-first. */
+ *  work. The row's title and last_visit_time ride along — the tab
+ *  title is itself useful (mediaMeta derives a series name from it
+ *  when the track title is generic) and the visit time lets rows from
+ *  several dbs merge newest-first. Rows come back as JSON: titles DO
+ *  contain "|" ("Watch X | EP 1"), sqlite's default separator, and the
+ *  sqlite3 CLI caret-escapes control characters, so neither a pipe nor
+ *  a char(31) separator survives the trip. */
 export function sitePageQuery(title: string): string {
     const exact = sqlLiteral(title)
     const suffix = sqlLiteral(`${escapeLike(title)} - %`)
@@ -257,7 +262,7 @@ export function sitePageQuery(title: string): string {
     // tier uses applies (a long-lived tab older than it simply misses)
     const cutoff = Math.floor((Date.now() / 1000 - RECENT_WINDOW_SEC + 11644473600) * 1e6)
     return (
-        "SELECT url, last_visit_time FROM urls " +
+        "SELECT json_array(url, title, last_visit_time) FROM urls " +
         `WHERE url NOT LIKE '%youtube.com/%' AND last_visit_time > ${cutoff} AND ` +
         `(title = ${exact} OR ${isSuffix} OR title LIKE ${badged}${LIKE_ESCAPE}${slugClause}) ` +
         `ORDER BY (title = ${exact}) DESC, (${isSuffix}) DESC, last_visit_time DESC ` +
@@ -269,6 +274,40 @@ export function sitePageQuery(title: string): string {
 // gives up (a hit short-circuits; three misses is a podcast homepage
 // and two collisions)
 const SITE_CANDIDATES = 3
+
+/** recent history rows whose page could be playing `title`,
+ *  newest-first, deduped by url — the candidate set behind both the
+ *  site art tier and the generic-title enrichment in mediaMeta. Not
+ *  config-gated: the gating decision belongs to the caller (which
+ *  feature is asking). */
+export function recentPagesForTitle(title: string): Promise<{ url: string; title: string }[]> {
+    dbs ??= historyDbs()
+    if (dbs.length === 0) return Promise.resolve([])
+    const q = sitePageQuery(title)
+    return Promise.all(
+        dbs.map(db =>
+            execAsync(["sqlite3", "-readonly", `file:${db}?immutable=1`, q])
+                .then(out => out.trim())
+                .catch(() => ""),
+        ),
+    ).then(outs => {
+        const rows: [number, string, string][] = []
+        for (const out of outs)
+            for (const line of out.split("\n")) {
+                try {
+                    const [url, title, time] = JSON.parse(line)
+                    if (url && title && time) rows.push([Number(time), url, title])
+                } catch {
+                    // a truncated or empty line is no candidate
+                }
+            }
+        rows.sort((a, b) => b[0] - a[0])
+        const pages: { url: string; title: string }[] = []
+        for (const [, url, t] of rows)
+            if (!pages.some(p => p.url === url)) pages.push({ url, title: t })
+        return pages
+    })
+}
 
 // send_and_read buffers the whole body: cap it so a heavy page cannot
 // balloon memory, and reject non-html payloads outright
@@ -326,29 +365,12 @@ function scrapeFirst(urls: string[]): Promise<string> {
 }
 
 /** the og:image of the page playing `title`, or "" — the site tier of
- *  the recovery. Candidate rows are merged across dbs newest-first,
- *  like recentWatchIds does for the thumb tier. */
+ *  the recovery. */
 function siteArt(title: string): Promise<string> {
     if (!Config.media.recoverSiteArt) return Promise.resolve("")
-    const q = sitePageQuery(title)
-    return Promise.all(
-        dbs!.map(db =>
-            execAsync(["sqlite3", "-readonly", `file:${db}?immutable=1`, q])
-                .then(out => out.trim())
-                .catch(() => ""),
-        ),
-    ).then(outs => {
-        const visits: [number, string][] = []
-        for (const out of outs)
-            for (const line of out.split("\n")) {
-                const sep = line.lastIndexOf("|")
-                if (sep > 0) visits.push([Number(line.slice(sep + 1)), line.slice(0, sep)])
-            }
-        visits.sort((a, b) => b[0] - a[0])
-        const urls: string[] = []
-        for (const [, url] of visits) if (!urls.includes(url)) urls.push(url)
-        return scrapeFirst(urls.slice(0, SITE_CANDIDATES))
-    })
+    return recentPagesForTitle(title).then(rows =>
+        scrapeFirst(rows.map(r => r.url).slice(0, SITE_CANDIDATES)),
+    )
 }
 
 // chromium deletes the temp thumb on its own schedule while mpris still

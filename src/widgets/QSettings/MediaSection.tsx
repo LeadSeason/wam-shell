@@ -4,6 +4,7 @@ import GLib from "gi://GLib?version=2.0"
 import Gtk from "gi://Gtk?version=4.0"
 import Pango from "gi://Pango?version=1.0"
 import { createBinding, createComputed, createState, For, With } from "gnim"
+import { enrichedMeta } from "../../lib/mediaMeta"
 import {
     activePlayer,
     bindSeekScale,
@@ -67,8 +68,12 @@ function MediaButton({
 export const [qsVisible, setQsVisible] = createState(false)
 
 function Player({ player }: { player: AstalMpris.Player }) {
-    const title = createBinding(player, "title")
-    const artist = createBinding(player, "artist")
+    // enriched labels: a browser track titled just "Episode 1" shows the
+    // series name (resolved from the playing page's tab title) with the
+    // episode label as the subtitle — lib/mediaMeta
+    const meta = enrichedMeta(player)
+    const title = meta.title
+    const artist = meta.sub
     const status = createBinding(player, "playbackStatus")
     // one binding, four consumers (icon, tooltip, active class, sensitive):
     // each createBinding is its own notify:: subscription, and the loop
