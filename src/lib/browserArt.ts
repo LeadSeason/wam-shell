@@ -66,9 +66,9 @@ function historyDbs(): string[] {
 // call on every track change
 let dbs: string[] | null = null
 
-// title -> recovered art url. Bounded so a long listening session
-// cannot grow it without limit; tracks repeat far more often than the
-// cap is reached.
+// title -> recovered art url, for the TITLE tiers only. Bounded so a
+// long listening session cannot grow it without limit; tracks repeat
+// far more often than the cap is reached.
 //
 // A hit is final, a miss is NOT: chrome commits a visit on its own
 // schedule and the db is read with immutable=1, which deliberately
@@ -82,6 +82,17 @@ const MAX_MEMO = 200
 const MAX_MISSES = 3
 const memo = new Map<string, string>()
 const misses = new Map<string, number>()
+
+// thumbnail tier results are memoized by PIXEL HASH, never by title.
+// The title is exactly what this tier cannot trust (a title-rewriting
+// extension is why it exists), and the thumb can even be the PREVIOUS
+// track's: when a site's artwork is a video frame, it does not exist
+// until the video decodes, so the title notify arrives while mpris
+// still reports the old art. Match THAT thumb and the old video's art
+// pins itself to the new title — a title-keyed memo would keep it
+// wrong for the rest of the session. The same pixels always name the
+// same video, so the hash is the honest key.
+const thumbMemo = new Map<string, string>()
 
 function sqlLiteral(s: string): string {
     return `'${s.replace(/'/g, "''")}'`
@@ -137,13 +148,28 @@ export function recoverBrowserArt(title: string, thumbPath = ""): Promise<string
         .then(url => {
             const art = artForWatchUrl(url)
             if (art || !thumbPath) return remember(title, art)
-            return snapshotThumb(thumbPath).then(stable =>
-                recentWatchIds(dbs!).then(ids =>
-                    matchThumbId(stable, ids).then(id =>
-                        remember(title, id ? `${THUMB_BASE}${id}/maxresdefault.jpg` : ""),
-                    ),
-                ),
-            )
+            return snapshotThumb(thumbPath).then(stable => {
+                // the snapshot's own content hash, when it is one of
+                // our copies (on a read failure it is the original
+                // path, and there is nothing safe to memoize under)
+                const hash = stable.match(/cover-bthumb-([0-9a-f]+)$/)?.[1]
+                const hit = hash && thumbMemo.get(hash)
+                if (hit) return Promise.resolve(hit)
+                return recentWatchIds(dbs!).then(ids =>
+                    matchThumbId(stable, ids).then(id => {
+                        // a miss still counts against the title's retry
+                        // budget, but a hit is remembered by hash only
+                        if (!id) return remember(title, "")
+                        const art = `${THUMB_BASE}${id}/maxresdefault.jpg`
+                        if (hash) {
+                            if (thumbMemo.size >= MAX_MEMO) thumbMemo.clear()
+                            thumbMemo.set(hash, art)
+                        }
+                        misses.delete(title)
+                        return art
+                    }),
+                )
+            })
         })
 }
 

@@ -557,21 +557,30 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
         return url
     }
 
-    // the title the recovery has already upgraded the art for. Chromium
-    // re-emits its thumbnail path on its own schedule, and update()
-    // would otherwise put the 150px copy back over the recovered
-    // full-size one — the same track blurring and unblurring on every
-    // notify
+    // the title the recovery has already upgraded the art for, AND the
+    // art url it was upgraded from. Chromium re-emits its thumbnail path
+    // on its own schedule, and update() would otherwise put the 150px
+    // copy back over the recovered full-size one — the same track
+    // blurring and unblurring on every notify. But the guard must only
+    // hold while the art on the bus IS the one the upgrade was derived
+    // from: when a site's artwork is a video frame it does not exist
+    // until the video decodes, so the new title arrives while mpris
+    // still reports the PREVIOUS track's thumb — match that stale thumb
+    // and the old art pins itself to the new title. A changed art url
+    // means new pixels: the old upgrade no longer applies.
     let upgradedFor: string | null = null
+    let upgradedFrom: string | null = null
 
     const update = () => {
-        if (upgradedFor !== null && upgradedFor === title.get()) return
+        if (upgradedFor !== null && upgradedFor === title.get() && cover.get() === upgradedFrom)
+            return
         // past the guard we are about to render whatever the player
         // currently reports, so the recovered art is no longer what is
         // on screen: leaving the title set would short-circuit the
         // update that switches BACK to it later and keep the other
         // track's cover
         upgradedFor = null
+        upgradedFrom = null
         const url = art.get() || ""
         if (!url.startsWith("http")) return setLocal(fallback())
 
@@ -629,6 +638,7 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
                 return downloadCover(found).then(path => {
                     if (stale()) return
                     upgradedFor = forTitle
+                    upgradedFrom = artUrl
                     setLocal(`file://${path}`)
                 })
             })
@@ -647,7 +657,10 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
 
     // one mpris metadata update arrives as a separate notify per
     // property, in no guaranteed order — chromium bundles them with
-    // mpris:artUrl BEFORE xesam:title, and astal notifies as it applies.
+    // mpris:artUrl BEFORE xesam:title (within one dict — the art can
+    // still lag the title by a beat when the artwork is a video frame
+    // that only exists once the video decodes; the upgradedFrom half of
+    // the guard covers that), and astal notifies as it applies.
     // update() reads the live title (the upgradedFor guard), so off the
     // art notify it applied the NEW art against the OUTGOING title: a
     // track change whose guard still matched was swallowed outright and
