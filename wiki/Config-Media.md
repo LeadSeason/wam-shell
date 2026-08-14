@@ -13,11 +13,17 @@ Section: `[media]`.
 | `hide_when_screen_sharing` | bool | `false` | "Streaming mode": hide the quick-settings player entirely while screen sharing, so viewers don't see the title, artist or cover |
 | `hide_private_sessions` | bool | `true` | Hide browser private/incognito playback (such tracks count as no track) |
 | `recover_browser_art` | bool | `true` | Chromium downscales cover art to 150px; with this on, the track title is looked up in the browser's history to find the full-size thumbnail |
+| `recover_site_art` | bool | `true` | Non-YouTube half of the above: find the playing page in history by the track title slugged into its URL, fetch it, use its `og:image`. Only runs when `recover_browser_art` is on |
 
 - `recover_browser_art` reads the browser's history database read-only,
   and only YouTube rows. Set it to `false` to leave your history
-  untouched.
+  untouched (this also disables `recover_site_art`).
 - When no history row carries the track title (e.g. an extension like
   DeArrow rewrites titles), the recovery falls back to pixel-matching
   the small cover against the thumbnails of recently visited watch
   pages. Title-rewriting extensions leave the artwork untouched.
+- `recover_site_art` works on server-rendered pages (the track title,
+  slugged, has to appear in the watch URL, and the page has to carry
+  an `og:image`). A JS-rendered shell with no meta tags still falls
+  back to the 150px thumb. It re-fetches a page you just visited, at
+  most once per unrecognized track.

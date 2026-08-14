@@ -601,10 +601,11 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
 
     // chromium hands over art it already downscaled to 150px, so there
     // is no bigger version to ask a cdn for — but its history db knows
-    // which page is playing, and a youtube one names the full-size
-    // thumbnail. The small copy is already on screen by now (update
-    // above ran first): this only ever swaps in something better, and a
-    // miss leaves what is there.
+    // which page is playing: a youtube one names the full-size
+    // thumbnail directly, a server-rendered one gives up its og:image.
+    // The small copy is already on screen by now (update above ran
+    // first): this only ever swaps in something better, and a miss
+    // leaves what is there.
     //
     // A missed lookup is retried on a slow ramp rather than written off.
     // Retrying on the notify storm would be useless: the whole storm
