@@ -1,4 +1,5 @@
 import GLib from "gi://GLib?version=2.0"
+import Soup from "gi://Soup?version=3.0"
 import { execAsync } from "./metrics"
 import { isFile } from "./utils"
 import { writeFileAtomic } from "./atomicWrite"
@@ -22,10 +23,12 @@ import Config from "../config"
 // the artwork alone, so the 150px thumb still IS one of the recently
 // visited watch pages' thumbnails, and thumbMatch finds which.
 //
-// Deliberately youtube-only. Any other site would need its page fetched
-// and og:image scraped, which does not survive a js-rendered player —
-// the one this was written against serves an empty html shell with no
-// meta tags at all.
+// Non-youtube sites go through the site tier: a server-rendered watch
+// page names its full-size art in og:image, and the page is found in
+// history by the track title slugged into the url (the media session
+// reports the EPISODE title while the tab title carries the series, so
+// the title tiers themselves rarely match there). A js-rendered shell
+// with no meta tags still falls through to the blurred 150px thumb.
 
 // the art chromium writes: a dotfile straight in the temp dir, named
 // after the browser's application id
@@ -112,7 +115,7 @@ export function escapeLike(s: string): string {
 const LIKE_ESCAPE = String.raw` ESCAPE '\'`
 
 /** the full-size art url for a track a chromium browser is playing, or
- *  "" when its page is not in any history db (or is not youtube).
+ *  "" when its page is not in any history db.
  *
  *  thumbPath is chromium's own 150px temp file: the fallback for titles
  *  that no history row carries (see the header comment). The returned
@@ -147,30 +150,205 @@ export function recoverBrowserArt(title: string, thumbPath = ""): Promise<string
         )
         .then(url => {
             const art = artForWatchUrl(url)
-            if (art || !thumbPath) return remember(title, art)
-            return snapshotThumb(thumbPath).then(stable => {
-                // the snapshot's own content hash, when it is one of
-                // our copies (on a read failure it is the original
-                // path, and there is nothing safe to memoize under)
-                const hash = stable.match(/cover-bthumb-([0-9a-f]+)$/)?.[1]
-                const hit = hash && thumbMemo.get(hash)
-                if (hit) return Promise.resolve(hit)
-                return recentWatchIds(dbs!).then(ids =>
-                    matchThumbId(stable, ids).then(id => {
-                        // a miss still counts against the title's retry
-                        // budget, but a hit is remembered by hash only
-                        if (!id) return remember(title, "")
-                        const art = `${THUMB_BASE}${id}/maxresdefault.jpg`
-                        if (hash) {
-                            if (thumbMemo.size >= MAX_MEMO) thumbMemo.clear()
-                            thumbMemo.set(hash, art)
-                        }
-                        misses.delete(title)
-                        return art
-                    }),
-                )
+            if (art) return remember(title, art)
+            // the site tier before the thumb one: for a non-youtube
+            // track the thumb tier can only miss, at the cost of
+            // fetching every candidate's mqdefault
+            return siteArt(title).then(site => {
+                // NOT remembered under the title: the slug/recency
+                // match is heuristic, and a generic title ("Episode 2")
+                // names a different page per series — a title-keyed
+                // memo would show the first series' art for the second.
+                // siteArt memoizes by page url instead, which keeps
+                // repeat notifies of the same track from re-fetching.
+                if (site) {
+                    misses.delete(title)
+                    return site
+                }
+                if (!thumbPath) return remember(title, "")
+                return snapshotThumb(thumbPath).then(stable => {
+                    // the snapshot's own content hash, when it is one of
+                    // our copies (on a read failure it is the original
+                    // path, and there is nothing safe to memoize under)
+                    const hash = stable.match(/cover-bthumb-([0-9a-f]+)$/)?.[1]
+                    const hit = hash && thumbMemo.get(hash)
+                    if (hit) return Promise.resolve(hit)
+                    return recentWatchIds(dbs!).then(ids =>
+                        matchThumbId(stable, ids).then(id => {
+                            // a miss still counts against the title's retry
+                            // budget, but a hit is remembered by hash only
+                            if (!id) return remember(title, "")
+                            const art = `${THUMB_BASE}${id}/maxresdefault.jpg`
+                            if (hash) {
+                                if (thumbMemo.size >= MAX_MEMO) thumbMemo.clear()
+                                thumbMemo.set(hash, art)
+                            }
+                            misses.delete(title)
+                            return art
+                        }),
+                    )
+                })
             })
         })
+}
+
+// ------------------------------------------------------------ site tier
+//
+// A non-youtube watch url names no thumbnail, but a server-rendered
+// page names its full-size art in og:image. Finding the page is the
+// hard half: the media session reports the EPISODE title while the
+// history row carries the TAB title ("Watch <series> | EP 5" for the
+// site this was written against), so the ordinary title tiers rarely
+// match. What does carry the episode title is the url itself, as a
+// slug — the tier matches on that, and on the title tiers for sites
+// whose tab title does name the track.
+
+/** a track title the way sites put it in a url: lowercase, runs of
+ *  non-alphanumerics collapsed to single dashes. "" for a title with
+ *  no latin alphanumerics at all (the slug tier then stays out — a
+ *  contentless slug would match every url). Exported for the tests. */
+export function slugifyTitle(title: string): string {
+    return title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+}
+
+// below this the slug is generic enough ("trailer", "op-1") that a
+// substring hit in some recent url is more likely than the playing page
+const MIN_SLUG_LEN = 8
+
+/** the og:image (or twitter:image) of a fetched page, attribute order
+ *  agnostic. Absolute urls only — a relative one says nothing about
+ *  which host to ask. Exported for the tests. */
+export function ogImageFromHtml(html: string): string {
+    let twitter = ""
+    for (const m of html.matchAll(/<meta\b[^>]*>/gi)) {
+        const tag = m[0]
+        const kind =
+            tag.match(/(?:property|name)\s*=\s*"(og:image|twitter:image)"/i) ??
+            tag.match(/(?:property|name)\s*=\s*'(og:image|twitter:image)'/i)
+        if (!kind) continue
+        const content =
+            tag.match(/content\s*=\s*"([^"]*)"/i)?.[1] ?? tag.match(/content\s*=\s*'([^']*)'/i)?.[1]
+        if (!content) continue
+        const url = content.replace(/&amp;/g, "&")
+        if (!/^https?:\/\//.test(url)) continue
+        if (kind[1].toLowerCase() === "og:image") return url
+        twitter ||= url
+    }
+    return twitter
+}
+
+/** the page candidates for a track, best match first: the youtube
+ *  tiers minus the youtube filter, plus the slug tier. Exported for
+ *  the tests: the db half needs a browser, the sql is pure string
+ *  work. last_visit_time rides along so rows from several dbs can be
+ *  merged newest-first. */
+export function sitePageQuery(title: string): string {
+    const exact = sqlLiteral(title)
+    const suffix = sqlLiteral(`${escapeLike(title)} - %`)
+    const badged = sqlLiteral(`(%) ${escapeLike(title)} - %`)
+    const isSuffix = `title LIKE ${suffix}${LIKE_ESCAPE}`
+    const slug = slugifyTitle(title)
+    const slugClause = slug.length >= MIN_SLUG_LEN ? ` OR url LIKE '%${slug}%'` : ""
+    // chrome counts microseconds since 1601-01-01; a playing page's row
+    // was written when its tab loaded, so the same window the thumb
+    // tier uses applies (a long-lived tab older than it simply misses)
+    const cutoff = Math.floor((Date.now() / 1000 - RECENT_WINDOW_SEC + 11644473600) * 1e6)
+    return (
+        "SELECT url, last_visit_time FROM urls " +
+        `WHERE url NOT LIKE '%youtube.com/%' AND last_visit_time > ${cutoff} AND ` +
+        `(title = ${exact} OR ${isSuffix} OR title LIKE ${badged}${LIKE_ESCAPE}${slugClause}) ` +
+        `ORDER BY (title = ${exact}) DESC, (${isSuffix}) DESC, last_visit_time DESC ` +
+        `LIMIT ${SITE_CANDIDATES};`
+    )
+}
+
+// how many candidate pages get fetched and scraped before the tier
+// gives up (a hit short-circuits; three misses is a podcast homepage
+// and two collisions)
+const SITE_CANDIDATES = 3
+
+// send_and_read buffers the whole body: cap it so a heavy page cannot
+// balloon memory, and reject non-html payloads outright
+const MAX_PAGE_BYTES = 2 * 1024 * 1024
+const pageSession = new Soup.Session({ timeout: 10 })
+
+function fetchPage(url: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const msg = Soup.Message.new("GET", url)
+        if (!msg) return reject(new Error(`invalid page url: ${url}`))
+        pageSession.send_and_read_async(msg, GLib.PRIORITY_DEFAULT, null, (_s, res) => {
+            try {
+                const status = msg.get_status()
+                if (status < 200 || status >= 300) throw new Error(`http ${status}: ${url}`)
+                const type = msg.get_response_headers().get_one("Content-Type") ?? ""
+                if (!type.includes("text/html"))
+                    throw new Error(`not html (${type || "no content-type"}): ${url}`)
+                const declared = Number(msg.get_response_headers().get_one("Content-Length")) || 0
+                if (declared > MAX_PAGE_BYTES)
+                    throw new Error(`page too large (${declared} bytes declared): ${url}`)
+                const data = pageSession.send_and_read_finish(res)?.get_data()
+                if (!data || data.length === 0) throw new Error(`empty response: ${url}`)
+                if (data.length > MAX_PAGE_BYTES)
+                    throw new Error(`page too large (${data.length} bytes): ${url}`)
+                resolve(new TextDecoder().decode(data))
+            } catch (e) {
+                reject(e)
+            }
+        })
+    })
+}
+
+// page url -> its og:image. Repeat notifies of the same track re-run
+// the history query (site-tier results are deliberately NOT memoized
+// by title — a generic title names a different page per series), but
+// the page fetch is the expensive half and the page url is stable for
+// the whole track
+const pageMemo = new Map<string, string>()
+
+// fetch each candidate in turn until one yields an og:image; a fetch
+// or scrape failure just moves to the next candidate
+function scrapeFirst(urls: string[]): Promise<string> {
+    if (urls.length === 0) return Promise.resolve("")
+    const hit = pageMemo.get(urls[0])
+    if (hit) return Promise.resolve(hit)
+    return fetchPage(urls[0])
+        .then(html => {
+            const art = ogImageFromHtml(html)
+            if (!art) return scrapeFirst(urls.slice(1))
+            if (pageMemo.size >= MAX_MEMO) pageMemo.clear()
+            pageMemo.set(urls[0], art)
+            return art
+        })
+        .catch(() => scrapeFirst(urls.slice(1)))
+}
+
+/** the og:image of the page playing `title`, or "" — the site tier of
+ *  the recovery. Candidate rows are merged across dbs newest-first,
+ *  like recentWatchIds does for the thumb tier. */
+function siteArt(title: string): Promise<string> {
+    if (!Config.media.recoverSiteArt) return Promise.resolve("")
+    const q = sitePageQuery(title)
+    return Promise.all(
+        dbs!.map(db =>
+            execAsync(["sqlite3", "-readonly", `file:${db}?immutable=1`, q])
+                .then(out => out.trim())
+                .catch(() => ""),
+        ),
+    ).then(outs => {
+        const visits: [number, string][] = []
+        for (const out of outs)
+            for (const line of out.split("\n")) {
+                const sep = line.lastIndexOf("|")
+                if (sep > 0) visits.push([Number(line.slice(sep + 1)), line.slice(0, sep)])
+            }
+        visits.sort((a, b) => b[0] - a[0])
+        const urls: string[] = []
+        for (const [, url] of visits) if (!urls.includes(url)) urls.push(url)
+        return scrapeFirst(urls.slice(0, SITE_CANDIDATES))
+    })
 }
 
 // chromium deletes the temp thumb on its own schedule while mpris still

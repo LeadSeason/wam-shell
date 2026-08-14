@@ -236,6 +236,13 @@
 #           and youtube pages give up a full-size thumbnail. Reads
 #           browsing history (read-only, youtube rows only); set false
 #           to leave it alone. default true
+# recover_site_art - the non-youtube half of the above: the playing
+#           page is found in history by the track title slugged into
+#           its url, fetched, and its og:image used as the cover. Only
+#           runs when recover_browser_art is on, and only for tracks
+#           the youtube lookup cannot resolve. Works on
+#           server-rendered pages; a js-rendered shell with no meta
+#           tags still falls back to the 150px thumb. default true
 # [media]
 # enabled = false
 # show_controls = true
@@ -243,6 +250,7 @@
 # hide_when_screen_sharing = false
 # hide_private_sessions = true
 # recover_browser_art = true
+# recover_site_art = true
 
 # [harvest] - Harvest time tracking (getharvest.com): running timer on
 #             the panel + a picker popup (start/stop/resume/notes/new
