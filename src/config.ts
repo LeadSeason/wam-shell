@@ -307,6 +307,11 @@ function getMediaConfig() {
         // browsing history, so it is worth a switch even though the
         // query is a title match against youtube rows only
         recoverBrowserArt: r.bool("recover_browser_art", true),
+        // the non-youtube half of the recovery: find the playing page
+        // in history by the track title slugged into its url, fetch it
+        // and take its og:image. Only runs when recover_browser_art is
+        // on, and only for tracks the youtube tiers cannot resolve
+        recoverSiteArt: r.bool("recover_site_art", true),
     }
 }
 
