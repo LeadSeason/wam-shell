@@ -43,6 +43,7 @@ import "./hyprDispatch.test"
 // way, would have dropped it from the tally and from the exit code
 // without so much as a warning
 import "./bluetooth.test"
+import "./screenShare.test"
 import { summary } from "./framework"
 
 summary()

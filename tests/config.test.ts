@@ -110,6 +110,21 @@ follow_system = false
     eq(c.theme, "catppuccin-mocha")
 })
 
+test("config: screen_share ignore_apps is section-only and lowercased", () => {
+    const c = loadConfig(
+        { DESKTOP_SESSION: "hyprland" },
+        `
+[screen_share]
+ignore_apps = ["HueNicorn", "OBS"]
+`,
+    )
+    eq(c.screenShare.ignoreApps, ["huenicorn", "obs"])
+
+    // a flat top-level spelling must not leak into the section-only reader
+    const flat = loadConfig({ DESKTOP_SESSION: "hyprland" }, `ignore_apps = ["nope"]`)
+    eq(flat.screenShare.ignoreApps, [])
+})
+
 // --- invalid values are corrected, not trusted ---
 
 test("config: invalid values fall back to documented defaults", () => {

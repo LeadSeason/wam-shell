@@ -130,6 +130,9 @@ turn one on and read what it asks for.
   it is safe to paste without reading it first. `--lines N` for a bigger
   slice, `--file [PATH]` to write it out instead, `--copy` for the
   clipboard.
+- `wam screen-share` — the PipeWire video-input streams the privacy mask
+  (`hide_when_screen_sharing`) sees right now, plus what it recently
+  masked on, with the exact `[screen_share] ignore_apps` value for each.
 - `wam start` / `stop` / `restart` / `force-start` — lifecycle for the
   running shell. `force-start` kills EVERY ags instance first — the fix
   for "some stale instance holds the bus name".
