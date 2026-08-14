@@ -129,6 +129,9 @@ usage: wam <command>
                    template on first run), print its path, print it,
                    list template options your file predates (diff),
                    rewrite it as latest template + your values (sync)
+  screen-share     the video-input streams the privacy mask sees right
+                   now + what it recently masked on, with the exact
+                   ignore_apps value for each
   logs [-f]        the shell's log, from wherever this start method put
                    it: the journal under autostart or a supervised
                    'wam start', $LOG_DIR/shell.log when neither could be
@@ -986,6 +989,116 @@ cmd_logs() {
     fi
 }
 
+# --- screen-share -------------------------------------------------------------
+
+# Discovery for [screen_share] ignore_apps: the key matches a stream's
+# application.name / node.name, strings a user otherwise has to fish
+# out of a raw pw-dump by hand. Prints what the mask sees right now and
+# what it recently masked on, with the exact value to ignore for each.
+
+# pw-dump pretty-prints every object as a two-space-indented block; the
+# shell's own matcher relies on the same formatting, so scraping it here
+# is no more fragile than the detection itself. Emits \x1f-separated
+# application.name, node.name, media.name (or node.description) for
+# every Stream/Input/Video object — a non-whitespace separator, because
+# IFS whitespace collapses the empty leading field of an app-less
+# stream and shifts every column.
+video_inputs() {
+    command -v pw-dump >/dev/null ||
+        die "pw-dump not found — it ships with PipeWire (arch: pipewire)"
+    pw-dump 2>/dev/null | awk '
+        function val(s) { sub(/^[^:]*: "/, "", s); sub(/",?$/, "", s); return s }
+        /^  \{/ { app=""; node=""; media=""; desc=""; hit=0 }
+        /^        "application\.name": "/ { app=val($0) }
+        /^        "node\.name": "/ { node=val($0) }
+        /^        "media\.name": "/ { media=val($0) }
+        /^        "node\.description": "/ { desc=val($0) }
+        /^        "media\.class": "Stream\/Input\/Video"/ { hit=1 }
+        /^  \},?$/ {
+            if (hit) printf "%s\x1f%s\x1f%s\n", app, node, (media != "" ? media : desc)
+            hit=0
+        }
+        END { if (hit) printf "%s\x1f%s\x1f%s\n", app, node, (media != "" ? media : desc) }
+    '
+}
+
+# The effective ignore list, one entry per line: the built-ins first
+# (kept in sync with ALWAYS_IGNORED in src/lib/screenShare.ts), then
+# the ignore_apps entries of the active config. Single-line arrays
+# only — a multi-line TOML array just shows as not-ignored here, the
+# shell itself still honours it.
+current_ignores() {
+    echo huenicorn
+    echo huenicornstream
+    local f
+    f="$(active_config_file)"
+    [[ -f "$f" ]] || return 0
+    awk '/^[[:space:]]*\[screen_share\]/ { sec=1; next } /^[[:space:]]*\[/ { sec=0 }
+        sec && /^[[:space:]]*ignore_apps[[:space:]]*=/' "$f" |
+        grep -oE "\"[^\"]*\"|'[^']*'" | tr -d "\"'" || true
+}
+
+ignored() { # <name> — case-insensitive exact match, like the shell
+    [[ -n "$1" ]] || return 1
+    printf '%s\n' "$IGNORES" | tr '[:upper:]' '[:lower:]' |
+        grep -qxF "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+}
+
+cmd_screen_share() {
+    local IGNORES
+    IGNORES="$(current_ignores)"
+
+    log "active video-input streams (what the mask sees right now)"
+    local rows app node media candidate
+    rows="$(video_inputs)"
+    if [[ -z "$rows" ]]; then
+        echo "  none — the mask is not engaged"
+    else
+        while IFS=$'\x1f' read -r app node media; do
+            field "  app:" "${app:-—}"
+            field "  node:" "${node:-—}"
+            field "  media:" "${media:-—}"
+            if ignored "$app" || ignored "$node"; then
+                echo "  -> already ignored"
+            else
+                candidate="${app:-$node}"
+                echo "  -> counts as sharing; to ignore: add \"${candidate:-?}\" to ignore_apps"
+            fi
+            echo
+        done <<<"$rows"
+    fi
+
+    log "recent mask events (from the shell log)"
+    local src lines=""
+    src="$(log_location)"
+    if [[ "$src" == journal:* ]]; then
+        lines="$(journalctl --user -u "${src#journal:}" -b --no-pager 2>/dev/null |
+            grep 'screenShare:' | tail -5 || true)"
+    elif [[ -f "$src" ]]; then
+        lines="$(grep 'screenShare:' "$src" | tail -5 || true)"
+    fi
+    # mask flips are only logged by a shell running the flip-logging
+    # build; an older one leaves this empty even when it did mask
+    if [[ -n "$lines" ]]; then
+        printf '%s\n' "$lines"
+    else
+        echo "  none logged — a grab too brief to catch live still shows up here,"
+        echo "  once the shell runs a build with flip logging (wam update)"
+    fi
+
+    log "ignoring an app"
+    cat <<EOF
+  effective ignore list: $(printf '%s\n' "$IGNORES" | paste -sd, - | sed 's/,/, /g')
+  (huenicorn is built in; the rest comes from the active config)
+
+  add the app's application.name or node.name — matched case-insensitively —
+  to $(active_config_file):
+    [screen_share]
+    ignore_apps = ["SomeApp"]
+  then: wam restart
+EOF
+}
+
 # --- report ---------------------------------------------------------------------
 
 # How much log the report carries: the last REPORT_TAIL lines, plus the
@@ -1542,6 +1655,7 @@ case "${1:-}" in
         shift
         cmd_config "$@"
         ;;
+    screen-share) cmd_screen_share ;;
     status) cmd_status ;;
     doctor) cmd_doctor ;;
     logs)
