@@ -1,6 +1,7 @@
 import Gio from "gi://Gio?version=2.0"
 import GLib from "gi://GLib?version=2.0"
 import AstalBluetooth from "gi://AstalBluetooth?version=0.1"
+import { createState } from "gnim"
 import Config from "../config"
 import { connect, disconnect } from "./metrics"
 import { batteryPercentValue } from "./utils"
@@ -9,6 +10,30 @@ import { registerDispose } from "./lifecycle"
 // Shared bluetooth state + connect/battery event notifications.
 
 const bluetooth = AstalBluetooth.get_default()
+
+// the connected device, tracked in state: notify::devices fires only on
+// add/remove, and a paired device stays in the list across disconnects,
+// so a binding on `devices` keeps showing a disconnected device's name.
+// the watchers below see every notify::connected / battery-percentage
+// and keep this current — the QSettings bluetooth pill subscribes to it.
+// the battery is snapshotted into the state: re-setting the same device
+// object would be a no-op and a charge change would never reach the pill
+export interface ConnectedDevice {
+    device: AstalBluetooth.Device
+    /** percent, -1 when unavailable */
+    battery: number
+}
+
+const [connectedDevice, setConnectedDevice] = createState<ConnectedDevice | null>(null)
+export { connectedDevice }
+
+function refreshConnected() {
+    const device = bluetooth.devices.find(d => d.connected) ?? null
+    const battery = device ? batteryPercent(device) : -1
+    const prev = connectedDevice.get()
+    if (prev?.device === device && prev?.battery === battery) return
+    setConnectedDevice(device ? { device, battery } : null)
+}
 
 const LOW_BATTERY = 20 // percent
 
@@ -79,11 +104,13 @@ function watchDevice(device: AstalBluetooth.Device) {
 
     handlerIds.push(
         connect(device, "notify::connected", () => {
-            if (!Config.bluetooth.notifications) return
             const state = watched.get(address)
             if (!state || state.connected === device.connected) return
             state.connected = device.connected
             state.batteryWarned = false
+            // the pill tracks this even with notifications off
+            refreshConnected()
+            if (!Config.bluetooth.notifications) return
             const name = device.alias || device.name || address
             notify(
                 name,
@@ -97,6 +124,9 @@ function watchDevice(device: AstalBluetooth.Device) {
 
     handlerIds.push(
         connect(device, "notify::battery-percentage", () => {
+            // the pill mirrors the connected device's charge, even with
+            // notifications off
+            if (device.connected) refreshConnected()
             if (!Config.bluetooth.notifications) return
             const state = watched.get(address)
             const battery = batteryPercent(device)
@@ -132,6 +162,9 @@ function watchAllDevices() {
         if (!live.has(address)) unwatchDevice(address)
     }
     for (const device of bluetooth.devices) watchDevice(device)
+    // a connected device can vanish without a notify::connected (bluez
+    // restart, device object recreated)
+    refreshConnected()
 }
 
 const devicesHandler = connect(bluetooth, "notify::devices", watchAllDevices)

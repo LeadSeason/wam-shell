@@ -1,6 +1,6 @@
-import { createBinding, createComputed, With } from "gnim"
+import { createBinding, createState, onCleanup, With } from "gnim"
 import { DropdownButton } from "./ToggleButton"
-import bluetooth, { batteryPercent } from "../../../lib/bluetooth"
+import bluetooth, { connectedDevice } from "../../../lib/bluetooth"
 
 // the pane (BluetoothWidget, BtSwitch) lives in bluetoothPane.tsx, the
 // per-device row in bluetoothDeviceRow.tsx, the async bluez D-Bus calls
@@ -19,23 +19,34 @@ export function BluetoothButton({ navigate }: { navigate: () => void }) {
 }
 
 function BluetoothButtonBody({ navigate }: { navigate: () => void }) {
-    // battery only re-evaluates when the device list or power changes;
-    // good enough for a subtitle
-    const subtitle = createComputed(
-        [createBinding(bluetooth, "is_powered"), createBinding(bluetooth, "devices")],
-        (powered, devices) => {
-            if (!powered) return "Off"
-            const connected = devices.find(d => d.connected)
-            if (!connected) return "On"
-            const name = connected.alias || connected.name
-            const battery = batteryPercent(connected)
-            return battery >= 0 ? `${name} · ${battery}%` : name
-        },
-    )
+    // derived imperatively, not via array-form createComputed: its dep
+    // cache keys on falsy checks and connectedDevice starts null, which
+    // can leave the computed stale (see AGENTS.md)
+    const [subtitle, setSubtitle] = createState("Off")
+    const [icon, setIcon] = createState("bluetooth-symbolic")
 
-    const icon = createBinding(bluetooth, "is_connected").as(connected =>
-        connected ? "bluetooth-active-symbolic" : "bluetooth-symbolic",
-    )
+    const update = () => {
+        const powered = bluetooth.is_powered
+        const info = connectedDevice.get()
+        setIcon(powered && info ? "bluetooth-active-symbolic" : "bluetooth-symbolic")
+        if (!powered) {
+            setSubtitle("Off")
+            return
+        }
+        if (!info) {
+            setSubtitle("On")
+            return
+        }
+        const name = info.device.alias || info.device.name
+        setSubtitle(info.battery >= 0 ? `${name} · ${info.battery}%` : name)
+    }
+    const disposers = [
+        createBinding(bluetooth, "is_powered").subscribe(update),
+        connectedDevice.subscribe(update),
+    ]
+    // this body remounts whenever the adapter flips (see BluetoothButton)
+    onCleanup(() => disposers.forEach(d => d()))
+    update()
 
     return (
         <DropdownButton
