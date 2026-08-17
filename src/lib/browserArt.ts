@@ -73,16 +73,21 @@ let dbs: string[] | null = null
 // long listening session cannot grow it without limit; tracks repeat
 // far more often than the cap is reached.
 //
-// A hit is final, a miss is NOT: chrome commits a visit on its own
-// schedule and the db is read with immutable=1, which deliberately
-// ignores the journal — so the row for a page that just started
-// playing is routinely unreadable on the first look. Memoizing that
-// as "nothing here" left the track blurred for the rest of the shell
-// session. Misses are counted instead, and only become permanent once
-// the budget is spent (a page that is not youtube never resolves, and
-// must not spawn sqlite3 on every notify for the rest of the session).
+// A hit is final, a miss is NEVER final: chrome holds recent visits in
+// an uncommitted journal and the db is read with immutable=1, which
+// deliberately skips it — so the row for a page that just started
+// playing is routinely invisible on the first look, and can stay
+// invisible for a LONG time (observed: a 5-hour video's visit row
+// committed over an hour in). Counting misses toward a permanent
+// budget left every such track blurred for the rest of the shell
+// session — and the budget was shared across the concurrent coverState
+// instances, so one track-start notify storm could spend it before the
+// first retry timer even fired. A miss is a cooldown instead: repeat
+// notifies of the same track land within milliseconds and must not
+// each spawn sqlite3, but a later caller (the mpris retry ramp) always
+// gets a fresh lookup.
 const MAX_MEMO = 200
-const MAX_MISSES = 3
+const MISS_COOLDOWN_MS = 30_000
 const memo = new Map<string, string>()
 const misses = new Map<string, number>()
 
@@ -125,7 +130,9 @@ export function recoverBrowserArt(title: string, thumbPath = ""): Promise<string
     if (!title || !Config.media.recoverBrowserArt) return Promise.resolve("")
     const hit = memo.get(title)
     if (hit) return Promise.resolve(hit)
-    if ((misses.get(title) ?? 0) >= MAX_MISSES) return Promise.resolve("")
+    const lastMiss = misses.get(title)
+    if (lastMiss !== undefined && Date.now() - lastMiss < MISS_COOLDOWN_MS)
+        return Promise.resolve("")
 
     dbs ??= historyDbs()
     // no chromium browser installed at all: permanent, and not worth a
@@ -499,7 +506,7 @@ function recentWatchIds(dbs: string[]): Promise<string[]> {
 function remember(title: string, url: string): Promise<string> {
     if (!url) {
         if (misses.size >= MAX_MEMO) misses.clear()
-        misses.set(title, (misses.get(title) ?? 0) + 1)
+        misses.set(title, Date.now())
         return Promise.resolve("")
     }
     if (memo.size >= MAX_MEMO) memo.clear()
