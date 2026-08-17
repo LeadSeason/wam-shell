@@ -607,12 +607,19 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
     // first): this only ever swaps in something better, and a miss
     // leaves what is there.
     //
-    // A missed lookup is retried on a slow ramp rather than written off.
-    // Retrying on the notify storm would be useless: the whole storm
-    // lands within milliseconds of the track starting, which is exactly
-    // when chrome has not committed the history row yet. Budget matches
-    // MAX_MISSES in browserArt (one lookup plus these two).
-    const RETRY_DELAYS_MS = [1500, 4000]
+    // A missed lookup is retried on a ramp that backs off but never
+    // ends while the same track is playing. Retrying on the notify
+    // storm would be useless: the whole storm lands within milliseconds
+    // of the track starting, which is exactly when chrome has not
+    // committed the history row yet — and it can stay uncommitted for
+    // a LONG time (the db is read immutable=1, which skips the journal;
+    // observed: a 5-hour video's visit row committed over an hour in).
+    // So the ramp settles into a steady one lookup per few minutes — a
+    // read-only sqlite query, gated by browserArt's per-title cooldown
+    // so the concurrent coverState instances do not multiply it — until
+    // the row shows up or the track changes.
+    const RETRY_DELAYS_MS = [1500, 4000, 15000, 60000]
+    const RETRY_STEADY_MS = 5 * 60 * 1000
     let attemptedTitle: string | null = null
     let retries = 0
     let retryTimer = 0
@@ -647,8 +654,9 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
     }
 
     const scheduleRetry = () => {
-        if (retryTimer || retries >= RETRY_DELAYS_MS.length) return
-        const delay = RETRY_DELAYS_MS[retries++]
+        if (retryTimer) return
+        const delay = retries < RETRY_DELAYS_MS.length ? RETRY_DELAYS_MS[retries] : RETRY_STEADY_MS
+        retries++
         retryTimer = timeoutAdd("mpris:artRetry", GLib.PRIORITY_DEFAULT_IDLE, delay, () => {
             retryTimer = 0
             recover()
