@@ -15,6 +15,7 @@ import { recording } from "../../../lib/capture"
 import Brightness from "../../../lib/brightness"
 import { alarming } from "../../../lib/sleepTimer"
 import { execAsync, timeoutAdd, sourceRemove } from "../../../lib/metrics"
+import { watchDefaultEndpoint } from "../../../lib/defaultEndpoint"
 import Config, { pendingUpdates } from "../../../config"
 import { pressable } from "../../pressable"
 import { createDelayer } from "../../delay"
@@ -372,23 +373,39 @@ function ButtonLabel() {
     const bat = AstalBattery.get_default()
 
     const wp = AstalWp.get_default()
+    const audio = wp?.audio
 
-    // audio widgets re-bind to the current default device: snapshotting
-    // wp.defaultSpeaker once left scroll/volume controlling the old
-    // endpoint after the user switched outputs (the OSD path rebinds;
-    // the bar did not)
+    // the current default endpoint comes from the real node list, NOT
+    // wp.defaultSpeaker — that proxy can keep a dead node after device
+    // re-enumeration (and never notifies), leaving scroll setting volume
+    // on a device that no longer exists. Why: lib/defaultEndpoint.ts
+    function trackDefault(prop: "speakers" | "microphones") {
+        const [endpoint, setEndpoint] = createState<AstalWp.Endpoint | null>(null)
+        const release = audio ? watchDefaultEndpoint(audio, prop, setEndpoint) : () => void 0
+        onCleanup(release)
+        return endpoint
+    }
+
+    // Each tracker resolves ASYNCHRONOUSLY (astal enumerates after the
+    // bar is built) and re-resolves on every device switch — and a With
+    // rebuild appends at the END of the parent box, which is what the
+    // wrapper box below exists to prevent (same pattern as the Updates
+    // pill further down): the wrapper holds the slot in the spacing={12}
+    // cluster, the With rebuilds inside it. `visible` is bound because
+    // an empty-but-visible wrapper would still leave a 12px hole.
+    function audioSlot(prop: "speakers" | "microphones") {
+        const endpoint = trackDefault(prop)
+        return (
+            <box visible={endpoint.as(e => e !== null)}>
+                <With value={endpoint}>{e => e && audioWidget(e)}</With>
+            </box>
+        )
+    }
+
     return (
         <box spacing={12}>
-            {wp && (
-                <With value={createBinding(wp, "defaultSpeaker")}>
-                    {speaker => speaker && audioWidget(speaker)}
-                </With>
-            )}
-            {wp && (
-                <With value={createBinding(wp, "defaultMicrophone")}>
-                    {microphone => microphone && audioWidget(microphone)}
-                </With>
-            )}
+            {audio && audioSlot("speakers")}
+            {audio && audioSlot("microphones")}
             {brightnessWidget()}
             {Config.quicksettings.powerProfileOnPanel && powerProfile()}
             {keepAwakeIndicator()}
