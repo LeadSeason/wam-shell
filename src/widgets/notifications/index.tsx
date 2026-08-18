@@ -25,7 +25,7 @@ import { providers } from "../../lib/notificationProviders"
 import type { ProviderItem } from "../../lib/notificationProviders"
 import CenterRow from "./CenterRow"
 import { appIconFor, fromDesktop, fromItem } from "./rowData"
-import { buildFeed, FeedBlock } from "./feed"
+import { buildFeed, compareRows, FeedBlock } from "./feed"
 import { PaneEmpty } from "../PaneEmpty"
 
 const registry = CommandRegistry.get_default()
@@ -143,6 +143,9 @@ interface Row {
     time: number
     appName: string
     iconName: string
+    // provider rows from a `soonestFirst` provider (calendar): the
+    // merged sort lists them next-event-first above the rest (feed.ts)
+    soonestFirst?: boolean
     desktop: AstalNotifd.Notification | null
     item: ProviderItem | null
 }
@@ -240,6 +243,7 @@ function buildMerged() {
                         time: item.time,
                         appName: item.appName,
                         iconName: item.iconName,
+                        soonestFirst: p.soonestFirst,
                         desktop: null,
                         item,
                     })
@@ -248,7 +252,7 @@ function buildMerged() {
             const needle = q.trim().toLowerCase()
             const filteredRows =
                 needle === "" ? rows : rows.filter(r => r.appName.toLowerCase().includes(needle))
-            return filteredRows.sort((a, b) => b.time - a.time)
+            return filteredRows.sort(compareRows)
         },
     )
 }

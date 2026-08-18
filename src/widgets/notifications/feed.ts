@@ -21,6 +21,32 @@ export interface FeedRow {
     iconName: string
 }
 
+/**
+ * A row from a provider that registered `soonestFirst` (calendar):
+ * its times are in the future and it reads the other way around.
+ */
+export interface OrderedRow extends FeedRow {
+    soonestFirst?: boolean
+}
+
+/**
+ * The center's merged sort. Most rows are records of things that
+ * happened — newest first. Soonest-first rows are things that have NOT
+ * happened yet, which read the other way (next first, then down into
+ * the future), and sit as one block above the rest — the near-future
+ * is where the newest-first sort put them anyway. The direction is
+ * keyed off the GROUP, not compared per row-pair: a comparator that
+ * flips direction when both rows are future-dated but mixes freely
+ * with the past is not transitive, and Array.sort on one of those is
+ * implementation-defined garbage.
+ */
+export function compareRows(a: OrderedRow, b: OrderedRow): number {
+    const asf = !!a.soonestFirst
+    const bsf = !!b.soonestFirst
+    if (asf !== bsf) return asf ? -1 : 1
+    return asf ? a.time - b.time : b.time - a.time
+}
+
 export type FeedBlock<T extends FeedRow> =
     | { kind: "divider"; key: string; label: string }
     | { kind: "group"; key: string; appName: string; iconName: string; rows: T[] }
