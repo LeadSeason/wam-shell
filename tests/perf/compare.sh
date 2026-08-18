@@ -36,7 +36,11 @@
 #     osd:layerRuleWait (a one-shot 2s startup bound on the hyprland
 #     layer rule — whether it is still ALIVE when the startup scenario
 #     samples is a race against how fast hyprctl answered, measured
-#     1 and then 0 comparing a commit against itself), the
+#     1 and then 0 comparing a commit against itself),
+#     bar:brightnessReveal (same one-shot-startup-timer class: the
+#     750ms reveal delayer armed when the async brightness seed lands
+#     — the BASE leg measured 1 and then 0 on the same commit, issue
+#     #276), the
 #     AstalTray_TrayItem:*/Gtk_GestureClick:* signal buckets (they
 #     scale with the live session's real tray items) and the
 #     AstalBluetooth_Device:* buckets (they scale with whatever
@@ -173,7 +177,8 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
         timerAliveByLabel: (.timers.byLabel
             | with_entries(select(.key != "qsHeader:batTimeDebounce"
                 and .key != "osd:hide"
-                and .key != "osd:layerRuleWait"))
+                and .key != "osd:layerRuleWait"
+                and .key != "bar:brightnessReveal"))
             | with_entries(.value = .value.alive)),
         signalsByName: (.signals.byName
             | with_entries(select(.key
@@ -199,6 +204,7 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
         batteryTimer: .metrics.timers.byLabel["qsHeader:batTimeDebounce"],
         osdTimer: .metrics.timers.byLabel["osd:hide"],
         osdLayerRuleTimer: .metrics.timers.byLabel["osd:layerRuleWait"],
+        brightnessRevealTimer: .metrics.timers.byLabel["bar:brightnessReveal"],
         traySignals: (.metrics.signals.byName
             | with_entries(select(.key
                 | startswith("AstalTray_TrayItem:") or startswith("Gtk_GestureClick:")))),
