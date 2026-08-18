@@ -30,6 +30,7 @@ import "./src/widgets/sessionMenu"
 import "./src/widgets/launcher"
 import { init as initHarvest } from "./src/lib/harvest"
 import { init as initGcal } from "./src/lib/gcal"
+import { init as initGcalReminders } from "./src/lib/gcalReminders"
 import { init as initGitHub } from "./src/lib/github"
 import { init as initYouTube } from "./src/lib/youtube"
 import { init as initTodoist } from "./src/lib/todoist"
@@ -69,6 +70,7 @@ function main() {
 
     initHarvest()
     initGcal()
+    initGcalReminders()
     initGitHub()
     initYouTube()
     initTodoist()

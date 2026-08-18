@@ -3,6 +3,8 @@ import {
     dayKey,
     eventDays,
     mapGoogleEvent,
+    resolveAttending,
+    resolveReminderMinutes,
     timeLabel,
     agendaGroups,
     monthGrid,
@@ -67,11 +69,11 @@ test("gcal eventDays: no duplicate/missing days across a DST transition", () => 
 })
 
 test("gcal mapGoogleEvent: cancelled events are dropped", () => {
-    eq(mapGoogleEvent("me@example.com", "c", "Cal", "#fff", { status: "cancelled" }), null)
+    eq(mapGoogleEvent("me@example.com", "c", "Cal", "#fff", [], { status: "cancelled" }), null)
 })
 
 test("gcal mapGoogleEvent: timed event with local dateTime", () => {
-    const e = mapGoogleEvent("me@example.com", "c1", "Work", "#a1b2c3", {
+    const e = mapGoogleEvent("me@example.com", "c1", "Work", "#a1b2c3", [], {
         id: "ev1",
         summary: "Standup",
         start: { dateTime: "2026-07-31T10:00:00" },
@@ -86,7 +88,7 @@ test("gcal mapGoogleEvent: timed event with local dateTime", () => {
 })
 
 test("gcal mapGoogleEvent: missing summary falls back", () => {
-    const e = mapGoogleEvent("me@example.com", "c", "Cal", "#fff", {
+    const e = mapGoogleEvent("me@example.com", "c", "Cal", "#fff", [], {
         id: "x",
         start: { dateTime: "2026-07-31T10:00:00" },
         end: { dateTime: "2026-07-31T11:00:00" },
@@ -95,7 +97,7 @@ test("gcal mapGoogleEvent: missing summary falls back", () => {
 })
 
 test("gcal mapGoogleEvent: all-day event uses exclusive end date", () => {
-    const e = mapGoogleEvent("me@example.com", "c", "Cal", "#fff", {
+    const e = mapGoogleEvent("me@example.com", "c", "Cal", "#fff", [], {
         id: "ad",
         summary: "Holiday",
         start: { date: "2026-07-31" },
@@ -107,7 +109,7 @@ test("gcal mapGoogleEvent: all-day event uses exclusive end date", () => {
 
 test("gcal mapGoogleEvent: unparseable times are dropped", () => {
     eq(
-        mapGoogleEvent("me@example.com", "c", "Cal", "#fff", {
+        mapGoogleEvent("me@example.com", "c", "Cal", "#fff", [], {
             id: "bad",
             start: {},
             end: {},
@@ -116,14 +118,90 @@ test("gcal mapGoogleEvent: unparseable times are dropped", () => {
     )
 })
 
+test("gcal resolveReminderMinutes: overrides are the event's reminders", () => {
+    // popup entries banner; non-popup methods don't
+    eq(
+        resolveReminderMinutes(
+            {
+                useDefault: false,
+                overrides: [
+                    { method: "popup", minutes: 10 },
+                    { method: "email", minutes: 30 },
+                ],
+            },
+            [5],
+        ),
+        [10],
+    )
+    // several popup overrides all banner
+    eq(
+        resolveReminderMinutes(
+            {
+                useDefault: false,
+                overrides: [
+                    { method: "popup", minutes: 5 },
+                    { method: "popup", minutes: 60 },
+                ],
+            },
+            [],
+        ),
+        [5, 60],
+    )
+})
+
+test("gcal resolveReminderMinutes: explicit silence beats defaults", () => {
+    // email-only overrides: a deliberate choice, not missing data
+    eq(
+        resolveReminderMinutes(
+            { useDefault: false, overrides: [{ method: "email", minutes: 30 }] },
+            [5],
+        ),
+        null,
+    )
+    // reminders turned off for the event
+    eq(resolveReminderMinutes({ useDefault: false }, [5]), null)
+})
+
+test("gcal resolveReminderMinutes: useDefault falls to the calendar, then config", () => {
+    // the calendar's default popup reminders
+    eq(resolveReminderMinutes({ useDefault: true }, [10]), [10])
+    eq(resolveReminderMinutes({ useDefault: true }, [5, 30]), [5, 30])
+    // a calendar with none: no information — the config fallback applies
+    eq(resolveReminderMinutes({ useDefault: true }, []), [])
+    // a missing reminders object reads as useDefault
+    eq(resolveReminderMinutes(undefined, [10]), [10])
+})
+
+test("gcal mapGoogleEvent: url and resolved reminders land on the event", () => {
+    const e = mapGoogleEvent("me@example.com", "c", "Cal", "#fff", [15], {
+        id: "ev1",
+        summary: "Standup",
+        start: { dateTime: "2026-07-31T10:00:00" },
+        end: { dateTime: "2026-07-31T10:30:00" },
+        htmlLink: "https://calendar.google.com/event?eid=ev1",
+        reminders: { useDefault: true },
+    })!
+    eq(e.url, "https://calendar.google.com/event?eid=ev1")
+    eq(e.reminderMinutes, [15])
+    // absent htmlLink and explicit silence
+    const silent = mapGoogleEvent("me@example.com", "c", "Cal", "#fff", [15], {
+        id: "ev2",
+        start: { dateTime: "2026-07-31T10:00:00" },
+        end: { dateTime: "2026-07-31T10:30:00" },
+        reminders: { useDefault: false },
+    })!
+    eq(silent.url, "")
+    eq(silent.reminderMinutes, null)
+})
+
 test("gcal timeLabel: all day vs timed range", () => {
-    const allDay = mapGoogleEvent("me@example.com", "c", "Cal", "#fff", {
+    const allDay = mapGoogleEvent("me@example.com", "c", "Cal", "#fff", [], {
         id: "a",
         start: { date: "2026-07-31" },
         end: { date: "2026-08-01" },
     })!
     eq(timeLabel(allDay), "all day")
-    const timed = mapGoogleEvent("me@example.com", "c", "Cal", "#fff", {
+    const timed = mapGoogleEvent("me@example.com", "c", "Cal", "#fff", [], {
         id: "t",
         start: { dateTime: "2026-07-31T09:05:00" },
         end: { dateTime: "2026-07-31T10:30:00" },
@@ -133,7 +211,7 @@ test("gcal timeLabel: all day vs timed range", () => {
 
 // agenda: three events on two days, one spanning midnight, one before
 const ev = (id: string, start: string, end: string) =>
-    mapGoogleEvent("me@example.com", "c", "Cal", "#fff", {
+    mapGoogleEvent("me@example.com", "c", "Cal", "#fff", [], {
         id,
         summary: id,
         start: { dateTime: start },
@@ -216,6 +294,7 @@ test("gcal isVisible: config names, account-scoped names, overrides", () => {
         summary: "Birthdays",
         color: "#fff",
         account: "me@example.com",
+        defaultReminderMinutes: [],
     }
     // default: visible
     eq(isVisible(cal, {}, []), true)
@@ -263,4 +342,64 @@ test("gcal dayLabel: relative names, then an English weekday", () => {
     eq(dayLabel("2026-01-04", "2026-08-07"), "Sun, 04.01.2026")
     // 2026-01-05 is a Monday — its first
     eq(dayLabel("2026-01-05", "2026-08-07"), "Mon, 05.01.2026")
+})
+
+// a minimal timed event raw for resolveAttending/mapGoogleEvent runs
+const timedRaw = (extra: any = {}) => ({
+    id: "ev",
+    summary: "Meeting",
+    start: { dateTime: new Date(d(31, 13)).toISOString() },
+    end: { dateTime: new Date(d(31, 14)).toISOString() },
+    ...extra,
+})
+
+test("gcal resolveAttending: a self guest entry attends, unless declined", () => {
+    eq(
+        resolveAttending(timedRaw({ attendees: [{ self: true, responseStatus: "accepted" }] }), false),
+        true,
+    )
+    // needsAction/tentative still count: you ARE on the guest list
+    eq(resolveAttending(timedRaw({ attendees: [{ self: true }] }), false), true)
+    eq(
+        resolveAttending(timedRaw({ attendees: [{ self: true, responseStatus: "declined" }] }), false),
+        false,
+    )
+})
+
+test("gcal resolveAttending: organizing attends even without a guest entry", () => {
+    eq(resolveAttending(timedRaw({ organizer: { self: true } }), false), true)
+})
+
+test("gcal resolveAttending: other people's guest lists don't count", () => {
+    eq(
+        resolveAttending(timedRaw({ attendees: [{ email: "a@x.com" }, { email: "b@x.com" }] }), false),
+        false,
+    )
+    eq(resolveAttending(timedRaw({ organizer: { email: "a@x.com" } }), false), false)
+})
+
+test("gcal resolveAttending: guest-less events are personal only on the primary calendar", () => {
+    eq(resolveAttending(timedRaw(), true), true)
+    // the same shape on a shared/subscribed calendar is merely visible
+    eq(resolveAttending(timedRaw(), false), false)
+})
+
+test("gcal mapGoogleEvent: attending lands on the event", () => {
+    const invited = mapGoogleEvent("me@example.com", "shared", "Team", "#fff", [], {
+        ...timedRaw(),
+        attendees: [{ self: true, responseStatus: "tentative" }],
+    })
+    eq(invited?.attending, true)
+    const shared = mapGoogleEvent("me@example.com", "shared", "Team", "#fff", [], timedRaw())
+    eq(shared?.attending, false)
+    const personal = mapGoogleEvent(
+        "me@example.com",
+        "me@example.com",
+        "Me",
+        "#fff",
+        [],
+        timedRaw(),
+        true,
+    )
+    eq(personal?.attending, true)
 })

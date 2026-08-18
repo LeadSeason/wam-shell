@@ -67,6 +67,11 @@ export interface Provider {
     // in the center's empty state when the provider's filter is
     // selected. null/absent when properly configured
     setupHint?: string | null
+    // the items are FUTURE-dated (calendar events): list them
+    // soonest-first in one block above the newest-first feed, since
+    // "what's next" reads top-down into the future. Absent/false =
+    // newest first, like the desktop notifications
+    soonestFirst?: boolean
 }
 
 // plain array: providers register at module scope (their init may not
