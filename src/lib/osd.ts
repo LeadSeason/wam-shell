@@ -7,6 +7,7 @@ import Config from "../config"
 import Brightness from "./brightness"
 import hyprsunset, { OUTDOOR_GAMMA, refreshHyprsunset } from "./hyprsunset"
 import { ensureLayoutSource, ensureLockSource, layoutOsdText, lockKeyState } from "./kbLayout"
+import { watchDefaultEndpoint } from "./defaultEndpoint"
 import { registerDispose } from "./lifecycle"
 
 // OSD state and triggers. Widgets read `content`/`visible`; triggers
@@ -155,25 +156,20 @@ function hookEndpoint(kind: "volume" | "microphone") {
 }
 
 const wp = AstalWp.get_default()
-if (wp) {
-    const { audio } = wp
+if (wp?.audio) {
     const speaker = hookEndpoint("volume")
     disposers.push(
-        createBinding(audio, "defaultSpeaker").subscribe(() => {
-            speaker.hook(audio.defaultSpeaker)
-        }),
+        // the real default endpoint, not the never-notifying proxy —
+        // see lib/defaultEndpoint
+        watchDefaultEndpoint(wp.audio, "speakers", ep => speaker.hook(ep)),
         speaker.release,
     )
-    speaker.hook(audio.defaultSpeaker)
 
     const mic = hookEndpoint("microphone")
     disposers.push(
-        createBinding(audio, "defaultMicrophone").subscribe(() => {
-            mic.hook(audio.defaultMicrophone)
-        }),
+        watchDefaultEndpoint(wp.audio, "microphones", ep => mic.hook(ep)),
         mic.release,
     )
-    mic.hook(audio.defaultMicrophone)
 }
 
 // brightness (covers slider, scroll and external keybinds via the
