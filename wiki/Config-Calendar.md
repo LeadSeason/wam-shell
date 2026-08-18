@@ -15,13 +15,15 @@ Section: `[calendar]`
 | `reminders` | bool | `true` | Reminder banners for timed events, and today's/tomorrow's events listed in the notification center |
 | `remind_before_minutes` | int | `10` | Fallback lead time for events that carry no reminder information at all |
 | `remind_only_attending` | bool | `true` | Banner only for events you take part in (guest list and not declined, organizer, or a personal event on your primary calendar); others still list in the center |
+| `remind_popup_seconds` | int | `0` | Auto-hide the reminder banner after this many seconds; `0` keeps it until dismissed |
 
 Reminders:
 
 - A banner fires at the event's own Google reminder times (per-event
   overrides, else the calendar's default reminders) and again when the
-  event starts. It is critical: it never auto-hides and breaks through
-  DND, like an alarm clock.
+  event starts. It is critical: it breaks through DND and, by default,
+  never auto-hides, like an alarm clock — `remind_popup_seconds` opts
+  into auto-hiding after N seconds.
 - Events Google explicitly marks reminder-less stay silent;
   `remind_before_minutes` only covers events with no reminder
   information at all. Hidden calendars and all-day events never banner.

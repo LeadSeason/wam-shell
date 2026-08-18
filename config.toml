@@ -382,6 +382,11 @@
 #                on your own primary calendar. events a shared calendar
 #                merely SHOWS still list in the notification center,
 #                they just don't banner. default true
+# remind_popup_seconds - auto-hide the reminder banner after this many
+#                seconds. 0 keeps it on screen until you dismiss it —
+#                reminders are time-critical, like an alarm clock. the
+#                event stays in the notification center either way.
+#                default 0
 # [calendar]
 # enabled = false
 # poll_minutes = 15
@@ -390,6 +395,7 @@
 # reminders = true
 # remind_before_minutes = 10
 # remind_only_attending = true
+# remind_popup_seconds = 0
 
 # [github] - GitHub notifications inside the notification center: your
 #            unread GitHub inbox merges into the center's list, and a

@@ -540,6 +540,9 @@ function getCalendarConfig() {
         // personal event on its own primary calendar); events a shared
         // calendar merely SHOWS stay in the center but don't banner
         remindOnlyAttending: r.bool("remind_only_attending", true),
+        // auto-hide the reminder banner after N seconds; 0 keeps it
+        // until dismissed (reminders are time-critical, like an alarm)
+        remindPopupSeconds: r.num("remind_popup_seconds", 0, { min: 0 }),
     }
 }
 
