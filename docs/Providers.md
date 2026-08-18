@@ -1,7 +1,7 @@
 # Notification-center providers
 
-External services (GitHub, Todoist, ProtonMail, YouTube) surface their
-unread items in the notification center next to the desktop
+External services (GitHub, Todoist, ProtonMail, YouTube, Calendar) surface
+their unread items in the notification center next to the desktop
 notifications, filtered by a per-provider icon in the header.
 
 The center has **no per-provider code**. A provider is one module in

@@ -363,11 +363,26 @@
 #                runtime (session-only, overrides this). default []
 # week_numbers - show ISO-8601 week numbers down the month grid's left
 #                edge. default true
+# reminders - banner reminders for timed events, and list today's and
+#                tomorrow's events in the notification center (a calendar
+#                icon in its header filters to just them; in-progress and
+#                starting-soon events sit in the "Needs you" zone). the
+#                banner fires at the event's own Google reminder times
+#                (per-event overrides, else the calendar's defaults) and
+#                again when the event starts; it is critical — it never
+#                auto-hides and breaks through DND, like an alarm clock.
+#                events Google explicitly marks reminder-less stay silent;
+#                hidden calendars and all-day events never banner.
+#                default true
+# remind_before_minutes - fallback lead time for events that carry NO
+#                reminder information at all. default 10
 # [calendar]
 # enabled = false
 # poll_minutes = 15
 # hidden_calendars = []
 # week_numbers = true
+# reminders = true
+# remind_before_minutes = 10
 
 # [github] - GitHub notifications inside the notification center: your
 #            unread GitHub inbox merges into the center's list, and a

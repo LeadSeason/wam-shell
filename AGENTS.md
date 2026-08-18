@@ -25,6 +25,10 @@
   per account. Refresh tokens live in the Secret Service keyring when
   available (`src/lib/secretStore.ts`), falling back to mode-0600
   `~/.config/wam-shell/*-tokens.json`. Design notes: `docs/gcal.md`.
+  Event reminders (Google's own reminder times, then
+  `remind_before_minutes`; banners again at start, CRITICAL) and the
+  center's "calendar" provider live in `src/lib/gcalReminders.ts`,
+  re-armed off `visibleEvents`.
 - Performance counters: start with `WAM_SHELL_METRICS=1`, then query
   `ags request -i <instance> metrics` (or `"metrics reset"`).
   Instrumentation lives in `src/lib/metrics.ts`; new code must use its
