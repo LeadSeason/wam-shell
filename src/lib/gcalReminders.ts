@@ -30,7 +30,11 @@ import { registerDispose } from "./lifecycle"
 // CRITICAL — it never auto-hides and breaks through DND, like an alarm
 // clock (the todoist due-reminder policy). Events Google explicitly
 // marks reminder-less stay silent; all-day events are out of scope
-// (same call as todoist's all-day tasks).
+// (same call as todoist's all-day tasks). Banners are also limited to
+// events the account actually ATTENDS (guest list, organizer, or a
+// personal event — resolution lives in lib/gcal.ts) unless the config
+// opts back into bannering everything a visible calendar shows
+// (remind_only_attending); the center lists them either way.
 //
 // The center lists today's and tomorrow's timed events; starting-soon
 // and in-progress ones are `actionable` and sit in the "Needs you"
@@ -134,6 +138,10 @@ function scheduleReminders(list: CalEvent[]) {
     for (const e of list) {
         const id = `gcal:${e.id}`
         if (hidden.has(id)) continue
+        // an event the account merely SEES (a shared calendar's, with
+        // no guest entry of yours) gets no banner unless the config
+        // opts back in — the center lists it either way
+        if (Config.calendar.remindOnlyAttending && !e.attending) continue
         for (const fireMs of reminderFires(e, Config.calendar.remindBeforeMinutes)) {
             const key = `${id}|${fireMs}`
             if (reminderTimers.has(key) || remindedKeys.has(key)) continue

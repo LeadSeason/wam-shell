@@ -3,6 +3,7 @@ import {
     dayKey,
     eventDays,
     mapGoogleEvent,
+    resolveAttending,
     resolveReminderMinutes,
     timeLabel,
     agendaGroups,
@@ -341,4 +342,64 @@ test("gcal dayLabel: relative names, then an English weekday", () => {
     eq(dayLabel("2026-01-04", "2026-08-07"), "Sun, 04.01.2026")
     // 2026-01-05 is a Monday — its first
     eq(dayLabel("2026-01-05", "2026-08-07"), "Mon, 05.01.2026")
+})
+
+// a minimal timed event raw for resolveAttending/mapGoogleEvent runs
+const timedRaw = (extra: any = {}) => ({
+    id: "ev",
+    summary: "Meeting",
+    start: { dateTime: new Date(d(31, 13)).toISOString() },
+    end: { dateTime: new Date(d(31, 14)).toISOString() },
+    ...extra,
+})
+
+test("gcal resolveAttending: a self guest entry attends, unless declined", () => {
+    eq(
+        resolveAttending(timedRaw({ attendees: [{ self: true, responseStatus: "accepted" }] }), false),
+        true,
+    )
+    // needsAction/tentative still count: you ARE on the guest list
+    eq(resolveAttending(timedRaw({ attendees: [{ self: true }] }), false), true)
+    eq(
+        resolveAttending(timedRaw({ attendees: [{ self: true, responseStatus: "declined" }] }), false),
+        false,
+    )
+})
+
+test("gcal resolveAttending: organizing attends even without a guest entry", () => {
+    eq(resolveAttending(timedRaw({ organizer: { self: true } }), false), true)
+})
+
+test("gcal resolveAttending: other people's guest lists don't count", () => {
+    eq(
+        resolveAttending(timedRaw({ attendees: [{ email: "a@x.com" }, { email: "b@x.com" }] }), false),
+        false,
+    )
+    eq(resolveAttending(timedRaw({ organizer: { email: "a@x.com" } }), false), false)
+})
+
+test("gcal resolveAttending: guest-less events are personal only on the primary calendar", () => {
+    eq(resolveAttending(timedRaw(), true), true)
+    // the same shape on a shared/subscribed calendar is merely visible
+    eq(resolveAttending(timedRaw(), false), false)
+})
+
+test("gcal mapGoogleEvent: attending lands on the event", () => {
+    const invited = mapGoogleEvent("me@example.com", "shared", "Team", "#fff", [], {
+        ...timedRaw(),
+        attendees: [{ self: true, responseStatus: "tentative" }],
+    })
+    eq(invited?.attending, true)
+    const shared = mapGoogleEvent("me@example.com", "shared", "Team", "#fff", [], timedRaw())
+    eq(shared?.attending, false)
+    const personal = mapGoogleEvent(
+        "me@example.com",
+        "me@example.com",
+        "Me",
+        "#fff",
+        [],
+        timedRaw(),
+        true,
+    )
+    eq(personal?.attending, true)
 })
