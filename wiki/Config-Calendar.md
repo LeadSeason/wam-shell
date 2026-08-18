@@ -14,6 +14,7 @@ Section: `[calendar]`
 | `week_numbers` | bool | `true` | ISO-8601 week numbers down the month grid's left edge |
 | `reminders` | bool | `true` | Reminder banners for timed events, and today's/tomorrow's events listed in the notification center |
 | `remind_before_minutes` | int | `10` | Fallback lead time for events that carry no reminder information at all |
+| `remind_only_attending` | bool | `true` | Banner only for events you take part in (guest list and not declined, organizer, or a personal event on your primary calendar); others still list in the center |
 
 Reminders:
 
@@ -24,6 +25,10 @@ Reminders:
 - Events Google explicitly marks reminder-less stay silent;
   `remind_before_minutes` only covers events with no reminder
   information at all. Hidden calendars and all-day events never banner.
+- With `remind_only_attending` (the default), events a shared calendar
+  merely shows — no guest entry of yours, not your organizer — list in
+  the center but don't banner. Set it to `false` to banner everything
+  visible.
 - In the notification center a calendar icon filters to just events;
   in-progress and starting-soon ones sit in the "Needs you" zone.
   Middle-click on a banner snoozes it for ten minutes.

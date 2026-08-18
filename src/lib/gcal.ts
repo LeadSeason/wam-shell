@@ -42,6 +42,11 @@ export interface CalEvent {
     // config fallback (remind_before_minutes) applies. See
     // resolveReminderMinutes
     reminderMinutes: number[] | null
+    // the account takes part in this event: on the guest list and not
+    // declined, or the organizer, or a personal event on its own
+    // primary calendar. Gates reminder BANNERS only (the center still
+    // lists everything visible). See resolveAttending
+    attending: boolean
     // every local day ("YYYY-MM-DD") the event touches — marks and the
     // day list both filter on this
     days: string[]
@@ -290,7 +295,28 @@ export function resolveReminderMinutes(
     return calendarDefaults
 }
 
-// normalize one Google event; null = skip (cancelled/unparseable)
+// does the account itself take part in this event? Google answers
+// per-account with the `self` flags, so no email matching is needed:
+// a guest entry that was not DECLINED, or the event's organizer. (The
+// self entry is unique — it marks the authenticated account — so the
+// first one found is the answer.) An event with no guest list at all
+// is a personal appointment when it lives on the account's PRIMARY
+// calendar — you are the whole guest list; the same shape on a shared
+// or subscribed calendar is merely an event you can see
+export function resolveAttending(raw: any, primaryCalendar: boolean): boolean {
+    if (raw?.organizer?.self === true) return true
+    if (Array.isArray(raw?.attendees)) {
+        for (const a of raw.attendees) {
+            if (a?.self === true) return a?.responseStatus !== "declined"
+        }
+        return false
+    }
+    return primaryCalendar
+}
+
+// normalize one Google event; null = skip (cancelled/unparseable).
+// primaryCalendar marks the account's own primary calendar, which is
+// what tells a guest-less personal event apart from a shared calendar's
 export function mapGoogleEvent(
     account: string,
     calendarId: string,
@@ -298,6 +324,7 @@ export function mapGoogleEvent(
     color: string,
     calendarDefaultMinutes: number[],
     raw: any,
+    primaryCalendar = false,
 ): CalEvent | null {
     if (!raw || raw.status === "cancelled") return null
     const allDay = typeof raw.start?.date === "string"
@@ -327,6 +354,7 @@ export function mapGoogleEvent(
         allDay,
         url: typeof raw.htmlLink === "string" ? raw.htmlLink : "",
         reminderMinutes: resolveReminderMinutes(raw.reminders, calendarDefaultMinutes),
+        attending: resolveAttending(raw, primaryCalendar),
         days: eventDays(startMs, endMs, allDay),
     }
 }
@@ -499,7 +527,7 @@ function syncAccount(
 ) {
     fetchPaged(
         account,
-        `/users/me/calendarList?fields=nextPageToken,items(id,summary,backgroundColor,defaultReminders)`,
+        `/users/me/calendarList?fields=nextPageToken,items(id,summary,backgroundColor,defaultReminders,primary)`,
         "items",
         [],
         cals => {
@@ -514,8 +542,13 @@ function syncAccount(
                     defaultReminderMinutes: popupMinutes(c.defaultReminders),
                 }))
             if (all.length === 0) return cb([], [])
+            // which of these is the account's OWN calendar — resolve-
+            // Attending's personal-event case (kept off CalInfo, which
+            // is the picker pane's shape and has no use for it)
+            const primary = new Map(cals.map((c: any) => [c.id as string, c.primary === true]))
 
-            const fields = "nextPageToken,items(id,status,summary,start,end,reminders,htmlLink)"
+            const fields =
+                "nextPageToken,items(id,status,summary,start,end,reminders,htmlLink,attendees(self,responseStatus),organizer(self))"
             const out: CalEvent[] = []
             let pending = all.length
             for (const cal of all) {
@@ -531,6 +564,7 @@ function syncAccount(
                             cal.color,
                             cal.defaultReminderMinutes,
                             raw,
+                            primary.get(cal.id) === true,
                         )
                         if (e) out.push(e)
                     }
@@ -659,9 +693,10 @@ function writeCache(list: CalEvent[]) {
 // an entry must carry the fields visibleEvents/agendaGroups dereference:
 // a corrupt-but-parseable cache would otherwise throw later, long after
 // this function swallowed the parse error it could actually diagnose.
-// reminderMinutes/url are required too: a cache from before they existed
-// fails validation wholesale and is rebuilt by the sync that runs seconds
-// after startup — cheaper than per-entry migration code
+// reminderMinutes/url/attending are required too: a cache from before
+// they existed fails validation wholesale and is rebuilt by the sync
+// that runs seconds after startup — cheaper than per-entry migration
+// code
 function cacheEventOk(e: any): boolean {
     return (
         e !== null &&
@@ -670,7 +705,8 @@ function cacheEventOk(e: any): boolean {
         typeof e.startMs === "number" &&
         typeof e.endMs === "number" &&
         typeof e.url === "string" &&
-        (Array.isArray(e.reminderMinutes) || e.reminderMinutes === null)
+        (Array.isArray(e.reminderMinutes) || e.reminderMinutes === null) &&
+        typeof e.attending === "boolean"
     )
 }
 

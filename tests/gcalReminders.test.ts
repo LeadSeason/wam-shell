@@ -23,6 +23,7 @@ const mkEvent = (
     allDay: false,
     url: "https://calendar.google.com/event?eid=ev",
     reminderMinutes,
+    attending: true,
     days: [dayKey(startMs)],
     ...over,
 })

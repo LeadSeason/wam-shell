@@ -31,7 +31,10 @@
   Event reminders (Google's own reminder times, then
   `remind_before_minutes`; banners again at start, CRITICAL) and the
   center's "calendar" provider live in `src/lib/gcalReminders.ts`,
-  re-armed off `visibleEvents`.
+  re-armed off `visibleEvents`. Banners default to events the account
+  actually attends (`remind_only_attending`) — guest list/organizer/
+  personal, resolved via Google's per-account `self` flags in
+  `lib/gcal.ts`; the center lists everything visible regardless.
 - Performance counters: start with `WAM_SHELL_METRICS=1`, then query
   `ags request -i <instance> metrics` (or `"metrics reset"`).
   Instrumentation lives in `src/lib/metrics.ts`; new code must use its

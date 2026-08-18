@@ -148,7 +148,8 @@ so, because to a user it looks like being randomly signed out.
 
 ## Known limitations (v1, deliberate)
 
-- Read-only: no event creation/editing, no reminders/notifications.
+- Read-only: no event creation/editing. (Reminder banners and the
+  center's calendar provider live in `lib/gcalReminders.ts`.)
 - Marks are Gtk.Calendar's boolean bold dot — no per-calendar color or
   count on the calendar grid.
 - Calendar selection is opt-out by exact name; no per-calendar toggle
