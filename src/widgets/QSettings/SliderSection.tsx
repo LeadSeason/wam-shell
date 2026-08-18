@@ -1,10 +1,10 @@
 import AstalWp from "gi://AstalWp?version=0.1"
 import Gtk from "gi://Gtk?version=4.0"
-import Gdk from "gi://Gdk?version=4.0"
 import Pango from "gi://Pango?version=1.0"
 import Config from "../../config"
 import Brightness from "../../lib/brightness"
 import hyprsunset, { setOutdoorEnabled, OUTDOOR_GAMMA } from "../../lib/hyprsunset"
+import { scrollDelta } from "../../lib/scrollStep"
 import { With, createBinding, createComputed } from "gnim"
 import { PercentEntry } from "./PercentEntry"
 import { pressable } from "../pressable"
@@ -52,13 +52,13 @@ function VolSlider({
             <button>
                 <Gtk.EventControllerScroll
                     flags={Gtk.EventControllerScrollFlags.VERTICAL}
-                    onScroll={(source: Gtk.EventControllerScroll, arg0: number, arg1: number) => {
+                    onScroll={(controller: Gtk.EventControllerScroll, _dx: number, dy: number) => {
                         // pipewire reports negative volume when scrolled
                         // past zero, which breaks css and the OSD; clamp the
                         // top like the drag path does
                         endpoint.volume = Math.min(
                             maxValue,
-                            Math.max(0, endpoint.volume - arg1 / 100),
+                            Math.max(0, endpoint.volume + scrollDelta(controller, dy, 0.02)),
                         )
                         return true
                     }}
@@ -91,10 +91,10 @@ function VolSlider({
                 />
                 <Gtk.EventControllerScroll
                     flags={Gtk.EventControllerScrollFlags.VERTICAL}
-                    onScroll={(_source, _dx, dy) => {
+                    onScroll={(controller, _dx, dy) => {
                         endpoint.volume = Math.min(
                             maxValue,
-                            Math.max(0, endpoint.volume - dy / 100),
+                            Math.max(0, endpoint.volume + scrollDelta(controller, dy, 0.02)),
                         )
                         return true
                     }}
@@ -163,19 +163,13 @@ function BrightnessSlider() {
                 <Gtk.EventControllerScroll
                     flags={Gtk.EventControllerScrollFlags.VERTICAL}
                     onScroll={(controller, _dx, dy) => {
-                        // step depends on the device: mouse wheels deliver
-                        // one event per notch (WHEEL unit; magnitude varies
-                        // by compositor — ±2 here) → sign-based 2% per
-                        // notch; touchpads stream small smooth deltas
-                        // (SURFACE unit) → 0.1%/unit. setDimLevel exits
-                        // outdoor mode, so scrolling always lands on the bar
-                        const delta =
-                            controller.get_unit() === Gdk.ScrollUnit.WHEEL
-                                ? dy < 0
-                                    ? 0.02
-                                    : -0.02
-                                : -dy * 0.001
-                        brightness.screen = Math.min(1, Math.max(0.05, brightness.screen + delta))
+                        // unit-aware step is shared (lib/scrollStep).
+                        // setDimLevel exits outdoor mode, so scrolling
+                        // always lands on the bar
+                        brightness.screen = Math.min(
+                            1,
+                            Math.max(0.05, brightness.screen + scrollDelta(controller, dy, 0.02)),
+                        )
                         return true
                     }}
                 />
