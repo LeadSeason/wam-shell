@@ -217,6 +217,9 @@ if (Config.calendar.enabled) {
         refresh,
         signIn: authenticate,
         signInVisible: accountEmails.as(list => list.length === 0),
+        // events are future-dated: the center lists them next-first,
+        // above the newest-first feed
+        soonestFirst: true,
     } satisfies Provider)
 }
 
