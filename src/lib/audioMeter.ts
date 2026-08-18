@@ -3,7 +3,7 @@ import Gio from "gi://Gio?version=2.0"
 import AstalWp from "gi://AstalWp?version=0.1"
 import { Accessor, createState } from "gnim"
 import { streamLines } from "./streamLines"
-import { connect, disconnect } from "./metrics"
+import { watchDefaultEndpoint } from "./defaultEndpoint"
 
 // Level meters for the default output and the default input.
 //
@@ -64,7 +64,7 @@ function createMeter(direction: "output" | "input"): Meter {
     const isOutput = direction === "output"
     const [level, setLevel] = createState(0)
     let proc: Gio.Subprocess | null = null
-    let defaultHandler: number | null = null
+    let releaseDefault: (() => void) | null = null
     let holders = 0
     // Which pipeline the handle currently belongs to.
     //
@@ -80,10 +80,13 @@ function createMeter(direction: "output" | "input"): Meter {
     // identity check on its own handle).
     let generation = 0
 
-    const endpoint = () => {
-        const wp = AstalWp.get_default()?.audio
-        return (isOutput ? wp?.defaultSpeaker : wp?.defaultMicrophone) ?? null
-    }
+    // the real default endpoint, tracked from the node list while anyone
+    // holds the meter — NOT wp.defaultSpeaker, whose proxy can keep a
+    // dead node after device re-enumeration and never notifies, so the
+    // pipeline (and the gain read off the node) would stay pointed at a
+    // device that no longer exists. Why: lib/defaultEndpoint.ts
+    let currentEndpoint: AstalWp.Endpoint | null = null
+    const endpoint = () => currentEndpoint
 
     /**
      * What the node's own volume adds to what the pipeline hears.
@@ -201,13 +204,21 @@ function createMeter(direction: "output" | "input"): Meter {
             if (!meterSupported) return () => {}
 
             if (++holders === 1) {
-                start()
                 // the pipeline is bound to one specific node: switching
                 // the default has to move it, or the bar keeps showing a
-                // device that is no longer being used
-                const wp = AstalWp.get_default()?.audio
-                const signal = isOutput ? "notify::default-speaker" : "notify::default-microphone"
-                if (wp) defaultHandler = connect(wp, signal, () => start())
+                // device that is no longer being used. The cb fires
+                // immediately with the current default — that first call
+                // IS the start()
+                const audio = AstalWp.get_default()?.audio
+                if (audio)
+                    releaseDefault = watchDefaultEndpoint(
+                        audio,
+                        isOutput ? "speakers" : "microphones",
+                        ep => {
+                            currentEndpoint = ep
+                            start()
+                        },
+                    )
             }
 
             let released = false
@@ -215,9 +226,9 @@ function createMeter(direction: "output" | "input"): Meter {
                 if (released) return
                 released = true
                 if (--holders > 0) return
-                const wp = AstalWp.get_default()?.audio
-                if (wp && defaultHandler !== null) disconnect(wp, defaultHandler)
-                defaultHandler = null
+                releaseDefault?.()
+                releaseDefault = null
+                currentEndpoint = null
                 stop()
             }
         },
