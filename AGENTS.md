@@ -131,6 +131,13 @@ widget-class list comment in `scss/widgets/bar/bar.scss`.
   `lib/styleCompile.ts` is display-free so `wam install`/`update` can
   precompile it; `lib/style.ts` only decides when to compile and
   applies the result.
+- **A `With`/Fragment rebuild appends at the END of its parent box.**
+  gnim does not remember where a Fragment sat, so a binding that
+  resolves LATE (an async probe, a device switch) re-lands its widget
+  last, and panel order becomes timing-dependent — a restart just
+  re-rolls the dice. Give it a wrapper box that holds the slot (bind
+  `visible` on it when the parent's `spacing` would leave a hole), the
+  pattern of `QSettingsLabel.tsx`'s `audioSlot` and Updates pill.
 - **A button nested inside a button gets no click — the OUTER one
   fires.** Fix: claim the sequence explicitly, in the CAPTURE phase, on
   the inner button:
