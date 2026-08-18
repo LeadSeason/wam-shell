@@ -1,4 +1,4 @@
-import { Gtk, Gdk } from "ags/gtk4"
+import { Gtk } from "ags/gtk4"
 import GLib from "gi://GLib?version=2.0"
 import AstalWp from "gi://AstalWp?version=0.1"
 import { createBinding, createComputed, createState, onCleanup, With } from "gnim"
@@ -15,6 +15,7 @@ import { recording } from "../../../lib/capture"
 import Brightness from "../../../lib/brightness"
 import { alarming } from "../../../lib/sleepTimer"
 import { execAsync, timeoutAdd, sourceRemove } from "../../../lib/metrics"
+import { scrollDelta } from "../../../lib/scrollStep"
 import { watchDefaultEndpoint } from "../../../lib/defaultEndpoint"
 import Config, { pendingUpdates } from "../../../config"
 import { pressable } from "../../pressable"
@@ -79,12 +80,14 @@ ${GLib.markup_escape_text(driver.description ?? "", -1)}`) // Keep this indent. 
         <box tooltipMarkup={tooltip}>
             <Gtk.EventControllerScroll
                 flags={Gtk.EventControllerScrollFlags.VERTICAL}
-                onScroll={(source: Gtk.EventControllerScroll, arg0: number, arg1: number) => {
+                onScroll={(controller: Gtk.EventControllerScroll, _dx: number, dy: number) => {
                     show()
-                    // Fixed step per notch, raw deltas vary wildly between
-                    // devices and can be imperceptibly small
-                    const step = arg1 < 0 ? 0.05 : -0.05
-                    driver.volume = Math.min(1, Math.max(0, driver.volume + step))
+                    // unit-aware step (wheel notch vs touchpad travel)
+                    // is shared with every slider: lib/scrollStep
+                    driver.volume = Math.min(
+                        1,
+                        Math.max(0, driver.volume + scrollDelta(controller, dy, 0.05)),
+                    )
                     return true
                 }}
             />
@@ -151,20 +154,12 @@ function brightnessWidget() {
                 flags={Gtk.EventControllerScrollFlags.VERTICAL}
                 onScroll={(controller, _dx, dy) => {
                     show()
-                    // step depends on the device, same as the panel's
-                    // BrightnessSlider: mouse wheels deliver one event
-                    // per notch (WHEEL unit; magnitude varies by
-                    // compositor — ±2 here) → sign-based 2% per notch;
-                    // touchpads stream small smooth deltas (SURFACE unit,
-                    // ~46u per micro-adjust) → 0.1%/unit ≈ 5% per
-                    // micro-adjust. Scroll up = brighter on both
-                    const delta =
-                        controller.get_unit() === Gdk.ScrollUnit.WHEEL
-                            ? dy < 0
-                                ? 0.02
-                                : -0.02
-                            : -dy * 0.001
-                    brightness.screen = Math.min(1, Math.max(0.05, brightness.screen + delta))
+                    // shared unit-aware step, same as the volume twin
+                    // above and the panel's BrightnessSlider
+                    brightness.screen = Math.min(
+                        1,
+                        Math.max(0.05, brightness.screen + scrollDelta(controller, dy, 0.02)),
+                    )
                     return true
                 }}
             />
