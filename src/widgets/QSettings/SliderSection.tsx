@@ -5,7 +5,8 @@ import Config from "../../config"
 import Brightness from "../../lib/brightness"
 import hyprsunset, { setOutdoorEnabled, OUTDOOR_GAMMA } from "../../lib/hyprsunset"
 import { scrollDelta } from "../../lib/scrollStep"
-import { With, createBinding, createComputed } from "gnim"
+import { watchDefaultEndpoint } from "../../lib/defaultEndpoint"
+import { With, createBinding, createComputed, createState, onCleanup } from "gnim"
 import { PercentEntry } from "./PercentEntry"
 import { pressable } from "../pressable"
 
@@ -219,8 +220,38 @@ export function SliderSection({ navigate }: { navigate: (pane: string) => void }
         )
     const { audio } = wp
 
-    const speakers = createBinding(audio, "speakers").as(s => s ?? [])
-    const microphones = createBinding(audio, "microphones").as(m => m ?? [])
+    // the current default endpoint comes from the real node list, NOT
+    // wp.defaultSpeaker — that proxy can keep a dead node after device
+    // re-enumeration (and never notifies), leaving the slider writing
+    // volume to a device that no longer exists. Why: lib/defaultEndpoint.ts
+    function trackDefault(prop: "speakers" | "microphones") {
+        const [endpoint, setEndpoint] = createState<AstalWp.Endpoint | null>(null)
+        onCleanup(watchDefaultEndpoint(audio, prop, setEndpoint))
+        return endpoint
+    }
+
+    // the tracker re-resolves on every device switch, and a With rebuild
+    // appends at the END of the parent box — the wrapper box holds the
+    // slot instead (same pattern as the bar's audioSlot), with `visible`
+    // bound so an empty wrapper leaves no hole
+    function audioSlot(prop: "speakers" | "microphones", pane: string, maxValue?: number) {
+        const endpoint = trackDefault(prop)
+        return (
+            <box visible={endpoint.as(e => e !== null)}>
+                <With value={endpoint}>
+                    {e =>
+                        e && (
+                            <VolSlider
+                                endpoint={e}
+                                maxValue={maxValue}
+                                onOpen={() => navigate(pane)}
+                            />
+                        )
+                    }
+                </With>
+            </box>
+        )
+    }
 
     return (
         // with device names on, the name is drawn INSIDE the trough, and
@@ -234,25 +265,8 @@ export function SliderSection({ navigate }: { navigate: (pane: string) => void }
             }
             orientation={Gtk.Orientation.VERTICAL}
         >
-            <With value={createBinding(wp, "defaultSpeaker")}>
-                {speaker =>
-                    speaker && (
-                        <VolSlider endpoint={speaker} onOpen={() => navigate("audioOutput")} />
-                    )
-                }
-            </With>
-
-            <With value={createBinding(wp, "defaultMicrophone")}>
-                {microphone =>
-                    microphone && (
-                        <VolSlider
-                            endpoint={microphone}
-                            maxValue={1}
-                            onOpen={() => navigate("audioInput")}
-                        />
-                    )
-                }
-            </With>
+            {audioSlot("speakers", "audioOutput")}
+            {audioSlot("microphones", "audioInput", 1)}
 
             <BrightnessSlider />
         </box>
