@@ -393,7 +393,7 @@ function unsnooze(held: Snoozed) {
     if (!fresh) return
     // applies the muted-provider gate, and re-derives the duration the
     // same way the first admission did
-    addProviderPopup(fresh, held.urgency)
+    addProviderPopup(fresh, held.urgency, held.expireMs)
 }
 
 /**
@@ -596,11 +596,17 @@ function addPopup(
 // a brand-new provider thread (github poll diff) or a due reminder
 // wants a banner. The banner expiring is NOT a dismissal: the item
 // stays in the center. urgency CRITICAL banners never drain and break
-// through DND (todoist due reminders use this).
-export function addProviderPopup(item: ProviderItem, urgency: AstalNotifd.Urgency | null = null) {
+// through DND (todoist due reminders use this) — unless the caller
+// passes an explicit expireMs, which wins like a sender's
+// expire_timeout (gcal's remind_popup_seconds).
+export function addProviderPopup(
+    item: ProviderItem,
+    urgency: AstalNotifd.Urgency | null = null,
+    expireMs: number = -1,
+) {
     if (!useOurs) return // no popup windows exist in that case
     if (mutedProviders.get().includes(item.provider)) return
-    addPopup({ key: item.id, desktop: null, item }, urgency)
+    addPopup({ key: item.id, desktop: null, item }, urgency, expireMs)
 }
 
 let notifiedId = connect(notifd, "notified", (_s: AstalNotifd.Notifd, id: number) => {

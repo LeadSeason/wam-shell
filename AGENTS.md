@@ -29,7 +29,9 @@
   available (`src/lib/secretStore.ts`), falling back to mode-0600
   `~/.config/wam-shell/*-tokens.json`. Design notes: `docs/gcal.md`.
   Event reminders (Google's own reminder times, then
-  `remind_before_minutes`; banners again at start, CRITICAL) and the
+  `remind_before_minutes`; banners again at start, CRITICAL —
+  persistent unless `remind_popup_seconds` gives them an explicit
+  expiry, which wins over the critical no-drain rule) and the
   center's "calendar" provider live in `src/lib/gcalReminders.ts`,
   re-armed off `visibleEvents`. Banners default to events the account
   actually attends (`remind_only_attending`) — guest list/organizer/

@@ -27,14 +27,16 @@ import { registerDispose } from "./lifecycle"
 // overrides, else the calendar's defaults, else the config fallback
 // remind_before_minutes — resolution lives in lib/gcal.ts) and again
 // when the event starts. Reminders are time-critical: the banner is
-// CRITICAL — it never auto-hides and breaks through DND, like an alarm
-// clock (the todoist due-reminder policy). Events Google explicitly
-// marks reminder-less stay silent; all-day events are out of scope
-// (same call as todoist's all-day tasks). Banners are also limited to
-// events the account actually ATTENDS (guest list, organizer, or a
-// personal event — resolution lives in lib/gcal.ts) unless the config
-// opts back into bannering everything a visible calendar shows
-// (remind_only_attending); the center lists them either way.
+// CRITICAL — it breaks through DND and, by default, never auto-hides,
+// like an alarm clock (the todoist due-reminder policy);
+// remind_popup_seconds opts into auto-hiding after N seconds. Events
+// Google explicitly marks reminder-less stay silent; all-day events
+// are out of scope (same call as todoist's all-day tasks). Banners are
+// also limited to events the account actually ATTENDS (guest list,
+// organizer, or a personal event — resolution lives in lib/gcal.ts)
+// unless the config opts back into bannering everything a visible
+// calendar shows (remind_only_attending); the center lists them either
+// way.
 //
 // The center lists today's and tomorrow's timed events; starting-soon
 // and in-progress ones are `actionable` and sit in the "Needs you"
@@ -112,7 +114,12 @@ function fireReminder(key: string, id: string) {
     // the FRESH item: a sync may have replaced the object, and a hidden
     // event gets no banner
     const item = items.get().find(i => i.id === id)
-    if (item) addProviderPopup(item, AstalNotifd.Urgency.CRITICAL)
+    if (!item) return
+    // CRITICAL breaks through DND and, by default, never drains — the
+    // alarm-clock policy. remind_popup_seconds opts into an explicit
+    // expiry, which wins over the critical no-drain rule
+    const sec = Config.calendar.remindPopupSeconds
+    addProviderPopup(item, AstalNotifd.Urgency.CRITICAL, sec > 0 ? sec * 1000 : -1)
 }
 
 function cancelReminder(id: string) {
