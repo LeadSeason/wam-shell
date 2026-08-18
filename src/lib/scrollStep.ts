@@ -20,11 +20,11 @@ import Gdk from "gi://Gdk?version=4.0"
  *
  * One stepper per controller — it carries that controller's travel.
  *
- * The brightness and volume widgets in `barModules/QSettingsLabel.tsx`
- * predate this and do their own sign/unit test inline. They are
- * CONTINUOUS (a percentage, where an over-fast touchpad just moves
- * further and you stop), so they do not need the accumulator; anything
- * discrete — a workspace, a layout, a player — does.
+ * Continuous controls — the volume/brightness indicators and the panel
+ * sliders — use `scrollDelta` below instead: they do not need the
+ * accumulator (an over-fast touchpad just moves further and you stop),
+ * only the unit split. Anything discrete — a workspace, a layout, a
+ * player — needs the accumulator.
  */
 export function createScrollStepper(threshold = 12) {
     let travel = 0
@@ -44,6 +44,30 @@ export function createScrollStepper(threshold = 12) {
         travel = 0
         return dy < 0 ? -1 : 1
     }
+}
+
+/**
+ * One continuous scroll delta from any device.
+ *
+ * Continuous controls (a volume, a brightness) do not need the stepper
+ * above, but they DO need the unit split: a mouse wheel delivers one
+ * event per notch (`WHEEL` unit; magnitude varies by compositor — ±2 on
+ * Hyprland here) and answers to a fixed step per notch, while a
+ * touchpad streams small smooth deltas (`SURFACE` unit) that must apply
+ * proportionally — a fixed step per event turns one flick into dozens
+ * of jumps.
+ *
+ * @param wheelStep fraction of the range per wheel notch
+ * @returns signed delta to ADD to the current value; ~0.1%/unit on a
+ *          touchpad, matching the established brightness feel
+ */
+export function scrollDelta(
+    controller: { get_unit(): Gdk.ScrollUnit },
+    dy: number,
+    wheelStep: number,
+): number {
+    if (controller.get_unit() === Gdk.ScrollUnit.WHEEL) return dy < 0 ? wheelStep : -wheelStep
+    return -dy * 0.001
 }
 
 /**

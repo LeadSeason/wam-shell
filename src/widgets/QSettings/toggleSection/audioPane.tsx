@@ -8,6 +8,7 @@ import { execAsync, idleAdd, sourceRemove } from "../../../lib/metrics"
 import { createIconResolver } from "../../../lib/appIcon"
 import { PercentEntry } from "../PercentEntry"
 import { audioPorts, refreshPorts, setPort } from "../../../lib/audioPorts"
+import { scrollDelta } from "../../../lib/scrollStep"
 import { inputMeter, METER_CLIENT, meterSupported, outputMeter } from "../../../lib/audioMeter"
 import { qsVisible } from "../MediaSection"
 import Config from "../../../config"
@@ -114,10 +115,10 @@ function VolumeRow({
                         />
                         <Gtk.EventControllerScroll
                             flags={Gtk.EventControllerScrollFlags.VERTICAL}
-                            onScroll={(_s, _dx, dy) => {
+                            onScroll={(controller, _dx, dy) => {
                                 // 1% a notch: the whole point of this row is
                                 // setting a value, not sweeping through one
-                                onChange(clamp(value.get() - dy / 100))
+                                onChange(clamp(value.get() + scrollDelta(controller, dy, 0.01)))
                                 return true
                             }}
                         />
