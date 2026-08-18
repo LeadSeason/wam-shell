@@ -19,12 +19,22 @@
   `src/lib/googleAuth.ts` (embedded desktop client, per-account tokens,
   `google.env`/env override). A provider can mark an item `actionable`
   (someone is waiting on YOU) to lift it into the center's "Needs you"
-  zone — only the provider can tell.
+  zone — only the provider can tell. A provider with FUTURE-dated
+  items (calendar) registers `soonestFirst` to list next-first above
+  the newest-first feed; the sort is `compareRows` in
+  `widgets/notifications/feed.ts`.
 - The clock popover is a Google Calendar (`src/lib/gcal.ts`,
   `[calendar]`): OAuth installed-app flow over loopback, one sign-in
   per account. Refresh tokens live in the Secret Service keyring when
   available (`src/lib/secretStore.ts`), falling back to mode-0600
   `~/.config/wam-shell/*-tokens.json`. Design notes: `docs/gcal.md`.
+  Event reminders (Google's own reminder times, then
+  `remind_before_minutes`; banners again at start, CRITICAL) and the
+  center's "calendar" provider live in `src/lib/gcalReminders.ts`,
+  re-armed off `visibleEvents`. Banners default to events the account
+  actually attends (`remind_only_attending`) — guest list/organizer/
+  personal, resolved via Google's per-account `self` flags in
+  `lib/gcal.ts`; the center lists everything visible regardless.
 - Performance counters: start with `WAM_SHELL_METRICS=1`, then query
   `ags request -i <instance> metrics` (or `"metrics reset"`).
   Instrumentation lives in `src/lib/metrics.ts`; new code must use its

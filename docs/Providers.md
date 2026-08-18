@@ -1,7 +1,7 @@
 # Notification-center providers
 
-External services (GitHub, Todoist, ProtonMail, YouTube) surface their
-unread items in the notification center next to the desktop
+External services (GitHub, Todoist, ProtonMail, YouTube, Calendar) surface
+their unread items in the notification center next to the desktop
 notifications, filtered by a per-provider icon in the header.
 
 The center has **no per-provider code**. A provider is one module in
@@ -18,13 +18,17 @@ export interface Provider {
     displayName?: string              // for sign-in buttons; defaults to name
     items: Accessor<ProviderItem[]>   // what the center renders
     refresh(): void                   // stale-while-revalidate on open
-    dispose(): void                   // tear down timers/connections
     status?: Accessor<string | null>  // a sync problem, or null when healthy
     signIn?(): void                   // interactive sign-in (YouTube)
     signInVisible?: Accessor<boolean>
     setupHint?: string | null         // enabled but unconfigured
+    soonestFirst?: boolean            // future-dated items: next first
 }
 ```
+
+(Teardown is not on the interface: register a disposer with
+`registerDispose` from `lib/lifecycle.ts`, run by `app.tsx` on
+shutdown.)
 
 Each `ProviderItem` is a row: `id`, `provider`, `time` (unix seconds),
 `appName`, `summary`, `body`, `iconName`, optional `imagePath` and
@@ -47,6 +51,15 @@ Two fields carry judgement rather than data:
   notifications" when a sync is failing. Say what is wrong and what
   happens next ("quota exceeded — retrying in 2h"), not just that
   something went wrong.
+
+And one flag on the provider itself:
+
+- **`soonestFirst`** — the items are future-dated (calendar events).
+  The feed is newest-first because notifications are records of things
+  that happened; upcoming events read the other way, so these list
+  next-first in a block above the feed. The sort lives in
+  `compareRows` (`widgets/notifications/feed.ts`) and stays transitive
+  by keying the direction on the group, never on a row pair.
 
 ## Writing one
 

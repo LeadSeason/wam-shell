@@ -531,6 +531,15 @@ function getCalendarConfig() {
         hiddenCalendars: r.strList("hidden_calendars", []),
         // ISO-8601 week numbers down the month grid's left edge
         weekNumbers: r.bool("week_numbers", true),
+        // reminder banners for timed events (Google's own reminder
+        // settings lead; this is the fallback and the master toggle)
+        reminders: r.bool("reminders", true),
+        remindBeforeMinutes: r.num("remind_before_minutes", 10, { min: 0 }),
+        // banners only for events the account actually takes part in
+        // (on the guest list and not declined, or the organizer, or a
+        // personal event on its own primary calendar); events a shared
+        // calendar merely SHOWS stay in the center but don't banner
+        remindOnlyAttending: r.bool("remind_only_attending", true),
     }
 }
 

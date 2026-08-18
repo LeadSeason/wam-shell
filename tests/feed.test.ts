@@ -1,6 +1,6 @@
 import GLib from "gi://GLib?version=2.0"
 import { test, eq } from "./framework"
-import { buildFeed, FeedRow } from "../src/widgets/notifications/feed"
+import { buildFeed, compareRows, FeedRow, OrderedRow } from "../src/widgets/notifications/feed"
 
 // fixed "now": 2026-08-06 14:30 local
 const NOW = GLib.DateTime.new_local(2026, 8, 6, 14, 30, 0)!.to_unix()
@@ -94,4 +94,47 @@ test("buildFeed: group keys are stable and unique", () => {
     const rows = [row("a", NOW - HOUR), row("b", NOW - 2 * HOUR), row("a", NOW - 3 * HOUR)]
     const keys = buildFeed(rows, NOW).map(b => b.key)
     eq(keys.length, new Set(keys).size, "no duplicate keys")
+})
+
+// ----------------------------------------------------------- compareRows
+
+const orow = (appName: string, time: number, soonestFirst = false): OrderedRow => ({
+    ...row(appName, time),
+    soonestFirst,
+})
+
+// sorted keys, compactly
+const order = (rows: OrderedRow[]) => [...rows].sort(compareRows).map(r => r.key)
+
+test("compareRows: plain rows sort newest first", () => {
+    const a = orow("a", NOW - HOUR)
+    const b = orow("b", NOW - 2 * HOUR)
+    eq(order([b, a]), [a.key, b.key])
+})
+
+test("compareRows: soonest-first rows sort next-event first", () => {
+    const soon = orow("cal", NOW + HOUR, true)
+    const later = orow("cal", NOW + 2 * HOUR, true)
+    eq(order([later, soon]), [soon.key, later.key])
+})
+
+test("compareRows: the soonest-first block sits above the feed", () => {
+    // even an in-progress event (its start is in the PAST) stays above
+    // the newest notification — the block is keyed on the group, not
+    // on which timestamp happens to be larger
+    const notif = orow("chat", NOW - 60)
+    const inProgress = orow("cal", NOW - 30 * 60, true)
+    const next = orow("cal", NOW + HOUR, true)
+    eq(order([notif, inProgress, next]), [inProgress.key, next.key, notif.key])
+})
+
+test("compareRows: transitivity survives a mixed list", () => {
+    // the case a row-pair direction flip would get wrong: calendar
+    // events either side of a notification's timestamp
+    const n1 = orow("chat", NOW - HOUR)
+    const n2 = orow("chat", NOW - 3 * HOUR)
+    const e1 = orow("cal", NOW - 30 * 60, true) // started, in progress
+    const e2 = orow("cal", NOW + 2 * HOUR, true)
+    const e3 = orow("cal", NOW + 5 * HOUR, true)
+    eq(order([n2, e3, n1, e2, e1]), [e1.key, e2.key, e3.key, n1.key, n2.key])
 })

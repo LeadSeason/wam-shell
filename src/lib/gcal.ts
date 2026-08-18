@@ -35,6 +35,18 @@ export interface CalEvent {
     startMs: number
     endMs: number // may equal startMs (zero-length events)
     allDay: boolean
+    url: string // htmlLink (event page on calendar.google.com), "" when absent
+    // resolved POPUP reminder lead times (minutes before start):
+    // null = explicitly silent (the user turned reminders off for this
+    // event, or set only non-popup ones); [] = no information — the
+    // config fallback (remind_before_minutes) applies. See
+    // resolveReminderMinutes
+    reminderMinutes: number[] | null
+    // the account takes part in this event: on the guest list and not
+    // declined, or the organizer, or a personal event on its own
+    // primary calendar. Gates reminder BANNERS only (the center still
+    // lists everything visible). See resolveAttending
+    attending: boolean
     // every local day ("YYYY-MM-DD") the event touches — marks and the
     // day list both filter on this
     days: string[]
@@ -138,6 +150,9 @@ export interface CalInfo {
     summary: string
     color: string
     account: string
+    // the calendar's default POPUP reminder lead times (minutes before
+    // start) — what an event with reminders.useDefault gets
+    defaultReminderMinutes: number[]
 }
 
 // every calendar of every account (last sync), for the popover's
@@ -250,13 +265,66 @@ export function eventDays(startMs: number, endMs: number, _allDay: boolean): str
     return days
 }
 
-// normalize one Google event; null = skip (cancelled/unparseable)
+// the popup-method lead times of a Google reminder list (entries are
+// {method: "popup"|"email", minutes}); non-popup methods never banner
+function popupMinutes(list: any): number[] {
+    if (!Array.isArray(list)) return []
+    return list
+        .filter((r: any) => r?.method === "popup" && typeof r?.minutes === "number")
+        .map((r: any) => r.minutes)
+}
+
+// an event's effective reminder lead times. Explicit choices beat
+// defaults beat the config fallback:
+//  - overrides present: they ARE the event's reminders — popup entries
+//    banner, and a list with none (email-only, or useDefault false with
+//    no overrides at all) means the user deliberately silenced the event
+//  - useDefault with no overrides: the calendar's defaultReminders; a
+//    calendar that has none yields [] — "no information", and the
+//    config's remind_before_minutes steps in downstream
+// null = explicitly silent, [] = no information, [m, ...] = lead times
+export function resolveReminderMinutes(
+    reminders: any,
+    calendarDefaults: number[],
+): number[] | null {
+    if (Array.isArray(reminders?.overrides)) {
+        const popup = popupMinutes(reminders.overrides)
+        return popup.length > 0 ? popup : null
+    }
+    if (reminders?.useDefault === false) return null
+    return calendarDefaults
+}
+
+// does the account itself take part in this event? Google answers
+// per-account with the `self` flags, so no email matching is needed:
+// a guest entry that was not DECLINED, or the event's organizer. (The
+// self entry is unique — it marks the authenticated account — so the
+// first one found is the answer.) An event with no guest list at all
+// is a personal appointment when it lives on the account's PRIMARY
+// calendar — you are the whole guest list; the same shape on a shared
+// or subscribed calendar is merely an event you can see
+export function resolveAttending(raw: any, primaryCalendar: boolean): boolean {
+    if (raw?.organizer?.self === true) return true
+    if (Array.isArray(raw?.attendees)) {
+        for (const a of raw.attendees) {
+            if (a?.self === true) return a?.responseStatus !== "declined"
+        }
+        return false
+    }
+    return primaryCalendar
+}
+
+// normalize one Google event; null = skip (cancelled/unparseable).
+// primaryCalendar marks the account's own primary calendar, which is
+// what tells a guest-less personal event apart from a shared calendar's
 export function mapGoogleEvent(
     account: string,
     calendarId: string,
     calendarName: string,
     color: string,
+    calendarDefaultMinutes: number[],
     raw: any,
+    primaryCalendar = false,
 ): CalEvent | null {
     if (!raw || raw.status === "cancelled") return null
     const allDay = typeof raw.start?.date === "string"
@@ -284,6 +352,9 @@ export function mapGoogleEvent(
         startMs,
         endMs,
         allDay,
+        url: typeof raw.htmlLink === "string" ? raw.htmlLink : "",
+        reminderMinutes: resolveReminderMinutes(raw.reminders, calendarDefaultMinutes),
+        attending: resolveAttending(raw, primaryCalendar),
         days: eventDays(startMs, endMs, allDay),
     }
 }
@@ -456,7 +527,7 @@ function syncAccount(
 ) {
     fetchPaged(
         account,
-        `/users/me/calendarList?fields=nextPageToken,items(id,summary,backgroundColor)`,
+        `/users/me/calendarList?fields=nextPageToken,items(id,summary,backgroundColor,defaultReminders,primary)`,
         "items",
         [],
         cals => {
@@ -468,10 +539,16 @@ function syncAccount(
                     summary: c.summary,
                     color: typeof c.backgroundColor === "string" ? c.backgroundColor : "#888888",
                     account: account.email,
+                    defaultReminderMinutes: popupMinutes(c.defaultReminders),
                 }))
             if (all.length === 0) return cb([], [])
+            // which of these is the account's OWN calendar — resolve-
+            // Attending's personal-event case (kept off CalInfo, which
+            // is the picker pane's shape and has no use for it)
+            const primary = new Map(cals.map((c: any) => [c.id as string, c.primary === true]))
 
-            const fields = "nextPageToken,items(id,status,summary,start,end)"
+            const fields =
+                "nextPageToken,items(id,status,summary,start,end,reminders,htmlLink,attendees(self,responseStatus),organizer(self))"
             const out: CalEvent[] = []
             let pending = all.length
             for (const cal of all) {
@@ -480,7 +557,15 @@ function syncAccount(
                     // a failed calendar degrades to no events for it
                     // rather than poisoning the account's slice
                     for (const raw of items ?? []) {
-                        const e = mapGoogleEvent(account.email, cal.id, cal.summary, cal.color, raw)
+                        const e = mapGoogleEvent(
+                            account.email,
+                            cal.id,
+                            cal.summary,
+                            cal.color,
+                            cal.defaultReminderMinutes,
+                            raw,
+                            primary.get(cal.id) === true,
+                        )
                         if (e) out.push(e)
                     }
                     if (--pending === 0) cb(out, all)
@@ -607,14 +692,21 @@ function writeCache(list: CalEvent[]) {
 
 // an entry must carry the fields visibleEvents/agendaGroups dereference:
 // a corrupt-but-parseable cache would otherwise throw later, long after
-// this function swallowed the parse error it could actually diagnose
+// this function swallowed the parse error it could actually diagnose.
+// reminderMinutes/url/attending are required too: a cache from before
+// they existed fails validation wholesale and is rebuilt by the sync
+// that runs seconds after startup — cheaper than per-entry migration
+// code
 function cacheEventOk(e: any): boolean {
     return (
         e !== null &&
         typeof e === "object" &&
         Array.isArray(e.days) &&
         typeof e.startMs === "number" &&
-        typeof e.endMs === "number"
+        typeof e.endMs === "number" &&
+        typeof e.url === "string" &&
+        (Array.isArray(e.reminderMinutes) || e.reminderMinutes === null) &&
+        typeof e.attending === "boolean"
     )
 }
 
