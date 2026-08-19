@@ -4,7 +4,7 @@ import { readFileAsync } from "ags/file"
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
 import { timeoutAdd, sourceRemove } from "./metrics"
-import { sumNetDev } from "./netTotals"
+import { sumNetDev, formatBytes } from "./netTotals"
 import Config from "../config"
 import { streamLines } from "./streamLines"
 import { registerDispose } from "./lifecycle"
@@ -24,6 +24,91 @@ export const [vram, setVram] = createState<[number, number]>([0, 0]) // used,tot
 export const [ramSize, setRamSize] = createState<[number, number]>([0, 0]) // used,total GB
 export const [swapSize, setSwapSize] = createState<[number, number]>([0, 0]) // used,total GB
 export const [loadAvg, setLoadAvg] = createState(0)
+// PSI memory "some" avg60: the share of the last minute at least one
+// task sat STALLED on memory. This, not swap usage, is what "everything
+// feels sluggish" is — idle pages park in swap without hurting anything.
+// null when the kernel has PSI off (psi=0)
+export const [memPressure, setMemPressure] = createState<number | null>(null)
+
+// avg60 percentages. Keyed on the 1-minute average on purpose: avg10
+// spikes on every app launch and would flash the warning during normal
+// use; >= WARN sustained over a minute is real pressure
+export const MEM_PRESSURE_WARN = 5
+export const MEM_PRESSURE_CRIT = 20
+
+// pure parser, exported for tests: the "some" line's avg60 out of
+// /proc/pressure/memory ("some avg10=0.00 avg60=0.05 avg300=0.21 total=…")
+export function parseMemPressure(text: string): number | null {
+    const m = text.match(/^some\s+.*\bavg60=([\d.]+)/m)
+    return m ? Number(m[1]) : null
+}
+
+// probe once: PSI can be boot-disabled, and a missing file read every
+// tick would log a warning per interval
+const hasPsi = GLib.file_test("/proc/pressure/memory", GLib.FileTest.EXISTS)
+
+// the biggest residents, formatted for the warning's "who to kill"
+// line; empty whenever pressure is below WARN (nothing to act on)
+export const [memHogs, setMemHogs] = createState("")
+
+// pure parser, exported for tests: comm sits between the first '(' and
+// the LAST ')' (it may itself contain spaces and parens); rss is field
+// 24 — index 21 of what follows the ')' — in pages
+export function parseProcStat(text: string): [string, number] | null {
+    const open = text.indexOf("(")
+    const close = text.lastIndexOf(")")
+    if (open < 0 || close <= open) return null
+    const comm = text.slice(open + 1, close)
+    const rss = Number(
+        text
+            .slice(close + 1)
+            .trim()
+            .split(/\s+/)[21],
+    )
+    if (!comm || isNaN(rss)) return null
+    return [comm, rss * 4096] // 4 KiB pages on every arch the shell runs on
+}
+
+// pure formatter, exported for tests: biggest first, top n, long comms
+// truncated — the full name is one `ps` away, this line's job is pointing
+export function formatTopMem(procs: [string, number][], n = 3): string {
+    return procs
+        .filter(([, rss]) => rss > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, n)
+        .map(([comm, rss]) => {
+            const name = comm.length > 16 ? `${comm.slice(0, 15)}…` : comm
+            return `${name} ${formatBytes(rss)}`
+        })
+        .join(" · ")
+}
+
+// /proc walk for the biggest residents. Sync reads of kernel-generated
+// tiny files, and only ever run while the warning can be on screen
+function scanTopMem(): [string, number][] {
+    const procs: [string, number][] = []
+    let en: Gio.FileEnumerator | null = null
+    try {
+        en = Gio.File.new_for_path("/proc").enumerate_children(
+            "standard::name",
+            Gio.FileQueryInfoFlags.NONE,
+            null,
+        )
+        let info: Gio.FileInfo | null
+        while ((info = en.next_file(null)) !== null) {
+            const pid = info.get_name()
+            if (!/^\d+$/.test(pid)) continue
+            const [ok, data] = GLib.file_get_contents(`/proc/${pid}/stat`)
+            if (!ok) continue
+            const p = parseProcStat(new TextDecoder().decode(data))
+            if (p) procs.push(p)
+        }
+    } finally {
+        en?.close(null)
+    }
+    return procs
+}
+
 export const [netDown, setNetDown] = createState(0) // bytes/s
 export const [netUp, setNetUp] = createState(0) // bytes/s
 export const [diskRead, setDiskRead] = createState(0) // bytes/s
@@ -154,6 +239,14 @@ const poll = createPoll("", INTERVAL, () => {
         push(ramHist.get(), setRamHist, r)
     })
     step("load", async () => setLoadAvg(await readLoadAvg()))
+    if (hasPsi)
+        step("psi", async () => {
+            const p = parseMemPressure(await readFileAsync("/proc/pressure/memory"))
+            setMemPressure(p)
+            // the /proc walk rides the pressure gate: it only runs while
+            // the warning can be on screen
+            setMemHogs(p !== null && p >= MEM_PRESSURE_WARN ? formatTopMem(scanTopMem()) : "")
+        })
     step("uptime", async () => setUptimeSeconds(await readUptime()))
     step("disk", async () => {
         const [read, write] = await readDisk()
