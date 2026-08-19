@@ -124,6 +124,24 @@ window#QSettings {
     .paneRowDesc {
         @include u.subtitle;
     }
+
+    // the power pane's memory-pressure notice: a card that exists only
+    // when PSI reports sustained stalls, so it is allowed to shout a
+    // little. Yellow = warn, red = critical, on the icon rather than
+    // the whole card — the text must stay readable
+    .memPressure {
+        image {
+            color: t.$yellow;
+        }
+        &.critical image {
+            color: t.$red;
+        }
+        // the "mostly: …" line names suspects; it must not shout louder
+        // than the pressure number itself
+        .memHogs {
+            opacity: s.$quiet-opacity;
+        }
+    }
     // real <button> widgets styled as card rows (sleep timer presets,
     // the custom-start chip): the global button margin breaks the
     // card's rhythm
