@@ -41,11 +41,15 @@ diffs the blobs of two legs.
 
 Gated (exact unless noted): subprocess spawns per binary (±2),
 alive timer sources per label, alive signal handlers per bucket,
-`fdsOwned` (±1) — file descriptors minus the gpu buffers (dmabuf, drm
-syncobj) a gtk process holds for whatever the session happens to be
-drawing. The raw `fds` total is report-only in every scenario: it moved
-by 12 in both directions when the same commit was compared against
-itself, so it can only produce false verdicts.
+`fdsOwned` (±1; ±8 on churn) — file descriptors minus the gpu buffers
+(dmabuf, drm syncobj) a gtk process holds for whatever the session
+happens to be drawing. The raw `fds` total is report-only in every
+scenario: it moved by 12 in both directions when the same commit was
+compared against itself, so it can only produce false verdicts. Even
+`fdsOwned` still shifts with the live session's audio streams between
+legs (44→51 against a branch, then 51→44 comparing that same branch
+against itself), which is what the churn tolerance absorbs — a real
+leak over 100 cycles grows by hundreds, so it costs no detection.
 
 Tolerances and exclusions exist because the session is live, and each
 one is measured, not guessed (see the comment block in compare.sh):
@@ -54,9 +58,12 @@ not gated at all — refresh coalescing makes them load-dominated, so
 churn gates on leaks only), physical battery events
 (`qsHeader:batTimeDebounce`), OSD triggers from the session's
 WirePlumber/MPRIS (`osd:hide`), per-tray-item signal buckets that
-scale with whatever tray apps the developer happens to run, and
+scale with whatever tray apps the developer happens to run,
 per-Bluetooth-device signal buckets that scale with whatever devices
-are in range during a leg.
+are in range during a leg, and the `Gtk_EditableLabel` signal bucket
+(`PercentEntry` rows in the audio panes scale with the live session's
+audio streams — measured 4→0, 0→6 and 2→0 across runs of identical
+trees).
 
 Report-only (never gated): time to first frame, RSS, context switches,
 blocking-ms, HTTP counts. Local runs have real desktop noise — an
