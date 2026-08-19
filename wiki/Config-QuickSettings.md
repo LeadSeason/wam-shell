@@ -22,6 +22,14 @@ Section: `[quicksettings]`
 | `avatar` | string (path) | `""` | Absolute path to the avatar image, square crop ~96x96 recommended (`scripts/prepare-avatar.sh` resizes); empty uses the login avatar from AccountsService, falling back to the OS icon |
 | `battery_full_at` | int (percent) | auto | Charge cap the header ring treats as full; auto-detected from sysfs (`charge_control_end_threshold`) when exposed, else 100; set explicitly to override. At the cap the battery UI shows "on AC"/"charge limit" only while the adapter holds it there — a battery discharging at the cap shows the drain and time left |
 
+The power mode pane also shows a memory-pressure warning (yellow, red
+when severe) whenever the kernel's PSI reports tasks stalled on memory
+for a sustained share of the last minute — the state behind "everything
+feels sluggish". The warning names the three biggest memory residents
+at that moment, so the culprit is visible at a glance. Not
+config-gated; it only exists while there is pressure to report, and
+needs a kernel with PSI on (the default).
+
 Section: `[bluetooth]` — the bluetooth pane.
 
 | Key | Type | Default | What it does |

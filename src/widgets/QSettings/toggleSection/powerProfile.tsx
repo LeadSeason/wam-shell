@@ -390,6 +390,70 @@ function PowerDetails() {
     )
 }
 
+// the "your machine is thrashing" notice: PSI says tasks have been
+// stalled on memory for a sustained stretch (avg60, not the
+// launch-an-app avg10 spike). Always built, visible-gated — a late
+// conditional build would append it AFTER the details tiles
+function MemPressureWarning() {
+    const level = Sys.memPressure.as(p =>
+        p === null || p < Sys.MEM_PRESSURE_WARN
+            ? ""
+            : p >= Sys.MEM_PRESSURE_CRIT
+              ? "critical"
+              : "warn",
+    )
+    const desc = createComputed([Sys.memPressure, Sys.swapSize], (p, [sw, swTotal]) => {
+        // short on purpose: the line ellipsizes at the pane's width,
+        // and a cut-off middle loses the numbers that matter
+        const stalls = `stalled ${Math.round(p ?? 0)}% of last min`
+        return swTotal > 0 ? `${stalls} · swap ${sw}/${swTotal} GB` : stalls
+    })
+    return (
+        <box
+            cssClasses={level.as(l => [
+                "paneCard",
+                "memPressure",
+                ...(l === "critical" ? ["critical"] : []),
+            ])}
+            spacing={10}
+            visible={level.as(l => l !== "")}
+        >
+            <image iconName="dialog-warning-symbolic" pixelSize={20} valign={Gtk.Align.CENTER} />
+            <box orientation={Gtk.Orientation.VERTICAL} spacing={1} hexpand>
+                <label
+                    cssClasses={["paneRowName"]}
+                    xalign={0}
+                    label={level.as(l =>
+                        l === "critical" ? "Severe memory pressure" : "High memory pressure",
+                    )}
+                />
+                {/* both text lines ellipsize: a label without it makes
+                its FULL text the scrolled window's minimum width (the
+                hscrollbar never shows), so every digit change resized
+                the popup and a long hog line stretched the tile grid
+                past its design width */}
+                <label
+                    cssClasses={["paneRowDesc"]}
+                    xalign={0}
+                    label={desc}
+                    maxWidthChars={44}
+                    ellipsize={Pango.EllipsizeMode.END}
+                />
+                {/* the "who to kill" line: the biggest residents, only
+                while pressure is high (memHogs is "" below WARN) */}
+                <label
+                    cssClasses={["paneRowDesc", "memHogs"]}
+                    xalign={0}
+                    visible={Sys.memHogs.as(h => h !== "")}
+                    label={Sys.memHogs.as(h => `mostly: ${h}`)}
+                    maxWidthChars={44}
+                    ellipsize={Pango.EllipsizeMode.END}
+                />
+            </box>
+        </box>
+    )
+}
+
 export function PowerProfilesWidget({ pane, name }: { pane: Accessor<string>; name: string }) {
     const powerProfiles = AstalPowerProfiles.get_default()
     const profiles = powerProfiles.get_profiles()
@@ -448,6 +512,7 @@ export function PowerProfilesWidget({ pane, name }: { pane: Accessor<string>; na
                     )
                 })}
             </box>
+            <MemPressureWarning />
             <PowerDetails />
         </box>
     )
