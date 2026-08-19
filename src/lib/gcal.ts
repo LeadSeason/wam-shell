@@ -160,10 +160,49 @@ export interface CalInfo {
 const [calendars, setCalendars] = createState<CalInfo[]>([])
 export { calendars }
 
-// session visibility overrides (visKey -> visible); defaults come
-// from config's hidden_calendars. Toggles live here so month dots and
-// the agenda follow the same source
-const [visibilityOverrides, setVisibilityOverrides] = createState<Record<string, boolean>>({})
+// visibility overrides (visKey -> visible); defaults come from
+// config's hidden_calendars. Toggles live here so month dots and the
+// agenda follow the same source.
+//
+// Persisted, the way notifd's muted-app list is: unchecking a calendar
+// in the popover is a decision about that calendar, and one the user
+// would have to make again after every update, logout and crash if it
+// lived in memory. `hidden_calendars` stays the config-file default —
+// an override for a key still wins over it in both directions.
+const visStorePath = `${Config.instanceCacheDir}/gcal-calendar-visibility.json`
+
+// pure: the store file's contents -> overrides. A hand-edited or
+// truncated file must not take the popover down; a bad shape or a
+// non-boolean value is simply dropped ("unknown" reads as "no
+// override", i.e. the config default).
+export function parseVisibilityOverrides(raw: string): Record<string, boolean> {
+    if (!raw) return {}
+    let parsed: unknown
+    try {
+        parsed = JSON.parse(raw)
+    } catch {
+        return {}
+    }
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {}
+    const out: Record<string, boolean> = {}
+    for (const [k, v] of Object.entries(parsed)) if (typeof v === "boolean") out[k] = v
+    return out
+}
+
+function loadVisibilityOverrides(): Record<string, boolean> {
+    try {
+        if (!isFile(visStorePath)) return {}
+        return parseVisibilityOverrides(
+            new TextDecoder().decode(GLib.file_get_contents(visStorePath)[1]),
+        )
+    } catch (e) {
+        console.warn("GCal: could not read the calendar visibility store:", e)
+        return {}
+    }
+}
+
+const [visibilityOverrides, setVisibilityOverrides] =
+    createState<Record<string, boolean>>(loadVisibilityOverrides())
 export { visibilityOverrides }
 
 // two accounts can subscribe to the SAME Google calendar id (holiday
@@ -172,13 +211,17 @@ export { visibilityOverrides }
 export const visKey = (cal: CalInfo) => `${cal.account}:${cal.id}`
 
 export function toggleCalendar(cal: CalInfo) {
-    setVisibilityOverrides({
+    const next = {
         ...visibilityOverrides.get(),
         [visKey(cal)]: !calendarVisible(cal, visibilityOverrides.get()),
-    })
+    }
+    setVisibilityOverrides(next)
+    writeFileAtomic(visStorePath, JSON.stringify(next)).catch(e =>
+        console.warn("GCal: could not persist calendar visibility:", e),
+    )
 }
 
-// pure: config hidden names + session overrides -> visible?
+// pure: config hidden names + stored overrides -> visible?
 export function isVisible(
     cal: CalInfo,
     overrides: Record<string, boolean>,
@@ -642,7 +685,7 @@ export function sync(focus?: { y: number; m: number }) {
             if (failedAccounts < signedIn.length) {
                 loadedFrom = from
                 loadedTo = to
-                writeCache(merged)
+                writeCache(merged, allCals)
             }
             setEvents(merged)
             setCalendars(allCals)
@@ -680,8 +723,8 @@ export function refresh() {
 // skip the write entirely when the payload didn't change
 let lastCacheJson = ""
 
-function writeCache(list: CalEvent[]) {
-    const json = JSON.stringify({ from: loadedFrom, to: loadedTo, events: list })
+function writeCache(list: CalEvent[], cals: CalInfo[]) {
+    const json = JSON.stringify({ from: loadedFrom, to: loadedTo, events: list, calendars: cals })
     if (json === lastCacheJson) return
     lastCacheJson = json
     // personal schedule data: same 0600 treatment as the tokens file
@@ -710,15 +753,42 @@ function cacheEventOk(e: any): boolean {
     )
 }
 
+// a calendar entry must carry the fields visibleEvents and the popover
+// picker dereference. Cached along the events because visibleEvents
+// treats an event whose calendar it can't find as VISIBLE: restoring
+// events without their calendars left picker-hidden calendars listing
+// and bannering from startup until the first sync landed
+function cacheCalendarOk(c: any): boolean {
+    return (
+        c !== null &&
+        typeof c === "object" &&
+        typeof c.id === "string" &&
+        typeof c.summary === "string" &&
+        typeof c.color === "string" &&
+        typeof c.account === "string" &&
+        Array.isArray(c.defaultReminderMinutes)
+    )
+}
+
 function loadCache() {
     if (!isFile(cachePath)) return
     try {
         const contents = GLib.file_get_contents(cachePath)[1]
         const data = JSON.parse(new TextDecoder().decode(contents))
-        if (Array.isArray(data?.events) && data.events.every(cacheEventOk)) {
+        // all-or-nothing, calendars included: a cache from before they
+        // were stored fails validation wholesale and is rebuilt by the
+        // sync that runs seconds after startup — a partially restored
+        // cache would banner hidden calendars in the gap
+        if (
+            Array.isArray(data?.events) &&
+            data.events.every(cacheEventOk) &&
+            Array.isArray(data?.calendars) &&
+            data.calendars.every(cacheCalendarOk)
+        ) {
             loadedFrom = Number(data.from) || 0
             loadedTo = Number(data.to) || 0
             setEvents(data.events)
+            setCalendars(data.calendars)
         }
     } catch (e) {
         console.warn("GCal: failed reading cache:", e)

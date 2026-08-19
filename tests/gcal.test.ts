@@ -11,6 +11,7 @@ import {
     isVisible,
     isoWeekNumber,
     dayLabel,
+    parseVisibilityOverrides,
 } from "../src/lib/gcal"
 
 // local ms for readability: d(31, 10) = the 31st of this month at 10:00
@@ -308,6 +309,19 @@ test("gcal isVisible: config names, account-scoped names, overrides", () => {
     eq(isVisible(cal, { "me@example.com:c1": false }, []), false)
     // another account's override for the same bare id does not leak
     eq(isVisible(cal, { "other@example.com:c1": false }, []), true)
+})
+
+test("gcal parseVisibilityOverrides: bad shapes drop, booleans keep", () => {
+    eq(parseVisibilityOverrides(""), {})
+    eq(parseVisibilityOverrides("not json"), {})
+    eq(parseVisibilityOverrides("null"), {})
+    eq(parseVisibilityOverrides('["a"]'), {})
+    eq(parseVisibilityOverrides('"str"'), {})
+    // non-boolean values are dropped, the rest survives
+    eq(
+        parseVisibilityOverrides('{"a:c1": false, "a:c2": true, "a:c3": "yes", "a:c4": 0}'),
+        { "a:c1": false, "a:c2": true },
+    )
 })
 
 test("gcal isoWeekNumber: ISO-8601 week numbers", () => {
