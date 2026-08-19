@@ -35,8 +35,9 @@ Reminders:
   in-progress and starting-soon ones sit in the "Needs you" zone.
   Middle-click on a banner snoozes it for ten minutes.
 
-The popover's Calendars pane toggles visibility at runtime; that choice
-is session-only and overrides `hidden_calendars`.
+The popover's Calendars pane toggles visibility at runtime; the choice
+persists across restarts and overrides `hidden_calendars` in both
+directions.
 
 Signing in:
 
