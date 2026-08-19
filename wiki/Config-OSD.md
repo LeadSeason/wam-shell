@@ -21,3 +21,6 @@ Section: `[osd]`
 | `brightness` | bool | `true` | Show a pill when the brightness changes |
 | `layout` | bool | `true` | Show a pill when the keyboard layout changes |
 | `lock_keys` | bool | `true` | Show a pill when Caps Lock / Num Lock toggle |
+
+Muting shows the crossed icon and a "Muted" label with no level bar;
+unmuting brings the bar back at the real level.

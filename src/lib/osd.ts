@@ -143,7 +143,10 @@ function hookEndpoint(kind: "volume" | "microphone") {
                 show(
                     {
                         icon: ep.mute ? mutedIcon : ep.volumeIcon,
-                        value: ep.mute ? 0 : Math.min(ep.volume, 1),
+                        // muted: no bar — the crossed icon + label say
+                        // it all, a bar would only repeat it. Unmuting
+                        // brings the bar back at the real level
+                        value: ep.mute ? null : Math.min(ep.volume, 1),
                         label: ep.mute ? "Muted" : `${Math.round(ep.volume * 100)}%`,
                         over: false,
                     },
