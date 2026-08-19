@@ -119,6 +119,11 @@ widget-class list comment in `scss/widgets/bar/bar.scss`.
 - A change that adds, renames, removes or re-defaults a config key —
   or changes user-visible behavior — updates the matching page in the
   SAME commit. A new section gets a new page plus a link in `Home.md`.
+- The push to the GitHub wiki is MANUAL and nothing checks it: after
+  merging a PR that touches `wiki/`, clone `wam-shell.wiki.git`, copy
+  `wiki/*.md` over, commit and push. It is part of the merge ritual,
+  not an optional follow-up — the GitHub wiki has silently fallen
+  behind before.
 - `config.toml` stays the exhaustive reference; a wiki page carries a
   table row per key (name, type, default, what it does) and at most a
   few bullets for setup/auth/caveats. `wiki/Config-Workspaces.md` is
