@@ -25,11 +25,15 @@
 #     coalescing makes churn spawn counts load-dominated (measured
 #     196→66, 140→64 on identical trees). churn gates on leaks only
 #     (alive timers/signals/fds); idle measures rates.
-#   - fd count: only fdsOwned is gated (±1). The raw total is
-#     report-only everywhere: most of a gtk process's fds are gpu
-#     buffers (dmabuf, drm syncobj) held for whatever the session is
-#     drawing, and comparing the SAME commit against itself reported
-#     -12 and then +12 on that number alone
+#   - fd count: only fdsOwned is gated (±1; ±8 on churn — the measured
+#     instance shares the live session's PipeWire and session bus, so
+#     its socket/pipe count shifts with the session's audio streams
+#     between legs: measured 44→51 against a feature branch and then
+#     51→44 comparing that SAME branch against itself, PR #279). The
+#     raw total is report-only everywhere: most of a gtk process's fds
+#     are gpu buffers (dmabuf, drm syncobj) held for whatever the
+#     session is drawing, and comparing the SAME commit against itself
+#     reported -12 and then +12 on that number alone
 #   - excluded entirely: qsHeader:batTimeDebounce (physical battery
 #     events, 2..17 creations across identical runs), osd:hide (OSD
 #     triggers come from the live session's WirePlumber/MPRIS),
@@ -41,6 +45,10 @@
 #     750ms reveal delayer armed when the async brightness seed lands
 #     — the BASE leg measured 1 and then 0 on the same commit, issue
 #     #276), the
+#     Gtk_EditableLabel:* signal bucket (PercentEntry rows in the audio
+#     panes scale with the live session's audio streams, which come and
+#     go between legs — measured 4→0, 0→6 and 2→0 across runs of
+#     identical trees, PR #279), the
 #     AstalTray_TrayItem:*/Gtk_GestureClick:* signal buckets (they
 #     scale with the live session's real tray items) and the
 #     AstalBluetooth_Device:* buckets (they scale with whatever
@@ -183,7 +191,8 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
         signalsByName: (.signals.byName
             | with_entries(select(.key
                 | (startswith("AstalTray_TrayItem:") or startswith("Gtk_GestureClick:")
-                    or startswith("AstalBluetooth_Device:"))
+                    or startswith("AstalBluetooth_Device:")
+                    or startswith("Gtk_EditableLabel:"))
                 | not))),
         fds: .process.fds,
         fdsOwned: .process.fdsOwned,
@@ -240,9 +249,14 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
         # drm syncobj) kept for whatever the session is drawing, and
         # they swing by a dozen between two runs of IDENTICAL code
         # (measured: the same commit compared against itself reported
-        # -12, then +12). fdsOwned excludes them and is the gated one
+        # -12, then +12). fdsOwned excludes them and is the gated one —
+        # except on churn, where it still swings with whatever the live
+        # session plays between legs (44→51 against a branch, 51→44
+        # comparing that same branch against itself): a real leak over
+        # 100 cycles grows by hundreds, so ±8 costs no detection
         # NOTE: no apostrophes in this jq program — it is single-quoted
-        if ($path | test("\\.fdsOwned$")) then 1
+        if ($path | test("^churn\\.fdsOwned$")) then 8
+        elif ($path | test("\\.fdsOwned$")) then 1
         elif ($path | test("\\.fds$")) then 999
         elif ($path | test("\\.subprocesses\\.")) then 2
         else 0 end;
