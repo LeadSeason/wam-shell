@@ -3,7 +3,6 @@ import GLib from "gi://GLib?version=2.0"
 import AstalMpris from "gi://AstalMpris?version=0.1"
 
 import { Astal, Gdk, Gtk } from "ags/gtk4"
-import { timeout } from "ags/time"
 
 import Tray from "./tray"
 import Config from "../../config"
@@ -183,25 +182,26 @@ export default function QSettings() {
         return Math.max(mainHeight || FALLBACK_PANE_HEIGHT, Config.quicksettings.minHeight)
     }
     const toggleSection = ToggleSection({ onNavigate: setPane })
-    let hideTimer: ReturnType<typeof timeout> | null = null
     // held only while the popup is on screen (see show/hide)
     let releaseHyprsunset: (() => void) | null = null
 
     function hide() {
-        // For some reason it does'nt want to play the animation, Setting
-        // timeout to 0 for this reason
+        // Hide in the SAME tick, before the collapse repaints: the
+        // revealer never animates on the way out, and its settled
+        // zero-height allocation paints the media card ALONE — the
+        // art's min-height survives the under-allocation that blanks
+        // every other section — so Hyprland's layer fade-out replays
+        // THAT buffer and the player ghosts for a few hundred ms after
+        // close. Unmapping first keeps the last committed buffer the
+        // full panel, which the compositor fade closes out cleanly.
+        win.hide()
+        // collapse while hidden, so the next show() plays the reveal
         revealer.set_reveal_child(false)
         setQsVisible(false)
         releaseHyprsunset?.()
         releaseHyprsunset = null
-        // give some time for the animation to play.
-        hideTimer?.cancel()
-        hideTimer = timeout(50, () => {
-            hideTimer = null
-            win.hide()
-            toggleSection.reset()
-            setPane("main")
-        })
+        toggleSection.reset()
+        setPane("main")
     }
 
     // the notification center owns the same corner: only one of them can
@@ -212,9 +212,6 @@ export default function QSettings() {
 
     function show() {
         closeOtherPopups("quicksettings")
-        // a hide may have a pending win.hide(); cancel it
-        hideTimer?.cancel()
-        hideTimer = null
         // The sliders reflect external hyprsunset changes while they are
         // on screen — acquiring refreshes immediately and then keeps the
         // watch running, so a change made elsewhere shows up live rather
