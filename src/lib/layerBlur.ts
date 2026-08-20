@@ -100,6 +100,29 @@ export function applyBlurRules(): void {
     setBlurRules(!isBlurSuspended())
 }
 
+// The quick settings close ghost: Hyprland's layer fade-out replays the
+// surface's last committed buffer, and the revealer's settled collapse
+// paints the media card ALONE (its art's min-height survives the
+// zero-height allocation that blanks every other section), so the player
+// lingered as a fading ghost on every close. no_anim takes the
+// compositor animation out of it; the open/close motion that survives is
+// the GTK-side reveal slide, which is unaffected. Same artifact and same
+// cure as the OSD's no_anim rule (lib/osd.ts), except QS hides on every
+// close rather than once per session, so there is no first-show gate —
+// the rule is fire-and-forget at startup, and runtime application lands
+// on the existing surface (verified live on 0.56.2).
+export function applyQSettingsNoAnim(): void {
+    if (Config.desktopSession !== "hyprland") return
+    const ns = `${Config.instanceName}QSettings`
+    execAsync([
+        "hyprctl",
+        "eval",
+        `hl.layer_rule({ match = { namespace = "${ns}" }, no_anim = true })`,
+    ])
+        .catch(() => execAsync(["hyprctl", "keyword", "layerrule", `noanim, ${ns}`]))
+        .catch(e => console.warn("qsettings: could not apply no_anim layer rule:", e))
+}
+
 // [appearance] blur_in_powersaver = false: while power-profiles-daemon
 // sits on the power-saver profile the frost is suspended — the sheet
 // recompiles opaque (config.ts surfaceOpacity) and the compositor rules
