@@ -97,8 +97,12 @@ $press-surface: t.$surface1;
 
 /// A floating window: quick settings, a popover, a toast, a dialog.
 /// Everything that appears over the desktop has this silhouette.
+///
+/// The background's alpha is SCALED by `$surface-opacity` rather than
+/// replaced, so a caller that passes an intentional alpha (the OSD's 90%
+/// crust, the scratchpad's `$base70`) keeps its intent when blur is on.
 @mixin surface($bg: t.$crust, $radius: s.$radius-large) {
-    background: $bg;
+    background: color.change($bg, $alpha: color.alpha($bg) * s.$surface-opacity);
     color: t.$text;
     border-radius: $radius;
     border: solid s.$border $border-color;

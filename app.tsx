@@ -36,6 +36,7 @@ import { init as initYouTube } from "./src/lib/youtube"
 import { init as initTodoist } from "./src/lib/todoist"
 import { init as initProtonmail } from "./src/lib/protonmail"
 import { forceExitStreamedChildren } from "./src/lib/streamLines"
+import { applyBlurRules } from "./src/lib/layerBlur"
 import { connect, disconnect } from "./src/lib/metrics"
 import { runDisposers } from "./src/lib/lifecycle"
 
@@ -75,6 +76,10 @@ function main() {
     initYouTube()
     initTodoist()
     initProtonmail()
+
+    // compositor blur rules for [appearance] blur: runtime keywords, so
+    // they land whenever they land — before or after the windows exist
+    applyBlurRules()
 
     if (Config.swayGaps && (Config.desktopSession == "sway" || Config.desktopSession == "i3"))
         SwayGaps.get_default()
