@@ -463,7 +463,12 @@ export default function QSettings() {
                                 )}
                                 <MediaSection />
                             </box>
-                            <box $type="named" name="wifi" orientation={Gtk.Orientation.VERTICAL}>
+                            <box
+                                $type="named"
+                                name="wifi"
+                                orientation={Gtk.Orientation.VERTICAL}
+                                cssClasses={["pane"]}
+                            >
                                 <PaneHeader
                                     title="Wi-Fi"
                                     onBack={() => setPane("main")}
@@ -487,6 +492,7 @@ export default function QSettings() {
                                 $type="named"
                                 name="bluetooth"
                                 orientation={Gtk.Orientation.VERTICAL}
+                                cssClasses={["pane"]}
                             >
                                 <PaneHeader
                                     title="Bluetooth"
@@ -510,6 +516,7 @@ export default function QSettings() {
                                 $type="named"
                                 name="audioOutput"
                                 orientation={Gtk.Orientation.VERTICAL}
+                                cssClasses={["pane"]}
                             >
                                 <PaneHeader title="Output" onBack={() => setPane("main")} />
                                 <Gtk.ScrolledWindow
@@ -530,6 +537,7 @@ export default function QSettings() {
                                 $type="named"
                                 name="audioInput"
                                 orientation={Gtk.Orientation.VERTICAL}
+                                cssClasses={["pane"]}
                             >
                                 <PaneHeader title="Input" onBack={() => setPane("main")} />
                                 <Gtk.ScrolledWindow
@@ -546,7 +554,12 @@ export default function QSettings() {
                                     />
                                 </Gtk.ScrolledWindow>
                             </box>
-                            <box $type="named" name="wired" orientation={Gtk.Orientation.VERTICAL}>
+                            <box
+                                $type="named"
+                                name="wired"
+                                orientation={Gtk.Orientation.VERTICAL}
+                                cssClasses={["pane"]}
+                            >
                                 <PaneHeader
                                     title="Wired"
                                     onBack={() => setPane("main")}
@@ -566,6 +579,7 @@ export default function QSettings() {
                                     $type="named"
                                     name={vpnPaneName(b.id)}
                                     orientation={Gtk.Orientation.VERTICAL}
+                                    cssClasses={["pane"]}
                                 >
                                     <PaneHeader
                                         title={b.name}
@@ -583,6 +597,7 @@ export default function QSettings() {
                                 $type="named"
                                 name="powerprofiles"
                                 orientation={Gtk.Orientation.VERTICAL}
+                                cssClasses={["pane"]}
                             >
                                 <PaneHeader title="Power Mode" onBack={() => setPane("main")} />
                                 {/* the pane outgrew the shell's uniform
