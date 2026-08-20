@@ -51,6 +51,11 @@ $bar-widget-spacing: space(6px);
 // src/widgets/bar/index.tsx.
 $bar-float-margin: tuning.$bar-float-margin;
 
+// alpha every window-level surface gets (`[appearance] blur` /
+// `blur_opacity`, resolved in config.ts `surfaceOpacity()`); 1 when blur
+// is off, so the surface mixin and bar fill need no branch
+$surface-opacity: tuning.$surface-opacity;
+
 // ---------------------------------------------------- shape and outline
 //
 // Four radii and no more. Which one to use is decided by WHAT the thing

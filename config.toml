@@ -74,11 +74,22 @@
 #           were; "compact" is for small screens, not for small type.
 #           Changing it recompiles the stylesheet on the next start
 #           (or `ags request -i wam-shell style` to apply it now).
+# blur - frosted-glass surfaces: popups and the bar go translucent and
+#        the compositor blurs whatever shows through. Hyprland only —
+#        the shell applies the layerrules itself at startup (`hyprctl
+#        reload` drops them until the shell restarts), and on any other
+#        session surfaces stay opaque. Blur strength itself is
+#        Hyprland's `decoration:blur`. default false
+# blur_opacity - how see-through surfaces get with blur on, 0.5 to 1.
+#                Lower shows more of the blur but costs text contrast.
+#                default 0.85
 # [appearance]
 # dark_theme = "catppuccin-mocha"
 # light_theme = "catppuccin-latte"
 # follow_system = true
 # density = "comfortable"
+# blur = false
+# blur_opacity = 0.85
 
 # ════════════════════════════════════════════════════════════════════
 # Panels

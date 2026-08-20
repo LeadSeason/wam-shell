@@ -160,7 +160,10 @@ compiling, and `conf.scss` `@use`s it by bare name through the load
 path. A density change touches no scss mtime, so, like a theme change,
 it forces the compile that the freshness sweep would otherwise skip.
 Anything writing a token that comes from `config.toml` rather than from
-a theme belongs in that generated file.
+a theme belongs in that generated file. `$surface-opacity` is the other
+such token: `1` normally, `[appearance] blur_opacity` when `blur` is on
+(Hyprland only — `lib/layerBlur.ts` wires the compositor side), and the
+`surface()` mixin and the bar's fill scale their background alpha by it.
 
 Only ever use `space()` on a **new** token in `conf.scss`. A widget
 sheet should be spending tokens, not multiplying them a second time.
