@@ -36,7 +36,7 @@ import { init as initYouTube } from "./src/lib/youtube"
 import { init as initTodoist } from "./src/lib/todoist"
 import { init as initProtonmail } from "./src/lib/protonmail"
 import { forceExitStreamedChildren } from "./src/lib/streamLines"
-import { applyBlurRules, initPowerSaverBlur } from "./src/lib/layerBlur"
+import { applyBlurRules, applyQSettingsNoAnim, initPowerSaverBlur } from "./src/lib/layerBlur"
 import { connect, disconnect } from "./src/lib/metrics"
 import { runDisposers } from "./src/lib/lifecycle"
 
@@ -83,6 +83,9 @@ function main() {
     // that applyBlurRules and the first style compile both read
     initPowerSaverBlur()
     applyBlurRules()
+    // not part of applyBlurRules: the close ghost exists with or without
+    // blur, so the rule applies regardless of the [appearance] setting
+    applyQSettingsNoAnim()
 
     if (Config.swayGaps && (Config.desktopSession == "sway" || Config.desktopSession == "i3"))
         SwayGaps.get_default()
