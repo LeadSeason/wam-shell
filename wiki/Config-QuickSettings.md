@@ -9,6 +9,7 @@ Section: `[quicksettings]`
 |---|---|---|---|
 | `width` | int (px) | `440` | Popup content width |
 | `show_battery_percentage` | bool | `true` | Percentage next to the battery icon on the panel |
+| `battery_blink` | bool | `true` | Blink the panel battery icon while the battery is discharging |
 | `show_device_names` | bool | `false` | Overlay the active input/output device name on the volume sliders |
 | `show_stats` | bool | `false` | Performance stats tiles (cpu/ram+swap/gpu/network/disk/uptime) in the power mode pane; collected only while the pane is open |
 | `stats_on_panel` | bool | `false` | Resource utilization monitor (cpu/ram/gpu percentages) on the panel |

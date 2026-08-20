@@ -317,7 +317,14 @@ function Battery() {
     disposers.push(createBinding(bat, "charging").subscribe(updateLow))
     return (
         <box tooltipText={batTime} cssClasses={showPrec.as(v => (v ? ["batLow"] : []))}>
-            <image iconName={batIcon} />
+            <image
+                iconName={batIcon}
+                cssClasses={createBinding(bat, "state").as(s =>
+                    Config.quicksettings.batteryBlink && s === AstalBattery.State.DISCHARGING
+                        ? ["draining"]
+                        : [],
+                )}
+            />
             {Config.quicksettings.showBatteryPercentage && (
                 <label
                     cssClasses={["batteryPercent"]}
