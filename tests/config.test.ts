@@ -99,6 +99,7 @@ test("config: documented defaults without a config file", () => {
     eq(c.notifications.popupProviders, [], "notifications.popupProviders")
     eq(c.appearance.blur, false, "appearance.blur")
     eq(c.appearance.blurOpacity, 0.85, "appearance.blurOpacity")
+    eq(c.appearance.blurInPowersaver, true, "appearance.blurInPowersaver")
 })
 
 test("config: theme fallback with follow_system off", () => {
@@ -140,13 +141,32 @@ blur_opacity = 0.7
     eq(c.appearance.blurOpacity, 0.7)
 
     // flat top-level spellings must not leak into the section-only reader
-    const flat = loadConfig({ DESKTOP_SESSION: "hyprland" }, `blur = true\nblur_opacity = 0.7`)
+    const flat = loadConfig(
+        { DESKTOP_SESSION: "hyprland" },
+        `blur = true\nblur_opacity = 0.7\nblur_in_powersaver = false`,
+    )
     eq(flat.appearance.blur, false)
     eq(flat.appearance.blurOpacity, 0.85)
+    eq(flat.appearance.blurInPowersaver, true)
 
     // out of range falls back to the documented default
     const oob = loadConfig({ DESKTOP_SESSION: "hyprland" }, `[appearance]\nblur_opacity = 0.2`)
     eq(oob.appearance.blurOpacity, 0.85)
+})
+
+test("config: blur suspension forces surfaces opaque", () => {
+    const env = {
+        DESKTOP_SESSION: "hyprland",
+        HYPRLAND_INSTANCE_SIGNATURE: "fake",
+    }
+    const toml = `[appearance]\nblur = true\nblur_opacity = 0.7\nblur_in_powersaver = false`
+    // not suspended: translucent as configured
+    const on = loadConfig(env, toml)
+    eq(on.appearance.blurInPowersaver, false)
+    eq(on.surfaceOpacity, 0.7)
+    // suspended (the power-saver listener flipped the runtime flag):
+    // opaque regardless of the configured opacity
+    eq(loadConfig({ ...env, WAM_DUMP_BLUR_SUSPENDED: "1" }, toml).surfaceOpacity, 1)
 })
 
 test("config: surfaceOpacity gates translucency on a hyprland session", () => {

@@ -83,6 +83,12 @@
 # blur_opacity - how see-through surfaces get with blur on, 0.5 to 1.
 #                Lower shows more of the blur but costs text contrast.
 #                default 0.85
+# blur_in_powersaver - keep the frost while the power-saver profile is
+#                active. false suspends blur (surfaces go opaque, the
+#                compositor rules come off) for as long as
+#                power-profiles-daemon stays on power-saver — blur is a
+#                constant GPU tax and the bar is always on screen.
+#                default true
 # [appearance]
 # dark_theme = "catppuccin-mocha"
 # light_theme = "catppuccin-latte"
@@ -90,6 +96,7 @@
 # density = "comfortable"
 # blur = false
 # blur_opacity = 0.85
+# blur_in_powersaver = true
 
 # ════════════════════════════════════════════════════════════════════
 # Panels
