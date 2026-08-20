@@ -273,6 +273,19 @@ window#QSettings {
         font-weight: s.$weight-bold;
     }
 
+    // Blur builds only: a pane's chrome (the header row, the wifi
+    // pane's airplane-mode row) sits directly on the frosted surface,
+    // and at blur_opacity the backdrop bleeds through enough to read as
+    // an unblurred hole next to the opaque cards below. Give the pane
+    // an opaque backing in the surface's own color — identical to the
+    // unblurred look — so the frost stays in the popup's gutter where
+    // nothing needs reading.
+    @if s.$surface-opacity < 1 {
+        .pane {
+            background-color: t.$crust;
+        }
+    }
+
     // checkbox indicator for card-row toggles (display-only; the row's
     // gesture does the toggling)
     .paneCheckbox {
