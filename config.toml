@@ -534,6 +534,8 @@
 # [quicksettings]
 # show_battery_percentage - show the battery percentage next to the
 #                     battery icon on the panel. default true
+# battery_blink - blink the panel battery icon while the battery is
+#                     discharging. default true
 # show_device_names - overlay the active input/output device name on
 #                     the volume sliders. default false
 # show_stats - show the performance stats tiles (cpu/ram/gpu/network)
@@ -580,6 +582,7 @@
 # [quicksettings]
 # width = 440
 # show_battery_percentage = true
+# battery_blink = true
 # show_device_names = false
 # show_stats = false
 # stats_on_panel = false

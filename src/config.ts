@@ -179,6 +179,8 @@ function getQSettingsConfig() {
     const r = createReader(configData, "quicksettings")
     return {
         showBatteryPercentage: r.bool("show_battery_percentage", true),
+        // blink the panel battery icon while discharging
+        batteryBlink: r.bool("battery_blink", true),
         showDeviceNames: r.bool("show_device_names", false),
         showStats: r.bool("show_stats", false),
         statsOnPanel: r.bool("stats_on_panel", false),

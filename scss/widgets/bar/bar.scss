@@ -407,6 +407,18 @@ window.Bar {
     .batLow {
         color: t.$red;
     }
+
+    // blink while discharging — an unplugged adapter should not go
+    // unnoticed
+    .draining {
+        animation: batDrainBlink 2s ease-in-out infinite;
+    }
+}
+
+@keyframes batDrainBlink {
+    50% {
+        opacity: 0.2;
+    }
 }
 // sleep timer countdown while paused: ambient, not unavailable
 window.Bar .sleepTimer.paused {
