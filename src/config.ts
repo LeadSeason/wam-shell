@@ -358,7 +358,23 @@ function getAppearanceConfig(data: Record<string, any> = configData) {
         // and icon sizes stay put, because scaling those as well stops
         // being "tighter" and becomes "smaller"
         density: DENSITY[r.oneOf("density", ["compact", "comfortable", "relaxed"], "comfortable")],
+        // frosted-glass surfaces: window-level backgrounds go translucent
+        // and the compositor blurs behind them. Both sectionOnly — new
+        // keys with no legacy flat spelling to honor
+        blur: r.bool("blur", false, { sectionOnly: true }),
+        // surface alpha with blur on; the 0.5 floor is readability —
+        // below it body text over a busy blurred background is guesswork
+        blurOpacity: r.num("blur_opacity", 0.85, { min: 0.5, max: 1, sectionOnly: true }),
     }
+}
+
+// The alpha window-level surfaces get (the `$surface-opacity` scss token).
+// Translucency only where the shell also wires up the compositor blur
+// (hyprland, lib/layerBlur.ts) — anywhere else a frosted surface is just
+// a washed-out one.
+export function surfaceOpacity(): number {
+    const a = Config.appearance
+    return a.blur && Config.desktopSession === "hyprland" ? a.blurOpacity : 1
 }
 
 // resolve the theme, following the system color scheme when enabled:

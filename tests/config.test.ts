@@ -97,6 +97,8 @@ test("config: documented defaults without a config file", () => {
     eq(c.todoist.enabled, true, "todoist.enabled")
     eq(c.protonmail.enabled, true, "protonmail.enabled")
     eq(c.notifications.popupProviders, [], "notifications.popupProviders")
+    eq(c.appearance.blur, false, "appearance.blur")
+    eq(c.appearance.blurOpacity, 0.85, "appearance.blurOpacity")
 })
 
 test("config: theme fallback with follow_system off", () => {
@@ -123,6 +125,48 @@ ignore_apps = ["HueNicorn", "OBS"]
     // a flat top-level spelling must not leak into the section-only reader
     const flat = loadConfig({ DESKTOP_SESSION: "hyprland" }, `ignore_apps = ["nope"]`)
     eq(flat.screenShare.ignoreApps, [])
+})
+
+test("config: appearance blur keys are section-only and bounded", () => {
+    const c = loadConfig(
+        { DESKTOP_SESSION: "hyprland" },
+        `
+[appearance]
+blur = true
+blur_opacity = 0.7
+`,
+    )
+    eq(c.appearance.blur, true)
+    eq(c.appearance.blurOpacity, 0.7)
+
+    // flat top-level spellings must not leak into the section-only reader
+    const flat = loadConfig({ DESKTOP_SESSION: "hyprland" }, `blur = true\nblur_opacity = 0.7`)
+    eq(flat.appearance.blur, false)
+    eq(flat.appearance.blurOpacity, 0.85)
+
+    // out of range falls back to the documented default
+    const oob = loadConfig({ DESKTOP_SESSION: "hyprland" }, `[appearance]\nblur_opacity = 0.2`)
+    eq(oob.appearance.blurOpacity, 0.85)
+})
+
+test("config: surfaceOpacity gates translucency on a hyprland session", () => {
+    const toml = `[appearance]\nblur = true\nblur_opacity = 0.7`
+    // hyprland with its instance signature: the shell can wire the
+    // compositor blur, so surfaces go translucent
+    const hypr = loadConfig(
+        { DESKTOP_SESSION: "hyprland", HYPRLAND_INSTANCE_SIGNATURE: "fake" },
+        toml,
+    )
+    eq(hypr.surfaceOpacity, 0.7)
+
+    // sway has no layer blur; translucency without blur is washed-out
+    // shell, so surfaces stay opaque even with blur = true
+    const sway = loadConfig({ DESKTOP_SESSION: "sway", I3SOCK: "/tmp/fake.sock" }, toml)
+    eq(sway.surfaceOpacity, 1)
+
+    // blur off: opaque regardless of session
+    const off = loadConfig({ DESKTOP_SESSION: "hyprland", HYPRLAND_INSTANCE_SIGNATURE: "fake" })
+    eq(off.surfaceOpacity, 1)
 })
 
 // --- invalid values are corrected, not trusted ---

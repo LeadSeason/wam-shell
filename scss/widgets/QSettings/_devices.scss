@@ -126,6 +126,12 @@ window#QSettings {
     .trayItem {
         border-radius: s.$radius;
         background-color: t.$base;
+        // on a FROSTED surface the base-vs-crust step washes out — the
+        // blurred backdrop pulls the surface toward the pill's own tone.
+        // Blur builds take the pill a full shade up instead.
+        @if s.$surface-opacity < 1 {
+            background-color: t.$surface0;
+        }
         margin: 0;
         button {
             margin: 0;
