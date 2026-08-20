@@ -2,7 +2,12 @@
 // config.test.ts can assert per-scenario results. Config is an import-time
 // singleton that reads env and files, so each scenario runs this entry in
 // its own gjs process with its own env.
-import Config, { surfaceOpacity } from "../src/config"
+import Config, { setBlurSuspended, surfaceOpacity } from "../src/config"
+import GLib from "gi://GLib?version=2.0"
+
+// test hook: simulate layerBlur's power-saver listener having suspended
+// the frost, so surfaceOpacity's runtime branch is reachable from here
+if (GLib.getenv("WAM_DUMP_BLUR_SUSPENDED") === "1") setBlurSuspended(true)
 
 const dump = {
     instanceName: Config.instanceName,

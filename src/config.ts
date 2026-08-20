@@ -359,13 +359,31 @@ function getAppearanceConfig(data: Record<string, any> = configData) {
         // being "tighter" and becomes "smaller"
         density: DENSITY[r.oneOf("density", ["compact", "comfortable", "relaxed"], "comfortable")],
         // frosted-glass surfaces: window-level backgrounds go translucent
-        // and the compositor blurs behind them. Both sectionOnly — new
-        // keys with no legacy flat spelling to honor
+        // and the compositor blurs behind them. All three blur keys are
+        // sectionOnly — new keys with no legacy flat spelling to honor
         blur: r.bool("blur", false, { sectionOnly: true }),
         // surface alpha with blur on; the 0.5 floor is readability —
         // below it body text over a busy blurred background is guesswork
         blurOpacity: r.num("blur_opacity", 0.85, { min: 0.5, max: 1, sectionOnly: true }),
+        // false suspends the frost while power-profiles-daemon sits on
+        // the power-saver profile (lib/layerBlur.ts): the bar is blurred
+        // around the clock, and that is a constant GPU tax exactly when
+        // the user asked for battery life
+        blurInPowersaver: r.bool("blur_in_powersaver", true, { sectionOnly: true }),
     }
+}
+
+// Runtime suspension of [appearance] blur: the profile listener in
+// lib/layerBlur.ts flips this when power-saver is active and
+// blur_in_powersaver is false. Module-level rather than a Config static
+// because it is derived from a live daemon, not from the file — a
+// restart re-derives it before any styling happens.
+let blurSuspended = false
+export function setBlurSuspended(v: boolean): void {
+    blurSuspended = v
+}
+export function isBlurSuspended(): boolean {
+    return blurSuspended
 }
 
 // The alpha window-level surfaces get (the `$surface-opacity` scss token).
@@ -374,6 +392,7 @@ function getAppearanceConfig(data: Record<string, any> = configData) {
 // a washed-out one.
 export function surfaceOpacity(): number {
     const a = Config.appearance
+    if (blurSuspended) return 1
     return a.blur && Config.desktopSession === "hyprland" ? a.blurOpacity : 1
 }
 

@@ -36,7 +36,7 @@ import { init as initYouTube } from "./src/lib/youtube"
 import { init as initTodoist } from "./src/lib/todoist"
 import { init as initProtonmail } from "./src/lib/protonmail"
 import { forceExitStreamedChildren } from "./src/lib/streamLines"
-import { applyBlurRules } from "./src/lib/layerBlur"
+import { applyBlurRules, initPowerSaverBlur } from "./src/lib/layerBlur"
 import { connect, disconnect } from "./src/lib/metrics"
 import { runDisposers } from "./src/lib/lifecycle"
 
@@ -78,7 +78,10 @@ function main() {
     initProtonmail()
 
     // compositor blur rules for [appearance] blur: runtime keywords, so
-    // they land whenever they land — before or after the windows exist
+    // they land whenever they land — before or after the windows exist.
+    // The power-saver listener goes FIRST: it seeds the suspension state
+    // that applyBlurRules and the first style compile both read
+    initPowerSaverBlur()
     applyBlurRules()
 
     if (Config.swayGaps && (Config.desktopSession == "sway" || Config.desktopSession == "i3"))

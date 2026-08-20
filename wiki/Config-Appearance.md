@@ -13,6 +13,7 @@ Section: `[appearance]`
 | `density` | `"compact"` / `"comfortable"` / `"relaxed"` | `"comfortable"` | How much air the shell gets; scales spacing only (padding and gaps) — text and icons stay the same size. `"compact"` is for small screens, not small type |
 | `blur` | bool | `false` | Frosted-glass surfaces: popups and the bar go translucent and the compositor blurs whatever shows through. Hyprland only |
 | `blur_opacity` | number | `0.85` | How see-through surfaces get with `blur` on (0.5–1); lower shows more blur but costs text contrast |
+| `blur_in_powersaver` | bool | `true` | Keep the frost while the power-saver profile is active; `false` suspends blur (surfaces opaque, compositor rules off) until the profile leaves power-saver |
 
 - Dark Style changes are live only; the top-level `theme` key wins
   again on restart unless `follow_system` is on.
