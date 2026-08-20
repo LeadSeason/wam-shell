@@ -15,9 +15,12 @@ $wash-cool: u.rgb-of(color.mix(t.$blue, t.$crust, 15%));
 // `surface()`, whose background shorthand would otherwise drop the
 // image.
 @mixin bar-wash {
-    // solid theme base: translucency over the wallpaper washed
-    // text out
-    background-color: t.$base;
+    // follows $surface-opacity ([appearance] blur): with the compositor
+    // blurring behind the bar, translucency is the point. The 0.5 floor
+    // on `blur_opacity` is what keeps bar text readable over it — a solid
+    // base was the rule before blur existed, because translucency over a
+    // bright wallpaper with nothing behind it washed the text out.
+    background-color: color.change(t.$base, $alpha: s.$surface-opacity);
     // Both gradient stops are the theme's own deepest surface with a hue
     // mixed in, rather than colours of their own: the literal
     // brown-to-navy this replaced was picked against one dark theme and
@@ -52,7 +55,8 @@ window.Bar {
         margin: s.$bar-float-margin;
     }
 
-    // outdoor mode: dark solid so the bar stays readable at 150% gamma
+    // outdoor mode: dark solid so the bar stays readable at 150% gamma.
+    // Deliberately opaque even with blur on — readability wins there.
     &.outdoor > centerbox {
         background-image: none;
         background-color: t.$crust;

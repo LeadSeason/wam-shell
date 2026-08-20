@@ -55,11 +55,15 @@ command -v gjs >/dev/null || {
 # density is a multiplier over whole-pixel values, so the interesting
 # question is whether the sheet compiles at all, not which of three
 # spacings it came out at. DENSITY=0.8 to check a compact build too.
+# SURFACE_OPACITY < 1 (e.g. 0.85) compiles the [appearance] blur code
+# paths — the default run never touches them, so run it once when
+# touching blur-related styling.
 : "${DENSITY:=1}"
 : "${BAR_FLOAT_MARGIN:=6px}"
 : "${WS_PLAYING_PULSE:=650ms}"
-printf '$density: %s;\n$bar-float-margin: %s;\n$ws-playing-pulse: %s;\n' \
-    "$DENSITY" "$BAR_FLOAT_MARGIN" "$WS_PLAYING_PULSE" \
+: "${SURFACE_OPACITY:=1}"
+printf '$density: %s;\n$bar-float-margin: %s;\n$ws-playing-pulse: %s;\n$surface-opacity: %s;\n' \
+    "$DENSITY" "$BAR_FLOAT_MARGIN" "$WS_PLAYING_PULSE" "$SURFACE_OPACITY" \
     >"$WORK/active-tuning.scss"
 
 fail=0

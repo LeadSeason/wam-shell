@@ -2,11 +2,12 @@
 // config.test.ts can assert per-scenario results. Config is an import-time
 // singleton that reads env and files, so each scenario runs this entry in
 // its own gjs process with its own env.
-import Config from "../src/config"
+import Config, { surfaceOpacity } from "../src/config"
 
 const dump = {
     instanceName: Config.instanceName,
     desktopSession: Config.desktopSession,
+    surfaceOpacity: surfaceOpacity(),
     instanceCacheDir: Config.instanceCacheDir,
     osIcon: Config.osIcon,
     swayGaps: Config.swayGaps,
