@@ -37,6 +37,9 @@ there is no PSI for GPU memory, so these are plain used/total
 percentages with thresholds fixed at 85% (yellow) / 95% (red). It
 appears only on machines with one of those GPUs and only under
 pressure, and names the three biggest VRAM consumers at that moment.
+The same amdgpu fill levels also get a stats tile in the pane's System
+section (`show_stats`): VRAM used/total, with GTT used/total in the
+subtitle.
 
 Section: `[bluetooth]` — the bluetooth pane.
 
