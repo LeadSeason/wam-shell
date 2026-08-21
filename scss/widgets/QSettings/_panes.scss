@@ -142,6 +142,19 @@ window#QSettings {
             opacity: s.$quiet-opacity;
         }
     }
+    // GPU-memory twin of the notice above: same warn yellow / critical
+    // red on the icon only, same dimmed hogs line
+    .vramPressure {
+        image {
+            color: t.$yellow;
+        }
+        &.critical image {
+            color: t.$red;
+        }
+        .gpuMemHogs {
+            opacity: s.$quiet-opacity;
+        }
+    }
     // real <button> widgets styled as card rows (sleep timer presets,
     // the custom-start chip): the global button margin breaks the
     // card's rhythm

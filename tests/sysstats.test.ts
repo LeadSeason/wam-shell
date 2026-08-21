@@ -3,6 +3,7 @@ import {
     formatRate,
     formatTopMem,
     formatUptime,
+    parseFdinfoDrmMem,
     parseMemPressure,
     parseProcStat,
     sumDiskSectors,
@@ -96,4 +97,28 @@ test("formatTopMem: biggest first, top n, long names truncated", () => {
     eq(formatTopMem(procs), "qemu-system-x86… 6.0 GB · brave 1.0 GB · electron 700.0 MB")
     eq(formatTopMem(procs, 2), "qemu-system-x86… 6.0 GB · brave 1.0 GB")
     eq(formatTopMem([]), "")
+})
+
+// /proc/<pid>/fdinfo/*: KiB, one fd per entry — the parser sums them
+test("parseFdinfoDrmMem: sums vram and gtt across entries", () => {
+    const text = [
+        "pos:\t0",
+        "flags:\t02100002",
+        "mnt_id:\t29",
+        "drm-driver:\tamdgpu",
+        "drm-client-id:\t7",
+        "drm-pdev:\t0000:00:00.0",
+        "drm-memory-vram:\t\t12345 KiB",
+        "drm-memory-gtt:\t\t6789 KiB",
+        "drm-memory-cpu:\t\t100 KiB",
+        "drm-memory-vram:\t\t55 KiB",
+        "",
+    ].join("\n")
+    eq(parseFdinfoDrmMem(text), { vram: 12400, gtt: 6789 })
+})
+
+test("parseFdinfoDrmMem: no drm-memory lines, or garbage, is null", () => {
+    eq(parseFdinfoDrmMem(""), null)
+    eq(parseFdinfoDrmMem("pos:\t0\nflags:\t02100002\n"), null)
+    eq(parseFdinfoDrmMem("drm-memory-vram:\n"), null)
 })
