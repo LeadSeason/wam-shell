@@ -345,6 +345,20 @@ function PowerDetails() {
                     )}
                     visible={Sys.gpu.as(g => g !== null && Config.quicksettings.showStats)}
                 />
+                {/* amdgpu memory fill — the sysfs card's VRAM, not the
+                nvidia-smi stream's (that one is the GPU tile's sub
+                above). amdGpuDev is a boot-time probe, so a static
+                visible flag keeps the FlowBox slot without the
+                late-build reorder the GPU tile's comment describes */}
+                <StatTile
+                    icon="gpu-symbolic"
+                    big={Sys.amdVram.as(([used, total]) => `${used}/${total} MiB`)}
+                    sub={Sys.amdGtt.as(
+                        ([used, total]) =>
+                            `VRAM · GTT ${(used / 1024).toFixed(1)}/${Math.round(total / 1024)} GB`,
+                    )}
+                    visible={Sys.amdGpuDev !== null && Config.quicksettings.showStats}
+                />
                 <StatTile
                     icon="drive-harddisk-symbolic"
                     big={Sys.diskRead.as(r => `↓ ${Sys.formatRate(r)}`)}
