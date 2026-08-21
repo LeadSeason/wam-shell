@@ -51,6 +51,28 @@ const hasPsi = GLib.file_test("/proc/pressure/memory", GLib.FileTest.EXISTS)
 // line; empty whenever pressure is below WARN (nothing to act on)
 export const [memHogs, setMemHogs] = createState("")
 
+// amdgpu VRAM/GTT fill levels, used/total MiB. There is no PSI for GPU
+// memory, so "pressure" below is a plain used/total percentage, unlike
+// the PSI avg60 for RAM — a saturated carve-out is a compositor crash
+// ("Not enough memory for command submission"), not sluggishness
+export const [amdVram, setAmdVram] = createState<[number, number]>([0, 0])
+export const [amdGtt, setAmdGtt] = createState<[number, number]>([0, 0])
+// the worse of amdgpu's sysfs VRAM fill and the nvidia-smi stream's;
+// null when neither source exists
+export const [vramPressure, setVramPressure] = createState<number | null>(null)
+// amdgpu only — nvidia-smi has no GTT
+export const [gttPressure, setGttPressure] = createState<number | null>(null)
+
+// used/total percentages; identical for VRAM and GTT
+export const VRAM_PRESSURE_WARN = 85
+export const VRAM_PRESSURE_CRIT = 95
+export const GTT_PRESSURE_WARN = 85
+export const GTT_PRESSURE_CRIT = 95
+
+// the biggest VRAM consumers, formatted for the warning's "who to kill"
+// line; empty whenever both pressures are below WARN
+export const [gpuMemHogs, setGpuMemHogs] = createState("")
+
 // pure parser, exported for tests: comm sits between the first '(' and
 // the LAST ')' (it may itself contain spaces and parens); rss is field
 // 24 — index 21 of what follows the ')' — in pages
@@ -107,6 +129,123 @@ function scanTopMem(): [string, number][] {
         en?.close(null)
     }
     return procs
+}
+
+// probe once (like hasPsi/hasNvidia): the first amdgpu card whose
+// mem_info_vram_total is real. The driver check skips i915 (it exposes
+// these files only on discrete parts) and nvidia, whose VRAM already
+// comes from the nvidia-smi stream. The device dir path, or null
+export const amdGpuDev: string | null = (() => {
+    let en: Gio.FileEnumerator | null = null
+    try {
+        en = Gio.File.new_for_path("/sys/class/drm").enumerate_children(
+            "standard::name",
+            Gio.FileQueryInfoFlags.NONE,
+            null,
+        )
+        let info: Gio.FileInfo | null
+        while ((info = en.next_file(null)) !== null) {
+            const name = info.get_name()
+            if (!/^card\d+$/.test(name)) continue
+            const dev = `/sys/class/drm/${name}/device`
+            let driver = ""
+            try {
+                driver = GLib.file_read_link(`${dev}/driver`)
+            } catch {
+                continue // no bound driver (yet)
+            }
+            if (!driver.endsWith("/amdgpu")) continue
+            const [ok, data] = GLib.file_get_contents(`${dev}/mem_info_vram_total`)
+            if (!ok || Number(new TextDecoder().decode(data)) <= 0) continue
+            return dev
+        }
+    } catch {
+        // no drm class at all (or unreadable): no amdgpu stats
+    } finally {
+        en?.close(null)
+    }
+    return null
+})()
+
+// pure parser, exported for tests: sums one fdinfo file's
+// drm-memory-vram:/drm-memory-gtt: KiB fields
+// ("drm-memory-vram:\t\t12345 KiB"); null when neither appears
+export function parseFdinfoDrmMem(text: string): { vram: number; gtt: number } | null {
+    let vram = 0,
+        gtt = 0,
+        found = false
+    for (const line of text.split("\n")) {
+        const m = line.match(/^drm-memory-(vram|gtt):\s*(\d+) KiB/)
+        if (!m) continue
+        found = true
+        if (m[1] === "vram") vram += Number(m[2])
+        else gtt += Number(m[2])
+    }
+    return found ? { vram, gtt } : null
+}
+
+// /proc/<pid>/fdinfo walk for the biggest VRAM consumers, as
+// [comm, bytes] pairs for formatTopMem. Sync reads of kernel-generated
+// tiny files, only ever run while the warning can be on screen — same
+// justification as scanTopMem. VRAM only: that is what saturates the
+// carve-out; comm from /proc/<pid>/stat via parseProcStat
+function scanGpuMemHogs(): [string, number][] {
+    const procs: [string, number][] = []
+    let en: Gio.FileEnumerator | null = null
+    try {
+        en = Gio.File.new_for_path("/proc").enumerate_children(
+            "standard::name",
+            Gio.FileQueryInfoFlags.NONE,
+            null,
+        )
+        let info: Gio.FileInfo | null
+        while ((info = en.next_file(null)) !== null) {
+            const pid = info.get_name()
+            if (!/^\d+$/.test(pid)) continue
+            // a pid can exit mid-scan: anything unreadable is skipped
+            let vramKiB = 0
+            try {
+                const fen = Gio.File.new_for_path(`/proc/${pid}/fdinfo`).enumerate_children(
+                    "standard::name",
+                    Gio.FileQueryInfoFlags.NONE,
+                    null,
+                )
+                try {
+                    let fi: Gio.FileInfo | null
+                    while ((fi = fen.next_file(null)) !== null) {
+                        const [ok, data] = GLib.file_get_contents(
+                            `/proc/${pid}/fdinfo/${fi.get_name()}`,
+                        )
+                        if (!ok) continue
+                        const m = parseFdinfoDrmMem(new TextDecoder().decode(data))
+                        if (m) vramKiB += m.vram
+                    }
+                } finally {
+                    fen.close(null)
+                }
+            } catch {
+                continue
+            }
+            if (vramKiB <= 0) continue
+            const [ok, data] = GLib.file_get_contents(`/proc/${pid}/stat`)
+            if (!ok) continue
+            const p = parseProcStat(new TextDecoder().decode(data))
+            if (p) procs.push([p[0], vramKiB * 1024])
+        }
+    } finally {
+        en?.close(null)
+    }
+    return procs
+}
+
+// vramPressure is the worse of the two sources — amdgpu's sysfs fill
+// and the nvidia-smi stream's — recomputed wherever either updates
+function updateVramPressure() {
+    const [au, at] = amdVram.get()
+    const [nu, nt] = vram.get()
+    const a = amdGpuDev !== null && at > 0 ? (100 * au) / at : null
+    const n = hasNvidia && nt > 0 ? (100 * nu) / nt : null
+    setVramPressure(a !== null && n !== null ? Math.max(a, n) : (a ?? n))
 }
 
 export const [netDown, setNetDown] = createState(0) // bytes/s
@@ -247,6 +386,29 @@ const poll = createPoll("", INTERVAL, () => {
             // the warning can be on screen
             setMemHogs(p !== null && p >= MEM_PRESSURE_WARN ? formatTopMem(scanTopMem()) : "")
         })
+    if (amdGpuDev)
+        step("gpuMem", async () => {
+            const [vramUsed, vramTotal, gttUsed, gttTotal] = (
+                await Promise.all([
+                    readFileAsync(`${amdGpuDev}/mem_info_vram_used`),
+                    readFileAsync(`${amdGpuDev}/mem_info_vram_total`),
+                    readFileAsync(`${amdGpuDev}/mem_info_gtt_used`),
+                    readFileAsync(`${amdGpuDev}/mem_info_gtt_total`),
+                ])
+            ).map(b => Math.round(Number(b) / 1024 / 1024))
+            setAmdVram([vramUsed, vramTotal])
+            setAmdGtt([gttUsed, gttTotal])
+            const gtt = gttTotal > 0 ? (100 * gttUsed) / gttTotal : null
+            setGttPressure(gtt)
+            updateVramPressure()
+            // the /proc walk rides the pressure gate: it only runs while
+            // the warning can be on screen
+            const vram = vramPressure.get()
+            const hot =
+                (vram !== null && vram >= VRAM_PRESSURE_WARN) ||
+                (gtt !== null && gtt >= GTT_PRESSURE_WARN)
+            setGpuMemHogs(hot ? formatTopMem(scanGpuMemHogs()) : "")
+        })
     step("uptime", async () => setUptimeSeconds(await readUptime()))
     step("disk", async () => {
         const [read, write] = await readDisk()
@@ -289,6 +451,8 @@ function handleGpuLine(line: string) {
     setGpu(util)
     setGpuTemp(temp)
     setVram([vramUsed, vramTotal])
+    // fold the stream's fill level into the combined vram pressure
+    updateVramPressure()
     // power.draw can be [N/A] on GPUs that don't report it; keep last
     if (!isNaN(watts)) setGpuWatts(watts)
     push(gpuHist.get(), setGpuHist, util)

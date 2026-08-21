@@ -454,6 +454,83 @@ function MemPressureWarning() {
     )
 }
 
+// the GPU-memory twin of the notice above: no PSI for GPU memory, so
+// "pressure" is plain used/total % of the worse of amdgpu's sysfs VRAM
+// and the nvidia-smi stream, plus amdgpu's GTT. A saturated VRAM
+// carve-out is a compositor crash, not sluggishness — same warn/crit
+// treatment as RAM. Always built, visible-gated for the same reason
+function VramPressureWarning() {
+    const level = createComputed([Sys.vramPressure, Sys.gttPressure], (v, g) => {
+        if (v === null && g === null) return ""
+        const hi = Math.max(v ?? 0, g ?? 0)
+        // VRAM and GTT share the WARN/CRIT numbers
+        return hi >= Sys.VRAM_PRESSURE_CRIT
+            ? "critical"
+            : hi >= Sys.VRAM_PRESSURE_WARN
+              ? "warn"
+              : ""
+    })
+    const desc = createComputed(
+        [Sys.vramPressure, Sys.gttPressure, Sys.amdVram, Sys.amdGtt, Sys.vram],
+        (vp, gp, [avu, avt], [agu, agt], [nvu, nvt]) => {
+            // short on purpose, same as the RAM card: the line
+            // ellipsizes at the pane's width, and a cut-off middle
+            // loses the numbers that matter
+            const parts: string[] = []
+            if (vp !== null) {
+                // the sysfs card's numbers when there is one, else the
+                // nvidia-smi stream's
+                const [u, t] = Sys.amdGpuDev !== null ? [avu, avt] : [nvu, nvt]
+                parts.push(`VRAM ${u}/${t} MiB`)
+            }
+            if (gp !== null) parts.push(`GTT ${agu}/${agt} MiB`)
+            return parts.join(" · ")
+        },
+    )
+    return (
+        <box
+            cssClasses={level.as(l => [
+                "paneCard",
+                "vramPressure",
+                ...(l === "critical" ? ["critical"] : []),
+            ])}
+            spacing={10}
+            visible={level.as(l => l !== "")}
+        >
+            <image iconName="dialog-warning-symbolic" pixelSize={20} valign={Gtk.Align.CENTER} />
+            <box orientation={Gtk.Orientation.VERTICAL} spacing={1} hexpand>
+                <label
+                    cssClasses={["paneRowName"]}
+                    xalign={0}
+                    label={level.as(l =>
+                        l === "critical"
+                            ? "Severe GPU memory pressure"
+                            : "High GPU memory pressure",
+                    )}
+                />
+                {/* both text lines ellipsize — see the RAM card for why */}
+                <label
+                    cssClasses={["paneRowDesc"]}
+                    xalign={0}
+                    label={desc}
+                    maxWidthChars={44}
+                    ellipsize={Pango.EllipsizeMode.END}
+                />
+                {/* the "who to kill" line: the biggest VRAM consumers,
+                only while pressure is high (gpuMemHogs is "" below WARN) */}
+                <label
+                    cssClasses={["paneRowDesc", "gpuMemHogs"]}
+                    xalign={0}
+                    visible={Sys.gpuMemHogs.as(h => h !== "")}
+                    label={Sys.gpuMemHogs}
+                    maxWidthChars={44}
+                    ellipsize={Pango.EllipsizeMode.END}
+                />
+            </box>
+        </box>
+    )
+}
+
 export function PowerProfilesWidget({ pane, name }: { pane: Accessor<string>; name: string }) {
     const powerProfiles = AstalPowerProfiles.get_default()
     const profiles = powerProfiles.get_profiles()
@@ -513,6 +590,7 @@ export function PowerProfilesWidget({ pane, name }: { pane: Accessor<string>; na
                 })}
             </box>
             <MemPressureWarning />
+            <VramPressureWarning />
             <PowerDetails />
         </box>
     )
