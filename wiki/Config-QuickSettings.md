@@ -31,6 +31,13 @@ at that moment, so the culprit is visible at a glance. Not
 config-gated; it only exists while there is pressure to report, and
 needs a kernel with PSI on (the default).
 
+A second warning covers GPU memory: VRAM fill from the amdgpu sysfs
+(`mem_info_vram_*`) or the nvidia-smi stream, plus amdgpu GTT fill —
+there is no PSI for GPU memory, so these are plain used/total
+percentages with thresholds fixed at 85% (yellow) / 95% (red). It
+appears only on machines with one of those GPUs and only under
+pressure, and names the three biggest VRAM consumers at that moment.
+
 Section: `[bluetooth]` — the bluetooth pane.
 
 | Key | Type | Default | What it does |
