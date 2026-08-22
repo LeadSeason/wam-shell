@@ -12,7 +12,7 @@ Section: `[quicksettings]`
 | `battery_blink` | bool | `true` | Blink the panel battery icon while the battery is discharging |
 | `show_device_names` | bool | `false` | Overlay the active input/output device name on the volume sliders |
 | `show_stats` | bool | `false` | Performance stats tiles in the power mode pane: ram+swap/disk/uptime under System, cpu utilization + load average in the CPU section, a GPU section, and network rates; collected only while the pane is open. Does not gate the chassis-fan tile (see below) |
-| `stats_on_panel` | bool | `false` | Resource utilization monitor (cpu/ram/gpu percentages) on the panel |
+| `stats_on_panel` | bool | `false` | Resource utilization monitor on the panel: cpu/ram/gpu percentage, each with a sparkline, plus ↓/↑ network rates. Clicking it opens the popup on the Power Mode pane |
 | `stats_interval` | int (ms) | `1000` | Time between stat updates; lower is smoother graphs at higher cpu cost |
 | `power_profile_on_panel` | bool | `true` | Active power profile icon in the bar's quicksettings label |
 | `hide_on_media_play` | bool | `true` | Close the popup when a player starts playing; pausing leaves it open |
@@ -57,6 +57,50 @@ are coloured separately as you page between them.
 The consumer list is per page, so each card names its own processes —
 a different card's process list is worse than none, and both scans run
 once per tick for all saturated cards rather than once per card.
+
+### Pressure on the panel
+
+Both warnings only exist inside the popup, which is no help while the
+thing that caused them is fullscreen. The panel monitor
+(`stats_on_panel`, or `stats` in a `[[panel]]` list) therefore speaks
+the same two levels: at **warn** the RAM or GPU readout and its
+sparkline turn yellow, at **critical** they turn red and the sparkline
+**pulses** — its fill brightens and its line thickens on a ~700 ms
+heartbeat shared by every panel, so a multi-monitor setup runs one
+timer rather than one per bar. Clicking anywhere on the monitor opens
+the popup straight on the Power Mode pane, where the warnings, the
+per-card pages and the profile switch are.
+
+All three stats behave the same way. GPU severity is the **worst**
+card's, even when the panel's own percentage follows a different one:
+the flash is a pointer at the pane, and the pane pages through every
+saturated card.
+
+**CPU reads `/proc/pressure/cpu`, not utilization.** 100% busy is a
+machine doing your work; what matters is how deep the run queue behind
+it is. Measured on a 24-core box, `some avg60` settles at 0.3% idle,
+~25% under a full-width build (`-j24`), ~95% at twice that width and
+~99% at four times. Warn is 60, which clears a legitimate full-core
+build by more than a factor of two, and critical is 90 — out of reach
+of anything but a run queue at least twice the core count, and,
+because `avg60` climbs toward its asymptote over a minute, needing over
+two minutes of it to arrive. Nothing brief can trip it.
+
+The limit worth knowing: PSI measures queueing, not distress. `-j48`
+and `-j96` sit at 95 and 99, so critical cannot tell a heavily parallel
+build from a machine that has stopped keeping up, and a long
+`-j$(nproc*2)` build will eventually flash. The slow arrival is the
+mitigation, not a cure; `full` is flat zero for cpu at system level, so
+there is no second signal to appeal to. The tooltip carries the
+percentage as well as the word, since CPU is the one stat whose trigger
+is not the number printed beside it.
+
+RAM takes the worse of two votes: the PSI stall average behind the
+popup's warning (5% / 20% of the last minute), and plain
+`MemAvailable` fill at 90% / 96%. PSI is the better signal — it says
+"this is hurting" rather than "this is full" — but it says nothing
+until something has *already* stalled, and it is absent entirely on a
+`psi=0` kernel, where the fill percentage is the only vote there is.
 
 amdgpu clients come from `/proc/<pid>/fdinfo`, filtered to that card's
 PCI slot so two AMD cards are not summed together, and counted as

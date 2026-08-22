@@ -15,8 +15,12 @@ import {
     parsePciName,
     poolPct,
     shortGpuName,
-    parseMemPressure,
+    parsePsiAvg60,
+    cpuPressureLevel,
+    CPU_PRESSURE_WARN,
+    CPU_PRESSURE_CRIT,
     parseProcStat,
+    ramPressureLevel,
     sumDiskSectors,
 } from "../src/lib/sysstats"
 
@@ -70,19 +74,19 @@ test("sumDiskSectors: empty and malformed input", () => {
 })
 
 // /proc/pressure/memory: the warning keys on the "some" line's avg60
-test("parseMemPressure: reads avg60 off the some line", () => {
+test("parsePsiAvg60: reads avg60 off the some line", () => {
     const text = [
         "some avg10=1.50 avg60=0.75 avg300=0.21 total=186644715",
         "full avg10=1.20 avg60=0.60 avg300=0.18 total=184899489",
         "",
     ].join("\n")
-    eq(parseMemPressure(text), 0.75)
+    eq(parsePsiAvg60(text), 0.75)
 })
 
-test("parseMemPressure: no some line, or garbage, is null", () => {
-    eq(parseMemPressure("full avg10=0.00 avg60=0.05 avg300=0.21 total=1\n"), null)
-    eq(parseMemPressure(""), null)
-    eq(parseMemPressure("some\n"), null)
+test("parsePsiAvg60: no some line, or garbage, is null", () => {
+    eq(parsePsiAvg60("full avg10=0.00 avg60=0.05 avg300=0.21 total=1\n"), null)
+    eq(parsePsiAvg60(""), null)
+    eq(parsePsiAvg60("some\n"), null)
 })
 
 // /proc/<pid>/stat: comm can hold spaces and parens, rss is field 24
@@ -399,4 +403,53 @@ test("poolPct: whole percent, and a zero total is not a divide by zero", () => {
     eq(poolPct(1611, 8192), 20)
     eq(poolPct(0, 0), 0)
     eq(poolPct(100, 0), 0)
+})
+
+// the panel graph recolors off this, so a wrong verdict is a red bar on
+// an idle machine (or a green one on a machine about to be OOM-killed)
+test("ramPressureLevel: PSI drives it when the kernel reports it", () => {
+    eq(ramPressureLevel(0, 40), "")
+    eq(ramPressureLevel(4.99, 40), "")
+    eq(ramPressureLevel(5, 40), "warn")
+    eq(ramPressureLevel(19.99, 40), "warn")
+    eq(ramPressureLevel(20, 40), "critical")
+})
+
+test("ramPressureLevel: used% is the fallback on a psi=0 kernel", () => {
+    eq(ramPressureLevel(null, 89), "")
+    eq(ramPressureLevel(null, 90), "warn")
+    eq(ramPressureLevel(null, 95), "warn")
+    eq(ramPressureLevel(null, 96), "critical")
+})
+
+// PSI says nothing until something has ALREADY stalled: a box at 97%
+// one allocation from the OOM killer has not stalled yet
+test("ramPressureLevel: the worse of the two votes wins", () => {
+    eq(ramPressureLevel(0, 97), "critical")
+    eq(ramPressureLevel(25, 10), "critical")
+    eq(ramPressureLevel(0, 91), "warn")
+    eq(ramPressureLevel(6, 10), "warn")
+})
+
+// CPU flashes like RAM and GPU do, so the thresholds carry the whole
+// weight of not crying wolf: a full-width build settles near 25%
+test("cpuPressureLevel: the two thresholds, exactly", () => {
+    eq(cpuPressureLevel(0), "")
+    eq(cpuPressureLevel(CPU_PRESSURE_WARN - 0.01), "")
+    eq(cpuPressureLevel(CPU_PRESSURE_WARN), "warn")
+    eq(cpuPressureLevel(CPU_PRESSURE_CRIT - 0.01), "warn")
+    eq(cpuPressureLevel(CPU_PRESSURE_CRIT), "critical")
+    eq(cpuPressureLevel(100), "critical")
+})
+
+// the whole point of measuring before picking numbers: -j24 must never
+// colour the panel, let alone flash it
+test("cpuPressureLevel: a full-width build stays clear of both lines", () => {
+    eq(cpuPressureLevel(0.3), "") // idle
+    eq(cpuPressureLevel(25), "") // -j24, settled
+    eq(cpuPressureLevel(40), "") // -j24 with headroom to spare
+})
+
+test("cpuPressureLevel: a psi=0 kernel reports nothing rather than fine", () => {
+    eq(cpuPressureLevel(null), "")
 })
