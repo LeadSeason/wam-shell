@@ -36,9 +36,11 @@ export const [memPressure, setMemPressure] = createState<number | null>(null)
 export const MEM_PRESSURE_WARN = 5
 export const MEM_PRESSURE_CRIT = 20
 
-// pure parser, exported for tests: the "some" line's avg60 out of
-// /proc/pressure/memory ("some avg10=0.00 avg60=0.05 avg300=0.21 total=…")
-export function parseMemPressure(text: string): number | null {
+// pure parser, exported for tests: the "some" line's avg60 out of any
+// /proc/pressure/* file ("some avg10=0.00 avg60=0.05 avg300=0.21 total=…").
+// One parser for memory and cpu — the format is the kernel's, not the
+// resource's, and a second copy would drift
+export function parsePsiAvg60(text: string): number | null {
     const m = text.match(/^some\s+.*\bavg60=([\d.]+)/m)
     return m ? Number(m[1]) : null
 }
@@ -46,10 +48,136 @@ export function parseMemPressure(text: string): number | null {
 // probe once: PSI can be boot-disabled, and a missing file read every
 // tick would log a warning per interval
 const hasPsi = GLib.file_test("/proc/pressure/memory", GLib.FileTest.EXISTS)
+const hasCpuPsi = GLib.file_test("/proc/pressure/cpu", GLib.FileTest.EXISTS)
 
 // the biggest residents, formatted for the warning's "who to kill"
 // line; empty whenever pressure is below WARN (nothing to act on)
 export const [memHogs, setMemHogs] = createState("")
+
+// ── Attention ────────────────────────────────────────────────────────
+//
+// One severity vocabulary for every stat that can end in something
+// worse than slowness. The pane's warnings already spoke it per card;
+// these hoist it to the whole machine so the PANEL can speak it too —
+// the graphs recolor at warn and pulse at critical, which is the only
+// hint a user staring at a full-screen game ever gets that the pane is
+// worth opening.
+export type PressureLevel = "" | "warn" | "critical"
+
+// Fallback thresholds on plain used/total, for RAM's OWN reading rather
+// than the kernel's stall accounting. PSI is the better signal — it
+// says "this is hurting" instead of "this is full" — but it says
+// nothing until a task has ALREADY stalled, and a box sitting at 97%
+// with the OOM killer one allocation away has not stalled yet. These
+// are on MemAvailable, so reclaimable cache is not counted as used and
+// 90% really is 90%.
+export const RAM_USED_WARN = 90
+export const RAM_USED_CRIT = 96
+
+// pure, exported for tests: the worse of the two readings. A psi=0
+// kernel passes null and leaves the used% fallback as the only vote
+export function ramPressureLevel(psi: number | null, usedPct: number): PressureLevel {
+    if ((psi !== null && psi >= MEM_PRESSURE_CRIT) || usedPct >= RAM_USED_CRIT) return "critical"
+    if ((psi !== null && psi >= MEM_PRESSURE_WARN) || usedPct >= RAM_USED_WARN) return "warn"
+    return ""
+}
+
+// PSI cpu "some" avg60: the share of the last minute at least one task
+// sat runnable but WAITING for a core. Utilization cannot say this —
+// 100% busy is a machine doing your work, and the number that matters
+// is how deep the run queue behind it is.
+export const [cpuPressure, setCpuPressure] = createState<number | null>(null)
+
+// Measured on a 24-core box, "some avg60" once settled: idle 0.3%, a
+// full-width build (-j24) ~25%, twice that width (-j48) ~95%, four
+// times (-j96) ~99%. WARN at 60 clears a legitimate full-core build by
+// more than a factor of two. CRIT at 90 is out of reach of anything
+// but a run queue at least twice the core count, and — because avg60
+// is a one-minute average climbing toward its asymptote — takes over
+// two minutes of it to arrive. Nothing brief can trip it.
+export const CPU_PRESSURE_WARN = 60
+export const CPU_PRESSURE_CRIT = 90
+
+// KNOWN LIMIT: PSI measures queueing, not distress. -j48 and -j96 sit
+// at 95 and 99, so critical cannot tell a heavily parallel build from
+// a machine that has stopped keeping up — a long -j$(nproc*2) build
+// WILL eventually flash the panel. The slow arrival is the mitigation,
+// not a fix; there is no second signal to appeal to, as `full` is flat
+// zero for cpu at system level.
+export function cpuPressureLevel(psi: number | null): PressureLevel {
+    if (psi === null) return ""
+    if (psi >= CPU_PRESSURE_CRIT) return "critical"
+    return psi >= CPU_PRESSURE_WARN ? "warn" : ""
+}
+
+export const [cpuLevel, setCpuLevel] = createState<PressureLevel>("")
+
+export const [ramLevel, setRamLevel] = createState<PressureLevel>("")
+// the WORST of the cards, not the one the bar's scalars follow: the
+// panel graph is a pointer AT the pane, and the pane pages through
+// every saturated card. A graph blinking for a card the bar does not
+// itself display is still pointing at the right place to look.
+export const [gpuLevel, setGpuLevel] = createState<PressureLevel>("")
+
+// Shared heartbeat for the panel's critical pulse. Shared so N bars
+// (one per monitor) run one timer between them, and stopped outright
+// once nothing is critical — the same shape as mpris' playingPulse.
+// CRITICAL only: warn recolors and stops there. A pulse is for the
+// state that ends in a kill, and one that ran at warn too would be on
+// screen for most of a heavy compile, which teaches the eye to ignore
+// it by the time it matters.
+const PRESSURE_PULSE_MS = 700
+export const [pressurePulse, setPressurePulse] = createState(false)
+let pulseTimer = 0
+
+function syncPressurePulse() {
+    const critical =
+        cpuLevel.get() === "critical" ||
+        ramLevel.get() === "critical" ||
+        gpuLevel.get() === "critical"
+    if (critical && pulseTimer === 0) {
+        pulseTimer = timeoutAdd(
+            "sysstats:pressurePulse",
+            GLib.PRIORITY_DEFAULT,
+            PRESSURE_PULSE_MS,
+            () => {
+                setPressurePulse(!pressurePulse.get())
+                return GLib.SOURCE_CONTINUE
+            },
+        )
+    } else if (!critical && pulseTimer !== 0) {
+        sourceRemove(pulseTimer)
+        pulseTimer = 0
+        setPressurePulse(false)
+    }
+}
+
+function publishCpuLevel() {
+    const next = cpuPressureLevel(cpuPressure.get())
+    if (next === cpuLevel.get()) return
+    setCpuLevel(next)
+    syncPressurePulse()
+}
+
+// called from both memory steps: PSI and used% land in different steps
+// of the same tick, and either one moving can change the verdict
+function publishRamLevel() {
+    const next = ramPressureLevel(memPressure.get(), ram.get())
+    if (next === ramLevel.get()) return
+    setRamLevel(next)
+    syncPressurePulse()
+}
+
+function publishGpuLevel(pages: GpuPressure[]) {
+    const next: PressureLevel = pages.some(p => p.level === "critical")
+        ? "critical"
+        : pages.length > 0
+          ? "warn"
+          : ""
+    if (next === gpuLevel.get()) return
+    setGpuLevel(next)
+    syncPressurePulse()
+}
 
 // ── GPUs ─────────────────────────────────────────────────────────────
 //
@@ -641,6 +769,7 @@ function updatePressure(list: Gpu[]) {
             hogs: hogsById.get(g.id) ?? "",
         }))
     setGpuPressures(pages)
+    publishGpuLevel(pages)
     setGpuHogsShown(pages.some(p => p.hogs !== ""))
     const key = pages.map(p => `${p.id}\u0000${p.name}`).join("\u0001")
     if (key !== lastPressureKey) {
@@ -807,7 +936,6 @@ export const [uptimeSeconds, setUptimeSeconds] = createState(0)
 export const [cpuHist, setCpuHist] = createState<{ v: number }[]>([])
 export const [ramHist, setRamHist] = createState<{ v: number }[]>([])
 export const [gpuHist, setGpuHist] = createState<{ v: number }[]>([])
-
 // samples are objects so gnim's For sees unique identities
 // (plain numbers repeat and trip "duplicate keys")
 const push = (hist: { v: number }[], set: (v: { v: number }[]) => void, v: number) =>
@@ -926,15 +1054,22 @@ const poll = createPoll("", INTERVAL, () => {
         const r = await readRam()
         setRam(r)
         push(ramHist.get(), setRamHist, r)
+        publishRamLevel()
     })
     step("load", async () => setLoadAvg(await readLoadAvg()))
+    if (hasCpuPsi)
+        step("cpuPsi", async () => {
+            setCpuPressure(parsePsiAvg60(await readFileAsync("/proc/pressure/cpu")))
+            publishCpuLevel()
+        })
     if (hasPsi)
         step("psi", async () => {
-            const p = parseMemPressure(await readFileAsync("/proc/pressure/memory"))
+            const p = parsePsiAvg60(await readFileAsync("/proc/pressure/memory"))
             setMemPressure(p)
             // the /proc walk rides the pressure gate: it only runs while
             // the warning can be on screen
             setMemHogs(p !== null && p >= MEM_PRESSURE_WARN ? formatTopMem(scanTopMem()) : "")
+            publishRamLevel()
         })
     if (amdCards.length > 0) {
         step("gpuNames", loadAmdNames)
@@ -1156,6 +1291,10 @@ function startGpuStream() {
 // convention for lib modules with long-lived sources (see AGENTS.md)
 export function dispose() {
     gpuDisposed = true
+    if (pulseTimer) {
+        sourceRemove(pulseTimer)
+        pulseTimer = 0
+    }
     if (gpuRestartSource) {
         sourceRemove(gpuRestartSource)
         gpuRestartSource = 0
