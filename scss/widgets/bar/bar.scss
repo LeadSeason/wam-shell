@@ -83,7 +83,7 @@ window.Bar {
         // is a compositor crash and a stalled allocator is the OOM
         // killer, so those two take over the graph AND its readout.
         // Beats .statRam/.statGpu on specificity, which is the point.
-        .statRam, .statGpu, .statGraph {
+        .statCpu, .statRam, .statGpu, .statGraph {
             &.warn { color: t.$yellow; }
             &.critical { color: t.$red; }
         }
@@ -122,7 +122,7 @@ window.Bar {
         // Bold for the whole critical state, not for the flash: a
         // weight that changed on the beat would risk re-measuring the
         // label twice a second, and the panel jitters if it does.
-        .statRam.critical, .statGpu.critical { font-weight: s.$weight-bold; }
+        .statCpu.critical, .statRam.critical, .statGpu.critical { font-weight: s.$weight-bold; }
     }
 
     // cumulative bandwidth totals (today ↓/↑)

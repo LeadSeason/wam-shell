@@ -1,8 +1,10 @@
-import { Accessor, With, createComputed, onCleanup } from "gnim"
+import { Accessor, With, createComputed, createState, onCleanup } from "gnim"
 import Gtk from "gi://Gtk?version=4.0"
 import Cairo from "gi://cairo"
 import {
     cpu,
+    cpuLevel,
+    cpuPressure,
     ram,
     gpu,
     gpuLevel,
@@ -178,14 +180,33 @@ function Stat({
     level?: Accessor<PressureLevel>
 }) {
     const classes = level ? level.as(l => [name, ...(l !== "" ? [l] : [])]) : [name]
-    // the block behind the whole stat, flipped on the shared heartbeat.
+    // The block behind the whole stat, flipped on the shared heartbeat.
     // It inverts readout AND sparkline together, so what flashes is one
-    // object rather than two things blinking near each other
-    const group = level
-        ? createComputed([level, pressurePulse], (l, beat) =>
-              l === "critical" && beat ? ["statGroup", "statAlarm"] : ["statGroup"],
-          )
-        : ["statGroup"]
+    // object rather than two things blinking near each other.
+    //
+    // Imperative, NOT createComputed([level, pressurePulse], …). Both
+    // deps start falsy ("" and false) and gnim's array-form dep cache
+    // keys on falsy checks (AGENTS.md), which left this stuck on
+    // ["statGroup"] forever when the level went critical LATE — the
+    // only way it ever goes critical on a real machine. It survived
+    // every demo because a threshold lowered before startup makes the
+    // stat critical at mount, while the deps are still being read for
+    // the first time.
+    const [group, setGroup] = createState<string[]>(["statGroup"])
+    if (level) {
+        // tracked as a boolean so a beat that changes nothing does not
+        // hand GTK a fresh array to diff twice a second
+        let lit = false
+        const sync = () => {
+            const next = level.get() === "critical" && pressurePulse.get()
+            if (next === lit) return
+            lit = next
+            setGroup(next ? ["statGroup", "statAlarm"] : ["statGroup"])
+        }
+        const unsubs = [level.subscribe(sync), pressurePulse.subscribe(sync)]
+        onCleanup(() => unsubs.forEach(u => u()))
+        sync()
+    }
     return (
         <box cssClasses={group} spacing={4}>
             <label cssClasses={classes} label={label} />
@@ -216,6 +237,15 @@ export default function SysStats() {
         // what the recolored sparkline is trying to say, spelled out —
         // a colour alone cannot say WHICH pool is nearly gone
         const alerts: string[] = []
+        if (cpuLevel.get() !== "")
+            // the number as well as the word. CPU is the one stat whose
+            // trigger is not the percentage printed beside it — the
+            // readout says the cores are busy, this says how long
+            // something waited for one
+            alerts.push(
+                `${cpuLevel.get() === "critical" ? "Severe" : "High"} CPU contention` +
+                    ` — stalled ${Math.round(cpuPressure.get() ?? 0)}% of the last minute`,
+            )
         if (ramLevel.get() !== "")
             alerts.push(
                 ramLevel.get() === "critical" ? "Severe memory pressure" : "High memory pressure",
@@ -249,7 +279,7 @@ export default function SysStats() {
                     registry.execute(["qsPane", "powerprofiles"], true)
                 })}
             />
-            <Stat name="statCpu" label={cpu.as(v => `CPU ${v}%`)} hist={cpuHist} />
+            <Stat name="statCpu" label={cpu.as(v => `CPU ${v}%`)} hist={cpuHist} level={cpuLevel} />
             <Stat name="statRam" label={ram.as(v => `RAM ${v}%`)} hist={ramHist} level={ramLevel} />
             {/* the GPU probe finishes a moment after the bar is built,
             and a bare With re-lands its widget at the END of the parent

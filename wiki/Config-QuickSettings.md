@@ -71,12 +71,29 @@ timer rather than one per bar. Clicking anywhere on the monitor opens
 the popup straight on the Power Mode pane, where the warnings, the
 per-card pages and the profile switch are.
 
-Only the two that end in something worse than slowness are wired up. A
-pegged CPU keeps its own colour: it means the machine is busy, not that
-it is about to lose a process. GPU severity is the **worst** card's,
-even when the panel's own percentage follows a different one — the
-pulse is a pointer at the pane, and the pane pages through every
+All three stats behave the same way. GPU severity is the **worst**
+card's, even when the panel's own percentage follows a different one:
+the flash is a pointer at the pane, and the pane pages through every
 saturated card.
+
+**CPU reads `/proc/pressure/cpu`, not utilization.** 100% busy is a
+machine doing your work; what matters is how deep the run queue behind
+it is. Measured on a 24-core box, `some avg60` settles at 0.3% idle,
+~25% under a full-width build (`-j24`), ~95% at twice that width and
+~99% at four times. Warn is 60, which clears a legitimate full-core
+build by more than a factor of two, and critical is 90 — out of reach
+of anything but a run queue at least twice the core count, and,
+because `avg60` climbs toward its asymptote over a minute, needing over
+two minutes of it to arrive. Nothing brief can trip it.
+
+The limit worth knowing: PSI measures queueing, not distress. `-j48`
+and `-j96` sit at 95 and 99, so critical cannot tell a heavily parallel
+build from a machine that has stopped keeping up, and a long
+`-j$(nproc*2)` build will eventually flash. The slow arrival is the
+mitigation, not a cure; `full` is flat zero for cpu at system level, so
+there is no second signal to appeal to. The tooltip carries the
+percentage as well as the word, since CPU is the one stat whose trigger
+is not the number printed beside it.
 
 RAM takes the worse of two votes: the PSI stall average behind the
 popup's warning (5% / 20% of the last minute), and plain

@@ -36,9 +36,11 @@ export const [memPressure, setMemPressure] = createState<number | null>(null)
 export const MEM_PRESSURE_WARN = 5
 export const MEM_PRESSURE_CRIT = 20
 
-// pure parser, exported for tests: the "some" line's avg60 out of
-// /proc/pressure/memory ("some avg10=0.00 avg60=0.05 avg300=0.21 total=…")
-export function parseMemPressure(text: string): number | null {
+// pure parser, exported for tests: the "some" line's avg60 out of any
+// /proc/pressure/* file ("some avg10=0.00 avg60=0.05 avg300=0.21 total=…").
+// One parser for memory and cpu — the format is the kernel's, not the
+// resource's, and a second copy would drift
+export function parsePsiAvg60(text: string): number | null {
     const m = text.match(/^some\s+.*\bavg60=([\d.]+)/m)
     return m ? Number(m[1]) : null
 }
@@ -46,6 +48,7 @@ export function parseMemPressure(text: string): number | null {
 // probe once: PSI can be boot-disabled, and a missing file read every
 // tick would log a warning per interval
 const hasPsi = GLib.file_test("/proc/pressure/memory", GLib.FileTest.EXISTS)
+const hasCpuPsi = GLib.file_test("/proc/pressure/cpu", GLib.FileTest.EXISTS)
 
 // the biggest residents, formatted for the warning's "who to kill"
 // line; empty whenever pressure is below WARN (nothing to act on)
@@ -79,6 +82,36 @@ export function ramPressureLevel(psi: number | null, usedPct: number): PressureL
     return ""
 }
 
+// PSI cpu "some" avg60: the share of the last minute at least one task
+// sat runnable but WAITING for a core. Utilization cannot say this —
+// 100% busy is a machine doing your work, and the number that matters
+// is how deep the run queue behind it is.
+export const [cpuPressure, setCpuPressure] = createState<number | null>(null)
+
+// Measured on a 24-core box, "some avg60" once settled: idle 0.3%, a
+// full-width build (-j24) ~25%, twice that width (-j48) ~95%, four
+// times (-j96) ~99%. WARN at 60 clears a legitimate full-core build by
+// more than a factor of two. CRIT at 90 is out of reach of anything
+// but a run queue at least twice the core count, and — because avg60
+// is a one-minute average climbing toward its asymptote — takes over
+// two minutes of it to arrive. Nothing brief can trip it.
+export const CPU_PRESSURE_WARN = 60
+export const CPU_PRESSURE_CRIT = 90
+
+// KNOWN LIMIT: PSI measures queueing, not distress. -j48 and -j96 sit
+// at 95 and 99, so critical cannot tell a heavily parallel build from
+// a machine that has stopped keeping up — a long -j$(nproc*2) build
+// WILL eventually flash the panel. The slow arrival is the mitigation,
+// not a fix; there is no second signal to appeal to, as `full` is flat
+// zero for cpu at system level.
+export function cpuPressureLevel(psi: number | null): PressureLevel {
+    if (psi === null) return ""
+    if (psi >= CPU_PRESSURE_CRIT) return "critical"
+    return psi >= CPU_PRESSURE_WARN ? "warn" : ""
+}
+
+export const [cpuLevel, setCpuLevel] = createState<PressureLevel>("")
+
 export const [ramLevel, setRamLevel] = createState<PressureLevel>("")
 // the WORST of the cards, not the one the bar's scalars follow: the
 // panel graph is a pointer AT the pane, and the pane pages through
@@ -98,7 +131,10 @@ export const [pressurePulse, setPressurePulse] = createState(false)
 let pulseTimer = 0
 
 function syncPressurePulse() {
-    const critical = ramLevel.get() === "critical" || gpuLevel.get() === "critical"
+    const critical =
+        cpuLevel.get() === "critical" ||
+        ramLevel.get() === "critical" ||
+        gpuLevel.get() === "critical"
     if (critical && pulseTimer === 0) {
         pulseTimer = timeoutAdd(
             "sysstats:pressurePulse",
@@ -114,6 +150,13 @@ function syncPressurePulse() {
         pulseTimer = 0
         setPressurePulse(false)
     }
+}
+
+function publishCpuLevel() {
+    const next = cpuPressureLevel(cpuPressure.get())
+    if (next === cpuLevel.get()) return
+    setCpuLevel(next)
+    syncPressurePulse()
 }
 
 // called from both memory steps: PSI and used% land in different steps
@@ -1014,9 +1057,14 @@ const poll = createPoll("", INTERVAL, () => {
         publishRamLevel()
     })
     step("load", async () => setLoadAvg(await readLoadAvg()))
+    if (hasCpuPsi)
+        step("cpuPsi", async () => {
+            setCpuPressure(parsePsiAvg60(await readFileAsync("/proc/pressure/cpu")))
+            publishCpuLevel()
+        })
     if (hasPsi)
         step("psi", async () => {
-            const p = parseMemPressure(await readFileAsync("/proc/pressure/memory"))
+            const p = parsePsiAvg60(await readFileAsync("/proc/pressure/memory"))
             setMemPressure(p)
             // the /proc walk rides the pressure gate: it only runs while
             // the warning can be on screen
