@@ -11,6 +11,7 @@ import { cachedCover, downloadCover } from "./coverArt"
 import { isBrowserThumb, recoverBrowserArt } from "./browserArt"
 import { isFile } from "./utils"
 import { registerDispose } from "./lifecycle"
+import { createScrollCycler } from "./scrollCycle"
 
 // Shared MPRIS state + helpers, used by the QS media section and the
 // panel media widget/popup.
@@ -92,33 +93,11 @@ export function cycleActivePlayer(direction: 1 | -1) {
     overrideActivePlayer(next)
 }
 
-// smooth-scroll devices emit a stream of small deltas per gesture:
-// accumulate them so one gesture switches one player, not a frenzy
-let scrollAcc = 0
-let scrollAt = 0
-let lastSwitch = 0
-
 /** cycle on scroll: switches once per accumulated wheel notch, and at
- *  most once per 300ms so a touchpad flick cannot chain-switch */
-export function scrollActivePlayer(dy: number) {
-    if (dy === 0) return
-    const now = GLib.get_monotonic_time() / 1e6
-    // drop the momentum tail right after a switch
-    if (now - lastSwitch < 0.3) {
-        scrollAcc = 0
-        scrollAt = now
-        return
-    }
-    if (now - scrollAt > 0.5) scrollAcc = 0
-    scrollAt = now
-    scrollAcc += dy
-    if (Math.abs(scrollAcc) >= 1) {
-        const direction = scrollAcc > 0 ? 1 : -1
-        lastSwitch = now
-        scrollAcc = 0
-        cycleActivePlayer(direction)
-    }
-}
+ *  most once per 300ms so a touchpad flick cannot chain-switch. The
+ *  accumulator itself lives in lib/scrollCycle — the GPU switcher in
+ *  the power pane runs the same gesture */
+export const scrollActivePlayer = createScrollCycler(cycleActivePlayer)
 
 /** play/pause from shell buttons: pauses all other players
  *  synchronously first — the playback-status hook does the same
