@@ -556,9 +556,12 @@
 #                     discharging. default true
 # show_device_names - overlay the active input/output device name on
 #                     the volume sliders. default false
-# show_stats - show the performance stats tiles (cpu/ram/gpu/network)
-#              in the power mode pane. collected only while the pane is
-#              open. default false
+# show_stats - show the performance stats tiles in the power mode pane:
+#              ram/disk/uptime under System, cpu utilization + load in
+#              the CPU section, a gpu section, and network rates.
+#              collected only while the pane is open. does not gate the
+#              chassis fan tile, which shows whenever the vendor hwmon
+#              exposes one. default false
 # stats_on_panel - show the resource utilization monitor (cpu/ram/gpu
 #                  percentages) on the panel. default false
 # stats_interval - milliseconds between stat updates. lower = smoother
