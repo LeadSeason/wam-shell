@@ -562,8 +562,13 @@
 #              collected only while the pane is open. does not gate the
 #              chassis fan tile, which shows whenever the vendor hwmon
 #              exposes one. default false
-# stats_on_panel - show the resource utilization monitor (cpu/ram/gpu
-#                  percentages) on the panel. default false
+# stats_on_panel - show the resource utilization monitor on the panel:
+#                  cpu/ram/gpu percentages, each with a sparkline, plus
+#                  the down/up network rates.
+#                  The ram and gpu readouts turn yellow under pressure
+#                  and red — with a pulsing sparkline — when it is
+#                  severe; clicking the monitor opens the popup on the
+#                  power mode pane. default false
 # stats_interval - milliseconds between stat updates. lower = smoother
 #                  graphs, higher cpu cost. default 1000
 # power_profile_on_panel - show the active power profile icon in the
