@@ -58,50 +58,6 @@ The consumer list is per page, so each card names its own processes —
 a different card's process list is worse than none, and both scans run
 once per tick for all saturated cards rather than once per card.
 
-### Pressure on the panel
-
-Both warnings only exist inside the popup, which is no help while the
-thing that caused them is fullscreen. The panel monitor
-(`stats_on_panel`, or `stats` in a `[[panel]]` list) therefore speaks
-the same two levels: at **warn** the RAM or GPU readout and its
-sparkline turn yellow, at **critical** they turn red and the sparkline
-**pulses** — its fill brightens and its line thickens on a ~700 ms
-heartbeat shared by every panel, so a multi-monitor setup runs one
-timer rather than one per bar. Clicking anywhere on the monitor opens
-the popup straight on the Power Mode pane, where the warnings, the
-per-card pages and the profile switch are.
-
-All three stats behave the same way. GPU severity is the **worst**
-card's, even when the panel's own percentage follows a different one:
-the flash is a pointer at the pane, and the pane pages through every
-saturated card.
-
-**CPU reads `/proc/pressure/cpu`, not utilization.** 100% busy is a
-machine doing your work; what matters is how deep the run queue behind
-it is. Measured on a 24-core box, `some avg60` settles at 0.3% idle,
-~25% under a full-width build (`-j24`), ~95% at twice that width and
-~99% at four times. Warn is 60, which clears a legitimate full-core
-build by more than a factor of two, and critical is 90 — out of reach
-of anything but a run queue at least twice the core count, and,
-because `avg60` climbs toward its asymptote over a minute, needing over
-two minutes of it to arrive. Nothing brief can trip it.
-
-The limit worth knowing: PSI measures queueing, not distress. `-j48`
-and `-j96` sit at 95 and 99, so critical cannot tell a heavily parallel
-build from a machine that has stopped keeping up, and a long
-`-j$(nproc*2)` build will eventually flash. The slow arrival is the
-mitigation, not a cure; `full` is flat zero for cpu at system level, so
-there is no second signal to appeal to. The tooltip carries the
-percentage as well as the word, since CPU is the one stat whose trigger
-is not the number printed beside it.
-
-RAM takes the worse of two votes: the PSI stall average behind the
-popup's warning (5% / 20% of the last minute), and plain
-`MemAvailable` fill at 90% / 96%. PSI is the better signal — it says
-"this is hurting" rather than "this is full" — but it says nothing
-until something has *already* stalled, and it is absent entirely on a
-`psi=0` kernel, where the fill percentage is the only vote there is.
-
 amdgpu clients come from `/proc/<pid>/fdinfo`, filtered to that card's
 PCI slot so two AMD cards are not summed together, and counted as
 `drm-resident-vram` minus
@@ -124,6 +80,53 @@ the compositor) will not be named.
 The same amdgpu fill levels also get a stats tile in the pane's GPU
 section (`show_stats`): VRAM used/total, with GTT used/total in the
 subtitle.
+
+### Pressure on the panel
+
+Both warnings above only exist inside the popup, which is no help while
+the thing that caused them is fullscreen. The panel monitor
+(`stats_on_panel`, or `stats` in a `[[panel]]` list) therefore speaks
+the same two levels. At **warn** the readout and its sparkline turn
+yellow. At **critical** they turn red and bold, and the whole stat —
+readout and sparkline together — flashes as a solid red block on a
+~700 ms heartbeat.
+
+What flashes is one object, so two simultaneous alarms read as one
+alert. The heartbeat is shared: every panel runs one timer between
+them rather than one per bar, and it stops outright once nothing is
+critical. Clicking anywhere on the monitor opens the popup straight on
+the Power Mode pane, where the warnings, the per-card pages and the
+profile switch are.
+
+GPU severity is the **worst** card's, even when the panel's own
+percentage follows a different one: the flash is a pointer at the pane,
+and the pane pages through every saturated card.
+
+RAM takes the worse of two votes: the PSI stall average behind the
+popup's warning (5% / 20% of the last minute), and plain
+`MemAvailable` fill at 90% / 96%. PSI is the better signal — it says
+"this is hurting" rather than "this is full" — but it says nothing
+until something has *already* stalled, and it is absent entirely on a
+`psi=0` kernel, where the fill percentage is the only vote there is.
+
+**CPU reads `/proc/pressure/cpu`, not utilization.** 100% busy is a
+machine doing your work; what matters is how deep the run queue behind
+it is. Measured on a 24-core box, `some avg60` settles at 0.3% idle,
+~25% under a full-width build (`-j24`), ~95% at twice that width and
+~99% at four times. Warn is 60, which clears a legitimate full-core
+build by more than a factor of two, and critical is 90 — out of reach
+of anything but a run queue at least twice the core count, and, because
+`avg60` climbs toward its asymptote over a minute, needing over two
+minutes of it to arrive. Nothing brief can trip it.
+
+The limit worth knowing: PSI measures queueing, not distress. `-j48`
+and `-j96` sit at 95 and 99, so critical cannot tell a heavily parallel
+build from a machine that has stopped keeping up, and a long
+`-j$(nproc*2)` build will eventually flash. The slow arrival is the
+mitigation, not a cure; `full` is flat zero for cpu at system level, so
+there is no second signal to appeal to. The tooltip carries the
+percentage as well as the word, since CPU is the one stat whose trigger
+is not the number printed beside it.
 
 The pane's sections run Battery, System, CPU, GPU, Network. CPU and
 GPU are adjacent and share a shape — utilization, then thermals and
