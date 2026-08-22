@@ -20,7 +20,6 @@ export const [cpu, setCpu] = createState(0)
 export const [ram, setRam] = createState(0)
 export const [gpu, setGpu] = createState<number | null>(null) // null = n/a
 export const [gpuTemp, setGpuTemp] = createState(0)
-export const [gpuWatts, setGpuWatts] = createState(0) // package power draw, W
 export const [vram, setVram] = createState<[number, number]>([0, 0]) // used,total MiB
 export const [ramSize, setRamSize] = createState<[number, number]>([0, 0]) // used,total GB
 export const [swapSize, setSwapSize] = createState<[number, number]>([0, 0]) // used,total GB
@@ -96,14 +95,9 @@ export const [activeGpu, setActiveGpu] = createState<Gpu | null>(null)
 // There is no PSI for GPU memory, so "pressure" is a plain used/total
 // percentage, unlike the PSI avg60 for RAM — a saturated carve-out is a
 // compositor crash ("Not enough memory for command submission"), not
-// sluggishness. Worst fill across every GPU, plus the card that owns
-// it: the warning has to name the card it is warning about, and blame
-// that card's processes rather than some other card's
-export const [vramPressure, setVramPressure] = createState<number | null>(null)
-export const [vramWorst, setVramWorst] = createState<Gpu | null>(null)
-// amdgpu only — nvidia has no GTT
-export const [gttPressure, setGttPressure] = createState<number | null>(null)
-export const [gttWorst, setGttWorst] = createState<Gpu | null>(null)
+// sluggishness. It is tracked per card, in gpuPressures below: a single
+// worst-card figure cannot say which card to name, whose processes to
+// blame, or that a SECOND card is in trouble too.
 
 /** one saturated card = one page of the pressure warning */
 export interface GpuPressure {
@@ -627,44 +621,18 @@ export function formatGpuPressureDesc(g: Gpu, tagged: boolean): string {
 // Gpu.id so a rebuild here does not drop them
 const hogsById = new Map<string, string>()
 
-function updatePressure(list: Gpu[]) {
-    // the maxima still gate the hog scan and the bar's severity
-    let vp: number | null = null,
-        vw: Gpu | null = null,
-        gp: number | null = null,
-        gw: Gpu | null = null
-    for (const g of list) {
-        if (g.vram[1] > 0) {
-            const f = fill(g.vram[0], g.vram[1])
-            if (vp === null || f > vp) [vp, vw] = [f, g]
-        }
-        if (g.gtt && g.gtt[1] > 0) {
-            const f = fill(g.gtt[0], g.gtt[1])
-            if (gp === null || f > gp) [gp, gw] = [f, g]
-        }
-    }
-    setVramPressure(vp)
-    setVramWorst(vw)
-    setGttPressure(gp)
-    setGttWorst(gw)
+// the worse of a card's two pools, for ordering the pages
+const worstFill = (g: Gpu) =>
+    Math.max(fill(g.vram[0], g.vram[1]), g.gtt ? fill(g.gtt[0], g.gtt[1]) : 0)
 
+function updatePressure(list: Gpu[]) {
     // one page per card that is actually over, worst first so the
     // carousel opens on the one closest to failing
     const tagged = list.length > 1
     const pages: GpuPressure[] = list
         .map(g => ({ g, level: gpuPressureLevel(g) }))
         .filter((x): x is { g: Gpu; level: "warn" | "critical" } => x.level !== "")
-        .sort(
-            (a, b) =>
-                Math.max(
-                    fill(b.g.vram[0], b.g.vram[1]),
-                    b.g.gtt ? fill(b.g.gtt[0], b.g.gtt[1]) : 0,
-                ) -
-                Math.max(
-                    fill(a.g.vram[0], a.g.vram[1]),
-                    a.g.gtt ? fill(a.g.gtt[0], a.g.gtt[1]) : 0,
-                ),
-        )
+        .sort((a, b) => worstFill(b.g) - worstFill(a.g))
         .map(({ g, level }) => ({
             id: g.id,
             name: g.name,
@@ -732,7 +700,6 @@ function publishGpus() {
     const g = primaryGpu(list)
     setGpu(g?.busy ?? null)
     setGpuTemp(g?.temp ?? 0)
-    setGpuWatts(g?.watts ?? 0)
     setVram(g?.vram ?? [0, 0])
 }
 
