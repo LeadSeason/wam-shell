@@ -1,9 +1,11 @@
 import { Accessor, With, createComputed, onCleanup } from "gnim"
 import Gtk from "gi://Gtk?version=4.0"
+import Cairo from "gi://cairo"
 import {
     cpu,
     ram,
     gpu,
+    gpuLevel,
     gpuTemp,
     netDown,
     netUp,
@@ -11,56 +13,144 @@ import {
     cpuHist,
     ramHist,
     gpuHist,
+    pressurePulse,
+    ramLevel,
     ramSize,
     vram,
     loadAvg,
 } from "../../../lib/sysstats"
+import type { PressureLevel } from "../../../lib/sysstats"
+import CommandRegistry from "../../../lib/requestHandler"
+import { pressable } from "../../pressable"
 
-const GRAPH_HEIGHT = 24
+const registry = CommandRegistry.get_default()
+
+// Tall enough that the difference between 20% and 60% is a difference
+// you can see, short enough to sit INSIDE the row of readouts rather
+// than under it. The old graph was bottom-aligned against a 36px bar,
+// which parked it a whole text-height below the number it belonged to.
+const GRAPH_HEIGHT = 14
+// px of plot per sample, plus the margin the "now" dot needs to sit on
+// the newest sample without painting half of itself past the edge
+const SAMPLE_WIDTH = 2
+const HEAD_MARGIN = 2
+
+// Alpha the area fill carries at the top of the widget, fading to
+// nothing at the floor. A flat wash reads as one grey block at 12px
+// tall; the gradient is what lets a peak look like a peak.
+const AREA_TOP = 0.45
+const AREA_BOTTOM = 0.04
+// the same fill on the pulse's ON beat — the throb is a brightness
+// change, not an opacity animation, because a DrawingArea paints from
+// its draw func and CSS animations don't run in this shell
+const BEAT_TOP = 0.9
 
 function Graph({
     hist,
     className,
+    slots,
+    level,
     height = GRAPH_HEIGHT,
     hexpand = true,
 }: {
     hist: Accessor<{ v: number }[]>
     className: string
+    /** samples the plot is sized for, filled from the right */
+    slots: number
+    /** recolors at warn, and also pulses at critical; omitted for the
+     *  stats where being pegged is merely slow, never fatal */
+    level?: Accessor<PressureLevel>
     height?: number
     hexpand?: boolean
 }) {
-    // a single DrawingArea replaces one <box> child per sample (up to 64
+    // A single DrawingArea replaces one <box> child per sample (up to 64
     // per stat), each tick rebuilding the lot. The colour comes from the
-    // widget's CSS `color` (.statCpu/.statRam/.statGpu).
+    // widget's CSS `color` (.statCpu/.statRam/.statGpu, overridden by
+    // .warn/.critical), so the whole palette stays in the theme.
     return (
         <Gtk.DrawingArea
-            cssClasses={["statGraph", className]}
-            valign={Gtk.Align.END}
+            cssClasses={
+                level
+                    ? level.as(l => ["statGraph", className, ...(l !== "" ? [l] : [])])
+                    : ["statGraph", className]
+            }
+            valign={Gtk.Align.CENTER}
             halign={Gtk.Align.END}
             hexpand={hexpand}
             $={self => {
                 self.set_content_height(height)
-                const redraw = () => {
-                    // 2px per bar natural width (matches the old min-width: 2px
-                    // child boxes); hexpand grows it and bars spread to fill
-                    self.set_content_width(Math.max(1, hist.get().length) * 2)
-                    self.queue_draw()
-                }
+                // fixed, not sized to the samples in hand: a width that
+                // grew as history filled shoved every widget to its
+                // right sideways once a second for the first 16s of
+                // every session
+                self.set_content_width(slots * SAMPLE_WIDTH + HEAD_MARGIN)
                 self.set_draw_func((_da: Gtk.DrawingArea, cr: any, w: number, h: number) => {
                     const samples = hist.get()
                     const n = samples.length
                     if (n === 0) return
                     const c = self.get_color()
-                    cr.setSourceRGBA(c.red, c.green, c.blue, c.alpha)
-                    const bw = w / n
-                    for (let i = 0; i < n; i++) {
-                        const bh = Math.max(1, Math.round((samples[i].v / 100) * h))
-                        cr.rectangle(i * bw, h - bh, Math.max(1, bw), bh)
+                    const beat = level?.get() === "critical" && pressurePulse.get()
+
+                    // the newest sample owns the right edge and history
+                    // runs backwards from it, so a half-full buffer
+                    // fills in from the right instead of stretching a
+                    // handful of points across the whole plot
+                    const right = w - HEAD_MARGIN
+                    const step = slots > 1 ? right / (slots - 1) : 0
+                    const x = (i: number) => right - (n - 1 - i) * step
+                    // half a pixel of headroom at each end: a 1px stroke
+                    // centred on the edge paints half of itself outside
+                    const top = 1
+                    const floor = h - 0.5
+                    const y = (v: number) =>
+                        floor - (Math.min(100, Math.max(0, v)) / 100) * (floor - top)
+
+                    const trace = () => {
+                        cr.moveTo(x(0), y(samples[0].v))
+                        for (let i = 1; i < n; i++) cr.lineTo(x(i), y(samples[i].v))
                     }
+
+                    // a floor hairline, so an idle stat still reads as a
+                    // graph sitting at zero rather than as empty space
+                    cr.setSourceRGBA(c.red, c.green, c.blue, c.alpha * 0.18)
+                    cr.rectangle(0, h - 1, w, 1)
+                    cr.fill()
+
+                    const grad = new Cairo.LinearGradient(0, top, 0, h)
+                    grad.addColorStopRGBA(
+                        0,
+                        c.red,
+                        c.green,
+                        c.blue,
+                        c.alpha * (beat ? BEAT_TOP : AREA_TOP),
+                    )
+                    grad.addColorStopRGBA(1, c.red, c.green, c.blue, c.alpha * AREA_BOTTOM)
+                    cr.setSource(grad)
+                    trace()
+                    cr.lineTo(x(n - 1), h)
+                    cr.lineTo(x(0), h)
+                    cr.closePath()
+                    cr.fill()
+
+                    cr.setSourceRGBA(c.red, c.green, c.blue, c.alpha)
+                    cr.setLineWidth(beat ? 1.6 : 1)
+                    cr.setLineJoin(Cairo.LineJoin.ROUND)
+                    cr.setLineCap(Cairo.LineCap.ROUND)
+                    trace()
+                    cr.stroke()
+
+                    // "now": the one point on a graph of history that is
+                    // the number in the label beside it
+                    cr.arc(x(n - 1), y(samples[n - 1].v), beat ? 2 : 1.4, 0, 2 * Math.PI)
                     cr.fill()
                 })
-                const unsub = hist.subscribe(redraw)
-                onCleanup(unsub)
+                const redraw = () => self.queue_draw()
+                // the level and the beat are read at DRAW time, so both
+                // have to ask for a frame themselves — a css class flip
+                // restyles the widget but does not repaint its content
+                const unsubs = [hist.subscribe(redraw), pressurePulse.subscribe(redraw)]
+                if (level) unsubs.push(level.subscribe(redraw))
+                onCleanup(() => unsubs.forEach(u => u()))
                 redraw()
             }}
         />
@@ -68,9 +158,48 @@ function Graph({
 }
 
 // resource utilization monitor on the panel: per-stat percentage plus a
-// mini histogram (last 12 samples); quick settings has the detailed view
-const BARS = 12
+// mini sparkline (last 16 samples); quick settings has the detailed view
+const BARS = 16
 const short = (hist: Accessor<{ v: number }[]>) => hist.as(h => h.slice(-BARS))
+
+// One stat: its readout and its own sparkline, in a box of their own.
+// The panel's 8px rhythm alone left every graph equidistant from the
+// label before it and the label after it, so each sparkline read as
+// belonging to the NEXT stat — the tighter inner gap is what pairs them.
+function Stat({
+    name,
+    label,
+    hist,
+    level,
+}: {
+    name: string
+    label: Accessor<string>
+    hist: Accessor<{ v: number }[]>
+    level?: Accessor<PressureLevel>
+}) {
+    const classes = level ? level.as(l => [name, ...(l !== "" ? [l] : [])]) : [name]
+    // the block behind the whole stat, flipped on the shared heartbeat.
+    // It inverts readout AND sparkline together, so what flashes is one
+    // object rather than two things blinking near each other
+    const group = level
+        ? createComputed([level, pressurePulse], (l, beat) =>
+              l === "critical" && beat ? ["statGroup", "statAlarm"] : ["statGroup"],
+          )
+        : ["statGroup"]
+    return (
+        <box cssClasses={group} spacing={4}>
+            <label cssClasses={classes} label={label} />
+            <Graph
+                hist={short(hist)}
+                className={name}
+                slots={BARS}
+                level={level}
+                height={GRAPH_HEIGHT}
+                hexpand={false}
+            />
+        </box>
+    )
+}
 
 export default function SysStats() {
     const tip = () => {
@@ -84,33 +213,69 @@ export default function SysStats() {
             lines.push(`GPU ${gpu.get()}% ${gpuTemp.get()}°C   ${vUsed}/${vTotal} MiB`)
         }
         lines.push(`↓ ${formatRate(netDown.get())}   ↑ ${formatRate(netUp.get())}`)
+        // what the recolored sparkline is trying to say, spelled out —
+        // a colour alone cannot say WHICH pool is nearly gone
+        const alerts: string[] = []
+        if (ramLevel.get() !== "")
+            alerts.push(
+                ramLevel.get() === "critical" ? "Severe memory pressure" : "High memory pressure",
+            )
+        if (gpuLevel.get() !== "")
+            alerts.push(
+                gpuLevel.get() === "critical"
+                    ? "Severe GPU memory pressure"
+                    : "High GPU memory pressure",
+            )
+        if (alerts.length > 0) lines.push("", ...alerts.map(a => `⚠ ${a}`))
+        lines.push("", "Click for Power Mode")
         return lines.join("\n")
     }
 
     return (
-        <box cssClasses={["sysStats"]} spacing={8} tooltipText={ramSize.as(tip)}>
-            <label cssClasses={["statCpu"]} label={cpu.as(v => `CPU ${v}%`)} />
-            <Graph hist={short(cpuHist)} className="statCpu" height={12} hexpand={false} />
-            <label cssClasses={["statRam"]} label={ram.as(v => `RAM ${v}%`)} />
-            <Graph hist={short(ramHist)} className="statRam" height={12} hexpand={false} />
-            <With value={gpu}>
-                {g =>
-                    g !== null && (
-                        <box spacing={8}>
-                            <label
-                                cssClasses={["statGpu"]}
+        <box
+            cssClasses={["sysStats"]}
+            spacing={8}
+            // ramSize ticks with the poll, so the tooltip is rebuilt on
+            // the same beat as everything it quotes; the levels are
+            // folded in there rather than into a second binding
+            tooltipText={ramSize.as(tip)}
+        >
+            {/* the sparklines say something is wrong; the pane says what
+            to do about it. One click, straight there — the warnings, the
+            per-card pages and the profile switch all live in it */}
+            <Gtk.GestureClick
+                button={1}
+                {...pressable(() => {
+                    registry.execute(["qsPane", "powerprofiles"], true)
+                })}
+            />
+            <Stat name="statCpu" label={cpu.as(v => `CPU ${v}%`)} hist={cpuHist} />
+            <Stat name="statRam" label={ram.as(v => `RAM ${v}%`)} hist={ramHist} level={ramLevel} />
+            {/* the GPU probe finishes a moment after the bar is built,
+            and a bare With re-lands its widget at the END of the parent
+            (AGENTS.md) — which put the whole GPU block to the RIGHT of
+            the network readout. The wrapper box holds the slot in
+            place, and hides itself so the 8px gap does not open up on a
+            machine with no GPU to report */}
+            <box visible={gpu.as(g => g !== null)}>
+                <With value={gpu}>
+                    {g =>
+                        g !== null && (
+                            <Stat
+                                name="statGpu"
                                 label={gpuTemp.as(t => `GPU ${g}% ${t}°C`)}
+                                hist={gpuHist}
+                                level={gpuLevel}
                             />
-                            <Graph
-                                hist={short(gpuHist)}
-                                className="statGpu"
-                                height={12}
-                                hexpand={false}
-                            />
-                        </box>
-                    )
-                }
-            </With>
+                        )
+                    }
+                </With>
+            </box>
+            {/* no sparkline: the three above plot against a fixed
+            0-100 axis, and a rate has no such ceiling — it would need
+            an autoscale, and an autoscaled graph of an idle link draws
+            the same shape as a saturated one. The rate reads fine as a
+            number */}
             <label
                 cssClasses={["statNet"]}
                 label={createComputed(

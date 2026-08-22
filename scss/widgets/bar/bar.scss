@@ -64,6 +64,9 @@ window.Bar {
 
     // resource utilization monitor
     .sysStats {
+        // one click from the power pane, so it frames on hover like the
+        // panel's other openers instead of reading as inert text
+        @include u.button-quiet;
         font-size: s.$font-small;
         margin-right: s.$gap-small;
         .statCpu { color: t.$blue; }
@@ -71,8 +74,55 @@ window.Bar {
         .statGpu { color: t.$peach; }
         .statNet { color: t.$mauve; }
         .statGraph {
-            min-height: 12px;
+            min-height: 14px;
         }
+
+        // Pressure, in the same two steps the power pane's warnings use.
+        // Only the stats that end in something worse than slowness get
+        // here: a pegged CPU keeps its own colour, a full VRAM carve-out
+        // is a compositor crash and a stalled allocator is the OOM
+        // killer, so those two take over the graph AND its readout.
+        // Beats .statRam/.statGpu on specificity, which is the point.
+        .statRam, .statGpu, .statGraph {
+            &.warn { color: t.$yellow; }
+            &.critical { color: t.$red; }
+        }
+        // Every stat is a padded, rounded slot — including the ones
+        // that can never flash. The block below needs room to sit in,
+        // and a block that brought its own padding with it would shove
+        // the rest of the panel sideways twice a second.
+        .statGroup, .statNet {
+            padding: 1px s.$padding-small;
+            border-radius: s.$radius;
+        }
+
+        // The critical flash, on the shared heartbeat in lib/sysstats:
+        // readout and sparkline invert to a solid red block together
+        // and back, so what flashes is ONE object rather than two
+        // things blinking near each other. Loud on purpose — this is
+        // the state that ends in the OOM killer or a compositor crash,
+        // and the panel is the only surface left to a user staring at
+        // a fullscreen game. Driven in JS (sysStats.tsx) exactly like
+        // the sleep timer's alarmAttention: CSS animations don't run in
+        // this shell. The nested selectors are what beat .critical's
+        // red on the label and the graph.
+        .statGroup.statAlarm {
+            background-color: t.$red;
+            // NOT $base. $red is a saturated mid-tone and $base is only
+            // the darkest colour on a DARK theme — on gruvbox the pair
+            // measures 4.29:1, under the 4.5 floor, and the percentage
+            // this whole thing exists to make you read goes muddy at
+            // the size the panel prints it. $crust under a dark theme
+            // and $base under a light one clears 4.5 on all six.
+            label, .statGraph {
+                @if u.$is-light { color: t.$base; } @else { color: t.$crust; }
+            }
+        }
+
+        // Bold for the whole critical state, not for the flash: a
+        // weight that changed on the beat would risk re-measuring the
+        // label twice a second, and the panel jitters if it does.
+        .statRam.critical, .statGpu.critical { font-weight: s.$weight-bold; }
     }
 
     // cumulative bandwidth totals (today ↓/↑)
