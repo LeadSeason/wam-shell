@@ -334,4 +334,21 @@ window#QSettings {
         @include u.eyebrow-rule;
         margin: 10px 0 2px s.$gap-small;
     }
+
+    // scroll-position strip down the left edge of the power pane's GPU
+    // tiles: one segment per card, the shown one lit. Deliberately the
+    // same shape as the media card's .mediaSegment — it is the same
+    // gesture and the same affordance, so it should not look like a
+    // different control
+    .gpuSegments {
+        .gpuSegment {
+            // 4px was a frustrating click target
+            min-width: s.$gap;
+            border-radius: s.$radius-pill;
+            background-color: t.$surface1;
+            &.active {
+                background-color: t.$accent;
+            }
+        }
+    }
 }
