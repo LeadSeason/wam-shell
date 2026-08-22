@@ -80,10 +80,11 @@ fills, which turns stroked glyphs into solid blobs.
 ## Drawing a name Adwaita does not have
 
 `cpu-symbolic.svg`, `memory-symbolic.svg`, `temperature-symbolic.svg`,
-`gpu-symbolic.svg`, `hourglass-symbolic.svg`, `speedometer-symbolic.svg`
-(the power pane's stat tiles) and `dark-mode-symbolic.svg` (the Dark
-Style toggle) are original drawings. Adwaita ships none of these names,
-so nothing upstream can be copied for them.
+`gpu-symbolic.svg`, `hourglass-symbolic.svg`, `speedometer-symbolic.svg`,
+`fan-symbolic.svg` (the power pane's stat tiles) and
+`dark-mode-symbolic.svg` (the Dark Style toggle) are original drawings.
+Adwaita ships none of these names, so nothing upstream can be copied
+for them.
 
 They used to be **Papirus** copies, and that was the whole problem: two
 icon sets drawn to different grids and different optical weights, sitting
@@ -99,6 +100,20 @@ two shells. The replacements are drawn on Adwaita's own terms:
 - checked at true 16px, not just scaled up: a 1px gap between two shapes
   disappears at icon size, which is what merged the speedometer's needle
   into its own dial on the first attempt
+
+`fan-symbolic.svg` (the chassis-fan stat tile) is a three-blade
+impeller: hub disc plus three swept blades, no housing ring. Adwaita has
+no fan name at all and the near misses all say something else —
+`weather-windy` reads as weather, `view-refresh` as reload, and
+`temperature-symbolic` is already the thermometer sitting two cells
+away. Three blades, not four or five: rendered at true 16px, five go
+mushy as the gaps between them close up and four read busier without
+saying anything three does not. The blades are SWEPT
+(tip rotated ~55° off its root) rather than drawn as symmetric lobes —
+the first attempts were radial petals and read as a flower, not a fan.
+Their roots start inside the hub radius on purpose: rooted at exactly
+the hub edge, antialiasing opens a white ring at 16px and the hub
+floats free of its blades.
 
 `caffeine-symbolic.svg` (the Keep Awake toggle and its bar indicator) is
 an original drawing too — a mug with two steam ticks. Adwaita has no

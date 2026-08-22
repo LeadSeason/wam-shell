@@ -1,11 +1,11 @@
-import { Accessor, createBinding, createComputed, createState, onCleanup } from "gnim"
+import { Accessor, createBinding, createComputed, createState, For, onCleanup } from "gnim"
 import { execAsync } from "../../../lib/metrics"
 import GLib from "gi://GLib?version=2.0"
 import Pango from "gi://Pango?version=1.0"
 import { DropdownButton } from "./ToggleButton"
 import AstalPowerProfiles from "gi://AstalPowerProfiles?version=0.1"
 import AstalBattery from "gi://AstalBattery?version=0.1"
-import { Gtk } from "ags/gtk4"
+import { Gdk, Gtk } from "ags/gtk4"
 import Config from "../../../config"
 import * as Power from "../../../lib/powerDetails"
 import { atChargeLimit } from "../../../lib/batteryCap"
@@ -144,8 +144,166 @@ function TileSection({
     )
 }
 
-// big-number tiles grouped by what they measure: battery, CPU, the
-// system stats (moved from the main pane) and the network totals
+// One GPU at a time, paged like the media card's player switcher:
+// scroll anywhere over the tiles, arrow keys while the pointer is on
+// them, or click a segment in the strip down the left edge.
+//
+// A carousel rather than one grid holding every card, because nothing
+// here is comparable across cards: amdgpu and nvidia have separate
+// sensors, separate memory pools and separate per-process accounting,
+// and two cards' tiles side by side invite exactly the misreading the
+// pressure warning used to make.
+function GpuSection() {
+    let card: Gtk.Box
+
+    const tiles = Sys.activeGpu
+    const show = Sys.gpuIds.as(l => l.length > 0 && Config.quicksettings.showStats)
+
+    return (
+        <box orientation={Gtk.Orientation.VERTICAL} spacing={8} visible={show}>
+            {/* the eyebrow carries the card's name: with the tiles
+            paged, which GPU you are looking at is not otherwise on
+            screen anywhere */}
+            <label
+                cssClasses={["paneSection"]}
+                xalign={0}
+                hexpand
+                label={tiles.as(g => (g ? `GPU · ${g.name}` : "GPU"))}
+                maxWidthChars={36}
+                ellipsize={Pango.EllipsizeMode.END}
+            />
+            <box
+                spacing={8}
+                // arrow keys page cards while hovering; the box takes
+                // focus on pointer enter, never from a text entry
+                focusable
+                $={self => {
+                    card = self
+                }}
+            >
+                <Gtk.EventControllerMotion
+                    onEnter={() => {
+                        const root = card.get_root() as Gtk.Window | null
+                        const focus = root?.get_focus()
+                        if (focus instanceof Gtk.Entry || focus instanceof Gtk.Text) return
+                        card.grab_focus()
+                    }}
+                    onLeave={() => {
+                        const root = card.get_root() as Gtk.Window | null
+                        if (root?.get_focus() === card) root.set_focus(null)
+                    }}
+                />
+                <Gtk.EventControllerKey
+                    onKeyPressed={(_e, keyval) => {
+                        if (keyval === Gdk.KEY_Up) {
+                            Sys.cycleActiveGpu(-1)
+                            return true
+                        }
+                        if (keyval === Gdk.KEY_Down) {
+                            Sys.cycleActiveGpu(1)
+                            return true
+                        }
+                        return false
+                    }}
+                />
+                <Gtk.EventControllerScroll
+                    flags={Gtk.EventControllerScrollFlags.VERTICAL}
+                    onScroll={(_e, _dx, dy) => {
+                        Sys.scrollActiveGpu(dy)
+                        return true
+                    }}
+                />
+                {/* scroll-position strip on the left edge, one segment
+                per card with the shown one lit — the media card's
+                pattern, down to the class shape. A <For> over gpuIds,
+                NOT over gpus: the latter is a fresh array every poll
+                tick and would rebuild these widgets once a second */}
+                <box
+                    cssClasses={["gpuSegments"]}
+                    orientation={Gtk.Orientation.VERTICAL}
+                    spacing={2}
+                    visible={Sys.gpuIds.as(l => l.length > 1)}
+                >
+                    <For each={Sys.gpuIds}>
+                        {g => (
+                            <box
+                                vexpand
+                                cssClasses={Sys.activeGpuId.as(id => [
+                                    "gpuSegment",
+                                    ...(g.id === id ? ["active"] : []),
+                                ])}
+                                tooltipText={g.name}
+                            >
+                                <Gtk.GestureClick
+                                    button={1}
+                                    onPressed={() => Sys.selectGpu(g.id)}
+                                />
+                            </box>
+                        )}
+                    </For>
+                </box>
+                <Gtk.FlowBox
+                    maxChildrenPerLine={2}
+                    homogeneous
+                    hexpand
+                    selectionMode={Gtk.SelectionMode.NONE}
+                    columnSpacing={8}
+                    rowSpacing={8}
+                >
+                    <StatTile
+                        icon="gpu-symbolic"
+                        big={tiles.as(g => (g?.busy !== null && g ? `${g.busy}%` : "—"))}
+                        sub={tiles.as(g => Sys.formatGpuSub(g?.temp ?? null, g?.clock ?? null))}
+                        visible={tiles.as(g => g !== null)}
+                    />
+                    {/* PPT on amdgpu is the WHOLE SoC's budget, CPU
+                    cores included, so it is never called "GPU power";
+                    nvidia's power.draw really is the board. Same bolt
+                    as the CPU package tile — a second gpu-symbolic here
+                    would read as a repeat of the tile above */}
+                    <StatTile
+                        icon="power-profile-performance-symbolic"
+                        big={tiles.as(g => (g?.watts != null ? `${g.watts.toFixed(1)} W` : "—"))}
+                        sub={tiles.as(g => (g?.vendor === "amd" ? "package (PPT)" : "board"))}
+                        visible={tiles.as(g => g?.watts != null)}
+                    />
+                    {/* VRAM and GTT get a tile EACH rather than one
+                    tile with GTT in its sub: measured at the pane's
+                    440px, the combined spelling is 217px against a
+                    208px per-column budget and flips this FlowBox to a
+                    single column. Split, both land near 164px. The
+                    percentage leads, matching the RAM tile in System */}
+                    <StatTile
+                        icon="memory-symbolic"
+                        big={tiles.as(g => `${Sys.poolPct(g?.vram[0] ?? 0, g?.vram[1] ?? 0)}%`)}
+                        sub={tiles.as(g =>
+                            Sys.formatGpuPool("VRAM", g?.vram[0] ?? 0, g?.vram[1] ?? 0),
+                        )}
+                        visible={tiles.as(g => (g?.vram[1] ?? 0) > 0)}
+                    />
+                    {/* amdgpu only — nvidia has no GTT. The host icon,
+                    not a second memory-symbolic: GTT is system RAM the
+                    GPU borrows, and two identical icons in one grid
+                    read as one repeated stat */}
+                    <StatTile
+                        icon="computer-symbolic"
+                        big={tiles.as(g => `${Sys.poolPct(g?.gtt?.[0] ?? 0, g?.gtt?.[1] ?? 0)}%`)}
+                        sub={tiles.as(g =>
+                            Sys.formatGpuPool("GTT", g?.gtt?.[0] ?? 0, g?.gtt?.[1] ?? 0),
+                        )}
+                        visible={tiles.as(g => (g?.gtt?.[1] ?? 0) > 0)}
+                    />
+                </Gtk.FlowBox>
+            </box>
+        </box>
+    )
+}
+
+// big-number tiles grouped by what they measure: battery, the system
+// stats (moved from the main pane), CPU, GPU and the network totals.
+// CPU and GPU are deliberately adjacent and deliberately the same
+// shape — utilisation, then thermals/clock, then power — so the two
+// read as a pair rather than as two unrelated lists
 function PowerDetails() {
     const bat = AstalBattery.get_default()
 
@@ -254,10 +412,66 @@ function PowerDetails() {
                     visible={Energy.hasBatt}
                 />
             </TileSection>
+            {/* moved stats (gated by show_stats) */}
+            {/* `|| hasFan` keeps the fan reading alive when show_stats
+            is off: powerDetails polls it whenever the pane is open,
+            independent of the stats poll, and it showed unconditionally
+            back when it rode the CPU temperature tile */}
+            <TileSection title={"System"} visible={Config.quicksettings.showStats || Power.hasFan}>
+                <StatTile
+                    icon="memory-symbolic"
+                    big={Sys.ram.as(r => `${r}%`)}
+                    sub={createComputed(
+                        [Sys.ramSize, Sys.swapSize],
+                        ([used, total], [sw, swTotal]) =>
+                            swTotal > 0
+                                ? `${used}/${total} GB sw ${Math.round((sw / swTotal) * 100)}%`
+                                : `${used}/${total} GB`,
+                    )}
+                    visible={Config.quicksettings.showStats}
+                />
+                <StatTile
+                    icon="drive-harddisk-symbolic"
+                    big={Sys.diskRead.as(r => `↓ ${Sys.formatRate(r)}`)}
+                    sub={Sys.diskWrite.as(w => `↑ ${Sys.formatRate(w)}`)}
+                    visible={Config.quicksettings.showStats}
+                />
+                {/* the CHASSIS fan, not a CPU one: powerDetails finds
+                it on a laptop vendor's hwmon (thinkpad/asus/dell/…) and
+                deliberately skips GPU fans, so it cools the whole box
+                and belongs here rather than under CPU. Not gated on
+                show_stats — see the section's own flag */}
+                <StatTile
+                    icon="fan-symbolic"
+                    big={Power.fanRpm.as(r => `${r} RPM`)}
+                    sub={"chassis fan"}
+                    visible={Power.hasFan}
+                />
+                <StatTile
+                    icon="document-open-recent-symbolic"
+                    big={Sys.uptimeSeconds.as(s => Sys.formatUptime(s))}
+                    sub={"uptime"}
+                    visible={Config.quicksettings.showStats}
+                />
+            </TileSection>
             <TileSection
                 title={"CPU"}
-                visible={Power.hasFreq || Power.hasTemp || Power.hasFan || Power.hasPkg}
+                visible={
+                    Power.hasFreq || Power.hasTemp || Power.hasPkg || Config.quicksettings.showStats
+                }
             >
+                {/* utilisation first, so this section and the GPU one
+                below open on the same number. showStats gates only this
+                tile, which is why it also has to widen the section's
+                own visible flag — a machine with no cpufreq, no hwmon
+                and an unreadable RAPL counter would otherwise hide the
+                section out from under it */}
+                <StatTile
+                    icon="speedometer-symbolic"
+                    big={Sys.cpu.as(c => `${c}%`)}
+                    sub={Sys.loadAvg.as(l => `load ${l.toFixed(2)}`)}
+                    visible={Config.quicksettings.showStats}
+                />
                 <StatTile
                     icon="cpu-symbolic"
                     big={Power.freqAvgMhz.as(m => `${(m / 1000).toFixed(1)} GHz`)}
@@ -268,15 +482,15 @@ function PowerDetails() {
                     })}
                     visible={Power.hasFreq}
                 />
+                {/* the k10temp/coretemp package sensor (thermal_zone0
+                when neither is exposed) — the fan that used to ride
+                this tile's sub is a CHASSIS fan and now lives in
+                System, see the note there */}
                 <StatTile
                     icon="temperature-symbolic"
-                    big={createComputed([Power.tempC, Power.fanRpm], (t, r) =>
-                        Power.hasTemp ? `${t} °C` : `${r} RPM`,
-                    )}
-                    sub={createComputed([Power.tempC, Power.fanRpm], (t, r) =>
-                        Power.hasTemp && Power.hasFan ? `${r} RPM` : Power.hasFan ? "fan" : "",
-                    )}
-                    visible={Power.hasTemp || Power.hasFan}
+                    big={Power.tempC.as(t => `${t} °C`)}
+                    sub={"package"}
+                    visible={Power.hasTemp}
                 />
                 {/* CPU package power (RAPL): what the profile actually
                 throttles. A bolt, not a second cpu-symbolic — the
@@ -310,68 +524,7 @@ function PowerDetails() {
                     />
                 </box>
             </box>
-            {/* moved stats (gated by show_stats) */}
-            <TileSection title={"System"} visible={Config.quicksettings.showStats}>
-                <StatTile
-                    icon="speedometer-symbolic"
-                    big={Sys.cpu.as(c => `${c}%`)}
-                    sub={Sys.loadAvg.as(l => `load ${l.toFixed(2)}`)}
-                    visible={Config.quicksettings.showStats}
-                />
-                <StatTile
-                    icon="memory-symbolic"
-                    big={Sys.ram.as(r => `${r}%`)}
-                    sub={createComputed(
-                        [Sys.ramSize, Sys.swapSize],
-                        ([used, total], [sw, swTotal]) =>
-                            swTotal > 0
-                                ? `${used}/${total} GB sw ${Math.round((sw / swTotal) * 100)}%`
-                                : `${used}/${total} GB`,
-                    )}
-                    visible={Config.quicksettings.showStats}
-                />
-                {/* NOT a <With>: the gpu state starts null and answers
-                ~1s in, so a conditional build appends the tile at the
-                END of the grid. A hidden FlowBoxChild (inside StatTile)
-                keeps its slot and lands in place when it appears */}
-                <StatTile
-                    icon="gpu-symbolic"
-                    big={createComputed([Sys.gpu, Sys.gpuWatts], (g, w) =>
-                        w > 0 ? `${g}% · ${Math.round(w)} W` : `${g}%`,
-                    )}
-                    sub={createComputed(
-                        [Sys.gpuTemp, Sys.vram],
-                        (t, [used, total]) => `${t}°C · ${used}/${total} MiB`,
-                    )}
-                    visible={Sys.gpu.as(g => g !== null && Config.quicksettings.showStats)}
-                />
-                {/* amdgpu memory fill — the sysfs card's VRAM, not the
-                nvidia-smi stream's (that one is the GPU tile's sub
-                above). amdGpuDev is a boot-time probe, so a static
-                visible flag keeps the FlowBox slot without the
-                late-build reorder the GPU tile's comment describes */}
-                <StatTile
-                    icon="gpu-symbolic"
-                    big={Sys.amdVram.as(([used, total]) => `${used}/${total} MiB`)}
-                    sub={Sys.amdGtt.as(
-                        ([used, total]) =>
-                            `VRAM · GTT ${(used / 1024).toFixed(1)}/${Math.round(total / 1024)} GB`,
-                    )}
-                    visible={Sys.amdGpuDev !== null && Config.quicksettings.showStats}
-                />
-                <StatTile
-                    icon="drive-harddisk-symbolic"
-                    big={Sys.diskRead.as(r => `↓ ${Sys.formatRate(r)}`)}
-                    sub={Sys.diskWrite.as(w => `↑ ${Sys.formatRate(w)}`)}
-                    visible={Config.quicksettings.showStats}
-                />
-                <StatTile
-                    icon="document-open-recent-symbolic"
-                    big={Sys.uptimeSeconds.as(s => Sys.formatUptime(s))}
-                    sub={"uptime"}
-                    visible={Config.quicksettings.showStats}
-                />
-            </TileSection>
+            <GpuSection />
             <TileSection
                 title={"Network"}
                 visible={Config.quicksettings.showStats || Config.netstats.enabled}
@@ -469,74 +622,123 @@ function MemPressureWarning() {
 }
 
 // the GPU-memory twin of the notice above: no PSI for GPU memory, so
-// "pressure" is plain used/total % of the worse of amdgpu's sysfs VRAM
-// and the nvidia-smi stream, plus amdgpu's GTT. A saturated VRAM
-// carve-out is a compositor crash, not sluggishness — same warn/crit
-// treatment as RAM. Always built, visible-gated for the same reason
+// "pressure" is plain used/total %. A saturated VRAM carve-out is a
+// compositor crash, not sluggishness — same warn/crit treatment as RAM.
+//
+// One PAGE per saturated card, paged like the GPU tiles below: scroll,
+// arrow keys while hovered, or click a segment. Two cards over the line
+// used to report as one, because the warning kept a single "worst"
+// card and never mentioned the other — and the detail line ellipsizes
+// long before two cards' figures fit on it. Paging also lets each card
+// blame its own processes, which is the only correct answer: the two
+// have entirely separate accounting.
 function VramPressureWarning() {
-    const level = createComputed([Sys.vramPressure, Sys.gttPressure], (v, g) => {
-        if (v === null && g === null) return ""
-        const hi = Math.max(v ?? 0, g ?? 0)
-        // VRAM and GTT share the WARN/CRIT numbers
-        return hi >= Sys.VRAM_PRESSURE_CRIT
-            ? "critical"
-            : hi >= Sys.VRAM_PRESSURE_WARN
-              ? "warn"
-              : ""
-    })
-    const desc = createComputed(
-        [Sys.vramPressure, Sys.gttPressure, Sys.amdVram, Sys.amdGtt, Sys.vram],
-        (vp, gp, [avu, avt], [agu, agt], [nvu, nvt]) => {
-            // short on purpose, same as the RAM card: the line
-            // ellipsizes at the pane's width, and a cut-off middle
-            // loses the numbers that matter
-            const parts: string[] = []
-            if (vp !== null) {
-                // the sysfs card's numbers when there is one, else the
-                // nvidia-smi stream's
-                const [u, t] = Sys.amdGpuDev !== null ? [avu, avt] : [nvu, nvt]
-                parts.push(`VRAM ${u}/${t} MiB`)
-            }
-            if (gp !== null) parts.push(`GTT ${agu}/${agt} MiB`)
-            return parts.join(" · ")
-        },
-    )
+    let card: Gtk.Box
+    const page = Sys.activePressure
+
     return (
         <box
-            cssClasses={level.as(l => [
+            cssClasses={page.as(p => [
                 "paneCard",
                 "vramPressure",
-                ...(l === "critical" ? ["critical"] : []),
+                ...(p?.level === "critical" ? ["critical"] : []),
             ])}
             spacing={10}
-            visible={level.as(l => l !== "")}
+            visible={page.as(p => p !== null)}
+            focusable
+            $={self => {
+                card = self
+            }}
         >
+            <Gtk.EventControllerMotion
+                onEnter={() => {
+                    const root = card.get_root() as Gtk.Window | null
+                    const focus = root?.get_focus()
+                    if (focus instanceof Gtk.Entry || focus instanceof Gtk.Text) return
+                    card.grab_focus()
+                }}
+                onLeave={() => {
+                    const root = card.get_root() as Gtk.Window | null
+                    if (root?.get_focus() === card) root.set_focus(null)
+                }}
+            />
+            <Gtk.EventControllerKey
+                onKeyPressed={(_e, keyval) => {
+                    if (keyval === Gdk.KEY_Up) {
+                        Sys.cycleActivePressure(-1)
+                        return true
+                    }
+                    if (keyval === Gdk.KEY_Down) {
+                        Sys.cycleActivePressure(1)
+                        return true
+                    }
+                    return false
+                }}
+            />
+            <Gtk.EventControllerScroll
+                flags={Gtk.EventControllerScrollFlags.VERTICAL}
+                onScroll={(_e, _dx, dy) => {
+                    Sys.scrollActivePressure(dy)
+                    return true
+                }}
+            />
+            {/* the strip only appears with a second card in trouble */}
+            <box
+                cssClasses={["gpuSegments"]}
+                orientation={Gtk.Orientation.VERTICAL}
+                spacing={2}
+                visible={Sys.gpuPressureIds.as(l => l.length > 1)}
+            >
+                <For each={Sys.gpuPressureIds}>
+                    {g => (
+                        <box
+                            vexpand
+                            cssClasses={Sys.activePressureId.as(id => [
+                                "gpuSegment",
+                                ...(g.id === id ? ["active"] : []),
+                            ])}
+                            tooltipText={g.name}
+                        >
+                            <Gtk.GestureClick
+                                button={1}
+                                onPressed={() => Sys.selectPressure(g.id)}
+                            />
+                        </box>
+                    )}
+                </For>
+            </box>
             <image iconName="dialog-warning-symbolic" pixelSize={20} valign={Gtk.Align.CENTER} />
             <box orientation={Gtk.Orientation.VERTICAL} spacing={1} hexpand>
+                {/* the count is the only thing that says the trouble is
+                not confined to the card on screen; the detail line has
+                no width to spare for it */}
                 <label
                     cssClasses={["paneRowName"]}
                     xalign={0}
-                    label={level.as(l =>
-                        l === "critical"
-                            ? "Severe GPU memory pressure"
-                            : "High GPU memory pressure",
-                    )}
+                    label={createComputed([page, Sys.gpuPressureIds], (p, l) => {
+                        const head =
+                            p?.level === "critical"
+                                ? "Severe GPU memory pressure"
+                                : "High GPU memory pressure"
+                        return l.length > 1 ? `${head} · ${l.length} cards` : head
+                    })}
                 />
                 {/* both text lines ellipsize — see the RAM card for why */}
                 <label
                     cssClasses={["paneRowDesc"]}
                     xalign={0}
-                    label={desc}
+                    label={page.as(p => p?.desc ?? "")}
                     maxWidthChars={44}
                     ellipsize={Pango.EllipsizeMode.END}
                 />
-                {/* the "who to kill" line: the biggest VRAM consumers,
-                only while pressure is high (gpuMemHogs is "" below WARN) */}
+                {/* this card's biggest consumers. Shown or hidden for
+                the WHOLE carousel at once: bound to the active page it
+                would resize the card mid-scroll, under the pointer */}
                 <label
                     cssClasses={["paneRowDesc", "gpuMemHogs"]}
                     xalign={0}
-                    visible={Sys.gpuMemHogs.as(h => h !== "")}
-                    label={Sys.gpuMemHogs}
+                    visible={Sys.gpuHogsShown}
+                    label={page.as(p => p?.hogs ?? "")}
                     maxWidthChars={44}
                     ellipsize={Pango.EllipsizeMode.END}
                 />

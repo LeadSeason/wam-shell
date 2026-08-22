@@ -1,9 +1,20 @@
 import { test, eq } from "./framework"
 import {
+    formatGpuPool,
+    formatGpuPressureDesc,
+    gpuPressureLevel,
+    formatGpuSub,
     formatRate,
     formatTopMem,
     formatUptime,
+    parseDrmSize,
     parseFdinfoDrmMem,
+    normalizePciId,
+    parseNvidiaApps,
+    parseNvidiaGpuLine,
+    parsePciName,
+    poolPct,
+    shortGpuName,
     parseMemPressure,
     parseProcStat,
     sumDiskSectors,
@@ -99,8 +110,58 @@ test("formatTopMem: biggest first, top n, long names truncated", () => {
     eq(formatTopMem([]), "")
 })
 
-// /proc/<pid>/fdinfo/*: KiB, one fd per entry — the parser sums them
-test("parseFdinfoDrmMem: sums vram and gtt across entries", () => {
+// the drm-total/shared/resident family carries a per-line unit and
+// drops it entirely on zero; the legacy drm-memory-* keys are all KiB
+test("parseDrmSize: unit suffixes, in KiB", () => {
+    eq(parseDrmSize("0"), 0)
+    eq(parseDrmSize("12 KiB"), 12)
+    eq(parseDrmSize("2 MiB"), 2048)
+    eq(parseDrmSize("1 GiB"), 1024 * 1024)
+    eq(parseDrmSize("  286604 KiB  "), 286604)
+})
+
+test("parseDrmSize: garbage is zero, not NaN", () => {
+    eq(parseDrmSize(""), 0)
+    eq(parseDrmSize("[N/A]"), 0)
+    eq(parseDrmSize("12 TiB"), 0)
+})
+
+// resident MINUS shared: a buffer mapped by two clients is counted in
+// full by both, so the plain total blames each for the other's memory
+test("parseFdinfoDrmMem: subtracts shared from resident", () => {
+    const text = [
+        "drm-pdev:\t0000:65:00.0",
+        "drm-total-vram:\t286604 KiB",
+        "drm-shared-vram:\t19808 KiB",
+        "drm-resident-vram:\t286604 KiB",
+        "drm-total-gtt:\t2 MiB",
+        "drm-shared-gtt:\t0",
+        "drm-resident-gtt:\t2 MiB",
+        "drm-memory-vram:\t286604 KiB",
+        "",
+    ].join("\n")
+    // 286604 - 19808 held alone; GTT reported in MiB, returned as KiB
+    eq(parseFdinfoDrmMem(text), { vram: 266796, gtt: 2048, pdev: "0000:65:00.0" })
+})
+
+test("parseFdinfoDrmMem: shared exceeding resident clamps at zero", () => {
+    const text = ["drm-resident-vram:\t10 KiB", "drm-shared-vram:\t40 KiB", ""].join("\n")
+    eq(parseFdinfoDrmMem(text)?.vram, 0)
+})
+
+test("parseFdinfoDrmMem: resident wins over the legacy key when both exist", () => {
+    const text = [
+        "drm-resident-vram:\t100 KiB",
+        "drm-shared-vram:\t40 KiB",
+        "drm-memory-vram:\t100 KiB",
+        "",
+    ].join("\n")
+    eq(parseFdinfoDrmMem(text)?.vram, 60)
+})
+
+// drivers with no resident/shared breakdown keep the old behaviour
+// rather than reporting nothing
+test("parseFdinfoDrmMem: falls back to drm-memory-* when resident is absent", () => {
     const text = [
         "pos:\t0",
         "flags:\t02100002",
@@ -114,11 +175,228 @@ test("parseFdinfoDrmMem: sums vram and gtt across entries", () => {
         "drm-memory-vram:\t\t55 KiB",
         "",
     ].join("\n")
-    eq(parseFdinfoDrmMem(text), { vram: 12400, gtt: 6789 })
+    eq(parseFdinfoDrmMem(text), { vram: 12400, gtt: 6789, pdev: "0000:00:00.0" })
 })
 
 test("parseFdinfoDrmMem: no drm-memory lines, or garbage, is null", () => {
     eq(parseFdinfoDrmMem(""), null)
     eq(parseFdinfoDrmMem("pos:\t0\nflags:\t02100002\n"), null)
     eq(parseFdinfoDrmMem("drm-memory-vram:\n"), null)
+})
+
+// a GPU tile's sub line. null/0 is "sensor not exposed" for both
+// halves: a card can publish gpu_busy_percent with no hwmon node at
+// all, and nvidia-smi reports [N/A] for fields it will not answer
+test("formatGpuSub: both sensors, interpunct-joined", () => {
+    eq(formatGpuSub(52, 1345), "52\u00b0C \u00b7 1345 MHz")
+})
+
+test("formatGpuSub: either half alone when the other is missing", () => {
+    eq(formatGpuSub(52, null), "52\u00b0C")
+    eq(formatGpuSub(null, 1345), "1345 MHz")
+    eq(formatGpuSub(52, 0), "52\u00b0C")
+})
+
+test("formatGpuSub: neither sensor is an empty sub, not a stray separator", () => {
+    eq(formatGpuSub(null, null), "")
+    eq(formatGpuSub(0, 0), "")
+})
+
+// nvidia-smi pads the PCI domain to 8 hex digits, sysfs uses 4; the two
+// have to compare equal or per-card attribution silently matches nothing
+test("normalizePciId: nvidia and sysfs spellings converge", () => {
+    eq(normalizePciId("00000000:64:00.0"), "0000:64:00.0")
+    eq(normalizePciId("0000:65:00.0"), "0000:65:00.0")
+    eq(normalizePciId("0000:65:00.0 "), "0000:65:00.0")
+    eq(normalizePciId("00000000:64:00.0".toUpperCase()), "0000:64:00.0")
+})
+
+// hwdata pci.ids: vendors at column 0, their devices tab-indented under
+test("parsePciName: prefers the bracketed marketing name", () => {
+    const db = [
+        "# comment",
+        "1002  Advanced Micro Devices, Inc. [AMD/ATI]",
+        "\t150e  Strix [Radeon 880M / 890M]",
+        "\t1234  Some Plain Name",
+        "10de  NVIDIA Corporation",
+        "\t2820  AD106M [GeForce RTX 4070 Max-Q]",
+        "",
+    ].join("\n")
+    eq(parsePciName(db, "1002", "150e"), "Radeon 880M / 890M")
+    eq(parsePciName(db, "1002", "1234"), "Some Plain Name")
+    eq(parsePciName(db, "10de", "2820"), "GeForce RTX 4070 Max-Q")
+})
+
+test("parsePciName: a device id from ANOTHER vendor's section is not a hit", () => {
+    const db = ["1002  AMD", "\t150e  Strix [Radeon 890M]", "10de  NVIDIA", ""].join("\n")
+    // 150e belongs to 1002, so asking 10de for it must miss
+    eq(parsePciName(db, "10de", "150e"), "")
+    eq(parsePciName(db, "9999", "150e"), "")
+    eq(parsePciName("", "1002", "150e"), "")
+})
+
+test("shortGpuName: drops the vendor prefix and the trailing GPU", () => {
+    eq(shortGpuName("NVIDIA GeForce RTX 4070 Laptop GPU"), "GeForce RTX 4070 Laptop")
+    eq(shortGpuName("Radeon 890M"), "Radeon 890M")
+})
+
+// one --query-gpu row. The NAME may contain commas, so the row is split
+// from both ends rather than positionally
+test("parseNvidiaGpuLine: full row", () => {
+    eq(
+        parseNvidiaGpuLine(
+            "0, NVIDIA GeForce RTX 4070 Laptop GPU, 00000000:64:00.0, 43, 44, 7404, 8188, 9.55, 210",
+        ),
+        {
+            index: "0",
+            name: "NVIDIA GeForce RTX 4070 Laptop GPU",
+            pdev: "0000:64:00.0",
+            busy: 43,
+            temp: 44,
+            vram: [7404, 8188],
+            watts: 9.55,
+            clock: 210,
+        },
+    )
+})
+
+test("parseNvidiaGpuLine: a comma in the model name survives", () => {
+    const r = parseNvidiaGpuLine("1, Weird, Named GPU, 00000000:01:00.0, 1, 2, 3, 4, 5, 6")
+    eq(r?.name, "Weird, Named GPU")
+    eq(r?.index, "1")
+    eq(r?.clock, 6)
+})
+
+test("parseNvidiaGpuLine: [N/A] fields are null, not zero", () => {
+    const r = parseNvidiaGpuLine("0, GPU, 00000000:01:00.0, [N/A], 44, 7404, 8188, [N/A], 210")
+    eq(r?.busy, null)
+    eq(r?.watts, null)
+    eq(r?.temp, 44)
+})
+
+test("parseNvidiaGpuLine: garbage and short rows are null", () => {
+    eq(parseNvidiaGpuLine(""), null)
+    eq(parseNvidiaGpuLine("0, GPU, 1, 2"), null)
+    eq(parseNvidiaGpuLine("notanindex, GPU, 00000000:01:00.0, 1, 2, 3, 4, 5, 6"), null)
+})
+
+// nvidia-smi --query-compute-apps=gpu_bus_id,process_name,used_memory.
+// The fdinfo walk cannot see nvidia VRAM at all, so this is the only
+// per-process source for that card — and it must be filtered to the
+// card being warned about
+test("parseNvidiaApps: basenames the path, MiB -> bytes, filtered by card", () => {
+    const text = [
+        "00000000:64:00.0, /usr/lib/firefox/firefox, 7086",
+        "00000000:01:00.0, /usr/bin/other, 512",
+        "",
+    ].join("\n")
+    eq(parseNvidiaApps(text, "0000:64:00.0"), [["firefox", 7086 * 1024 * 1024]])
+    eq(parseNvidiaApps(text, "0000:01:00.0"), [["other", 512 * 1024 * 1024]])
+})
+
+test("parseNvidiaApps: a path containing a comma splits on the LAST one", () => {
+    eq(parseNvidiaApps("00000000:01:00.0, /opt/we,ird/app, 64\n", "0000:01:00.0"), [
+        ["app", 64 * 1024 * 1024],
+    ])
+})
+
+test("parseNvidiaApps: [N/A], zero and garbage are dropped", () => {
+    eq(parseNvidiaApps("00000000:01:00.0, /usr/bin/x, [N/A]\n", "0000:01:00.0"), [])
+    eq(parseNvidiaApps("00000000:01:00.0, /usr/bin/x, 0\n", "0000:01:00.0"), [])
+    eq(parseNvidiaApps("", "0000:01:00.0"), [])
+    eq(parseNvidiaApps("no comma here 123\n", "0000:01:00.0"), [])
+})
+
+// the pressure warning's detail line, now ONE card's. The bug this
+// replaces: the level was max(all cards) while the text always printed
+// whichever card owned a sysfs node, so a saturated dGPU showed the
+// iGPU's calm numbers — and with two cards over, only one was named
+const gpu = (
+    name: string,
+    vendor: "amd" | "nvidia",
+    vram: [number, number],
+    gtt: [number, number] | null,
+) => ({
+    id: `x:${name}`,
+    name,
+    vendor,
+    pdev: "0000:00:00.0",
+    busy: 9,
+    temp: 9,
+    clock: 9,
+    watts: 9,
+    vram,
+    gtt,
+})
+
+const HOT_NV = gpu("RTX 4070", "nvidia", [7900, 8188], null)
+const HOT_AMD = gpu("Radeon 890M", "amd", [7900, 8192], [10500, 11814])
+const CALM_AMD = gpu("Radeon 890M", "amd", [1611, 8192], [144, 11814])
+
+test("formatGpuPressureDesc: names the card when there is a second to confuse it with", () => {
+    eq(formatGpuPressureDesc(HOT_NV, true), "RTX 4070 VRAM 7900/8188 MiB")
+    eq(formatGpuPressureDesc(HOT_NV, false), "VRAM 7900/8188 MiB")
+})
+
+test("formatGpuPressureDesc: one card over on both pools is named once", () => {
+    eq(
+        formatGpuPressureDesc(HOT_AMD, true),
+        "Radeon 890M VRAM 7900/8192 MiB \u00b7 GTT 10500/11814 MiB",
+    )
+})
+
+test("formatGpuPressureDesc: a calm GTT is not listed beside a hot VRAM", () => {
+    // the 1%-full GTT is what made the old warning read as a false alarm
+    const g = gpu("Radeon 890M", "amd", [7900, 8192], [144, 11814])
+    eq(formatGpuPressureDesc(g, true), "Radeon 890M VRAM 7900/8192 MiB")
+})
+
+test("formatGpuPressureDesc: GTT alone when GTT is the only pool over", () => {
+    const g = gpu("Radeon 890M", "amd", [1611, 8192], [11400, 11814])
+    eq(formatGpuPressureDesc(g, true), "Radeon 890M GTT 11400/11814 MiB")
+})
+
+test("formatGpuPressureDesc: a calm card has no line at all", () => {
+    eq(formatGpuPressureDesc(CALM_AMD, true), "")
+})
+
+// each card carries its OWN severity: one critical card must not paint
+// a merely-high one red, and vice versa
+test("gpuPressureLevel: from the worse of the card's two pools", () => {
+    eq(gpuPressureLevel(CALM_AMD), "")
+    eq(gpuPressureLevel(HOT_NV), "critical")
+    eq(gpuPressureLevel(gpu("a", "nvidia", [7100, 8188], null)), "warn")
+})
+
+test("gpuPressureLevel: GTT alone can raise the level", () => {
+    eq(gpuPressureLevel(gpu("a", "amd", [100, 8192], [11400, 11814])), "critical")
+    eq(gpuPressureLevel(gpu("a", "amd", [100, 8192], [10300, 11814])), "warn")
+})
+
+test("gpuPressureLevel: thresholds are exact, not rounded into", () => {
+    // 84.9% must not round up to the 85% warn threshold
+    eq(gpuPressureLevel(gpu("a", "nvidia", [8490, 10000], null)), "")
+    eq(gpuPressureLevel(gpu("a", "nvidia", [8500, 10000], null)), "warn")
+    eq(gpuPressureLevel(gpu("a", "nvidia", [9490, 10000], null)), "warn")
+    eq(gpuPressureLevel(gpu("a", "nvidia", [9500, 10000], null)), "critical")
+})
+
+test("gpuPressureLevel: a card reporting no memory at all is not over", () => {
+    eq(gpuPressureLevel(gpu("a", "nvidia", [0, 0], null)), "")
+})
+
+// GB, not MiB, and not a cosmetic choice: measured at the pane's 440px
+// the MiB spelling makes the tile 217px against a 208px per-column
+// budget, which flips the whole homogeneous FlowBox to one column
+test("formatGpuPool: MiB in, one-decimal GB out", () => {
+    eq(formatGpuPool("VRAM", 7900, 8188), "VRAM 7.7/8.0 GB")
+    eq(formatGpuPool("GTT", 10500, 11814), "GTT 10.3/11.5 GB")
+    eq(formatGpuPool("VRAM", 0, 8192), "VRAM 0.0/8.0 GB")
+})
+
+test("poolPct: whole percent, and a zero total is not a divide by zero", () => {
+    eq(poolPct(7900, 8188), 96)
+    eq(poolPct(1611, 8192), 20)
+    eq(poolPct(0, 0), 0)
+    eq(poolPct(100, 0), 0)
 })
