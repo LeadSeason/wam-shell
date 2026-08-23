@@ -2,6 +2,8 @@ import { test, eq } from "./framework"
 import {
     formatGpuPool,
     formatGpuPressureDesc,
+    formatPanelGpu,
+    gpuPanelTag,
     gpuPressureLevel,
     formatGpuSub,
     formatRate,
@@ -387,6 +389,36 @@ test("gpuPressureLevel: thresholds are exact, not rounded into", () => {
 
 test("gpuPressureLevel: a card reporting no memory at all is not over", () => {
     eq(gpuPressureLevel(gpu("a", "nvidia", [0, 0], null)), "")
+})
+
+// The panel draws one stat per card, so each needs a name short enough
+// to sit beside cpu, ram and the network rates
+test("gpuPanelTag: a lone card is just GPU", () => {
+    eq(gpuPanelTag(["amd:card0"], 0), "GPU")
+    eq(gpuPanelTag([], 0), "GPU")
+})
+
+test("gpuPanelTag: the hybrid case is told apart by vendor", () => {
+    const ids = ["amd:card0", "nv:0"]
+    eq(gpuPanelTag(ids, 0), "AMD")
+    eq(gpuPanelTag(ids, 1), "NV")
+})
+
+test("gpuPanelTag: same-vendor cards fall back to list position", () => {
+    const ids = ["amd:card0", "amd:card1"]
+    eq(gpuPanelTag(ids, 0), "GPU0")
+    eq(gpuPanelTag(ids, 1), "GPU1")
+    // three cards, two of them AMD: position for all of them, so the
+    // odd one out is not the only card named differently
+    const mixed = ["amd:card0", "amd:card1", "nv:0"]
+    eq(gpuPanelTag(mixed, 2), "GPU2")
+})
+
+test("formatPanelGpu: a sensor the card does not expose is left out", () => {
+    eq(formatPanelGpu("GPU", 17, 48), "GPU 17% 48°C")
+    eq(formatPanelGpu("NV", 0, null), "NV 0%")
+    eq(formatPanelGpu("AMD", null, 44), "AMD 44°C")
+    eq(formatPanelGpu("GPU", null, null), "GPU")
 })
 
 // GB, not MiB, and not a cosmetic choice: measured at the pane's 440px
