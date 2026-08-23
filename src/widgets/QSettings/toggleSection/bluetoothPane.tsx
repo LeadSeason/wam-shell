@@ -28,7 +28,11 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
     // same hotplug rebind as the toggle button (bluetooth.tsx)
     return (
         <With value={createBinding(bluetooth, "adapter")}>
-            {adapter => (adapter ? <BluetoothWidgetBody pane={pane} name={name} /> : <></>)}
+            {/* null, not <></>: With appends the child into its own
+            Fragment, and nested Fragments are unsupported. This branch is
+            only reached on a machine with no adapter at all, which is why
+            it sat here unnoticed */}
+            {adapter => (adapter ? <BluetoothWidgetBody pane={pane} name={name} /> : null)}
         </With>
     )
 }
@@ -37,14 +41,13 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
 export function BtSwitch() {
     return (
         <With value={createBinding(bluetooth, "adapter")}>
-            {/* Two things With's inference needs, and neither is a cast.
-            A ternary rather than `adapter && …`, because a callback that
-            can return `false` does not satisfy `E extends JSX.Element`;
-            and the parameter annotated, because T does not flow from
-            `value` through createBinding's overloads — without it the
-            adapter arrives as `{}` and cannot be passed on. */}
+            {/* null, not <></>: With appends the child into its own
+            Fragment, and nested Fragments are unsupported. The parameter
+            is annotated because T does not flow from `value` through
+            createBinding's overloads — without it the adapter arrives as
+            `{}` and cannot be passed on. */}
             {(adapter: AstalBluetooth.Adapter | null) =>
-                adapter ? <BtSwitchBody adapter={adapter} /> : <></>
+                adapter ? <BtSwitchBody adapter={adapter} /> : null
             }
         </With>
     )
