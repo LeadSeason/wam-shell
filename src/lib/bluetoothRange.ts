@@ -6,11 +6,13 @@ import { registerDispose } from "./lifecycle"
 
 // Which bluetooth devices are actually within reach right now.
 //
-// bluez answers this with RSSI: a device carries one while the adapter
-// is hearing it. A paired device that is switched off, in its case or in
-// another room simply has none — which is the whole difference between
-// "paired, tap to connect" and "paired, but not here", and the pane had
-// no way to show it.
+// bluez answers this with RSSI: a device carries one while the adapter is
+// hearing it, and a device that has walked out of the room stops. That is
+// the difference between "paired, tap to connect" and "paired, but not
+// here", and the pane had no way to show it.
+//
+// The catch is that absence of RSSI is not the same as absence of the
+// device — see `everHeard` below, which is what keeps this honest.
 //
 // It cannot come from AstalBluetooth: `Device.rssi` is ALWAYS 0. The
 // vala getter reads a cached proxy property that, for devices built by
@@ -35,6 +37,33 @@ export interface Sighting {
 
 const [sightings, setSightings] = createState<Map<string, Sighting>>(new Map())
 export { sightings }
+
+// Addresses this session has heard advertise at least once.
+//
+// Silence is only evidence of absence for a device that would otherwise
+// be talking, and plenty of them never do: a paired BR/EDR device
+// answers an inquiry only while it is in pairing mode, so bluez never
+// hears it however close it is. Measured on a heavy desk speaker sitting
+// beside the laptop — no RSSI at all, while CONNECTED. Calling that "not
+// in range" is simply a lie.
+//
+// It is not as simple as classic-vs-LE either: a dual-mode headset
+// measured `Class` 2360324 (so, classic) AND a healthy -58 dBm, because
+// it also advertises over LE. The only thing that actually settles it is
+// whether we have ever heard the device — so that is what gets recorded,
+// and a device that has never been heard is never called absent.
+//
+// Deliberately NOT cleared when the trackers are released: which devices
+// advertise does not change because a pane closed, and carrying it
+// between visits is what lets a device heard on one visit be recognised
+// as gone on the next.
+const everHeard = new Set<string>()
+
+/** has this device ever been heard advertising? Only then does silence
+ *  from it mean anything */
+export function advertises(address: string): boolean {
+    return everHeard.has(address)
+}
 
 /** in range with no RSSI of its own: a connected device is by
  *  definition within reach, and bluez publishes no RSSI for one */
@@ -82,8 +111,18 @@ function scheduleFlush() {
     })
 }
 
-function see(address: string, rssi: number) {
+/**
+ * Record that the adapter can reach this device right now.
+ *
+ * `advertising` is the evidence question, and it is NOT the same as the
+ * presence question: a device counts as reachable the moment it
+ * connects, but connecting says nothing about whether it would ever
+ * announce itself unprompted. Only a real RSSI does, so only a real RSSI
+ * earns a place in `everHeard`.
+ */
+function see(address: string, rssi: number, advertising = true) {
     if (!address) return
+    if (advertising) everHeard.add(address)
     pending.set(address, { rssi, at: GLib.get_monotonic_time() })
     dropped.delete(address)
     scheduleFlush()
@@ -110,7 +149,7 @@ function onProperties(
     const rssi = changed.lookup_value("RSSI", null)
     if (rssi) see(address, rssi.get_int16())
     const connected = changed.lookup_value("Connected", null)
-    if (connected?.get_boolean() && !rssi) see(address, CONNECTED_RSSI)
+    if (connected?.get_boolean() && !rssi) see(address, CONNECTED_RSSI, false)
 
     // bluez also INVALIDATES RSSI, and that is deliberately ignored:
     // stopping a discovery invalidates it for every device at once,
