@@ -262,6 +262,140 @@ export function togglePowered(): void {
     setPoweredAsync(!bluetooth.is_powered)
 }
 
+// --------------------------------------------------------- discoverable
+
+// Whether the adapter is advertising ITSELF to other devices.
+//
+// Tracked off the bus rather than read from AstalBluetooth's Adapter,
+// because a widget that holds that object stops being told about it:
+// astal swaps the Adapter when bluez drops and re-adds it (a bluetoothd
+// restart) WITHOUT emitting notify::adapter, so a reference a pane
+// captured when it was built goes quietly stale. Measured — bluez
+// reporting Discoverable=yes while the pane's checkbox, bound to the
+// held object, stayed unticked. Power escaped this by having
+// `bluetooth.is_powered`, which astal maintains against the live
+// adapter; discoverable has no such counterpart, so it gets one here.
+//
+// The bus is also the only place the FULL truth lives: bluez turns
+// discoverability back off by itself after DiscoverableTimeout (180s as
+// shipped), and a checkbox that does not hear about that goes on
+// claiming the machine is visible when it is not.
+const [discoverable, setDiscoverable] = createState(false)
+export { discoverable }
+
+let discoverableSub = 0
+let discoverableRefs = 0
+
+function readDiscoverable() {
+    Gio.DBus.system.call(
+        "org.bluez",
+        adapterPath(),
+        "org.freedesktop.DBus.Properties",
+        "Get",
+        new GLib.Variant("(ss)", ["org.bluez.Adapter1", "Discoverable"]),
+        null,
+        Gio.DBusCallFlags.NONE,
+        CALL_TIMEOUT_MS,
+        null,
+        (_conn, res) => {
+            try {
+                // Get answers `(v)`: the tuple's one child is the
+                // variant wrapper, and the value is inside it
+                const reply = Gio.DBus.system.call_finish(res)
+                setDiscoverable(reply.get_child_value(0).get_variant().get_boolean())
+            } catch (e) {
+                console.warn("bluetooth: reading discoverable failed:", e)
+            }
+        },
+    )
+}
+
+function onAdapterProperties(
+    _c: Gio.DBusConnection,
+    _s: string | null,
+    path: string,
+    _i: string,
+    _sig: string,
+    params: GLib.Variant,
+) {
+    // the filter is only trustworthy once the lookup has answered:
+    // before that adapterPath() is still the /org/bluez/hci0 guess, and
+    // rejecting on it would drop a second adapter's signals as well as
+    // its own
+    if (adapterPathResolved && path !== adapterPath()) return
+    const value = params.get_child_value(1).lookup_value("Discoverable", null)
+    if (value) setDiscoverable(value.get_boolean())
+}
+
+/**
+ * Start tracking discoverability, and get back the release for it.
+ *
+ * Refcounted like the range tracker: the subscription exists only while
+ * a widget is showing the value, not for the whole session over a pane
+ * nobody has opened.
+ */
+export function acquireDiscoverable(): () => void {
+    if (discoverableRefs++ === 0) {
+        resolveAdapterPath()
+        discoverableSub = Gio.DBus.system.signal_subscribe(
+            "org.bluez",
+            "org.freedesktop.DBus.Properties",
+            "PropertiesChanged",
+            null,
+            "org.bluez.Adapter1",
+            Gio.DBusSignalFlags.NONE,
+            onAdapterProperties,
+        )
+        // the signal only carries CHANGES; the current value has to be
+        // asked for
+        readDiscoverable()
+    }
+    let released = false
+    return () => {
+        if (released) return
+        released = true
+        if (--discoverableRefs > 0) return
+        stopDiscoverableWatch()
+    }
+}
+
+function stopDiscoverableWatch() {
+    if (discoverableSub) {
+        Gio.DBus.system.signal_unsubscribe(discoverableSub)
+        discoverableSub = 0
+    }
+    discoverableRefs = 0
+}
+
+/**
+ * Make the adapter visible to other devices, or stop.
+ *
+ * Through the bus for the same reason everything else here is: astal's
+ * generated setter is fire-and-forget with the error dropped, so a
+ * refused write looked exactly like one that worked. Nothing is set
+ * optimistically — the checkbox moves when bluez says it moved, so a
+ * refusal shows up as a checkbox that does not move.
+ */
+export function setDiscoverableAsync(target: boolean): void {
+    resolveAdapterPath()
+    call(
+        adapterPath(),
+        "org.freedesktop.DBus.Properties",
+        "Set",
+        new GLib.Variant("(ssv)", [
+            "org.bluez.Adapter1",
+            "Discoverable",
+            new GLib.Variant("b", target),
+        ]),
+        CALL_TIMEOUT_MS,
+    ).catch(e => console.warn("bluetooth: discoverable change failed:", e))
+}
+
+/** flip discoverability, from the state the UI is actually showing */
+export function toggleDiscoverable(): void {
+    setDiscoverableAsync(!discoverable.get())
+}
+
 // ------------------------------------------------------------ discovery
 
 // the NotReady retry while the adapter powers on: tracked so the
@@ -319,6 +453,8 @@ export function stopDiscoveryAsync(): void {
 // convention for lib modules with long-lived sources (see AGENTS.md)
 export function dispose() {
     cancelDiscoveryRetry()
+    stopDiscoverableWatch()
+    setDiscoverable(false)
     endPending()
     if (errorTimer) {
         sourceRemove(errorTimer)
