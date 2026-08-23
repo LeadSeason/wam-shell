@@ -126,7 +126,29 @@ EOF
     checked=$((checked + 1))
     if [ -n "$OUT" ]; then
         cp "$css" "$OUT/$name.css"
-        grep -oE '^[^{}]+\{' "$css" | sed 's/ *{$//' | sort -u >"$OUT/$name.selectors"
+        # One line per SELECTOR, not per rule, and independent of how the
+        # source happened to wrap.
+        #
+        # This used to be `grep -oE '^[^{}]+\{'`, which only ever matched
+        # a selector group written on ONE line. The moment a group is
+        # split across lines — which is what prettier does to `a, b, c {`
+        # — every line but the last ends in a comma, matches nothing, and
+        # its selectors vanish from the set. The rule COUNT stays right
+        # (one `{` either way), so the file looks fine while quietly
+        # under-reporting, and a before/after diff across a reformat
+        # showed twenty selectors "removed" that were never touched.
+        #
+        # So: join the file, drop comments (they carry no braces and
+        # would otherwise glue themselves to the next selector), take
+        # everything before each `{`, then split the groups on commas.
+        tr '\n' ' ' <"$css" |
+            sed -e 's|/\*[^*]*\*\+\([^/*][^*]*\*\+\)*/||g' |
+            grep -oE '[^{}]+\{' |
+            sed -e 's/ *{$//' -e 's/^ *//' -e 's/  */ /g' |
+            tr ',' '\n' |
+            sed -e 's/^ *//' -e 's/ *$//' |
+            grep -v '^$' |
+            sort -u >"$OUT/$name.selectors"
     fi
 done
 
