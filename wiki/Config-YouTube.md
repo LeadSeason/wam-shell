@@ -7,10 +7,10 @@ item locally only — YouTube has no read/done API.
 
 Section: `[youtube]`
 
-| Key | Type | Default | What it does |
-|---|---|---|---|
-| `enabled` | bool | `false` | Master toggle for YouTube notifications |
-| `poll_minutes` | int | `60` | Minutes between syncs (clamped to 15 minimum); each sync fetches the uploads playlist of every subscribed channel (~1 quota unit per subscription — the default 10k/day quota fits ~275 subscriptions hourly), and the interval is raised automatically when your subscription count would exceed the quota |
+| Key            | Type | Default | What it does                                                                                                                                                                                                                                                                                                |
+| -------------- | ---- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`      | bool | `false` | Master toggle for YouTube notifications                                                                                                                                                                                                                                                                     |
+| `poll_minutes` | int  | `60`    | Minutes between syncs (clamped to 15 minimum); each sync fetches the uploads playlist of every subscribed channel (~1 quota unit per subscription — the default 10k/day quota fits ~275 subscriptions hourly), and the interval is raised automatically when your subscription count would exceed the quota |
 
 Setup:
 

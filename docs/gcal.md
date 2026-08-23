@@ -16,8 +16,9 @@ Not merged.
   `backgroundColor`) and name + account in the tooltip.
   `hidden_calendars` in `[calendar]` hides named calendars
   (e.g. "Birthdays"); `"email:Name"` hides one in a single account.
-- Sync covers ~5 months around the viewed month (`[focus-1mo,
-  focus+4mo)`), re-syncs when navigation leaves the loaded window, and
+- Sync covers ~5 months around the viewed month
+  (`[focus-1mo, focus+4mo)`), re-syncs when navigation leaves the loaded
+  window, and
   refreshes every `poll_minutes` (default 15) plus on popover open
   (age-gated 60 s). Events are cached to
   `$XDG_CACHE_HOME/wam-shell/gcal-events.json` for instant marks on
@@ -48,7 +49,7 @@ PKCE-protected and why the loopback redirect is bound to the local
 machine. It is not a leak, and rotating it on discovery would be
 pointless.
 
-What it *is* is a **shared resource**, and that has consequences worth
+What it _is_ is a **shared resource**, and that has consequences worth
 stating rather than discovering:
 
 - **The daily quota is shared across everyone using the shipped
@@ -69,20 +70,20 @@ stating rather than discovering:
   quota and the warning are inconveniences; this one is not. If the
   Cloud project behind the shipped client is deleted, suspended, or
   fails a verification review, then Calendar and YouTube stop working
-  for *everybody* on the same day, and what a user sees is a token
+  for _everybody_ on the same day, and what a user sees is a token
   exchange that fails with no explanation attached to it. There is
   nothing a release can do about that after the fact — the only
   insulation is not depending on it.
 
-  So: if you rely on the calendar or the YouTube feed for anything that
-  matters, use your own client. It takes about five minutes, it is the
-  difference between a dependency you control and one you do not, and
-  the shipped client is best understood as a way to *try* the feature
-  rather than a foundation to build a workday on.
+    So: if you rely on the calendar or the YouTube feed for anything that
+    matters, use your own client. It takes about five minutes, it is the
+    difference between a dependency you control and one you do not, and
+    the shipped client is best understood as a way to _try_ the feature
+    rather than a foundation to build a workday on.
 
 **Use your own client if any of that bites you** — a quota you do not
 share, no unverified warning, no test-user cap. Create an OAuth client
-ID of type *Desktop app* at `console.cloud.google.com`, enable the
+ID of type _Desktop app_ at `console.cloud.google.com`, enable the
 Calendar and/or YouTube Data APIs on the project, and put it in
 `~/.config/wam-shell/google.env` (chmod 600):
 
@@ -127,8 +128,9 @@ so, because to a user it looks like being randomly signed out.
   incremental machinery): small, quota-cheap, stateless. Pagination
   capped at 10 pages per request. A failed account or calendar degrades
   to zero events for it instead of failing the merge.
-- Google quirks handled in `mapGoogleEvent` (unit-tested): `status:
-  cancelled` dropped, all-day `end.date` is **exclusive**, timed events
+- Google quirks handled in `mapGoogleEvent` (unit-tested):
+  `status: cancelled` dropped, all-day `end.date` is **exclusive**, timed
+  events
   ending at midnight don't spill, zero-length events cover their start
   day, recurring events expanded server-side (`singleEvents=true`).
 - The calendar color dot is the shell's only inline style (per-calendar

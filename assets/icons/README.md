@@ -28,12 +28,12 @@ which is not the same as it appearing as a literal in `src/`. Four
 sources produce names no grep will find, and everything they can emit
 has to be bundled:
 
-| source | family |
-| --- | --- |
-| `AstalBattery.batteryIconName` | `battery-*` (36 of them) |
-| `AstalNetwork` `wifi`/`wired`/`ap` `.iconName` | `network-wireless-*`, `network-wired-*`, `network-offline` |
-| `AstalWp` `volumeIcon` | `audio-volume-*`, `microphone-sensitivity-*` |
-| BlueZ `device.icon` (device class) | `phone`, `printer`, `camera-photo`, `input-*`, `audio-headset`, `computer`, … |
+| source                                         | family                                                                        |
+| ---------------------------------------------- | ----------------------------------------------------------------------------- |
+| `AstalBattery.batteryIconName`                 | `battery-*` (36 of them)                                                      |
+| `AstalNetwork` `wifi`/`wired`/`ap` `.iconName` | `network-wireless-*`, `network-wired-*`, `network-offline`                    |
+| `AstalWp` `volumeIcon`                         | `audio-volume-*`, `microphone-sensitivity-*`                                  |
+| BlueZ `device.icon` (device class)             | `phone`, `printer`, `camera-photo`, `input-*`, `audio-headset`, `computer`, … |
 
 Two more that grep misses for different reasons: `power-profile-*` is
 built by interpolation (`power-profile-${v}-symbolic`), and the SCSS

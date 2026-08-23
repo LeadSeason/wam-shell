@@ -11,7 +11,12 @@ import { registerDispose } from "./lifecycle"
 
 const AGENT_PATH = "/com/wamshell/bluetooth/agent"
 const CAPABILITY = "KeyboardDisplay"
-const PROMPT_TIMEOUT_MS = 30_000
+// bluez cancels the pairing itself if the agent stays silent for 60s,
+// so this has to land inside that — but 30s was tight enough that a
+// prompt read at a normal pace expired underneath the user, and the
+// failure it produced then poisoned the next attempt too. 45s leaves
+// bluez its margin and the reader theirs
+const PROMPT_TIMEOUT_MS = 45_000
 
 export interface PairingRequest {
     kind: "confirm" | "pin" | "passkey" | "display" | "authorize"

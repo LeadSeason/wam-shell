@@ -9,13 +9,13 @@ historical records.
 
 Section: `[todoist]`
 
-| Key | Type | Default | What it does |
-|---|---|---|---|
-| `enabled` | bool | `true` | Master toggle (requires the API token below) |
-| `poll_minutes` | int | `5` | Minutes between syncs (at least 1); the center also refreshes when opened, at most once a minute |
-| `reminders` | bool | `true` | Raise a banner for a scheduled task at its Todoist reminder time and again at the due moment; high priority, stays until dismissed |
-| `remind_before_minutes` | int | `5` | Fallback banner time for tasks without a Todoist reminder: this many minutes before due |
-| `snooze_minutes` | int | `30` | The banner's Postpone button re-raises it this many minutes later, capped at the due time; local only, the task on Todoist is never changed |
+| Key                     | Type | Default | What it does                                                                                                                                |
+| ----------------------- | ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`               | bool | `true`  | Master toggle (requires the API token below)                                                                                                |
+| `poll_minutes`          | int  | `5`     | Minutes between syncs (at least 1); the center also refreshes when opened, at most once a minute                                            |
+| `reminders`             | bool | `true`  | Raise a banner for a scheduled task at its Todoist reminder time and again at the due moment; high priority, stays until dismissed          |
+| `remind_before_minutes` | int  | `5`     | Fallback banner time for tasks without a Todoist reminder: this many minutes before due                                                     |
+| `snooze_minutes`        | int  | `30`    | The banner's Postpone button re-raises it this many minutes later, capped at the due time; local only, the task on Todoist is never changed |
 
 ## Authentication
 

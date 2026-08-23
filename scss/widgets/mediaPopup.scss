@@ -29,7 +29,8 @@ window.MediaPopup {
         .title {
             @include u.title;
         }
-        .artist, .time {
+        .artist,
+        .time {
             @include u.subtitle;
         }
         .section {
