@@ -23,6 +23,15 @@ const wp = AstalWp.get_default()
 /** how long an error stays on the row before it clears itself */
 const ERROR_MS = 4000
 
+// Addresses whose pairing has failed once already, module-level because
+// the row itself is rebuilt whenever the device list refreshes and would
+// forget between attempts. Cleared on success, so a device that pairs and
+// later fails starts its count over.
+//
+// This gates the forget-on-failure below, and the gate is the point: see
+// dropFailedPairing.
+const failedPairingOnce = new Set<string>()
+
 /** audio profile (A2DP/HFP/…) selector for a connected bluetooth device,
  *  driven by the pipewire card (bluez_card.<MAC>) via AstalWp.
  *  Inline option rows rather than a Gtk.DropDown: dropdown popovers
@@ -269,6 +278,9 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan, scanSettled }: De
             }
         }
         if (attempt !== pairAttempt) return
+        // paired: this device gets a clean slate, so a failure much later
+        // is judged on its own rather than against an old grudge
+        failedPairingOnce.delete(device.address)
         // bluez sets Paired before it answers Pair, so there is no
         // notify to wait for here — going straight on is also what
         // rescues a pairing that succeeded while the notify was missed
@@ -276,19 +288,38 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan, scanSettled }: De
     }
 
     /**
-     * Forget a device whose pairing failed.
+     * Forget a device that has now failed to pair TWICE.
      *
      * bluez keeps the half-built device object behind, and its stale
-     * state makes the NEXT Pair fail the same way — which is what turns
+     * state makes the next Pair fail the same way — which is what turns
      * one failed attempt into a device that "keeps failing" until it is
-     * removed by hand in bluetoothctl. Deferred by the length of the
-     * error message, because removing the device takes this row with it.
+     * removed by hand in bluetoothctl. Forgetting it is the fix.
+     *
+     * But forgetting is destructive, and a first failure is very often
+     * something else entirely: a device that was not ready, a passkey
+     * read too slowly, a radio busy with something else. Deleting a bond
+     * over one bad moment is a much worse outcome than one more retry, so
+     * the first failure is only remembered. The second is what shows the
+     * device is genuinely wedged, and only that one clears it.
+     *
+     * Cleaning up at RETRY time instead would read better and does not
+     * work: RemoveDevice destroys the object path, so there would be
+     * nothing left to pair until bluez rediscovers it.
+     *
+     * Deferred by the length of the error message, because removing the
+     * device takes this row with it.
      */
     function dropFailedPairing(attempt: number) {
+        const address = device.address
+        if (!failedPairingOnce.has(address)) {
+            failedPairingOnce.add(address)
+            return
+        }
         delay(ERROR_MS, () => {
             if (attempt !== pairAttempt || device.paired) return
+            failedPairingOnce.delete(address)
             removeDeviceAsync(device).catch(e =>
-                console.warn("bluetooth: clearing a failed pairing:", e),
+                console.warn("bluetooth: clearing a twice-failed pairing:", e),
             )
         })
     }
