@@ -2,53 +2,53 @@ name: Bug report
 description: Something in the shell misbehaves, crashes, or will not start
 labels: [bug]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Thanks for reporting. The one thing that saves the most
-        back-and-forth is the output of `wam report` — it carries the
-        versions, your settings and the relevant part of the log in a
-        single block, with home paths, your username, emails, IP
-        addresses and token-shaped values already redacted.
+    - type: markdown
+      attributes:
+          value: |
+              Thanks for reporting. The one thing that saves the most
+              back-and-forth is the output of `wam report` — it carries the
+              versions, your settings and the relevant part of the log in a
+              single block, with home paths, your username, emails, IP
+              addresses and token-shaped values already redacted.
 
-  - type: textarea
-    id: report
-    attributes:
-      label: wam report
-      description: Run `wam report --copy` and paste it here (it is already fenced).
-      placeholder: |
-        Run: wam report --copy
-        …then paste. If it is too big for a comment, `wam report --file`
-        writes it to ~/.cache/wam-shell/wam-report.txt to attach instead.
-    validations:
-      required: true
+    - type: textarea
+      id: report
+      attributes:
+          label: wam report
+          description: Run `wam report --copy` and paste it here (it is already fenced).
+          placeholder: |
+              Run: wam report --copy
+              …then paste. If it is too big for a comment, `wam report --file`
+              writes it to ~/.cache/wam-shell/wam-report.txt to attach instead.
+      validations:
+          required: true
 
-  - type: textarea
-    id: what-happened
-    attributes:
-      label: What happened
-      description: What you saw, and what you expected instead.
-    validations:
-      required: true
+    - type: textarea
+      id: what-happened
+      attributes:
+          label: What happened
+          description: What you saw, and what you expected instead.
+      validations:
+          required: true
 
-  - type: textarea
-    id: steps
-    attributes:
-      label: Steps to reproduce
-      placeholder: |
-        1. …
-        2. …
-        3. …
-    validations:
-      required: false
+    - type: textarea
+      id: steps
+      attributes:
+          label: Steps to reproduce
+          placeholder: |
+              1. …
+              2. …
+              3. …
+      validations:
+          required: false
 
-  - type: input
-    id: when-started
-    attributes:
-      label: Did this ever work?
-      description: >
-        If it broke after an update, the commit it worked on helps a
-        lot — `wam status` prints the current one.
-      placeholder: "worked on 7fc2186, broke after wam update today"
-    validations:
-      required: false
+    - type: input
+      id: when-started
+      attributes:
+          label: Did this ever work?
+          description: >
+              If it broke after an update, the commit it worked on helps a
+              lot — `wam status` prints the current one.
+          placeholder: "worked on 7fc2186, broke after wam update today"
+      validations:
+          required: false

@@ -20,8 +20,19 @@ test("sleepTimerState: serialize/parse round-trips", () => {
         { ...base, paused: true, pausedSeconds: 420, dim: { pre: 0.7, to: 0.35 } },
     )
     eq(
-        parse(serialize({ ...base, mutedStreams: [[183, "Firefox"], [186, "mpv"]] }))!.mutedStreams,
-        [[183, "Firefox"], [186, "mpv"]],
+        parse(
+            serialize({
+                ...base,
+                mutedStreams: [
+                    [183, "Firefox"],
+                    [186, "mpv"],
+                ],
+            }),
+        )!.mutedStreams,
+        [
+            [183, "Firefox"],
+            [186, "mpv"],
+        ],
     )
 })
 
@@ -45,10 +56,21 @@ test("sleepTimerState: parse rejects malformed input", () => {
         [1, ""],
         [2, ""],
     ])
-    eq(parse(JSON.stringify({ deadline: null, mutedStreams: [[3, "Firefox"], [4, 9]] }))!.mutedStreams, [
-        [3, "Firefox"],
-        [4, ""],
-    ])
+    eq(
+        parse(
+            JSON.stringify({
+                deadline: null,
+                mutedStreams: [
+                    [3, "Firefox"],
+                    [4, 9],
+                ],
+            }),
+        )!.mutedStreams,
+        [
+            [3, "Firefox"],
+            [4, ""],
+        ],
+    )
 })
 
 test("sleepTimerState decide: empty and owned", () => {
@@ -78,11 +100,31 @@ test("sleepTimerState decide: dim-only after a pre-restart fire", () => {
     const now = 1_000_000
     eq(
         decide(
-            { deadline: null, paused: false, pausedSeconds: 0, dim: { pre: 0.7, to: 0.35 }, mutedStreams: [], pid: 0 },
+            {
+                deadline: null,
+                paused: false,
+                pausedSeconds: 0,
+                dim: { pre: 0.7, to: 0.35 },
+                mutedStreams: [],
+                pid: 0,
+            },
             now,
         ),
         "dim-only",
     )
     // no deadline and no dim is nothing
-    eq(decide({ deadline: null, paused: false, pausedSeconds: 0, dim: null, mutedStreams: [], pid: 0 }, now), "empty")
+    eq(
+        decide(
+            {
+                deadline: null,
+                paused: false,
+                pausedSeconds: 0,
+                dim: null,
+                mutedStreams: [],
+                pid: 0,
+            },
+            now,
+        ),
+        "empty",
+    )
 })

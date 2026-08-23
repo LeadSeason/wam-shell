@@ -28,11 +28,11 @@ Output protocol: the first stdout line is always the verdict.
 
 ## Scenarios
 
-| scenario  | what it does |
-|-----------|--------------|
-| idle-1mon | no interaction, 20s window (the 1s and 3s intervals dominate) |
+| scenario  | what it does                                                            |
+| --------- | ----------------------------------------------------------------------- |
+| idle-1mon | no interaction, 20s window (the 1s and 3s intervals dominate)           |
 | churn     | 100 open/close cycles over the five toggleable popups, then a forced GC |
-| startup   | time to first metrics response + blocking exec totals before it |
+| startup   | time to first metrics response + blocking exec totals before it         |
 
 Each scenario is one single-line JSON blob from `run.sh`; `compare.sh`
 diffs the blobs of two legs.

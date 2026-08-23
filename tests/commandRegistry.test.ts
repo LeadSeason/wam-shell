@@ -63,10 +63,7 @@ test("commandRegistry: no arguments at all is a usage hint, not a crash", () => 
 
 test("commandRegistry: an unknown command says so and names itself", () => {
     const r = fresh()
-    eq(
-        raw(r, ["nosuchthing"]),
-        'Unknown request: nosuchthing. Type "help" for a list of commands.',
-    )
+    eq(raw(r, ["nosuchthing"]), 'Unknown request: nosuchthing. Type "help" for a list of commands.')
 })
 
 test("commandRegistry: a throwing main is reported, not propagated", () => {

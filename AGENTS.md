@@ -6,8 +6,9 @@
   notification daemon. If the user runs another daemon (swaync, dunst),
   the shell defers to it at startup (`[notifications] daemon`, default
   "auto"); "wam-shell"/"system" force one or the other.
-- The notification center toggles via `ags request -i wam-shell
-  notifications` (bind it in the compositor config).
+- The notification center toggles via
+  `ags request -i wam-shell notifications` (bind it in the compositor
+  config).
 - External services merge into the center through the provider registry
   (`src/lib/notificationProviders.ts`): one lib module per service, a
   filter icon per provider in the center's header. New providers need no
@@ -97,9 +98,9 @@ widget-class list comment in `scss/widgets/bar/bar.scss`.
 
 - User-facing options live in `config.toml` (all commented, defaults
   documented) and are parsed in `src/config.ts`.
-- Validation goes through `lib/configSchema.ts` — `createReader(data,
-  section)` then `bool` / `num` / `str` / `oneOf` / `strList`. Don't
-  hand-roll `typeof` checks.
+- Validation goes through `lib/configSchema.ts` —
+  `createReader(data, section)` then `bool` / `num` / `str` / `oneOf` /
+  `strList`. Don't hand-roll `typeof` checks.
 - **Decide the flat fallback explicitly.** Any key could historically
   also be written at the top level, and the top level is shared: pass
   `sectionOnly` for any key whose bare name another section might claim
@@ -159,9 +160,10 @@ widget-class list comment in `scss/widgets/bar/bar.scss`.
           propagationPhase={Gtk.PropagationPhase.CAPTURE}
           onPressed={g => g.set_state(Gtk.EventSequenceState.CLAIMED)} />
 
-  Clicking the row BODY still activates it. Re-check both halves
-  whenever a button gains a button child — drive the real widget in a
-  nested compositor (`swaymsg seat - cursor set/press`).
+    Clicking the row BODY still activates it. Re-check both halves
+    whenever a button gains a button child — drive the real widget in a
+    nested compositor (`swaymsg seat - cursor set/press`).
+
 - **A fullscreen layer-shell window does not paint its own background.**
   The compositor sizes the SURFACE, but GTK allocates content by
   natural size, so `window.Foo { background-color: … }` paints only a
@@ -214,8 +216,17 @@ so does not preserve parameter order.
 ## Formatting
 
 - Prettier is the formatter; config lives in `.prettierrc`. Run
-  `node_modules/.bin/prettier --check "src/**/*.{ts,tsx}"` (`--write`
-  to fix) when a PR is about to be opened, not on every commit.
+  `node_modules/.bin/prettier --check .` (`--write` to fix) when a PR is
+  about to be opened, not on every commit.
+- The scope is now the WHOLE tree, not just `src/**/*.{ts,tsx}`. `tests/`,
+  `scss/`, `docs/`, `wiki/` and the root configs were brought in at once;
+  `@girs/` was already clean. Formatting scss changed no compiled CSS —
+  verified byte-for-byte across all six themes — but it does wrap selector
+  lists, which is what `scripts/verify-scss.sh` had to learn to read.
+- One wart: `pnpm-lock.yaml` is in scope, and pnpm rewrites it in its own
+  2-space YAML whenever a dependency changes. After any such change the
+  check will flag it until prettier is re-run. If that becomes tiresome,
+  put the lockfile in a `.prettierignore` rather than dropping the check.
 - Imports of gnim API (`createState`, `For`, `With`, accessors) come
   from `"gnim"`, GObject from `"ags/gobject"` — not from `"ags"`.
 
@@ -252,32 +263,33 @@ so does not preserve parameter order.
 - `coredumpctl` backtraces are useless by default here (every frame is
   `??? () at /usr/lib/libgtk-4.so.1`). Enable debuginfod first:
 
-  ```sh
-  export DEBUGINFOD_URLS="https://debuginfod.archlinux.org https://debuginfod.cachyos.org"
-  coredumpctl debug <PID> --debugger=gdb \
-      --debugger-arguments="-batch -iex 'set debuginfod enabled on' -ex 'bt 16'"
-  ```
+    ```sh
+    export DEBUGINFOD_URLS="https://debuginfod.archlinux.org https://debuginfod.cachyos.org"
+    coredumpctl debug <PID> --debugger=gdb \
+        --debugger-arguments="-batch -iex 'set debuginfod enabled on' -ex 'bt 16'"
+    ```
 
-  The first run downloads a few hundred MB; after that it is cached.
-  Do this BEFORE theorising about a crash.
+    The first run downloads a few hundred MB; after that it is cached.
+    Do this BEFORE theorising about a crash.
+
 - Four known crash signatures, four different causes — classify a new
   core by its frame 0 before assuming it is one of these:
-  1. `gtk_synthesize_crossing_events` (matches upstream
-     [GNOME/gtk#3090](https://gitlab.gnome.org/GNOME/gtk/-/issues/3090)):
-     crossing-event synthesis over a widget tree changed mid-dispatch —
-     banner rows destroyed from inside gesture handlers.
-  2. `gdk_wayland_toplevel_remove_from_session`, trigger is MONITOR
-     REMOVAL (`hyprctl output create headless` + remove reproduces it
-     100%). Fix that shipped: per-monitor windows stay out of the
-     `Gtk.Application` (no `application={app}` on Bar/OSD); they are
-     therefore not in `app.windows` and unreachable by
-     `app.get_window()`/`toggle_window()`. Do NOT try to fix this by
-     reordering teardown — the toplevel is freed before any JS cleanup
-     runs.
-  3. `astal_hyprland_hyprland_get_default` →
-     `g_io_stream_get_input_stream` on a NULL stream: missing Hyprland
-     IPC socket segfaults at startup; a segfault inside the library, so
-     `try`/`catch` does nothing.
+    1. `gtk_synthesize_crossing_events` (matches upstream
+       [GNOME/gtk#3090](https://gitlab.gnome.org/GNOME/gtk/-/issues/3090)):
+       crossing-event synthesis over a widget tree changed mid-dispatch —
+       banner rows destroyed from inside gesture handlers.
+    2. `gdk_wayland_toplevel_remove_from_session`, trigger is MONITOR
+       REMOVAL (`hyprctl output create headless` + remove reproduces it
+       100%). Fix that shipped: per-monitor windows stay out of the
+       `Gtk.Application` (no `application={app}` on Bar/OSD); they are
+       therefore not in `app.windows` and unreachable by
+       `app.get_window()`/`toggle_window()`. Do NOT try to fix this by
+       reordering teardown — the toplevel is freed before any JS cleanup
+       runs.
+    3. `astal_hyprland_hyprland_get_default` →
+       `g_io_stream_get_input_stream` on a NULL stream: missing Hyprland
+       IPC socket segfaults at startup; a segfault inside the library, so
+       `try`/`catch` does nothing.
 - For signature 1: removing a banner from inside a click is deferred
   one idle turn (`removePopupDeferred` in `lib/notifd`). The `resolved`
   handler is the funnel — `desktop.dismiss()`/`invoke()` emit it
@@ -320,7 +332,7 @@ so does not preserve parameter order.
 - There is no CI, deliberately. Five gates run LOCALLY, once, when a PR
   is about to be opened — and again before merging if the tree moved:
 
-      prettier --check "src/**/*.{ts,tsx}"
+      prettier --check .
       pnpm typecheck
       pnpm test
       pnpm test:smoke
@@ -396,8 +408,9 @@ so does not preserve parameter order.
   `origin/master` into the branch and resolve conflicts there first.
 - Before merging a branch, do a code review of its changes unless one
   was already done in this session.
-- Verify the shell starts clean before committing: `ags quit -i
-  wam-shell; timeout 8 ags run app.tsx` (no Gjs-CRITICAL / JS ERROR).
+- Verify the shell starts clean before committing:
+  `ags quit -i wam-shell; timeout 8 ags run app.tsx` (no Gjs-CRITICAL /
+  JS ERROR).
 - When a change is ready for the user to SEE, restart the live shell
   without being asked: `ags quit -i wam-shell`, then `ags run app.tsx`
   detached (it must keep running — no `timeout`). Do not leave the user

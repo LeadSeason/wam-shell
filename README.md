@@ -24,7 +24,7 @@ volume the OSD shows and the same one the sleep timer restores.
 - **Quick settings** — audio and brightness sliders with per-device
   panes, Wi-Fi, wired, Bluetooth (including pairing), VPN, power
   profiles, night light, sway gaps, a media player card and the tray.
-- **A notification center and banners.** By default the shell *is* the
+- **A notification center and banners.** By default the shell _is_ the
   notification daemon; it steps aside if another one is already running.
   Banners honour the sender's own `expire_timeout`, fold per app, and
   never bury a critical. Middle-click a banner to snooze it for ten
@@ -116,7 +116,7 @@ turn one on and read what it asks for.
   diverged. Stashes any local changes (they are recoverable, and the
   discarded HEAD is printed so a reset undoes the whole thing),
   hard-resets to the remote, and drops the cached stylesheet so it is
-  rebuilt. Cached *state* — seen markers, sleep timer, calendar and
+  rebuilt. Cached _state_ — seen markers, sleep timer, calendar and
   YouTube data — is left alone.
 - `wam logs [-f]` — the shell's log from wherever this start method put
   it: the journal under autostart, `~/.cache/wam-shell/shell.log` after
@@ -220,7 +220,7 @@ Four notes on these:
   the bind simply does nothing.
 - **A request is a toggle where the surface is one.** Pressing the
   launcher bind while the launcher is up closes it; pressing the
-  clipboard bind while it is up in app mode *switches* it to the
+  clipboard bind while it is up in app mode _switches_ it to the
   clipboard rather than dismissing it, so the bind you pressed is the
   one that answers.
 - **`record` needs no second bind to stop.** The same request stops a
@@ -235,16 +235,16 @@ Four notes on these:
 
 ## Documentation
 
-| | |
-|---|---|
-| [wiki](https://github.com/LeadSeason/wam-shell/wiki) | every config option, one page per section |
-| [docs/Architecture.md](docs/Architecture.md) | how the layers fit together |
-| [docs/Providers.md](docs/Providers.md) | the notification-center provider contract |
-| [docs/Styling.md](docs/Styling.md) | themes, `user.scss`, the class names to target |
-| [docs/Tray.md](docs/Tray.md) | tray behaviour and pinning |
-| [docs/gcal.md](docs/gcal.md) | Google Calendar and the shared OAuth stack |
-| [docs/qSettings.md](docs/qSettings.md) | quick settings panes |
-| [AGENTS.md](AGENTS.md) | conventions, gates and the reasoning behind them |
+|                                                      |                                                  |
+| ---------------------------------------------------- | ------------------------------------------------ |
+| [wiki](https://github.com/LeadSeason/wam-shell/wiki) | every config option, one page per section        |
+| [docs/Architecture.md](docs/Architecture.md)         | how the layers fit together                      |
+| [docs/Providers.md](docs/Providers.md)               | the notification-center provider contract        |
+| [docs/Styling.md](docs/Styling.md)                   | themes, `user.scss`, the class names to target   |
+| [docs/Tray.md](docs/Tray.md)                         | tray behaviour and pinning                       |
+| [docs/gcal.md](docs/gcal.md)                         | Google Calendar and the shared OAuth stack       |
+| [docs/qSettings.md](docs/qSettings.md)               | quick settings panes                             |
+| [AGENTS.md](AGENTS.md)                               | conventions, gates and the reasoning behind them |
 
 Debugging:
 

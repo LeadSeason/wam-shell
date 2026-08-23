@@ -1,49 +1,55 @@
-lockfileVersion: '9.0'
+lockfileVersion: "9.0"
 
 settings:
-  autoInstallPeers: true
-  excludeLinksFromLockfile: false
+    autoInstallPeers: true
+    excludeLinksFromLockfile: false
 
 importers:
-
-  .:
-    dependencies:
-      ags:
-        specifier: link:.sys/ags
-        version: link:.sys/ags
-      fuse.js:
-        specifier: ^7.1.0
-        version: 7.5.0
-      gnim:
-        specifier: link:.sys/gnim
-        version: link:.sys/gnim
-      smol-toml:
-        specifier: ^1.7.1
-        version: 1.7.1
-    devDependencies:
-      prettier:
-        specifier: ^3.8.1
-        version: 3.9.6
+    .:
+        dependencies:
+            ags:
+                specifier: link:.sys/ags
+                version: link:.sys/ags
+            fuse.js:
+                specifier: ^7.1.0
+                version: 7.5.0
+            gnim:
+                specifier: link:.sys/gnim
+                version: link:.sys/gnim
+            smol-toml:
+                specifier: ^1.7.1
+                version: 1.7.1
+        devDependencies:
+            prettier:
+                specifier: ^3.8.1
+                version: 3.9.6
 
 packages:
+    fuse.js@7.5.0:
+        resolution:
+            {
+                integrity: sha512-sQtrEfA+ez/3G0cCZecF70oqpCRttCexYUG4mUrtWL49ULUzUyxokt5kyqwtKzj1270RaKih+hcP3qLcumccow==,
+            }
+        engines: { node: ">=10" }
 
-  fuse.js@7.5.0:
-    resolution: {integrity: sha512-sQtrEfA+ez/3G0cCZecF70oqpCRttCexYUG4mUrtWL49ULUzUyxokt5kyqwtKzj1270RaKih+hcP3qLcumccow==}
-    engines: {node: '>=10'}
+    prettier@3.9.6:
+        resolution:
+            {
+                integrity: sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g==,
+            }
+        engines: { node: ">=14" }
+        hasBin: true
 
-  prettier@3.9.6:
-    resolution: {integrity: sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g==}
-    engines: {node: '>=14'}
-    hasBin: true
-
-  smol-toml@1.7.1:
-    resolution: {integrity: sha512-PPlsspAZ4jbMBu5DMFhfUGDQLu/vrL4SyBROVS37x8ynnVmFIs1VPBz1Co8Xks3TvpIaZXmU85y4DrQ+UyVFoQ==}
-    engines: {node: '>= 18'}
+    smol-toml@1.7.1:
+        resolution:
+            {
+                integrity: sha512-PPlsspAZ4jbMBu5DMFhfUGDQLu/vrL4SyBROVS37x8ynnVmFIs1VPBz1Co8Xks3TvpIaZXmU85y4DrQ+UyVFoQ==,
+            }
+        engines: { node: ">= 18" }
 
 snapshots:
+    fuse.js@7.5.0: {}
 
-  fuse.js@7.5.0: {}
+    prettier@3.9.6: {}
 
-  prettier@3.9.6: {}
-
-  smol-toml@1.7.1: {}
+    smol-toml@1.7.1: {}

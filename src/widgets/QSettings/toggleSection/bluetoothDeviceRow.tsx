@@ -1,17 +1,36 @@
-import { createBinding, createComputed, createState, For, onCleanup, With } from "gnim"
+import { Accessor, createBinding, createComputed, createState, For, onCleanup, With } from "gnim"
 import AstalBluetooth from "gi://AstalBluetooth?version=0.1"
 import AstalWp from "gi://AstalWp?version=0.1"
 import Pango from "gi://Pango?version=1.0"
 import { Gtk } from "ags/gtk4"
 import { batteryPercentValue } from "../../../lib/utils"
-import { connect, disconnect } from "../../../lib/metrics"
 import { dismissPairingPrompt } from "../../../lib/bluetoothAgent"
-import { pairDeviceAsync, removeDeviceAsync } from "./bluez"
+import { advertises, sightings } from "../../../lib/bluetoothRange"
+import { bluezErrorName, bluezErrorText } from "../../../lib/bluezErrors"
+import {
+    cancelPairingAsync,
+    connectDeviceAsync,
+    disconnectDeviceAsync,
+    pairDeviceAsync,
+    removeDeviceAsync,
+} from "../../../lib/bluetoothCtl"
 import { createDelayer } from "../../delay"
 
 // null when PipeWire/WirePlumber is absent (see SliderSection's guard);
 // the profile selector below dereferences wp.audio, so guard every use
 const wp = AstalWp.get_default()
+
+/** how long an error stays on the row before it clears itself */
+const ERROR_MS = 4000
+
+// Addresses whose pairing has failed once already, module-level because
+// the row itself is rebuilt whenever the device list refreshes and would
+// forget between attempts. Cleared on success, so a device that pairs and
+// later fails starts its count over.
+//
+// This gates the forget-on-failure below, and the gate is the point: see
+// dropFailedPairing.
+const failedPairingOnce = new Set<string>()
 
 /** audio profile (A2DP/HFP/…) selector for a connected bluetooth device,
  *  driven by the pipewire card (bluez_card.<MAC>) via AstalWp.
@@ -116,9 +135,13 @@ interface DeviceRowProps {
     pauseDiscovery: () => void
     /** resume pane-driven discovery after an attempt settles */
     maybeScan: () => void
+    /** true once the scan has run long enough to have heard anything
+     *  that is actually in the room — only then may a paired device be
+     *  called out of range (see the pane) */
+    scanSettled: Accessor<boolean>
 }
 
-export function DeviceRow({ device, pauseDiscovery, maybeScan }: DeviceRowProps) {
+export function DeviceRow({ device, pauseDiscovery, maybeScan, scanSettled }: DeviceRowProps) {
     // tracked and cancelled on teardown (see widgets/delay.ts)
     const delay = createDelayer("btDeviceRow")
     const [pending, setPending] = createState<"" | "pairing" | "connecting" | "disconnecting">("")
@@ -132,44 +155,172 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan }: DeviceRowProps)
         setPending("")
         setError(msg)
         const token = ++errorToken
-        delay(4000, () => {
+        delay(ERROR_MS, () => {
             if (token === errorToken) setError("")
         })
     }
+
+    // the adapter is hearing this device right now (lib/bluetoothRange —
+    // astal's own Device.rssi is always 0 and cannot answer this). A
+    // connected device counts without a reading of its own
+    const heard = sightings.as(m => m.has(device.address))
+    // ...and whether its silence would mean anything. A device that has
+    // never been heard advertising is not one we can call absent: plenty
+    // never announce themselves at all, so the quiet is about them, not
+    // about where they are. Both accessors derive from `sightings`, so
+    // this re-evaluates whenever a sighting lands or ages out
+    const canJudgeRange = sightings.as(() => advertises(device.address))
 
     const status = createComputed(
         [
             pending,
             error,
-            createBinding(device, "connecting"),
             createBinding(device, "connected"),
             createBinding(device, "paired"),
             createBinding(device, "batteryPercentage").as(batteryPercentValue),
+            heard,
+            canJudgeRange,
+            scanSettled,
         ],
-        (pending, error, connecting, connected, paired, battery) => {
+        (pending, error, connected, paired, battery, heard, judgeable, settled) => {
             if (error) return error
             if (pending === "pairing") return "Pairing…"
-            if (pending === "connecting" || connecting) return "Connecting…"
+            if (pending === "connecting") return "Connecting…"
             if (pending === "disconnecting") return "Disconnecting…"
             if (connected) return battery >= 0 ? `Connected · ${battery}%` : "Connected"
-            return paired ? "Paired" : "Available"
+            // Four states, because a paired device has three ways of not
+            // being connected and they call for different actions:
+            //
+            //   Available     the adapter can hear it NOW — tap and it
+            //                 connects. Same word the unpaired rows use,
+            //                 because it is the same promise.
+            //   Not in range  it normally announces itself and has gone
+            //                 quiet: switched off, in its case, or in
+            //                 another room. Tapping would sit on
+            //                 "Connecting…" until bluez gave up.
+            //   Paired        we genuinely cannot tell (it never
+            //                 advertises, or the scan has not had its
+            //                 thirteen seconds yet). Claim nothing.
+            //
+            // Collapsing the first and last was the original complaint
+            // in miniature: a device you could connect to this second
+            // looked identical to one whose whereabouts are unknown.
+            if (!paired || heard) return "Available"
+            if (settled && judgeable) return "Not in range"
+            return "Paired"
         },
     )
     const statusClass = error.as(e => (e ? ["status", "error"] : ["status"]))
     const isPaired = createBinding(device, "paired")
+    // dims the whole row to match the "Not in range" status
+    const rowClasses = createComputed(
+        [createBinding(device, "connected"), isPaired, heard, canJudgeRange, scanSettled],
+        (connected, paired, heard, judgeable, settled) => {
+            const classes = ["btDevice", "paneRow"]
+            if (connected) classes.push("active")
+            else if (paired && !heard && settled && judgeable) classes.push("unavailable")
+            return classes
+        },
+    )
 
-    // connect_device/disconnect_device REQUIRE an argument in gjs
-    // (0-arg throws "At least 1 argument required"); use the async
-    // callback form to also receive the result
-    function connectDevice() {
-        device.connect_device((_self: any, res: any) => {
-            try {
-                device.connect_device_finish(res)
-            } catch (e) {
-                fail("Connection failed", e)
+    async function connectFlow() {
+        setPending("connecting")
+        try {
+            await connectDeviceAsync(device)
+        } catch (e) {
+            // a profile beat us to it (common straight after pairing):
+            // that is the outcome we wanted
+            if (bluezErrorName(e) !== "AlreadyConnected") {
+                fail(bluezErrorText(e, "Connection failed"), e)
             }
+        } finally {
             setPending("")
             maybeScan()
+        }
+    }
+
+    async function disconnectFlow() {
+        setPending("disconnecting")
+        try {
+            await disconnectDeviceAsync(device)
+        } catch (e) {
+            if (bluezErrorName(e) !== "NotConnected") {
+                fail(bluezErrorText(e, "Disconnect failed"), e)
+            }
+        } finally {
+            setPending("")
+            maybeScan()
+        }
+    }
+
+    async function pairFlow() {
+        setPending("pairing")
+        // guards this attempt's late work against a newer one on the
+        // same device
+        const attempt = ++pairAttempt
+        try {
+            await pairDeviceAsync(device)
+        } catch (e) {
+            // bluez answers AlreadyExists when the bond is already
+            // there — there is nothing to pair, only to connect
+            if (bluezErrorName(e) !== "AlreadyExists" && !device.paired) {
+                if (attempt !== pairAttempt) return
+                fail(bluezErrorText(e, "Pairing failed"), e)
+                // bluez does not reliably cancel the agent prompt when
+                // pairing fails, and does not stop trying on its own
+                dismissPairingPrompt(device.address)
+                // DoesNotExist here just means bluez had already given
+                // up, which is the state we were asking for
+                cancelPairingAsync(device).catch(() => {})
+                dropFailedPairing(attempt)
+                maybeScan()
+                return
+            }
+        }
+        if (attempt !== pairAttempt) return
+        // paired: this device gets a clean slate, so a failure much later
+        // is judged on its own rather than against an old grudge
+        failedPairingOnce.delete(device.address)
+        // bluez sets Paired before it answers Pair, so there is no
+        // notify to wait for here — going straight on is also what
+        // rescues a pairing that succeeded while the notify was missed
+        await connectFlow()
+    }
+
+    /**
+     * Forget a device that has now failed to pair TWICE.
+     *
+     * bluez keeps the half-built device object behind, and its stale
+     * state makes the next Pair fail the same way — which is what turns
+     * one failed attempt into a device that "keeps failing" until it is
+     * removed by hand in bluetoothctl. Forgetting it is the fix.
+     *
+     * But forgetting is destructive, and a first failure is very often
+     * something else entirely: a device that was not ready, a passkey
+     * read too slowly, a radio busy with something else. Deleting a bond
+     * over one bad moment is a much worse outcome than one more retry, so
+     * the first failure is only remembered. The second is what shows the
+     * device is genuinely wedged, and only that one clears it.
+     *
+     * Cleaning up at RETRY time instead would read better and does not
+     * work: RemoveDevice destroys the object path, so there would be
+     * nothing left to pair until bluez rediscovers it.
+     *
+     * Deferred by the length of the error message, because removing the
+     * device takes this row with it.
+     */
+    function dropFailedPairing(attempt: number) {
+        const address = device.address
+        if (!failedPairingOnce.has(address)) {
+            failedPairingOnce.add(address)
+            return
+        }
+        delay(ERROR_MS, () => {
+            if (attempt !== pairAttempt || device.paired) return
+            failedPairingOnce.delete(address)
+            removeDeviceAsync(device).catch(e =>
+                console.warn("bluetooth: clearing a twice-failed pairing:", e),
+            )
         })
     }
 
@@ -177,60 +328,10 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan }: DeviceRowProps)
         if (pending.get()) return
         setError("")
         pauseDiscovery()
-        if (device.connected) {
-            setPending("disconnecting")
-            device.disconnect_device((_self: any, res: any) => {
-                try {
-                    device.disconnect_device_finish(res)
-                } catch (e) {
-                    fail("Disconnect failed", e)
-                }
-                setPending("")
-                maybeScan()
-            })
-        } else if (device.paired) {
-            setPending("connecting")
-            connectDevice()
-        } else {
-            setPending("pairing")
-            // token guards the timeout against a newer attempt on the
-            // same device (a stale timeout must not fail the new one)
-            const attempt = ++pairAttempt
-            let handlerId = connect(device, "notify::paired", () => {
-                if (!device.paired) return
-                disconnect(device, handlerId)
-                handlerId = 0
-                setPending("connecting")
-                connectDevice()
-            })
-            delay(30_000, () => {
-                // clean up this attempt's handler no matter what: a
-                // superseded attempt must not leave it armed to
-                // double-connect on success
-                if (handlerId) {
-                    disconnect(device, handlerId)
-                    handlerId = 0
-                }
-                if (attempt !== pairAttempt) return
-                if (pending.get() === "pairing") {
-                    fail("Pairing failed", "timed out")
-                    dismissPairingPrompt(device.address)
-                    maybeScan()
-                }
-            })
-            pairDeviceAsync(device).catch(e => {
-                if (handlerId) {
-                    disconnect(device, handlerId)
-                    handlerId = 0
-                }
-                fail("Pairing failed", e)
-                // bluez does not reliably cancel the agent prompt when
-                // pairing fails — dismiss it ourselves
-                dismissPairingPrompt(device.address)
-                // onClick paused discovery; every exit path resumes it
-                maybeScan()
-            })
-        }
+        // every branch resumes discovery when it settles (see maybeScan)
+        if (device.connected) void disconnectFlow()
+        else if (device.paired) void connectFlow()
+        else void pairFlow()
     }
 
     const details: [string, string][] = [
@@ -243,14 +344,15 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan }: DeviceRowProps)
     const profilesText = createBinding(device, "uuids").as(uuids =>
         uuids.length ? [...new Set(uuids.map(uuidName))].join(", ") : "—",
     )
+    // 0 is the "in range, strength unknown" marker a connected device
+    // gets, not a reading worth showing
+    const rssi = sightings.as(m => m.get(device.address)?.rssi ?? 0)
 
     return (
         <box orientation={Gtk.Orientation.VERTICAL}>
             <box
                 cssName={"button"}
-                cssClasses={createBinding(device, "connected").as(c =>
-                    c ? ["btDevice", "paneRow", "active"] : ["btDevice", "paneRow"],
-                )}
+                cssClasses={rowClasses}
                 spacing={5}
                 tooltipText={createComputed(
                     [
@@ -308,7 +410,11 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan }: DeviceRowProps)
                     cssClasses={["forget"]}
                     visible={isPaired}
                     tooltipText={"Forget device"}
-                    onClicked={() => removeDeviceAsync(device)}
+                    onClicked={() =>
+                        removeDeviceAsync(device).catch(e =>
+                            console.warn("bluetooth forget failed:", e),
+                        )
+                    }
                 >
                     <image iconName="user-trash-symbolic" />
                 </button>
@@ -341,13 +447,9 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan }: DeviceRowProps)
                             ellipsize={Pango.EllipsizeMode.END}
                         />
                     </box>
-                    <box visible={createBinding(device, "rssi").as(r => r !== 0)}>
+                    <box visible={rssi.as(r => r !== 0)}>
                         <label cssClasses={["key"]} label={"Signal"} xalign={0} hexpand />
-                        <label
-                            cssClasses={["value"]}
-                            label={createBinding(device, "rssi").as(r => `${r} dBm`)}
-                            xalign={1}
-                        />
+                        <label cssClasses={["value"]} label={rssi.as(r => `${r} dBm`)} xalign={1} />
                     </box>
                     {/* pipewire card profiles (A2DP/HFP…), only exists
                     while the device is connected. The wp device has
@@ -368,7 +470,12 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan }: DeviceRowProps)
                                 )
                             })}
                         >
-                            {wpDev => wpDev && <ProfileSelector wpDev={wpDev} />}
+                            {/* null, not <></> — see BtSwitch. This one
+                            fires constantly: every device with no matching
+                            pipewire card takes it */}
+                            {(wpDev: AstalWp.Device | null) =>
+                                wpDev ? <ProfileSelector wpDev={wpDev} /> : null
+                            }
                         </With>
                     )}
                 </box>
