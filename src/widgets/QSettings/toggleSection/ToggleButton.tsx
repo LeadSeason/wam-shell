@@ -2,6 +2,22 @@ import { Gtk } from "ags/gtk4"
 import Pango from "gi://Pango?version=1.0"
 import { Accessor, Setter } from "gnim"
 import { pressable } from "../../pressable"
+import Config from "../../../config"
+
+// the tiles live in a two-column homogeneous FlowBox, whose column
+// width comes from the widest child's NATURAL width — and a label's
+// natural width is its text, so a long connected-device name or SSID
+// in the subtitle collapses the whole grid to one column. Cap the
+// subtitle's request at what fits a half column of the configured
+// popup width (half of width minus the FlowBox/QSSection gutters,
+// less the ~60px of tile chrome — icon, chevron, paddings — divided
+// by ~8px per char-cap unit, measured); the allocation still shows as
+// much as the column gives and ellipsizes the rest. 10 keeps very
+// narrow configs from clamping to nothing, 24 the old font-bloat cap
+const SUBTITLE_MAX_CHARS = Math.max(
+    10,
+    Math.min(24, Math.floor(((Config.quicksettings.width - 24) / 2 - 60) / 8)),
+)
 
 /** badge text for a frequency in MHz: "" hides the badge
  *  (2.4GHz gets none, by design) */
@@ -41,6 +57,9 @@ export function OverlayIcon({
 interface TbButtonProps {
     label: string | Accessor<string>
     subtitle?: string | Accessor<string>
+    /** muted small readout trailing the title on its own row (the
+     *  bluetooth pill's device battery); empty hides it */
+    titleSuffix?: string | Accessor<string>
 
     icon?: string | Accessor<string>
     /** state classes on the icon image (e.g. the VPN pill's
@@ -68,6 +87,7 @@ interface TbButtonProps {
 export function DropdownButton({
     label,
     subtitle = undefined,
+    titleSuffix = undefined,
     icon = "applications-system-symbolic",
     iconClasses = undefined,
     badge = undefined,
@@ -125,23 +145,37 @@ export function DropdownButton({
                     <image iconName={icon} {...(iconClasses ? { cssClasses: iconClasses } : {})} />
                 )}
                 <box orientation={Gtk.Orientation.VERTICAL} valign={Gtk.Align.CENTER} hexpand>
-                    {/* bounded natural width + ellipsize: a wide fallback
-                    font (missing Nerd Fonts) must not inflate the card */}
-                    <label
-                        cssClasses={["toggleTitle"]}
-                        label={label}
-                        xalign={0}
-                        hexpand
-                        maxWidthChars={20}
-                        ellipsize={Pango.EllipsizeMode.END}
-                    />
+                    <box spacing={4} hexpand>
+                        {/* bounded natural width + ellipsize: a wide fallback
+                        font (missing Nerd Fonts) must not inflate the card */}
+                        <label
+                            cssClasses={["toggleTitle"]}
+                            label={label}
+                            xalign={0}
+                            hexpand
+                            maxWidthChars={20}
+                            ellipsize={Pango.EllipsizeMode.END}
+                        />
+                        {titleSuffix !== undefined && (
+                            <label
+                                cssClasses={["toggleTitleSuffix"]}
+                                label={titleSuffix}
+                                valign={Gtk.Align.BASELINE}
+                                visible={
+                                    typeof titleSuffix === "string"
+                                        ? titleSuffix !== ""
+                                        : titleSuffix.as(s => s !== "")
+                                }
+                            />
+                        )}
+                    </box>
                     {subtitle !== undefined && (
                         <label
                             cssClasses={["toggleSubtitle"]}
                             label={subtitle}
                             xalign={0}
                             hexpand
-                            maxWidthChars={24}
+                            maxWidthChars={SUBTITLE_MAX_CHARS}
                             ellipsize={Pango.EllipsizeMode.END}
                         />
                     )}

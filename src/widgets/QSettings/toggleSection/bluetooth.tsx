@@ -23,12 +23,18 @@ function BluetoothButtonBody({ navigate }: { navigate: () => void }) {
     // cache keys on falsy checks and connectedDevice starts null, which
     // can leave the computed stale (see AGENTS.md)
     const [subtitle, setSubtitle] = createState("Off")
+    const [battery, setBattery] = createState("")
     const [icon, setIcon] = createState("bluetooth-symbolic")
 
     const update = () => {
         const powered = bluetooth.is_powered
         const info = connectedDevice.get()
         setIcon(powered && info ? "bluetooth-active-symbolic" : "bluetooth-symbolic")
+        // the device battery rides on the title row as a muted suffix:
+        // the subtitle is ellipsized at a bounded width (the FlowBox
+        // grid collapses on wide natural sizes), which would eat a
+        // trailing "· 100%"
+        setBattery(powered && info && info.battery >= 0 ? `${info.battery}%` : "")
         if (!powered) {
             setSubtitle("Off")
             return
@@ -37,8 +43,7 @@ function BluetoothButtonBody({ navigate }: { navigate: () => void }) {
             setSubtitle("On")
             return
         }
-        const name = info.device.alias || info.device.name
-        setSubtitle(info.battery >= 0 ? `${name} · ${info.battery}%` : name)
+        setSubtitle(info.device.alias || info.device.name)
     }
     const disposers = [
         createBinding(bluetooth, "is_powered").subscribe(update),
@@ -53,6 +58,7 @@ function BluetoothButtonBody({ navigate }: { navigate: () => void }) {
             navigate={navigate}
             icon={icon}
             label={"Bluetooth"}
+            titleSuffix={battery}
             subtitle={subtitle}
             isActive={createBinding(bluetooth, "is_powered")}
             activate={() => {
