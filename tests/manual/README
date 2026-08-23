@@ -69,3 +69,21 @@ Why the second Set is worth preventing: bluez answers a duplicate
 over a toggle that in fact worked.
 
 PASS on 2026-08-23.
+
+    btdiscoverable.ts        bundle it, then run it
+
+The pane's "Visible to other devices" tracking, bundled and run the same
+way as btpower.ts.
+
+The interesting case is an EXTERNAL change. The old checkbox was bound to
+AstalBluetooth's Adapter object, which stops being told anything once
+astal swaps it, so it went stale against changes made anywhere else —
+including bluez turning discoverability off by itself after
+DiscoverableTimeout. So the harness writes Discoverable over the bus
+behind the shell's back and checks the accessor follows, writes it
+through our own setter and checks bluez was really told, and then
+releases the tracker and checks it stops following rather than merely
+ignoring. It moves the real adapter, because that is the thing under
+test, and puts it back where it found it.
+
+PASS on 2026-08-23.
