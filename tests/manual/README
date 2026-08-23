@@ -1,9 +1,9 @@
-Manual harnesses. Neither is a gate — nothing here runs in `pnpm test`,
-because both drive the real compositor and the real notification daemon
-on the machine you are sitting at.
+Manual harnesses. None is a gate — nothing here runs in `pnpm test`,
+because they drive the real compositor, the real notification daemon and
+the real bluez on the machine you are sitting at.
 
-They exist because two things in this shell cannot be checked any other
-way, and both were shipped unverified once already for want of them.
+They exist because these things cannot be checked any other way, and
+each was shipped unverified once already for want of them.
 
     soak.sh [seconds]        default 1800
 
@@ -44,3 +44,28 @@ Two things that will waste your time otherwise:
 To measure a widget without screenshotting it, compare layer geometry
 before and after: `hyprctl layers -j`. The banner drawer opening on hover
 is 85px -> 249px.
+
+    btpower.ts               bundle it, then run it
+
+The bluetooth power toggle's debounce and its failure path. Bundle with
+`ags bundle --gtk 4 tests/manual/btpower.ts <out>` and run the result the
+way tests/run.sh runs the suite (redirected XDG dirs — it imports
+lib/bluetooth, which opens the SYSTEM bus at import).
+
+The debounce cannot be seen from the UI, which is the whole reason this
+exists: `togglePowered` reads bluez's own Powered, and during a
+transition that has not moved yet, so a refused second click and an
+honoured one ask for the SAME target and end in the same place. What
+differs is one D-Bus Set instead of two — so the harness counts them. It
+stubs `Gio.DBus.system.call` for the WRITE only, never answers it (bluez
+is therefore mid-transition for as long as the harness cares to look),
+forwards the read-only ObjectManager lookup to the real bus, and aborts
+before touching anything if the stub did not take. It leaves the adapter
+exactly as it found it.
+
+Why the second Set is worth preventing: bluez answers a duplicate
+`Powered` write during a transition with `org.bluez.Error.Busy`
+(measured, 60ms in), which the pane would report as "Could not turn on"
+over a toggle that in fact worked.
+
+PASS on 2026-08-23.
