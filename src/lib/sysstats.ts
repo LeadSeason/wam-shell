@@ -102,10 +102,51 @@ export const CPU_PRESSURE_CRIT = 90
 // WILL eventually flash the panel. The slow arrival is the mitigation,
 // not a fix; there is no second signal to appeal to, as `full` is flat
 // zero for cpu at system level.
-export function cpuPressureLevel(psi: number | null): PressureLevel {
-    if (psi === null) return ""
-    if (psi >= CPU_PRESSURE_CRIT) return "critical"
-    return psi >= CPU_PRESSURE_WARN ? "warn" : ""
+export function cpuPressureLevel(psi: number | null, pinned = false): PressureLevel {
+    if (psi !== null && psi >= CPU_PRESSURE_CRIT) return "critical"
+    if ((psi !== null && psi >= CPU_PRESSURE_WARN) || pinned) return "warn"
+    return ""
+}
+
+// The other half of the answer, and the one PSI refuses to give. A
+// machine with every core pegged and nothing queued behind them is not
+// in distress — but a panel that sits in its calm idle blue through a
+// solid wall of 100% reads as broken, and "why didn't it react" is a
+// fair thing to ask of it. So utilization WARNS. It never flashes:
+// critical stays PSI's alone, because "no headroom left" and "work is
+// arriving faster than it drains" are not the same emergency, and only
+// the second one ends in something dying.
+export const CPU_BUSY_WARN = 95
+// ~15 seconds of it. Sustained on purpose — every app launch spikes a
+// single tick to 100, and a tick is not a condition. Clamped to the
+// history actually kept, so a very short stats_interval cannot ask for
+// more samples than exist and pin the stat permanently off.
+export const CPU_BUSY_SAMPLES = Math.min(HISTORY, Math.max(3, Math.round(15000 / INTERVAL)))
+
+/** the mean of the last CPU_BUSY_SAMPLES ticks, at or above the line.
+ *  A mean rather than every(): one scheduling dip to 94% should not
+ *  disarm a condition that took fifteen seconds to arm. False until
+ *  the history is that long — a session three samples old knows
+ *  nothing yet, and guessing from two would light the panel during
+ *  startup, when everything is briefly at 100. */
+export function cpuPinned(hist: { v: number }[]): boolean {
+    if (hist.length < CPU_BUSY_SAMPLES) return false
+    const tail = hist.slice(-CPU_BUSY_SAMPLES)
+    return tail.reduce((a, s) => a + s.v, 0) / tail.length >= CPU_BUSY_WARN
+}
+
+/** why the cpu stat is lit, for the panel's tooltip. Not one sentence
+ *  with a number swapped in: the two triggers make different claims,
+ *  and quoting a 4% stall figure at someone whose cores are pegged
+ *  says less than nothing. */
+export function cpuAlertText(level: PressureLevel, psi: number | null): string {
+    if (level === "") return ""
+    if (psi !== null && psi >= CPU_PRESSURE_WARN)
+        return (
+            `${level === "critical" ? "Severe" : "High"} CPU contention` +
+            ` — stalled ${Math.round(psi)}% of the last minute`
+        )
+    return `Every core busy for the last ${Math.round((CPU_BUSY_SAMPLES * INTERVAL) / 1000)}s`
 }
 
 export const [cpuLevel, setCpuLevel] = createState<PressureLevel>("")
@@ -149,8 +190,12 @@ function syncPressurePulse() {
     }
 }
 
+// called from both cpu steps, like publishRamLevel: the utilization
+// samples and the PSI reading land in different steps of the same tick,
+// and either one moving can change the verdict — on a psi=0 kernel the
+// utilization step is the only one that ever calls this
 function publishCpuLevel() {
-    const next = cpuPressureLevel(cpuPressure.get())
+    const next = cpuPressureLevel(cpuPressure.get(), cpuPinned(cpuHist.get()))
     if (next === cpuLevel.get()) return
     setCpuLevel(next)
     syncPressurePulse()
@@ -1094,6 +1139,7 @@ const poll = createPoll("", INTERVAL, () => {
         const c = await readCpu()
         setCpu(c)
         push(cpuHist.get(), setCpuHist, c)
+        publishCpuLevel()
     })
     step("ram", async () => {
         const r = await readRam()
