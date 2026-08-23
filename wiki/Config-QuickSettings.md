@@ -115,24 +115,42 @@ popup's warning (5% / 20% of the last minute), and plain
 until something has *already* stalled, and it is absent entirely on a
 `psi=0` kernel, where the fill percentage is the only vote there is.
 
-**CPU reads `/proc/pressure/cpu`, not utilization.** 100% busy is a
-machine doing your work; what matters is how deep the run queue behind
-it is. Measured on a 24-core box, `some avg60` settles at 0.3% idle,
-~25% under a full-width build (`-j24`), ~95% at twice that width and
-~99% at four times. Warn is 60, which clears a legitimate full-core
-build by more than a factor of two, and critical is 90 — out of reach
-of anything but a run queue at least twice the core count, and, because
+**CPU answers to two different questions, and they are not the same
+question.** The first is `/proc/pressure/cpu` — how deep the run queue
+is, i.e. how long something sat waiting for a core it could not get.
+Measured on a 24-core box, `some avg60` settles at 0.3% idle, ~25%
+under a full-width build (`-j24`), ~95% at twice that width and ~99% at
+four times. Warn is 60, which clears a legitimate full-core build by
+more than a factor of two, and critical is 90 — out of reach of
+anything but a run queue at least twice the core count, and, because
 `avg60` climbs toward its asymptote over a minute, needing over two
 minutes of it to arrive. Nothing brief can trip it.
 
-The limit worth knowing: PSI measures queueing, not distress. `-j48`
-and `-j96` sit at 95 and 99, so critical cannot tell a heavily parallel
-build from a machine that has stopped keeping up, and a long
-`-j$(nproc*2)` build will eventually flash. The slow arrival is the
-mitigation, not a cure; `full` is flat zero for cpu at system level, so
-there is no second signal to appeal to. The tooltip carries the
-percentage as well as the word, since CPU is the one stat whose trigger
-is not the number printed beside it.
+The second is plain utilization: **every core at 95% or above, averaged
+over the last fifteen seconds.** This one only ever *colours* the stat.
+It cannot flash it. A pegged machine with nothing queued behind it is a
+machine doing your work at full tilt, not a machine in trouble — but a
+panel that sat in its calm idle blue through a solid wall of 100% read
+as broken, which is a fair complaint. So it acknowledges the wall and
+stops there; critical stays PSI's alone, because "no headroom left" and
+"work is arriving faster than it drains" are not the same emergency.
+It is a mean rather than a streak, so a single scheduling dip to 94%
+does not disarm a condition that took fifteen seconds to arm, and it
+stays silent until it has watched a full window — otherwise startup,
+where everything is briefly at 100%, would light the panel every time
+the shell came up. On a `psi=0` kernel it is the only trigger there is.
+
+The limit worth knowing on the first one: PSI measures queueing, not
+distress. `-j48` and `-j96` sit at 95 and 99, so critical cannot tell a
+heavily parallel build from a machine that has stopped keeping up, and
+a long `-j$(nproc*2)` build will eventually flash. The slow arrival is
+the mitigation, not a cure; `full` is flat zero for cpu at system
+level, so there is no third signal to appeal to. The tooltip says which
+of the two fired — the stall percentage when it is the queue, "every
+core busy for the last 15s" when it is the wall — since CPU is the one
+stat whose trigger is not the number printed beside it, and quoting a
+3% stall figure at someone whose cores are pegged reads as the panel
+contradicting itself.
 
 The pane's sections run Battery, System, CPU, GPU, Network. CPU and
 GPU are adjacent and share a shape — utilization, then thermals and

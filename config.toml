@@ -569,10 +569,14 @@
 #                  and each flashes for its OWN memory only.
 #                  Readouts turn yellow under pressure and red — with
 #                  the whole stat flashing as a solid block — when it
-#                  is severe. Cpu measures /proc/pressure/cpu, not
-#                  utilization: 100% busy is a machine doing your work,
-#                  and what counts is how long something waited for a
-#                  core. Clicking the monitor opens the popup on the
+#                  is severe. Cpu answers to two separate things: the
+#                  run queue in /proc/pressure/cpu, the only one that
+#                  can flash it, and every core simply sitting pegged
+#                  for fifteen seconds, which colours it and no more.
+#                  100% busy is a machine doing your work; a queue
+#                  behind it is a machine falling behind, and only the
+#                  second is worth an alarm. Clicking the monitor
+#                  opens the popup on the
 #                  power mode pane. default false
 # stats_interval - milliseconds between stat updates. lower = smoother
 #                  graphs, higher cpu cost. default 1000
