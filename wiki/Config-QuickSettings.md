@@ -204,23 +204,31 @@ Section: `[bluetooth]` — the bluetooth pane.
 | --------------- | ---- | ------- | ------------------------------------------------------------------------------- |
 | `notifications` | bool | `true`  | Notification when a device connects/disconnects or reports low battery (<= 20%) |
 
-The pane scans while it is open, and a paired device is listed by what
-that scan can hear:
+The pane scans while it is open, and a paired device that is not
+connected says which of three things is true:
 
-- **Paired** — the adapter can hear the device; tap to connect.
-- **Not in range** — dimmed. The device is switched off, in its case or
-  out of reach. It is only offered after the scan has run about thirteen
-  seconds, and only for a device the adapter has actually heard announce
-  itself at some point this session.
+- **Available** — the adapter can hear it right now; tap and it
+  connects. The same word the unpaired rows use, because it is the same
+  promise.
+- **Not in range** — dimmed. It normally announces itself and has gone
+  quiet: switched off, in its case, or in another room. Tapping it would
+  sit on "Connecting…" until bluez gave up. Only offered after the scan
+  has run about thirteen seconds.
+- **Paired** — nothing is known either way, so nothing is claimed.
 
-That last condition matters, and it means some devices will never be
-labelled this way. A paired classic (BR/EDR) device — most desk speakers,
-plenty of headsets — answers a scan only while it is in pairing mode, so
-bluetooth simply does not report whether it is nearby; it is silent when
-it is next to you and silent when it is in another building. Rather than
-guess, the pane says nothing and leaves it on **Paired**. Devices that
-advertise (anything Bluetooth LE, and dual-mode headsets that do both)
-are judged normally.
+That third state is not a fallback for the other two, it is an honest
+answer, and some devices will never leave it. A paired classic (BR/EDR)
+device — most desk speakers, plenty of headsets — answers a scan only
+while it is in pairing mode, so bluetooth does not report whether it is
+nearby: it is equally silent sitting beside you and sitting in another
+building. Rather than guess, the pane says **Paired** and leaves it at
+that. Devices that advertise (anything Bluetooth LE, and dual-mode
+headsets that do both) get a real verdict.
+
+Being classic is not itself disqualifying — what matters is whether the
+device has ever actually been heard. Two classic headsets on the same
+adapter can differ: one that also advertises over LE is judged normally,
+one that never advertises stays on **Paired** forever.
 
 Under **Available**, the eight closest devices are shown, strongest
 signal first; a device's signal strength in dBm is in its details.

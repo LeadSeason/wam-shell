@@ -179,14 +179,25 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan, scanSettled }: De
             if (pending === "connecting") return "Connecting…"
             if (pending === "disconnecting") return "Disconnecting…"
             if (connected) return battery >= 0 ? `Connected · ${battery}%` : "Connected"
-            if (!paired) return "Available"
-            // a paired device that ordinarily advertises and has now
-            // gone quiet is switched off, in its case or in another
-            // room: tapping it would just sit on "Connecting…" until
-            // bluez gave up. Say so instead — but only once the scan has
-            // had time to find it, and never for a device whose silence
-            // is simply how it always behaves
-            if (!heard && settled && judgeable) return "Not in range"
+            // Four states, because a paired device has three ways of not
+            // being connected and they call for different actions:
+            //
+            //   Available     the adapter can hear it NOW — tap and it
+            //                 connects. Same word the unpaired rows use,
+            //                 because it is the same promise.
+            //   Not in range  it normally announces itself and has gone
+            //                 quiet: switched off, in its case, or in
+            //                 another room. Tapping would sit on
+            //                 "Connecting…" until bluez gave up.
+            //   Paired        we genuinely cannot tell (it never
+            //                 advertises, or the scan has not had its
+            //                 thirteen seconds yet). Claim nothing.
+            //
+            // Collapsing the first and last was the original complaint
+            // in miniature: a device you could connect to this second
+            // looked identical to one whose whereabouts are unknown.
+            if (!paired || heard) return "Available"
+            if (settled && judgeable) return "Not in range"
             return "Paired"
         },
     )
