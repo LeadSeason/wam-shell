@@ -118,10 +118,18 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
     const [scanning, setScanning] = createState(false)
 
     // the scan has covered a full inquiry cycle, so silence from a
-    // device now means something. Sticky: a pause for a connect attempt
-    // does not un-learn what the scan already heard
+    // device now means something. Sticky WITHIN a visit — a pause for a
+    // connect attempt does not un-learn what the scan already heard —
+    // but cleared when the pane closes, because the sightings are
+    // dropped with it and the next visit has to earn the verdict again
     const [scanSettled, setScanSettled] = createState(false)
     let settleTimer = 0
+    function cancelSettle() {
+        if (settleTimer) {
+            sourceRemove(settleTimer)
+            settleTimer = 0
+        }
+    }
     function armSettle() {
         if (settleTimer || scanSettled.get()) return
         settleTimer = timeoutAdd("btPane:scanSettle", GLib.PRIORITY_DEFAULT, SCAN_SETTLE_MS, () => {
@@ -134,9 +142,14 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
         })
     }
 
-    // knowing which devices the adapter can actually hear costs three
-    // bus subscriptions; hold them only while this pane is alive
-    const releaseRange = acquireRange()
+    // Knowing which devices the adapter can actually hear costs three bus
+    // subscriptions and a sweep timer, so it is held only while the pane
+    // is ON SCREEN — not while this body merely exists. The QSettings
+    // widget tree is built at startup and this body lives as long as the
+    // shell does, so acquiring at construction left the sweep running for
+    // the whole session over a pane nobody had opened (caught by the perf
+    // gate as `timer btRange:sweep 0 -> 1`). See updatePaneOpen below.
+    let releaseRange: (() => void) | null = null
 
     // scan while this pane is visible (hiding QSettings resets the pane to
     // "main", so discovery always stops on close)
@@ -158,10 +171,7 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
         setScanning(false)
         // the interrupted scan does not count towards a verdict; the
         // next one starts its clock over (see armSettle)
-        if (settleTimer) {
-            sourceRemove(settleTimer)
-            settleTimer = 0
-        }
+        cancelSettle()
     }
 
     // everything below must die with this body: it remounts whenever
@@ -177,11 +187,9 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
             sourceRemove(listTimer)
             listTimer = 0
         }
-        if (settleTimer) {
-            sourceRemove(settleTimer)
-            settleTimer = 0
-        }
-        releaseRange()
+        cancelSettle()
+        releaseRange?.()
+        releaseRange = null
         // a NotReady retry armed while the pane was open must not start
         // discovery with it closed
         cancelDiscoveryRetry()
@@ -195,7 +203,19 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
 
     // the pairing prompt renders inline while this pane is on screen;
     // the floating dialog window covers prompts arriving otherwise
-    const updatePaneOpen = () => setBtPaneOpen(pane.get() === name)
+    const updatePaneOpen = () => {
+        const open = pane.get() === name
+        setBtPaneOpen(open)
+        if (open && !releaseRange) {
+            releaseRange = acquireRange()
+        } else if (!open && releaseRange) {
+            releaseRange()
+            releaseRange = null
+            // the sightings went with it
+            cancelSettle()
+            setScanSettled(false)
+        }
+    }
     disposers.push(pane.subscribe(updatePaneOpen))
     updatePaneOpen()
 
