@@ -234,6 +234,12 @@ Under **Available**, the eight closest devices are shown, strongest
 signal first; a device's signal strength in dBm is in its details.
 
 Pairing failures are reported with the reason bluez gave ("Wrong PIN or
-passkey", "The device did not respond"). A device whose pairing failed is
-forgotten afterwards, so the next attempt starts from a clean slate
-rather than repeating the same failure.
+passkey", "The device did not respond").
+
+A device that fails to pair **twice in a row** is then forgotten, so the
+next attempt starts from a clean slate. bluez keeps a half-built device
+object after a failed pairing and its stale state fails the next attempt
+the same way — the loop that otherwise ends with `remove` in
+`bluetoothctl`. The first failure only gets remembered, never acted on:
+forgetting a device is destructive, and one bad attempt is usually just a
+device that was not ready. Pairing successfully clears the count.
