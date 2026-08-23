@@ -7,7 +7,14 @@ import bluetooth from "../../../lib/bluetooth"
 import { timeoutAdd, sourceRemove, connect, disconnect } from "../../../lib/metrics"
 import { pairingRequest, setBtPaneOpen } from "../../../lib/bluetoothAgent"
 import { PromptContent } from "../../bluetoothPairing"
-import { startDiscoveryAsync, stopDiscoveryAsync, cancelDiscoveryRetry } from "./bluez"
+import {
+    startDiscoveryAsync,
+    stopDiscoveryAsync,
+    cancelDiscoveryRetry,
+    setPoweredAsync,
+    powerPending,
+} from "../../../lib/bluetoothCtl"
+import { acquireRange, sightings } from "../../../lib/bluetoothRange"
 import { DeviceRow } from "./bluetoothDeviceRow"
 import { createDelayer } from "../../delay"
 
@@ -30,21 +37,45 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
 export function BtSwitch() {
     return (
         <With value={createBinding(bluetooth, "adapter")}>
-            {adapter =>
-                adapter && (
-                    <Gtk.Switch
-                        cssClasses={["paneSwitch"]}
-                        valign={Gtk.Align.CENTER}
-                        active={createBinding(adapter, "powered")}
-                        onNotifyActive={self => {
-                            if (self.active !== adapter.powered) adapter.powered = self.active
-                        }}
-                    />
-                )
-            }
+            {adapter => adapter && <BtSwitchBody adapter={adapter} />}
         </With>
     )
 }
+
+function BtSwitchBody({ adapter }: { adapter: AstalBluetooth.Adapter }) {
+    // powering an adapter is not instant, and bluez rejects some
+    // requests outright: while a change is in flight the switch shows
+    // the TARGET and refuses further input, instead of springing back to
+    // the old position — which read as a click the shell had ignored.
+    // Imperative rather than a computed: powerPending starts null and an
+    // initially-falsy dep can leave a computed stale (see AGENTS.md)
+    const [shown, setShown] = createState(powerPending.get() ?? adapter.powered)
+    const sync = () => setShown(powerPending.get() ?? bluetooth.is_powered)
+    const disposers = [
+        createBinding(adapter, "powered").subscribe(sync),
+        powerPending.subscribe(sync),
+    ]
+    onCleanup(() => disposers.forEach(d => d()))
+    sync()
+
+    return (
+        <Gtk.Switch
+            cssClasses={["paneSwitch"]}
+            valign={Gtk.Align.CENTER}
+            active={shown}
+            sensitive={powerPending.as(p => p === null)}
+            onNotifyActive={self => {
+                if (self.active !== bluetooth.is_powered) setPoweredAsync(self.active)
+            }}
+        />
+    )
+}
+
+// a classic BR/EDR device (most speakers and headsets) never advertises;
+// it only answers an inquiry, and a bluez inquiry cycle runs ~10s. Until
+// one full cycle has passed, "not in range" would only mean "not found
+// YET", so no such verdict is offered before this
+const SCAN_SETTLE_MS = 13_000
 
 function BluetoothWidgetBody({ pane, name }: btPaneProps) {
     // tracked and cancelled on teardown (see widgets/delay.ts)
@@ -75,12 +106,34 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
     // redundant ones are filtered as benign) and track scanning ourselves
     const [scanning, setScanning] = createState(false)
 
+    // the scan has covered a full inquiry cycle, so silence from a
+    // device now means something. Sticky: a pause for a connect attempt
+    // does not un-learn what the scan already heard
+    const [scanSettled, setScanSettled] = createState(false)
+    let settleTimer = 0
+    function armSettle() {
+        if (settleTimer || scanSettled.get()) return
+        settleTimer = timeoutAdd("btPane:scanSettle", GLib.PRIORITY_DEFAULT, SCAN_SETTLE_MS, () => {
+            settleTimer = 0
+            // only a scan that ran the whole way counts. Clicking a
+            // device early pauses discovery, and settling on the back of
+            // two seconds of listening would call the whole room absent
+            if (scanning.get()) setScanSettled(true)
+            return GLib.SOURCE_REMOVE
+        })
+    }
+
+    // knowing which devices the adapter can actually hear costs three
+    // bus subscriptions; hold them only while this pane is alive
+    const releaseRange = acquireRange()
+
     // scan while this pane is visible (hiding QSettings resets the pane to
     // "main", so discovery always stops on close)
     const maybeScan = () => {
         if (pane.get() === name && adapter.powered) {
             startDiscoveryAsync()
             setScanning(true)
+            armSettle()
         } else {
             stopDiscoveryAsync()
             setScanning(false)
@@ -92,6 +145,12 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
     function pauseDiscovery() {
         stopDiscoveryAsync()
         setScanning(false)
+        // the interrupted scan does not count towards a verdict; the
+        // next one starts its clock over (see armSettle)
+        if (settleTimer) {
+            sourceRemove(settleTimer)
+            settleTimer = 0
+        }
     }
 
     // everything below must die with this body: it remounts whenever
@@ -107,6 +166,11 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
             sourceRemove(listTimer)
             listTimer = 0
         }
+        if (settleTimer) {
+            sourceRemove(settleTimer)
+            settleTimer = 0
+        }
+        releaseRange()
         // a NotReady retry armed while the pane was open must not start
         // discovery with it closed
         cancelDiscoveryRetry()
@@ -176,27 +240,54 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
     )
     bluetooth.devices.forEach(hookDevice)
 
-    const paired = deviceList.as(ds =>
-        [...ds]
-            // paired only: bluez marks a device paired as soon as it is
-            // connected, and a failed connect attempt on an unpaired device
-            // must not bounce the row between sections
-            .filter(d => d.paired)
-            .sort(
-                (a, b) =>
-                    Number(b.connected) - Number(a.connected) ||
-                    (a.alias || a.name).localeCompare(b.alias || b.name),
-            ),
-    )
-    const available = deviceList.as(ds =>
-        [...ds]
-            // not paired: bluez sets connected during pairing, before paired
-            // flips — filtering on !connected too would make the device
-            // briefly vanish from both sections mid-pairing
-            .filter(d => !d.paired && d.name)
-            .sort((a, b) => b.rssi - a.rssi)
-            .slice(0, 8),
-    )
+    // Both lists are sorted from a SNAPSHOT of what the adapter can
+    // hear, taken whenever the device list itself changes. Re-sorting on
+    // every RSSI update instead would reshuffle the rows several times a
+    // second under the cursor — the readings arrive with every
+    // advertisement. The per-row "Not in range" label does track live;
+    // only the ORDER is held still.
+    const [paired, setPaired] = createState<AstalBluetooth.Device[]>([])
+    const [available, setAvailable] = createState<AstalBluetooth.Device[]>([])
+    const resort = () => {
+        const ds = deviceList.get()
+        const heard = sightings.get()
+        const rssiOf = (d: AstalBluetooth.Device) => heard.get(d.address)?.rssi ?? -Infinity
+        const inRange = (d: AstalBluetooth.Device) => d.connected || heard.has(d.address)
+        setPaired(
+            [...ds]
+                // paired only: bluez marks a device paired as soon as it is
+                // connected, and a failed connect attempt on an unpaired device
+                // must not bounce the row between sections
+                .filter(d => d.paired)
+                // connected first, then what is actually here, then the
+                // rest — a device that is not in the room is the least
+                // useful row on screen
+                .sort(
+                    (a, b) =>
+                        Number(b.connected) - Number(a.connected) ||
+                        Number(inRange(b)) - Number(inRange(a)) ||
+                        (a.alias || a.name).localeCompare(b.alias || b.name),
+                ),
+        )
+        setAvailable(
+            [...ds]
+                // not paired: bluez sets connected during pairing, before paired
+                // flips — filtering on !connected too would make the device
+                // briefly vanish from both sections mid-pairing
+                .filter(d => !d.paired && d.name)
+                // strongest first, and the slice below therefore keeps
+                // the eight CLOSEST. It used to sort on astal's
+                // Device.rssi, which is always 0, so the cut kept an
+                // arbitrary eight and the device in your hand could be
+                // one of the ones dropped
+                .sort((a, b) => rssiOf(b) - rssiOf(a))
+                .slice(0, 8),
+        )
+    }
+    disposers.push(deviceList.subscribe(resort))
+    // one clean re-sort when the scan's verdict lands
+    disposers.push(scanSettled.subscribe(resort))
+    resort()
 
     const powered = createBinding(adapter, "powered")
 
@@ -216,9 +307,7 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                         icon="bluetooth-disabled-symbolic"
                         title={"Bluetooth is off"}
                         hint={"Click to turn on"}
-                        onClick={() => {
-                            adapter.powered = true
-                        }}
+                        onClick={() => setPoweredAsync(true)}
                     />
                 </box>
                 <box orientation={Gtk.Orientation.VERTICAL} visible={powered}>
@@ -241,6 +330,7 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                                         device={device}
                                         pauseDiscovery={pauseDiscovery}
                                         maybeScan={maybeScan}
+                                        scanSettled={scanSettled}
                                     />
                                 )}
                             </For>
@@ -279,6 +369,7 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                                         device={device}
                                         pauseDiscovery={pauseDiscovery}
                                         maybeScan={maybeScan}
+                                        scanSettled={scanSettled}
                                     />
                                 )}
                             </For>

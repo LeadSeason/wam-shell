@@ -203,3 +203,20 @@ Section: `[bluetooth]` — the bluetooth pane.
 | Key | Type | Default | What it does |
 |---|---|---|---|
 | `notifications` | bool | `true` | Notification when a device connects/disconnects or reports low battery (<= 20%) |
+
+The pane scans while it is open, and a paired device is listed by what
+that scan can hear:
+
+- **Paired** — the adapter can hear the device; tap to connect.
+- **Not in range** — dimmed. The device is switched off, in its case or
+  out of reach. The verdict is only offered after the scan has run about
+  thirteen seconds, because a classic speaker or headset answers an
+  inquiry cycle rather than advertising continuously.
+
+Under **Available**, the eight closest devices are shown, strongest
+signal first; a device's signal strength in dBm is in its details.
+
+Pairing failures are reported with the reason bluez gave ("Wrong PIN or
+passkey", "The device did not respond"). A device whose pairing failed is
+forgotten afterwards, so the next attempt starts from a clean slate
+rather than repeating the same failure.
