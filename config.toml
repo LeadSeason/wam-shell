@@ -564,7 +564,9 @@
 #              exposes one. default false
 # stats_on_panel - show the resource utilization monitor on the panel:
 #                  cpu/ram/gpu percentages, each with a sparkline, plus
-#                  the down/up network rates.
+#                  the down/up network rates. Every gpu gets its own
+#                  readout, tagged by vendor on a hybrid box (AMD/NV),
+#                  and each flashes for its OWN memory only.
 #                  Readouts turn yellow under pressure and red — with
 #                  the whole stat flashing as a solid block — when it
 #                  is severe. Cpu measures /proc/pressure/cpu, not

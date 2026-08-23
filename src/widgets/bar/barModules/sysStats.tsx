@@ -1,4 +1,4 @@
-import { Accessor, With, createComputed, createState, onCleanup } from "gnim"
+import { Accessor, For, createComputed, createState, onCleanup } from "gnim"
 import Gtk from "gi://Gtk?version=4.0"
 import Cairo from "gi://cairo"
 import {
@@ -6,19 +6,21 @@ import {
     cpuLevel,
     cpuPressure,
     ram,
-    gpu,
-    gpuLevel,
-    gpuTemp,
+    gpuHistFor,
+    gpuIds,
+    gpuLevelFor,
+    gpuPanelTag,
+    gpuPressures,
+    gpus,
+    formatPanelGpu,
     netDown,
     netUp,
     formatRate,
     cpuHist,
     ramHist,
-    gpuHist,
     pressurePulse,
     ramLevel,
     ramSize,
-    vram,
     loadAvg,
 } from "../../../lib/sysstats"
 import type { PressureLevel } from "../../../lib/sysstats"
@@ -223,16 +225,32 @@ function Stat({
 }
 
 export default function SysStats() {
+    // republished only when a card appears, vanishes or is renamed, so
+    // the For does not tear the stats down and rebuild them once a
+    // second the way the old <With value={gpu}> did
+    const gpuTags = gpuIds.as(l =>
+        l.map((g, i) => ({
+            id: g.id,
+            tag: gpuPanelTag(
+                l.map(x => x.id),
+                i,
+            ),
+        })),
+    )
+
     const tip = () => {
         const [rUsed, rTotal] = ramSize.get()
         const lines = [
             `CPU ${cpu.get()}%   load ${loadAvg.get().toFixed(2)}`,
             `RAM ${ram.get()}%   ${rUsed}/${rTotal} GB`,
         ]
-        if (gpu.get() !== null) {
-            const [vUsed, vTotal] = vram.get()
-            lines.push(`GPU ${gpu.get()}% ${gpuTemp.get()}°C   ${vUsed}/${vTotal} MiB`)
-        }
+        const cards = gpus.get()
+        const ids = cards.map(g => g.id)
+        for (const [i, g] of cards.entries())
+            lines.push(
+                `${formatPanelGpu(gpuPanelTag(ids, i), g.busy, g.temp)}` +
+                    `   ${g.vram[0]}/${g.vram[1]} MiB`,
+            )
         lines.push(`↓ ${formatRate(netDown.get())}   ↑ ${formatRate(netUp.get())}`)
         // what the recolored sparkline is trying to say, spelled out —
         // a colour alone cannot say WHICH pool is nearly gone
@@ -250,11 +268,13 @@ export default function SysStats() {
             alerts.push(
                 ramLevel.get() === "critical" ? "Severe memory pressure" : "High memory pressure",
             )
-        if (gpuLevel.get() !== "")
+        // one alert per saturated card, NAMED once there is a second
+        // card to confuse it with — the panel used to flash a single
+        // block and then quote the other card's healthy figures at you
+        for (const pg of gpuPressures.get())
             alerts.push(
-                gpuLevel.get() === "critical"
-                    ? "Severe GPU memory pressure"
-                    : "High GPU memory pressure",
+                `${pg.level === "critical" ? "Severe" : "High"} GPU memory pressure` +
+                    (ids.length > 1 ? ` — ${pg.name}` : ""),
             )
         if (alerts.length > 0) lines.push("", ...alerts.map(a => `⚠ ${a}`))
         lines.push("", "Click for Power Mode")
@@ -281,25 +301,28 @@ export default function SysStats() {
             />
             <Stat name="statCpu" label={cpu.as(v => `CPU ${v}%`)} hist={cpuHist} level={cpuLevel} />
             <Stat name="statRam" label={ram.as(v => `RAM ${v}%`)} hist={ramHist} level={ramLevel} />
-            {/* the GPU probe finishes a moment after the bar is built,
-            and a bare With re-lands its widget at the END of the parent
-            (AGENTS.md) — which put the whole GPU block to the RIGHT of
-            the network readout. The wrapper box holds the slot in
-            place, and hides itself so the 8px gap does not open up on a
-            machine with no GPU to report */}
-            <box visible={gpu.as(g => g !== null)}>
-                <With value={gpu}>
-                    {g =>
-                        g !== null && (
-                            <Stat
-                                name="statGpu"
-                                label={gpuTemp.as(t => `GPU ${g}% ${t}°C`)}
-                                hist={gpuHist}
-                                level={gpuLevel}
-                            />
-                        )
-                    }
-                </With>
+            {/* ONE STAT PER CARD. A single slot following the discrete
+            card meant a saturated iGPU flashed its red block over the
+            dGPU's healthy numbers, and the iGPU had no readout at all.
+            The wrapper box holds the slot in place — the cards arrive a
+            moment after the bar is built, and a child added late lands
+            at the END of the parent (AGENTS.md), i.e. to the RIGHT of
+            the network readout — and hides itself so the 8px gap does
+            not open up on a machine with no GPU to report */}
+            <box spacing={8} visible={gpuIds.as(l => l.length > 0)}>
+                <For each={gpuTags}>
+                    {({ id, tag }) => (
+                        <Stat
+                            name="statGpu"
+                            label={gpus.as(l => {
+                                const g = l.find(c => c.id === id)
+                                return g ? formatPanelGpu(tag, g.busy, g.temp) : tag
+                            })}
+                            hist={gpuHistFor(id)}
+                            level={gpuLevelFor(id)}
+                        />
+                    )}
+                </For>
             </box>
             {/* no sparkline: the three above plot against a fixed
             0-100 axis, and a rate has no such ceiling — it would need

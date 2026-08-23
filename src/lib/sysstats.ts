@@ -1,4 +1,5 @@
 import { createState } from "gnim"
+import type { Accessor } from "gnim"
 import { createPoll } from "ags/time"
 import { readFile, readFileAsync } from "ags/file"
 import GLib from "gi://GLib?version=2.0"
@@ -18,9 +19,6 @@ const HISTORY = Math.min(64, Math.max(24, Math.round(32000 / INTERVAL)))
 
 export const [cpu, setCpu] = createState(0)
 export const [ram, setRam] = createState(0)
-export const [gpu, setGpu] = createState<number | null>(null) // null = n/a
-export const [gpuTemp, setGpuTemp] = createState(0)
-export const [vram, setVram] = createState<[number, number]>([0, 0]) // used,total MiB
 export const [ramSize, setRamSize] = createState<[number, number]>([0, 0]) // used,total GB
 export const [swapSize, setSwapSize] = createState<[number, number]>([0, 0]) // used,total GB
 export const [loadAvg, setLoadAvg] = createState(0)
@@ -113,10 +111,9 @@ export function cpuPressureLevel(psi: number | null): PressureLevel {
 export const [cpuLevel, setCpuLevel] = createState<PressureLevel>("")
 
 export const [ramLevel, setRamLevel] = createState<PressureLevel>("")
-// the WORST of the cards, not the one the bar's scalars follow: the
-// panel graph is a pointer AT the pane, and the pane pages through
-// every saturated card. A graph blinking for a card the bar does not
-// itself display is still pointing at the right place to look.
+// the WORST of the cards. The panel does NOT flash off this — each card
+// flashes off its own level (gpuLevelFor) — it is what drives the shared
+// heartbeat and answers "is any card in trouble" for the tooltip.
 export const [gpuLevel, setGpuLevel] = createState<PressureLevel>("")
 
 // Shared heartbeat for the panel's critical pulse. Shared so N bars
@@ -708,14 +705,6 @@ for (const c of amdCards)
 
 // worst fill across every card, and which card owns it
 
-// The card everything single-GPU speaks for: the discrete one. On a
-// hybrid box that is the nvidia GPU the bar has always shown, so the
-// panel keeps its behaviour; on an AMD-only box it is a GPU readout the
-// bar never used to get at all
-function primaryGpu(list: Gpu[]): Gpu | undefined {
-    return list.find(g => g.vendor === "nvidia") ?? list[0]
-}
-
 // exact fill, unrounded: poolPct rounds for display, and a card at
 // 84.6% must not be pushed over an 85% threshold by the rounding
 const fill = (used: number, total: number) => (total > 0 ? (100 * used) / total : 0)
@@ -757,8 +746,14 @@ function updatePressure(list: Gpu[]) {
     // one page per card that is actually over, worst first so the
     // carousel opens on the one closest to failing
     const tagged = list.length > 1
-    const pages: GpuPressure[] = list
-        .map(g => ({ g, level: gpuPressureLevel(g) }))
+    const levelled = list.map(g => ({ g, level: gpuPressureLevel(g) }))
+    // each card's own verdict, for its own panel stat. Published before
+    // the aggregate so a bar that is watching both sees them agree
+    for (const { g, level } of levelled) {
+        const s = series(g.id)
+        if (s.level.get() !== level) s.setLevel(level)
+    }
+    const pages: GpuPressure[] = levelled
         .filter((x): x is { g: Gpu; level: "warn" | "critical" } => x.level !== "")
         .sort((a, b) => worstFill(b.g) - worstFill(a.g))
         .map(({ g, level }) => ({
@@ -825,11 +820,6 @@ function publishGpus() {
     }
     updatePressure(list)
     pickGpu()
-    // widgets/bar/barModules/sysStats still reads these scalars
-    const g = primaryGpu(list)
-    setGpu(g?.busy ?? null)
-    setGpuTemp(g?.temp ?? 0)
-    setVram(g?.vram ?? [0, 0])
 }
 
 // pure formatter, exported for tests: a GPU memory pool as
@@ -935,11 +925,66 @@ export const [uptimeSeconds, setUptimeSeconds] = createState(0)
 
 export const [cpuHist, setCpuHist] = createState<{ v: number }[]>([])
 export const [ramHist, setRamHist] = createState<{ v: number }[]>([])
-export const [gpuHist, setGpuHist] = createState<{ v: number }[]>([])
 // samples are objects so gnim's For sees unique identities
 // (plain numbers repeat and trip "duplicate keys")
 const push = (hist: { v: number }[], set: (v: { v: number }[]) => void, v: number) =>
     set([...hist, { v }].slice(-HISTORY))
+
+// ── one series per card ──────────────────────────────────────────────
+//
+// The panel used to plot and flash a SINGLE card, the one primaryGpu()
+// picked (nvidia first). On a hybrid box that meant a saturated iGPU
+// painted its red block over the dGPU's healthy numbers, and the iGPU
+// had no readout of its own at all — the pane pages per card, the bar
+// merged them. Each card now carries its own history and its own
+// severity, and the bar draws one stat per card off these.
+interface GpuSeries {
+    hist: Accessor<{ v: number }[]>
+    pushSample: (v: number) => void
+    level: Accessor<PressureLevel>
+    setLevel: (v: PressureLevel) => void
+}
+const gpuSeries = new Map<string, GpuSeries>()
+
+// created on demand: nvidia entries arrive a second after startup, and
+// the widget asks only for ids that are already in gpuIds
+function series(id: string): GpuSeries {
+    let s = gpuSeries.get(id)
+    if (!s) {
+        const [hist, setHist] = createState<{ v: number }[]>([])
+        const [level, setLevel] = createState<PressureLevel>("")
+        s = { hist, pushSample: v => push(hist.get(), setHist, v), level, setLevel }
+        gpuSeries.set(id, s)
+    }
+    return s
+}
+
+/** one card's own utilization history, for its own sparkline */
+export const gpuHistFor = (id: string): Accessor<{ v: number }[]> => series(id).hist
+/** one card's own severity, so a card flashes for ITS pools and no other's */
+export const gpuLevelFor = (id: string): Accessor<PressureLevel> => series(id).level
+
+// pure helper, exported for tests: the panel's short name for a card.
+// The pane can afford "GeForce RTX 4070 Laptop"; a bar with two of
+// these plus cpu, ram and the network rates cannot. Vendor when the
+// vendors alone tell the cards apart (the hybrid case, and the one
+// spelling anybody recognises), list position when they do not.
+export function gpuPanelTag(ids: string[], i: number): string {
+    if (ids.length < 2) return "GPU"
+    const vendor = (id: string) => id.slice(0, id.indexOf(":"))
+    if (new Set(ids.map(vendor)).size === ids.length) return vendor(ids[i]) === "amd" ? "AMD" : "NV"
+    return `GPU${i}`
+}
+
+// pure formatter, exported for tests: one card's panel readout. A
+// sensor the card does not expose is left out rather than printed as a
+// zero — "GPU 0%" on a card with no gpu_busy_percent is a reading
+export function formatPanelGpu(tag: string, busy: number | null, temp: number | null): string {
+    const parts = [tag]
+    if (busy !== null) parts.push(`${busy}%`)
+    if (temp !== null) parts.push(`${temp}°C`)
+    return parts.join(" ")
+}
 
 // /proc/stat: user nice system idle iowait irq softirq steal
 let prevCpu: { idle: number; total: number } | null = null
@@ -1093,7 +1138,7 @@ const poll = createPoll("", INTERVAL, () => {
                     read1(c.clockPath),
                     read1(c.wattsPath),
                 ])
-                gpuState.set(c.id, {
+                const next: Gpu = {
                     ...g,
                     // a failed read keeps the last good value rather
                     // than blinking the tile to zero
@@ -1103,11 +1148,11 @@ const poll = createPoll("", INTERVAL, () => {
                     watts: watts !== null ? watts / 1e6 : g.watts, // µW
                     vram: [vu, vt],
                     gtt: [gu, gt],
-                })
+                }
+                gpuState.set(c.id, next)
+                if (next.busy !== null) series(c.id).pushSample(next.busy)
             }
             publishGpus()
-            const p = primaryGpu(gpus.get())
-            if (p?.vendor === "amd" && p.busy !== null) push(gpuHist.get(), setGpuHist, p.busy)
         })
     }
     // the "who to kill" lines, in a step of its own: one page per
@@ -1234,11 +1279,10 @@ function handleGpuLine(line: string) {
         vram: r.vram[1] > 0 ? r.vram : (prev?.vram ?? [0, 0]),
         gtt: null, // nvidia has no GTT
     })
+    // one line per card per interval, so each card's graph advances at
+    // the poll rate no matter how many the stream is reporting
+    if (r.busy !== null) series(id).pushSample(r.busy)
     publishGpus()
-    // only the card the bar is showing feeds its graph — a hybrid box
-    // publishes twice a tick and would otherwise double its rate
-    if (r.busy !== null && primaryGpu(gpus.get())?.id === id)
-        push(gpuHist.get(), setGpuHist, r.busy)
 }
 
 let gpuRestartSource = 0
@@ -1248,8 +1292,27 @@ let gpuDisposed = false
 // closed) must not look like a crash to the restart path
 let gpuWanted = false
 
+// the stream is the ONLY source for nvidia cards, so once it is gone
+// their numbers are stale rather than merely paused. Dropping the
+// entries takes their panel stats and their pane pages with them —
+// where the old code only blanked the bar's single scalar, which on a
+// hybrid box hid the healthy amdgpu readout along with them
+function dropNvidiaGpus() {
+    let hit = false
+    for (let i = gpuOrder.length - 1; i >= 0; i--) {
+        const id = gpuOrder[i]
+        if (!id.startsWith("nv:")) continue
+        gpuOrder.splice(i, 1)
+        gpuState.delete(id)
+        gpuSeries.delete(id)
+        hogsById.delete(id)
+        hit = true
+    }
+    if (hit) publishGpus()
+}
+
 function scheduleGpuRestart() {
-    setGpu(null)
+    dropNvidiaGpus()
     // clear the handle of the just-died process (crash or our own kill)
     gpuProc = null
     if (gpuDisposed || !gpuWanted) return
