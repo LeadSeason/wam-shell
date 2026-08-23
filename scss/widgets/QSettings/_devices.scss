@@ -26,7 +26,9 @@ window#QSettings {
                 color: t.$red;
             }
         }
-        .trust, .forget, .details {
+        .trust,
+        .forget,
+        .details {
             padding: 0 s.$gap-small;
         }
         .trust.active {
@@ -34,7 +36,8 @@ window#QSettings {
         }
     }
 
-    .btDetails, .wifiDetails {
+    .btDetails,
+    .wifiDetails {
         margin: 2px s.$gap 6px 32px;
 
         .key {
@@ -70,7 +73,8 @@ window#QSettings {
                 color: t.$red;
             }
         }
-        .details, .forget {
+        .details,
+        .forget {
             padding: 0 s.$gap-small;
         }
     }

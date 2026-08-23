@@ -40,8 +40,12 @@ window.OSDWindow {
         background-image: linear-gradient(to right, t.$peach, t.$peach);
     }
     // caps lock state tint
-    .osdOn { color: t.$green; }
-    .osdOff { color: t.$subtext0; }
+    .osdOn {
+        color: t.$green;
+    }
+    .osdOff {
+        color: t.$subtext0;
+    }
 
     // Whether the label is a caption or the content depends on whether
     // there is a bar next to it.

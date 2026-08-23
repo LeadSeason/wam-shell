@@ -41,8 +41,12 @@ window#QSettings {
     }
 
     @keyframes wam-brightness-spin {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
+        from {
+            transform: rotate(0deg);
+        }
+        to {
+            transform: rotate(360deg);
+        }
     }
 
     // sliders that carry the device name overlaid inside them: the bar
@@ -59,7 +63,8 @@ window#QSettings {
         margin-left: s.$gap-large;
     }
 
-    label, image {
+    label,
+    image {
         transition: color s.$transition-slow;
     }
 
