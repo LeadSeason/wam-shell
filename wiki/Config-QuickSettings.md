@@ -12,7 +12,7 @@ Section: `[quicksettings]`
 | `battery_blink` | bool | `true` | Blink the panel battery icon while the battery is discharging |
 | `show_device_names` | bool | `false` | Overlay the active input/output device name on the volume sliders |
 | `show_stats` | bool | `false` | Performance stats tiles in the power mode pane: ram+swap/disk/uptime under System, cpu utilization + load average in the CPU section, a GPU section, and network rates; collected only while the pane is open. Does not gate the chassis-fan tile (see below) |
-| `stats_on_panel` | bool | `false` | Resource utilization monitor on the panel: cpu/ram/gpu percentage, each with a sparkline, plus ↓/↑ network rates. Clicking it opens the popup on the Power Mode pane |
+| `stats_on_panel` | bool | `false` | Resource utilization monitor on the panel: cpu/ram/gpu percentage, each with a sparkline, plus ↓/↑ network rates. Every GPU gets a readout of its own. Clicking it opens the popup on the Power Mode pane |
 | `stats_interval` | int (ms) | `1000` | Time between stat updates; lower is smoother graphs at higher cpu cost |
 | `power_profile_on_panel` | bool | `true` | Active power profile icon in the bar's quicksettings label |
 | `hide_on_media_play` | bool | `true` | Close the popup when a player starts playing; pausing leaves it open |
@@ -98,9 +98,15 @@ critical. Clicking anywhere on the monitor opens the popup straight on
 the Power Mode pane, where the warnings, the per-card pages and the
 profile switch are.
 
-GPU severity is the **worst** card's, even when the panel's own
-percentage follows a different one: the flash is a pointer at the pane,
-and the pane pages through every saturated card.
+**Every GPU gets its own stat**, and each one flashes for its own
+pools alone. The panel used to carry a single GPU slot following the
+discrete card, which on a hybrid box meant a saturated iGPU painted its
+red block over the dGPU's healthy numbers — and gave the iGPU no
+readout at all. With a second card the readouts are tagged by vendor
+(`AMD 7% 45°C`, `NV 13% 46°C`); two cards from the same vendor fall
+back to list position (`GPU0`, `GPU1`), since the pane's full names are
+far too wide for a bar. The tooltip lists every card, and names the
+saturated one in its warning.
 
 RAM takes the worse of two votes: the PSI stall average behind the
 popup's warning (5% / 20% of the last minute), and plain
