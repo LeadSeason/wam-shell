@@ -23,14 +23,14 @@ test("github typeLabel: known types and passthrough", () => {
 
 test("github webUrl: api URLs map to web URLs", () => {
     eq(
-        webUrl("https://api.github.com/repos/owner/repo/issues/42", "https://github.com/owner/repo"),
+        webUrl(
+            "https://api.github.com/repos/owner/repo/issues/42",
+            "https://github.com/owner/repo",
+        ),
         "https://github.com/owner/repo/issues/42",
     )
     eq(
-        webUrl(
-            "https://api.github.com/repos/owner/repo/pulls/7",
-            "https://github.com/owner/repo",
-        ),
+        webUrl("https://api.github.com/repos/owner/repo/pulls/7", "https://github.com/owner/repo"),
         "https://github.com/owner/repo/pulls/7",
     )
 })

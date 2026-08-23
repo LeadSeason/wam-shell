@@ -1,40 +1,40 @@
 {
-  "name": "wam-shell",
-  "version": "0.1.0",
-  "description": "A GTK4 desktop shell for Hyprland and sway/i3, built on ags/astal: bar, quick settings, notification center, OSD and service integrations.",
-  "homepage": "https://github.com/LeadSeason/wam-shell",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/LeadSeason/wam-shell.git"
-  },
-  "bugs": {
-    "url": "https://github.com/LeadSeason/wam-shell/issues"
-  },
-  "private": true,
-  "engines": {
-    "node": ">=18"
-  },
-  "scripts": {
-    "start": "bash scripts/start.sh",
-    "debug": "GTK_DEBUG=interactive ags run app.tsx",
-    "setup": "bash scripts/setup.sh",
-    "typecheck": "bash scripts/typecheck.sh",
-    "verify:scss": "bash scripts/verify-scss.sh",
-    "test": "bash tests/run.sh",
-    "test:smoke": "bash tests/smoke.sh",
-    "test:smoke:sway": "bash tests/smoke-sway.sh",
-    "test:perf": "bash tests/perf/run.sh",
-    "perf": "bash tests/perf/compare.sh",
-    "perf:install-hook": "bash tests/perf/install-hook.sh"
-  },
-  "packageManager": "pnpm@10.28.1",
-  "dependencies": {
-    "ags": "link:.sys/ags",
-    "fuse.js": "^7.1.0",
-    "gnim": "link:.sys/gnim",
-    "smol-toml": "^1.7.1"
-  },
-  "devDependencies": {
-    "prettier": "^3.8.1"
-  }
+    "name": "wam-shell",
+    "version": "0.1.0",
+    "description": "A GTK4 desktop shell for Hyprland and sway/i3, built on ags/astal: bar, quick settings, notification center, OSD and service integrations.",
+    "homepage": "https://github.com/LeadSeason/wam-shell",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/LeadSeason/wam-shell.git"
+    },
+    "bugs": {
+        "url": "https://github.com/LeadSeason/wam-shell/issues"
+    },
+    "private": true,
+    "engines": {
+        "node": ">=18"
+    },
+    "scripts": {
+        "start": "bash scripts/start.sh",
+        "debug": "GTK_DEBUG=interactive ags run app.tsx",
+        "setup": "bash scripts/setup.sh",
+        "typecheck": "bash scripts/typecheck.sh",
+        "verify:scss": "bash scripts/verify-scss.sh",
+        "test": "bash tests/run.sh",
+        "test:smoke": "bash tests/smoke.sh",
+        "test:smoke:sway": "bash tests/smoke-sway.sh",
+        "test:perf": "bash tests/perf/run.sh",
+        "perf": "bash tests/perf/compare.sh",
+        "perf:install-hook": "bash tests/perf/install-hook.sh"
+    },
+    "packageManager": "pnpm@10.28.1",
+    "dependencies": {
+        "ags": "link:.sys/ags",
+        "fuse.js": "^7.1.0",
+        "gnim": "link:.sys/gnim",
+        "smol-toml": "^1.7.1"
+    },
+    "devDependencies": {
+        "prettier": "^3.8.1"
+    }
 }

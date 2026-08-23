@@ -13,16 +13,16 @@ touches no widget.
 
 ```ts
 export interface Provider {
-    name: string                      // registry key and filter value
-    iconName: string                  // the header filter icon
-    displayName?: string              // for sign-in buttons; defaults to name
-    items: Accessor<ProviderItem[]>   // what the center renders
-    refresh(): void                   // stale-while-revalidate on open
-    status?: Accessor<string | null>  // a sync problem, or null when healthy
-    signIn?(): void                   // interactive sign-in (YouTube)
+    name: string // registry key and filter value
+    iconName: string // the header filter icon
+    displayName?: string // for sign-in buttons; defaults to name
+    items: Accessor<ProviderItem[]> // what the center renders
+    refresh(): void // stale-while-revalidate on open
+    status?: Accessor<string | null> // a sync problem, or null when healthy
+    signIn?(): void // interactive sign-in (YouTube)
     signInVisible?: Accessor<boolean>
-    setupHint?: string | null         // enabled but unconfigured
-    soonestFirst?: boolean            // future-dated items: next first
+    setupHint?: string | null // enabled but unconfigured
+    soonestFirst?: boolean // future-dated items: next first
 }
 ```
 
@@ -34,11 +34,11 @@ Each `ProviderItem` is a row: `id`, `provider`, `time` (unix seconds),
 `appName`, `summary`, `body`, `iconName`, optional `imagePath` and
 `actions`, plus three verbs the center calls:
 
-| verb | meaning |
-|---|---|
+| verb         | meaning                                                 |
+| ------------ | ------------------------------------------------------- |
 | `activate()` | primary click — open it, and whatever "read" means here |
-| `dismiss()` | the provider's own "done" (mark read, complete, delete) |
-| `hide()` | session-only: out of the center, no service call |
+| `dismiss()`  | the provider's own "done" (mark read, complete, delete) |
+| `hide()`     | session-only: out of the center, no service call        |
 
 Two fields carry judgement rather than data:
 
@@ -67,19 +67,19 @@ Most of the plumbing already exists. Reach for it rather than
 reimplementing it — these were four near-identical copies once, and a
 rule with four implementations holds in three places.
 
-| you need | use |
-|---|---|
-| the config dir | `configHome` (`lib/paths.ts`) |
-| a token from env or an env file | `loadToken` (`lib/credentials.ts`) |
-| an authenticated JSON HTTP client | `createJsonClient` (`lib/httpJson.ts`) |
-| Google OAuth (any Google service) | `createGoogleAuth` (`lib/googleAuth.ts`) |
-| "which items are new?" | `newArrivals` (`lib/providerCore.ts`) |
-| "which are worth a banner?" | `bannerCandidates` (`lib/providerCore.ts`) |
-| a persisted "already seen" set | `createSeenStore` (`lib/seenStore.ts`) |
-| the age gate behind `refresh()` | `createRefreshGate` (`lib/providerCore.ts`) |
-| opening a url | `openUrl` (`lib/providerCore.ts`) |
-| teardown that actually runs | `registerDispose` (`lib/lifecycle.ts`) |
-| timers and subprocesses | the `lib/metrics.ts` wrappers, never GLib directly |
+| you need                          | use                                                |
+| --------------------------------- | -------------------------------------------------- |
+| the config dir                    | `configHome` (`lib/paths.ts`)                      |
+| a token from env or an env file   | `loadToken` (`lib/credentials.ts`)                 |
+| an authenticated JSON HTTP client | `createJsonClient` (`lib/httpJson.ts`)             |
+| Google OAuth (any Google service) | `createGoogleAuth` (`lib/googleAuth.ts`)           |
+| "which items are new?"            | `newArrivals` (`lib/providerCore.ts`)              |
+| "which are worth a banner?"       | `bannerCandidates` (`lib/providerCore.ts`)         |
+| a persisted "already seen" set    | `createSeenStore` (`lib/seenStore.ts`)             |
+| the age gate behind `refresh()`   | `createRefreshGate` (`lib/providerCore.ts`)        |
+| opening a url                     | `openUrl` (`lib/providerCore.ts`)                  |
+| teardown that actually runs       | `registerDispose` (`lib/lifecycle.ts`)             |
+| timers and subprocesses           | the `lib/metrics.ts` wrappers, never GLib directly |
 
 A skeleton:
 
@@ -98,10 +98,14 @@ const [items, setItems] = createState<ProviderItem[]>([])
 const [status, setStatus] = createState<string | null>(null)
 const seen = createSeenStore(`${Config.instanceCacheDir}/example-seen.json`, "Example")
 
-export function poll() { /* fetch, map, setItems, banner the fresh ones */ }
+export function poll() {
+    /* fetch, map, setItems, banner the fresh ones */
+}
 const gate = createRefreshGate(60_000, poll)
 export const refresh = gate.refresh
-export function dispose() { /* clear timers */ }
+export function dispose() {
+    /* clear timers */
+}
 registerDispose("example", dispose)
 
 // registration happens at IMPORT; network starts in init()
@@ -110,7 +114,10 @@ if (Config.example.enabled) {
         name: "example",
         iconName: "example-symbolic",
         displayName: "Example",
-        items, refresh, dispose, status,
+        items,
+        refresh,
+        dispose,
+        status,
         setupHint: active ? null : "Example needs a token: …",
     } satisfies Provider)
 }

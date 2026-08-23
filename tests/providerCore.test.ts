@@ -32,11 +32,7 @@ test("providerCore newArrivals: an item keeping its id stays quiet", () => {
 test("providerCore bannerCandidates: unknown and recent", () => {
     const now = 1_800_000_000
     const item = (id: string, ageSec: number) => ({ id, time: now - ageSec })
-    const next = [
-        item("fresh", 3600),
-        item("known", 60),
-        item("ancient", 7 * 86_400),
-    ]
+    const next = [item("fresh", 3600), item("known", 60), item("ancient", 7 * 86_400)]
     eq(
         bannerCandidates(next, new Set(["known"]), now).map(i => i.id),
         ["fresh"],
@@ -126,7 +122,10 @@ test("notificationProviders: a duplicate name is ignored, the first wins", () =>
     const first = providers.find(p => p.name === "test-dupe")
     registerProvider({ ...stub("test-dupe"), iconName: "different" })
     eq(providers.filter(p => p.name === "test-dupe").length, 1)
-    eq(providers.find(p => p.name === "test-dupe"), first)
+    eq(
+        providers.find(p => p.name === "test-dupe"),
+        first,
+    )
 })
 
 // --- rate-limit backoff ----------------------------------------------

@@ -318,10 +318,10 @@ test("gcal parseVisibilityOverrides: bad shapes drop, booleans keep", () => {
     eq(parseVisibilityOverrides('["a"]'), {})
     eq(parseVisibilityOverrides('"str"'), {})
     // non-boolean values are dropped, the rest survives
-    eq(
-        parseVisibilityOverrides('{"a:c1": false, "a:c2": true, "a:c3": "yes", "a:c4": 0}'),
-        { "a:c1": false, "a:c2": true },
-    )
+    eq(parseVisibilityOverrides('{"a:c1": false, "a:c2": true, "a:c3": "yes", "a:c4": 0}'), {
+        "a:c1": false,
+        "a:c2": true,
+    })
 })
 
 test("gcal isoWeekNumber: ISO-8601 week numbers", () => {
@@ -369,13 +369,19 @@ const timedRaw = (extra: any = {}) => ({
 
 test("gcal resolveAttending: a self guest entry attends, unless declined", () => {
     eq(
-        resolveAttending(timedRaw({ attendees: [{ self: true, responseStatus: "accepted" }] }), false),
+        resolveAttending(
+            timedRaw({ attendees: [{ self: true, responseStatus: "accepted" }] }),
+            false,
+        ),
         true,
     )
     // needsAction/tentative still count: you ARE on the guest list
     eq(resolveAttending(timedRaw({ attendees: [{ self: true }] }), false), true)
     eq(
-        resolveAttending(timedRaw({ attendees: [{ self: true, responseStatus: "declined" }] }), false),
+        resolveAttending(
+            timedRaw({ attendees: [{ self: true, responseStatus: "declined" }] }),
+            false,
+        ),
         false,
     )
 })
@@ -386,7 +392,10 @@ test("gcal resolveAttending: organizing attends even without a guest entry", () 
 
 test("gcal resolveAttending: other people's guest lists don't count", () => {
     eq(
-        resolveAttending(timedRaw({ attendees: [{ email: "a@x.com" }, { email: "b@x.com" }] }), false),
+        resolveAttending(
+            timedRaw({ attendees: [{ email: "a@x.com" }, { email: "b@x.com" }] }),
+            false,
+        ),
         false,
     )
     eq(resolveAttending(timedRaw({ organizer: { email: "a@x.com" } }), false), false)

@@ -7,14 +7,14 @@ Clicking opens webmail; dismissing marks the mail SEEN on the bridge.
 
 Section: `[protonmail]`
 
-| Key | Type | Default | What it does |
-|---|---|---|---|
-| `enabled` | bool | `true` | Master toggle (requires credentials) |
-| `poll_minutes` | int | `2` | Minutes between syncs (clamped to at least 1); the center also refreshes when opened, at most once a minute |
-| `host` | string | `"127.0.0.1"` | Bridge IMAP host |
-| `port` | int | `1143` | Bridge IMAP port |
-| `tls` | bool | `false` | Speak STARTTLS before logging in. IMAP LOGIN sends the password in the clear: fine on loopback (how the bridge is meant to be used), but with `host` pointing at another machine the provider refuses to start unless this is `true` |
-| `tls_insecure` | bool | `false` | Accept the bridge's self-signed certificate without verifying it; keeps the password off the wire but does not prove you are talking to your bridge — only on a network you trust |
+| Key            | Type   | Default       | What it does                                                                                                                                                                                                                         |
+| -------------- | ------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `enabled`      | bool   | `true`        | Master toggle (requires credentials)                                                                                                                                                                                                 |
+| `poll_minutes` | int    | `2`           | Minutes between syncs (clamped to at least 1); the center also refreshes when opened, at most once a minute                                                                                                                          |
+| `host`         | string | `"127.0.0.1"` | Bridge IMAP host                                                                                                                                                                                                                     |
+| `port`         | int    | `1143`        | Bridge IMAP port                                                                                                                                                                                                                     |
+| `tls`          | bool   | `false`       | Speak STARTTLS before logging in. IMAP LOGIN sends the password in the clear: fine on loopback (how the bridge is meant to be used), but with `host` pointing at another machine the provider refuses to start unless this is `true` |
+| `tls_insecure` | bool   | `false`       | Accept the bridge's self-signed certificate without verifying it; keeps the password off the wire but does not prove you are talking to your bridge — only on a network you trust                                                    |
 
 Setup:
 
