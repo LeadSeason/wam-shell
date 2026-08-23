@@ -419,7 +419,10 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan, scanSettled }: De
                                 )
                             })}
                         >
-                            {wpDev => wpDev && <ProfileSelector wpDev={wpDev} />}
+                            {/* ternary + annotated param — see BtSwitch */}
+                            {(wpDev: AstalWp.Device | null) =>
+                                wpDev ? <ProfileSelector wpDev={wpDev} /> : <></>
+                            }
                         </With>
                     )}
                 </box>

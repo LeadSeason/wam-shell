@@ -37,7 +37,15 @@ export function BluetoothWidget({ pane, name }: btPaneProps) {
 export function BtSwitch() {
     return (
         <With value={createBinding(bluetooth, "adapter")}>
-            {adapter => adapter && <BtSwitchBody adapter={adapter} />}
+            {/* Two things With's inference needs, and neither is a cast.
+            A ternary rather than `adapter && …`, because a callback that
+            can return `false` does not satisfy `E extends JSX.Element`;
+            and the parameter annotated, because T does not flow from
+            `value` through createBinding's overloads — without it the
+            adapter arrives as `{}` and cannot be passed on. */}
+            {(adapter: AstalBluetooth.Adapter | null) =>
+                adapter ? <BtSwitchBody adapter={adapter} /> : <></>
+            }
         </With>
     )
 }
