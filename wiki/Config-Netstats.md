@@ -9,9 +9,9 @@ live ↓/↑ rate is a separate thing — see `[quicksettings]` `show_stats`
 Section: `[netstats]`. These keys are section-only; they cannot be set
 flat at the top level.
 
-| Key | Type | Default | What it does |
-|---|---|---|---|
-| `enabled` | bool | `true` | Track totals at all; `false` also hides the quick settings tiles and empties the bar module |
+| Key        | Type | Default | What it does                                                                                                    |
+| ---------- | ---- | ------- | --------------------------------------------------------------------------------------------------------------- |
+| `enabled`  | bool | `true`  | Track totals at all; `false` also hides the quick settings tiles and empties the bar module                     |
 | `on_panel` | bool | `false` | Show today's ↓/↑ totals on the panel (classic layout; with `[[panel]]` lists, add `netstats` to a list instead) |
 
 - Totals are collected around the clock (one `/proc/net/dev` read every

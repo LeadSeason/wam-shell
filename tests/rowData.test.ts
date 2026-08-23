@@ -68,10 +68,7 @@ test("rowData: provider items carry no urgency of their own", () => {
 
 test("rowData: actions map across, absent becomes an empty list", () => {
     eq(fromItem(item({})).actions, [])
-    eq(
-        fromItem(
-            item({ actions: [{ id: "done", label: "Mark done", run: () => {} }] }),
-        ).actions,
-        [{ id: "done", label: "Mark done" }],
-    )
+    eq(fromItem(item({ actions: [{ id: "done", label: "Mark done", run: () => {} }] })).actions, [
+        { id: "done", label: "Mark done" },
+    ])
 })

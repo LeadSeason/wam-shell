@@ -18,14 +18,14 @@ theme = "gruvbox"
 
 Shipped themes (files in `scss/theme/`):
 
-| theme | flavor |
-| --- | --- |
-| `catppuccin-mocha` | dark (default) |
-| `catppuccin-macchiato` | dark |
-| `catppuccin-frappe` | dark |
-| `catppuccin-latte` | light |
-| `gruvbox` | dark |
-| `gruvbox-light` | light |
+| theme                  | flavor         |
+| ---------------------- | -------------- |
+| `catppuccin-mocha`     | dark (default) |
+| `catppuccin-macchiato` | dark           |
+| `catppuccin-frappe`    | dark           |
+| `catppuccin-latte`     | light          |
+| `gruvbox`              | dark           |
+| `gruvbox-light`        | light          |
 
 Unknown names fall back to `catppuccin-mocha`.
 
@@ -70,20 +70,20 @@ $blue: #458588;
 $green: #98971a;
 /* … the other color roles … */
 
-$text: #3c3836;        // primary foreground
-$subtext1: #504945;    // dimmer foreground
-$subtext0: #665c54;    // dimmest foreground
-$overlay2: #7c6f64;    // borders, separators (strong → weak)
+$text: #3c3836; // primary foreground
+$subtext1: #504945; // dimmer foreground
+$subtext0: #665c54; // dimmest foreground
+$overlay2: #7c6f64; // borders, separators (strong → weak)
 $overlay1: #928374;
 $overlay0: #a89984;
-$surface2: #bdae93;    // widget backgrounds (strong → weak)
+$surface2: #bdae93; // widget backgrounds (strong → weak)
 $surface1: #d5c4a1;
 $surface0: #ebdbb2;
-$base: #fbf1c7;        // panel/window background
-$mantle: #f2e5bc;      // slightly off-base
-$crust: #ebdbb2;       // deepest background (popups, cards)
+$base: #fbf1c7; // panel/window background
+$mantle: #f2e5bc; // slightly off-base
+$crust: #ebdbb2; // deepest background (popups, cards)
 
-$accent: $blue;        // sliders, active toggles, focus rings, spines
+$accent: $blue; // sliders, active toggles, focus rings, spines
 ```
 
 Rules of thumb:
@@ -125,14 +125,14 @@ Two files carry everything the shell's surfaces have in common.
 **`scss/conf.scss` is the values** — pure numbers and font stacks, no
 theme dependency, so anything may `@use` it:
 
-| group | tokens |
-| --- | --- |
-| space | `$padding-small` `$padding` `$gap-small` `$gap` `$gap-large` `$bar-widget-spacing` |
-| shape | `$radius-small` `$radius` `$radius-large` `$radius-pill`, `$border` `$hairline` |
-| type | `$font-tiny` `$font-small` `$font-title` `$font-display`, `$weight-medium` `$weight-bold`, `$font-ui` `$font-mono` |
-| states | `$disabled-opacity` `$quiet-opacity`, `$transition-time` `$transition-slow` `$ease` |
+| group   | tokens                                                                                                              |
+| ------- | ------------------------------------------------------------------------------------------------------------------- |
+| space   | `$padding-small` `$padding` `$gap-small` `$gap` `$gap-large` `$bar-widget-spacing`                                  |
+| shape   | `$radius-small` `$radius` `$radius-large` `$radius-pill`, `$border` `$hairline`                                     |
+| type    | `$font-tiny` `$font-small` `$font-title` `$font-display`, `$weight-medium` `$weight-bold`, `$font-ui` `$font-mono`  |
+| states  | `$disabled-opacity` `$quiet-opacity`, `$transition-time` `$transition-slow` `$ease`                                 |
 | presets | `$btn-padding{,-icon,-lg}` `$chip-padding` `$row-padding{,-tight}` `$card-padding` `$popup-padding` `$popup-margin` |
-| sizes | `$icon` `$icon-medium` `$icon-large`, `$slider-height` `$meter-height` `$seek-height` `$pill-size` |
+| sizes   | `$icon` `$icon-medium` `$icon-large`, `$slider-height` `$meter-height` `$seek-height` `$pill-size`                  |
 
 Which radius to use is decided by **what the thing is**, not by how big
 it looks: `$radius-small` for inline marks, `$radius` for buttons, rows
@@ -171,32 +171,32 @@ sheet should be spending tokens, not multiplying them a second time.
 **`scss/ui.scss` is what the values add up to** — the theme-aware
 mixins. Include these instead of restating them:
 
-| mixin | for |
-| --- | --- |
-| `surface($bg, $radius)` | a floating window: popup, toast, dialog, OSD |
-| `card($bg, $padding)` | a card inside a surface — no border, no shadow |
-| `button-quiet` / `button-framed` / `button-accent` | the three buttons |
-| `icon-button` / `chip` | icon-only (square) / one of a pickable set |
-| `row($padding)` / `row-active` | a list row, and the one in effect |
-| `eyebrow` / `eyebrow-rule` / `title` / `display` / `subtitle` | the type roles |
-| `slider($height, $fill)` / `meter($fill)` | a control you aim at / a readout you glance at |
-| `switch` / `checkbox` / `text-field` | the form controls |
-| `menu` | `modelbutton`/`separator`/`arrow` for GTK menus |
-| `focus-ring` | keyboard focus, for the surfaces driven by one |
+| mixin                                                         | for                                             |
+| ------------------------------------------------------------- | ----------------------------------------------- |
+| `surface($bg, $radius)`                                       | a floating window: popup, toast, dialog, OSD    |
+| `card($bg, $padding)`                                         | a card inside a surface — no border, no shadow  |
+| `button-quiet` / `button-framed` / `button-accent`            | the three buttons                               |
+| `icon-button` / `chip`                                        | icon-only (square) / one of a pickable set      |
+| `row($padding)` / `row-active`                                | a list row, and the one in effect               |
+| `eyebrow` / `eyebrow-rule` / `title` / `display` / `subtitle` | the type roles                                  |
+| `slider($height, $fill)` / `meter($fill)`                     | a control you aim at / a readout you glance at  |
+| `switch` / `checkbox` / `text-field`                          | the form controls                               |
+| `menu`                                                        | `modelbutton`/`separator`/`arrow` for GTK menus |
+| `focus-ring`                                                  | keyboard focus, for the surfaces driven by one  |
 
 Two rules the mixins encode, worth knowing before overriding them:
 
 - **Accent is feedback on stateless things, surface on stateful ones.**
   A button has no state, so the pointer paints it accent (hover
   `$accent20`, press `$accent40`). A list row, a workspace or a tile
-  *can be the active one*, and accent is reserved for saying so — the
+  _can be the active one_, and accent is reserved for saying so — the
   pointer speaks in surface there (`$surface050` / `$surface1`) or the
   two collide, and hovering a workspace looks like switching to it.
 - **A card does not frame itself.** Depth is the surface's job. A card
   that also drew a border and a shadow turned every pane into boxes in
   boxes.
 
-When a widget genuinely needs to differ, override *after* the include
+When a widget genuinely needs to differ, override _after_ the include
 and say why. A deliberate exception reads as one; a fresh literal reads
 as drift — which is how the tree ended up with popup radii of 6, 12, 14
 and 15px at the same time, three unrelated slider designs, and the
@@ -223,7 +223,9 @@ Every widget carries a stable CSS class (see the list comment in
 Per-widget spacing:
 
 ```scss
-.sysStats { margin-right: 12px; }
+.sysStats {
+    margin-right: 12px;
+}
 ```
 
 Per-panel styling: give a panel a class in its `[[panel]]` block and
@@ -235,7 +237,9 @@ class = "laptop"
 ```
 
 ```scss
-window.Bar.laptop { opacity: 0.95; }
+window.Bar.laptop {
+    opacity: 0.95;
+}
 ```
 
 ## Icons
@@ -252,11 +256,11 @@ Two conventions keep the names coherent:
 - **`pan-*` is an expander, `go-*` is navigation.** `pan-down`/`pan-up`
   disclose something in place; `go-next`/`go-previous` drill into a pane
   or step through months and days. An expander whose two states are
-  different *shapes* — a chevron one way, a lightbulb the other — is the
+  different _shapes_ — a chevron one way, a lightbulb the other — is the
   bug this rule exists to prevent.
 - **Prefer a name Adwaita does not define over one it defines
   differently.** The bundled copies are only a fallback, so a name the
-  system theme also ships resolves to *its* drawing, not ours. For the
+  system theme also ships resolves to _its_ drawing, not ours. For the
   handful of concepts Adwaita has no name for (cpu, memory, temperature,
   gpu, hourglass, speedometer, dark-mode) the shell ships original
   drawings on Adwaita's 16px grid rather than importing a second icon

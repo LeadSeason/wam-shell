@@ -8,10 +8,10 @@ filter on github.com).
 
 Section: `[github]`
 
-| Key | Type | Default | What it does |
-|---|---|---|---|
-| `enabled` | bool | `true` | Master toggle (requires a token, see below) |
-| `poll_minutes` | int | `5` | Minutes between inbox syncs (minimum `1`); the center also refreshes when opened, at most once a minute |
+| Key            | Type | Default | What it does                                                                                            |
+| -------------- | ---- | ------- | ------------------------------------------------------------------------------------------------------- |
+| `enabled`      | bool | `true`  | Master toggle (requires a token, see below)                                                             |
+| `poll_minutes` | int  | `5`     | Minutes between inbox syncs (minimum `1`); the center also refreshes when opened, at most once a minute |
 
 Auth — the token is never read from `config.toml`:
 

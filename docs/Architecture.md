@@ -18,15 +18,15 @@ One page on how the pieces fit.
 - **`src/lib/`** — shared reactive state and services (gnim
   `createState`/`createBinding`). One module per concern: `notifd`,
   `mpris`, `bluetooth`, `sleepTimer`, `harvest`, `gcal`, `github`,
-  `googleAuth`, `youtube`, `screenShare`,  `sysstats`, `kbLayout`, `vpn`, `hyprsunset`, `brightness`, `osd`,
+  `googleAuth`, `youtube`, `screenShare`, `sysstats`, `kbLayout`, `vpn`, `hyprsunset`, `brightness`, `osd`,
   `requestHandler`, … Widgets never talk to the system directly; they
   consume these.
-  - Cross-cutting helpers rather than services: `lifecycle` (the
-    shutdown registry), `providerCore` + `seenStore` + `httpJson` +
-    `paths` + `credentials` (the notification-center provider plumbing,
-    see [Providers.md](Providers.md)), `configSchema`, `atomicWrite`,
-    `metrics` (the instrumented wrappers all timer/subprocess/signal
-    code must use), `styleCompile`.
+    - Cross-cutting helpers rather than services: `lifecycle` (the
+      shutdown registry), `providerCore` + `seenStore` + `httpJson` +
+      `paths` + `credentials` (the notification-center provider plumbing,
+      see [Providers.md](Providers.md)), `configSchema`, `atomicWrite`,
+      `metrics` (the instrumented wrappers all timer/subprocess/signal
+      code must use), `styleCompile`.
 - **`src/widgets/`** — GTK4/JSX UI. Bars per monitor, the quick settings
   popup, notification popups + center, media popup, harvest
   popup, OSD, sway scratchpad.

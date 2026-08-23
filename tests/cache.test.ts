@@ -38,7 +38,6 @@ test("cache: unparseable content is reported and falls back", () => {
     eq(reported !== null, true, "the parse error is reported")
 })
 
-
 // Per-field validation, not just the container shape: the cast is
 // compile-time only, and SwayGaps binds these into typed GObject
 // properties where a null or a string throws out of the property system.

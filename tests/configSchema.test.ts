@@ -43,7 +43,10 @@ test("configSchema: flatKey renames the top-level spelling", () => {
     // "position" belongs to the workspaces
     const data = { position: "right", tray_position: "left", tray: {} }
     const r = createReader(data, "tray")
-    eq(r.oneOf("position", ["left", "right"] as const, "left", { flatKey: "tray_position" }), "left")
+    eq(
+        r.oneOf("position", ["left", "right"] as const, "left", { flatKey: "tray_position" }),
+        "left",
+    )
 })
 
 test("configSchema: a missing key returns the default silently", () => {
@@ -67,11 +70,9 @@ test("configSchema: a wrong type is reported and falls back", () => {
 
 test("configSchema: numeric bounds", () => {
     const { report } = withReport()
-    const r = createReader(
-        { s: { neg: -1, zero: 0, big: 500, frac: 0.5, over: 1.5 } },
-        "s",
-        { report },
-    )
+    const r = createReader({ s: { neg: -1, zero: 0, big: 500, frac: 0.5, over: 1.5 } }, "s", {
+        report,
+    })
     eq(r.num("neg", 3, { min: 0 }), 3, "below min falls back")
     eq(r.num("zero", 3, { min: 0 }), 0, "min 0 admits zero")
     eq(r.num("zero", 3, { positive: true }), 3, "positive rejects zero")
