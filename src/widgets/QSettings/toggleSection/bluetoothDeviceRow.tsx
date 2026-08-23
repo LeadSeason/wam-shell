@@ -5,7 +5,7 @@ import Pango from "gi://Pango?version=1.0"
 import { Gtk } from "ags/gtk4"
 import { batteryPercentValue } from "../../../lib/utils"
 import { dismissPairingPrompt } from "../../../lib/bluetoothAgent"
-import { sightings } from "../../../lib/bluetoothRange"
+import { advertises, sightings } from "../../../lib/bluetoothRange"
 import { bluezErrorName, bluezErrorText } from "../../../lib/bluezErrors"
 import {
     cancelPairingAsync,
@@ -155,6 +155,12 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan, scanSettled }: De
     // astal's own Device.rssi is always 0 and cannot answer this). A
     // connected device counts without a reading of its own
     const heard = sightings.as(m => m.has(device.address))
+    // ...and whether its silence would mean anything. A device that has
+    // never been heard advertising is not one we can call absent: plenty
+    // never announce themselves at all, so the quiet is about them, not
+    // about where they are. Both accessors derive from `sightings`, so
+    // this re-evaluates whenever a sighting lands or ages out
+    const canJudgeRange = sightings.as(() => advertises(device.address))
 
     const status = createComputed(
         [
@@ -164,20 +170,23 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan, scanSettled }: De
             createBinding(device, "paired"),
             createBinding(device, "batteryPercentage").as(batteryPercentValue),
             heard,
+            canJudgeRange,
             scanSettled,
         ],
-        (pending, error, connected, paired, battery, heard, settled) => {
+        (pending, error, connected, paired, battery, heard, judgeable, settled) => {
             if (error) return error
             if (pending === "pairing") return "Pairing…"
             if (pending === "connecting") return "Connecting…"
             if (pending === "disconnecting") return "Disconnecting…"
             if (connected) return battery >= 0 ? `Connected · ${battery}%` : "Connected"
             if (!paired) return "Available"
-            // a paired device the scan cannot hear is switched off, in
-            // its case or in another room: tapping it would just sit on
-            // "Connecting…" until bluez gave up. Say so instead — but
-            // only once the scan has had time to find it
-            if (!heard && settled) return "Not in range"
+            // a paired device that ordinarily advertises and has now
+            // gone quiet is switched off, in its case or in another
+            // room: tapping it would just sit on "Connecting…" until
+            // bluez gave up. Say so instead — but only once the scan has
+            // had time to find it, and never for a device whose silence
+            // is simply how it always behaves
+            if (!heard && settled && judgeable) return "Not in range"
             return "Paired"
         },
     )
@@ -185,11 +194,11 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan, scanSettled }: De
     const isPaired = createBinding(device, "paired")
     // dims the whole row to match the "Not in range" status
     const rowClasses = createComputed(
-        [createBinding(device, "connected"), isPaired, heard, scanSettled],
-        (connected, paired, heard, settled) => {
+        [createBinding(device, "connected"), isPaired, heard, canJudgeRange, scanSettled],
+        (connected, paired, heard, judgeable, settled) => {
             const classes = ["btDevice", "paneRow"]
             if (connected) classes.push("active")
-            else if (paired && !heard && settled) classes.push("unavailable")
+            else if (paired && !heard && settled && judgeable) classes.push("unavailable")
             return classes
         },
     )

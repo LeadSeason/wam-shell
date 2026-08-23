@@ -14,7 +14,7 @@ import {
     setPoweredAsync,
     powerPending,
 } from "../../../lib/bluetoothCtl"
-import { acquireRange, sightings } from "../../../lib/bluetoothRange"
+import { acquireRange, advertises, sightings } from "../../../lib/bluetoothRange"
 import { DeviceRow } from "./bluetoothDeviceRow"
 import { createDelayer } from "../../delay"
 
@@ -283,7 +283,11 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
         const ds = deviceList.get()
         const heard = sightings.get()
         const rssiOf = (d: AstalBluetooth.Device) => heard.get(d.address)?.rssi ?? -Infinity
-        const inRange = (d: AstalBluetooth.Device) => d.connected || heard.has(d.address)
+        // a device we have never heard advertise is not demoted: we have
+        // no evidence it is anywhere, so ranking it below one we can see
+        // would state something we do not know (see bluetoothRange)
+        const inRange = (d: AstalBluetooth.Device) =>
+            d.connected || heard.has(d.address) || !advertises(d.address)
         setPaired(
             [...ds]
                 // paired only: bluez marks a device paired as soon as it is

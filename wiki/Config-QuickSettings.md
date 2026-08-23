@@ -209,9 +209,18 @@ that scan can hear:
 
 - **Paired** — the adapter can hear the device; tap to connect.
 - **Not in range** — dimmed. The device is switched off, in its case or
-  out of reach. The verdict is only offered after the scan has run about
-  thirteen seconds, because a classic speaker or headset answers an
-  inquiry cycle rather than advertising continuously.
+  out of reach. It is only offered after the scan has run about thirteen
+  seconds, and only for a device the adapter has actually heard announce
+  itself at some point this session.
+
+That last condition matters, and it means some devices will never be
+labelled this way. A paired classic (BR/EDR) device — most desk speakers,
+plenty of headsets — answers a scan only while it is in pairing mode, so
+bluetooth simply does not report whether it is nearby; it is silent when
+it is next to you and silent when it is in another building. Rather than
+guess, the pane says nothing and leaves it on **Paired**. Devices that
+advertise (anything Bluetooth LE, and dual-mode headsets that do both)
+are judged normally.
 
 Under **Available**, the eight closest devices are shown, strongest
 signal first; a device's signal strength in dBm is in its details.
