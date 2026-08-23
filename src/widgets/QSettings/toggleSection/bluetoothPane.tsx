@@ -13,6 +13,9 @@ import {
     cancelDiscoveryRetry,
     setPoweredAsync,
     powerPending,
+    discoverable,
+    toggleDiscoverable,
+    acquireDiscoverable,
 } from "../../../lib/bluetoothCtl"
 import { acquireRange, advertises, sightings } from "../../../lib/bluetoothRange"
 import { DeviceRow } from "./bluetoothDeviceRow"
@@ -61,8 +64,8 @@ function BtSwitchBody() {
     // the old position — which read as a click the shell had ignored.
     // Imperative rather than a computed: powerPending starts null and an
     // initially-falsy dep can leave a computed stale (see AGENTS.md)
-    // is_powered, never adapter.powered — see the note on the captured
-    // adapter in BluetoothWidgetBody below
+    // is_powered, never adapter.powered — see the note on why nothing
+    // here holds the adapter, in BluetoothWidgetBody below
     const [shown, setShown] = createState(powerPending.get() ?? bluetooth.is_powered)
     const sync = () => setShown(powerPending.get() ?? bluetooth.is_powered)
     const disposers = [
@@ -94,27 +97,20 @@ const SCAN_SETTLE_MS = 13_000
 function BluetoothWidgetBody({ pane, name }: btPaneProps) {
     // tracked and cancelled on teardown (see widgets/delay.ts)
     const delay = createDelayer("bluetoothPane")
-    // Non-null: the wrapper only mounts this body with an adapter. But
-    // holding it is not safe, and NOTHING about power may be read off
-    // it: astal swaps the Adapter object when bluez drops and re-adds it
-    // (a bluetoothd restart) WITHOUT emitting notify::adapter, so the
-    // `With` above never re-fires, this body never remounts, and what it
-    // captured here stops tracking. Measured in a shell up ~2.5h across
-    // several bluetoothd restarts: bluetooth.is_powered read true while
-    // adapter.powered on this reference read false, same process, same
-    // instant — which left the pane showing "Bluetooth is off" over a
-    // working adapter, and maybeScan below never starting a scan, until
-    // the shell was restarted.
+    // NOTHING here holds the adapter object, deliberately. astal swaps
+    // it when bluez drops and re-adds the adapter (a bluetoothd restart)
+    // WITHOUT emitting notify::adapter, so the `With` above never
+    // re-fires, this body never remounts, and any reference captured
+    // when it was built goes quietly stale. Measured in a shell up ~2.5h
+    // across several bluetoothd restarts: bluetooth.is_powered read true
+    // while adapter.powered on the held reference read false, same
+    // process, same instant — which left the pane showing "Bluetooth is
+    // off" over a working adapter, never scanning, until the shell was
+    // restarted.
     //
-    // bluetooth.is_powered is astal's own, maintained against the LIVE
-    // adapter, and it is what the tile and the switch already use.
-    //
-    // `discoverable` at the bottom of the pane has no such counterpart
-    // and is still read off this reference: after a bluetoothd restart
-    // that checkbox can show the wrong position. Its writes still land —
-    // the object PATH does not change, only astal's wrapper for it — so
-    // one click corrects it.
-    const adapter = bluetooth.adapter!
+    // So power comes from bluetooth.is_powered, which astal maintains
+    // against the LIVE adapter, and discoverability from bluetoothCtl,
+    // which reads it off the bus.
 
     // brief pulse so a rescan click gives visible feedback (discovery is
     // already running while the pane is open, so adapter.discovering
@@ -172,6 +168,7 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
     // the whole session over a pane nobody had opened (caught by the perf
     // gate as `timer btRange:sweep 0 -> 1`). See updatePaneOpen below.
     let releaseRange: (() => void) | null = null
+    let releaseDiscoverable: (() => void) | null = null
 
     // scan while this pane is visible (hiding QSettings resets the pane to
     // "main", so discovery always stops on close)
@@ -213,6 +210,8 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
         cancelSettle()
         releaseRange?.()
         releaseRange = null
+        releaseDiscoverable?.()
+        releaseDiscoverable = null
         // a NotReady retry armed while the pane was open must not start
         // discovery with it closed
         cancelDiscoveryRetry()
@@ -231,9 +230,12 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
         setBtPaneOpen(open)
         if (open && !releaseRange) {
             releaseRange = acquireRange()
+            releaseDiscoverable = acquireDiscoverable()
         } else if (!open && releaseRange) {
             releaseRange()
             releaseRange = null
+            releaseDiscoverable?.()
+            releaseDiscoverable = null
             // the sightings went with it
             cancelSettle()
             setScanSettled(false)
@@ -451,16 +453,11 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                         <box
                             cssName={"button"}
                             spacing={5}
-                            cssClasses={createBinding(adapter, "discoverable").as(d =>
+                            cssClasses={discoverable.as(d =>
                                 d ? ["paneRow", "active"] : ["paneRow"],
                             )}
                         >
-                            <Gtk.GestureClick
-                                button={1}
-                                onPressed={() => {
-                                    adapter.discoverable = !adapter.discoverable
-                                }}
-                            />
+                            <Gtk.GestureClick button={1} onPressed={toggleDiscoverable} />
                             <label label={"Visible to other devices"} hexpand xalign={0} />
                             {/* display-only checkbox: the row's gesture
                             toggles; keeps it single-action */}
@@ -468,7 +465,7 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                                 cssClasses={["paneCheckbox"]}
                                 valign={Gtk.Align.CENTER}
                                 sensitive={false}
-                                active={createBinding(adapter, "discoverable")}
+                                active={discoverable}
                             />
                         </box>
                     </box>
