@@ -419,9 +419,11 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan, scanSettled }: De
                                 )
                             })}
                         >
-                            {/* ternary + annotated param — see BtSwitch */}
+                            {/* null, not <></> — see BtSwitch. This one
+                            fires constantly: every device with no matching
+                            pipewire card takes it */}
                             {(wpDev: AstalWp.Device | null) =>
-                                wpDev ? <ProfileSelector wpDev={wpDev} /> : <></>
+                                wpDev ? <ProfileSelector wpDev={wpDev} /> : null
                             }
                         </With>
                     )}

@@ -15,7 +15,9 @@ export function BluetoothButton({ navigate }: { navigate: () => void }) {
     // construction (same pattern as the wifi/wired toggles)
     return (
         <With value={createBinding(bluetooth, "adapter")}>
-            {adapter => (adapter ? <BluetoothButtonBody navigate={navigate} /> : <></>)}
+            {/* null, not <></>: With appends the child into its own
+            Fragment, and nested Fragments are unsupported */}
+            {adapter => (adapter ? <BluetoothButtonBody navigate={navigate} /> : null)}
         </With>
     )
 }
