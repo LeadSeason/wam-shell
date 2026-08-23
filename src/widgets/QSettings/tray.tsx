@@ -35,10 +35,37 @@ export default function Tray({
     const iconTheme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default()!)
     const pathOwners = new Map<string, Set<string>>() // path -> item ids
 
+    // An item's properties resolve ASYNCHRONOUSLY after item-added —
+    // Electron apps register a hollow item first (id, title, tooltip and
+    // icon all null) and fill it in later. The filter below runs against
+    // whatever is there at add time, so without a re-filter a pinned
+    // item that resolved late stays in the quick settings forever and
+    // never reaches the bar. Re-derive the list when any property the
+    // filter or the renderer reads changes. A copied array keeps the
+    // same item objects, so For reuses the existing buttons.
+    // The item is kept alongside its handler ids: at item-removed time
+    // the registry may no longer hand it out for disconnecting.
+    const watched = new Map<string, { item: AstalTray.TrayItem; handlerIds: number[] }>()
+
+    function refilter() {
+        setTrayItems(items => items.slice())
+    }
+
     // disconnected when this instance is destroyed (the bar mount dies
     // with its monitor on hotplug): gnim only auto-disposes JSX-prop
     // bindings, not manual connects
     function addItem(t: AstalTray.TrayItem, item_id: string) {
+        watched.set(item_id, {
+            item: t,
+            handlerIds: [
+                connect(t, "notify::gicon", refilter),
+                connect(t, "notify::id", refilter),
+                connect(t, "notify::title", refilter),
+                connect(t, "notify::icon-name", refilter),
+                connect(t, "notify::tooltip-markup", refilter),
+            ],
+        })
+
         const path = t.iconThemePath
         if (path) {
             let owners = pathOwners.get(path)
@@ -74,17 +101,30 @@ export default function Tray({
             for (const [path, owners] of pathOwners) {
                 if (owners.delete(item_id) && owners.size === 0) pathOwners.delete(path)
             }
+            const entry = watched.get(item_id)
+            if (entry) {
+                for (const id of entry.handlerIds) disconnect(entry.item, id)
+                watched.delete(item_id)
+            }
             // Filter on item.get_item_id() NOT item.get_id().
             setTrayItems(items => items.filter(item => item.get_item_id() !== item_id))
         }),
     ]
     onCleanup(() => {
         for (const id of registryHandlers) disconnect(registry, id)
+        for (const { item, handlerIds } of watched.values()) {
+            for (const id of handlerIds) disconnect(item, id)
+        }
+        watched.clear()
     })
 
-    // TODO: Icons served as raw pixmaps may still not show up.
-
-    const visibleItems = trayItems.as(items => (filter ? items.filter(filter) : items))
+    // Items with no icon are not shown: a hollow registration (an
+    // Electron app whose object died exports no properties at all)
+    // would otherwise sit in the grid as an empty, useless pill. One
+    // whose properties resolve later reappears via the refilter above.
+    const visibleItems = trayItems.as(items =>
+        items.filter(item => item.gicon !== null && (filter ? filter(item) : true)),
+    )
 
     // spacing semantics: 0 = no inline margins, so stylesheet rules
     // (incl. user.scss) control the icon gap; >0 = multiplier of the
