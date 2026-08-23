@@ -68,6 +68,21 @@ the bar window's `heightRequest` is a floor and not a cap — a 9th tray
 item used to wrap onto a second line and show up as a full-width strip
 under the bar holding the overflow icons.
 
+## Late-resolving and hollow items
+
+An item's properties (id, title, tooltip, icon) resolve asynchronously
+after `item-added` — Electron apps register a hollow item first and
+fill it in later. The pinned/unpinned filter is therefore re-evaluated
+on every relevant `notify::`, otherwise a pinned item that resolved
+late would stay in quick settings forever and never reach the bar.
+
+Items whose `gicon` is null are not rendered at all. A hollow
+registration — an Electron app whose D-Bus object died: it exports an
+empty node, no properties at all — would otherwise sit in the grid as
+an empty, useless pill. Such an item can also never match
+`tray.always_on_panel` (there is no id, title or tooltip to match); it
+reappears if the app starts serving properties again.
+
 ## Icon spacing (`tray.spacing`)
 
 `spacing` controls the gap **between tray icons** (never the gap
