@@ -25,7 +25,9 @@ interface btPaneProps {
 }
 
 export function BluetoothWidget({ pane, name }: btPaneProps) {
-    // same hotplug rebind as the toggle button (bluetooth.tsx)
+    // same hotplug rebind as the toggle button (bluetooth.tsx). It
+    // covers an adapter APPEARING, not one being replaced: notify::adapter
+    // does not fire for the swap (see BluetoothWidgetBody)
     return (
         <With value={createBinding(bluetooth, "adapter")}>
             {/* null, not <></>: With appends the child into its own
@@ -45,25 +47,26 @@ export function BtSwitch() {
             Fragment, and nested Fragments are unsupported. The parameter
             is annotated because T does not flow from `value` through
             createBinding's overloads — without it the adapter arrives as
-            `{}` and cannot be passed on. */}
-            {(adapter: AstalBluetooth.Adapter | null) =>
-                adapter ? <BtSwitchBody adapter={adapter} /> : null
-            }
+            `{}`, which is truthy, and the guard below never sees a
+            missing adapter. */}
+            {(adapter: AstalBluetooth.Adapter | null) => (adapter ? <BtSwitchBody /> : null)}
         </With>
     )
 }
 
-function BtSwitchBody({ adapter }: { adapter: AstalBluetooth.Adapter }) {
+function BtSwitchBody() {
     // powering an adapter is not instant, and bluez rejects some
     // requests outright: while a change is in flight the switch shows
     // the TARGET and refuses further input, instead of springing back to
     // the old position — which read as a click the shell had ignored.
     // Imperative rather than a computed: powerPending starts null and an
     // initially-falsy dep can leave a computed stale (see AGENTS.md)
-    const [shown, setShown] = createState(powerPending.get() ?? adapter.powered)
+    // is_powered, never adapter.powered — see the note on the captured
+    // adapter in BluetoothWidgetBody below
+    const [shown, setShown] = createState(powerPending.get() ?? bluetooth.is_powered)
     const sync = () => setShown(powerPending.get() ?? bluetooth.is_powered)
     const disposers = [
-        createBinding(adapter, "powered").subscribe(sync),
+        createBinding(bluetooth, "is_powered").subscribe(sync),
         powerPending.subscribe(sync),
     ]
     onCleanup(() => disposers.forEach(d => d()))
@@ -91,7 +94,26 @@ const SCAN_SETTLE_MS = 13_000
 function BluetoothWidgetBody({ pane, name }: btPaneProps) {
     // tracked and cancelled on teardown (see widgets/delay.ts)
     const delay = createDelayer("bluetoothPane")
-    // non-null: the wrapper only mounts this body with an adapter
+    // Non-null: the wrapper only mounts this body with an adapter. But
+    // holding it is not safe, and NOTHING about power may be read off
+    // it: astal swaps the Adapter object when bluez drops and re-adds it
+    // (a bluetoothd restart) WITHOUT emitting notify::adapter, so the
+    // `With` above never re-fires, this body never remounts, and what it
+    // captured here stops tracking. Measured in a shell up ~2.5h across
+    // several bluetoothd restarts: bluetooth.is_powered read true while
+    // adapter.powered on this reference read false, same process, same
+    // instant — which left the pane showing "Bluetooth is off" over a
+    // working adapter, and maybeScan below never starting a scan, until
+    // the shell was restarted.
+    //
+    // bluetooth.is_powered is astal's own, maintained against the LIVE
+    // adapter, and it is what the tile and the switch already use.
+    //
+    // `discoverable` at the bottom of the pane has no such counterpart
+    // and is still read off this reference: after a bluetoothd restart
+    // that checkbox can show the wrong position. Its writes still land —
+    // the object PATH does not change, only astal's wrapper for it — so
+    // one click corrects it.
     const adapter = bluetooth.adapter!
 
     // brief pulse so a rescan click gives visible feedback (discovery is
@@ -154,7 +176,7 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
     // scan while this pane is visible (hiding QSettings resets the pane to
     // "main", so discovery always stops on close)
     const maybeScan = () => {
-        if (pane.get() === name && adapter.powered) {
+        if (pane.get() === name && bluetooth.is_powered) {
             startDiscoveryAsync()
             setScanning(true)
             armSettle()
@@ -174,10 +196,11 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
         cancelSettle()
     }
 
-    // everything below must die with this body: it remounts whenever
-    // the adapter flips (rfkill, dongle, bluez restart), and these
-    // subscribe on the long-lived pane accessor, the old adapter
-    // proxy, and every device object
+    // everything below must die with this body: it remounts when an
+    // adapter appears on a machine that had none, and these subscribe on
+    // the long-lived pane accessor, on the shared bluetooth object, and
+    // on every device object. (It does NOT remount when the adapter is
+    // swapped — see the note above.)
     const disposers: (() => void)[] = []
     onCleanup(() => {
         for (const d of disposers) d()
@@ -198,7 +221,7 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
     })
 
     disposers.push(pane.subscribe(maybeScan))
-    disposers.push(createBinding(adapter, "powered").subscribe(maybeScan))
+    disposers.push(createBinding(bluetooth, "is_powered").subscribe(maybeScan))
     maybeScan()
 
     // the pairing prompt renders inline while this pane is on screen;
@@ -324,7 +347,7 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
     disposers.push(scanSettled.subscribe(resort))
     resort()
 
-    const powered = createBinding(adapter, "powered")
+    const powered = createBinding(bluetooth, "is_powered")
 
     return (
         <box orientation={Gtk.Orientation.VERTICAL}>
