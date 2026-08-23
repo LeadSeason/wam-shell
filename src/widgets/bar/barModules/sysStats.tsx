@@ -3,6 +3,7 @@ import Gtk from "gi://Gtk?version=4.0"
 import Cairo from "gi://cairo"
 import {
     cpu,
+    cpuAlertText,
     cpuLevel,
     cpuPressure,
     ram,
@@ -255,15 +256,12 @@ export default function SysStats() {
         // what the recolored sparkline is trying to say, spelled out —
         // a colour alone cannot say WHICH pool is nearly gone
         const alerts: string[] = []
-        if (cpuLevel.get() !== "")
-            // the number as well as the word. CPU is the one stat whose
-            // trigger is not the percentage printed beside it — the
-            // readout says the cores are busy, this says how long
-            // something waited for one
-            alerts.push(
-                `${cpuLevel.get() === "critical" ? "Severe" : "High"} CPU contention` +
-                    ` — stalled ${Math.round(cpuPressure.get() ?? 0)}% of the last minute`,
-            )
+        // CPU is the one stat lit by two different things — a deep run
+        // queue, or simply no headroom left — and the readout beside it
+        // can only speak to the second. The line says WHICH, since
+        // "stalled 3% of the last minute" under a pegged machine reads
+        // as the panel contradicting itself
+        if (cpuLevel.get() !== "") alerts.push(cpuAlertText(cpuLevel.get(), cpuPressure.get()))
         if (ramLevel.get() !== "")
             alerts.push(
                 ramLevel.get() === "critical" ? "Severe memory pressure" : "High memory pressure",

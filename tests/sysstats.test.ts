@@ -18,9 +18,13 @@ import {
     poolPct,
     shortGpuName,
     parsePsiAvg60,
+    cpuAlertText,
+    cpuPinned,
     cpuPressureLevel,
     CPU_PRESSURE_WARN,
     CPU_PRESSURE_CRIT,
+    CPU_BUSY_SAMPLES,
+    CPU_BUSY_WARN,
     parseProcStat,
     ramPressureLevel,
     sumDiskSectors,
@@ -484,4 +488,75 @@ test("cpuPressureLevel: a full-width build stays clear of both lines", () => {
 
 test("cpuPressureLevel: a psi=0 kernel reports nothing rather than fine", () => {
     eq(cpuPressureLevel(null), "")
+})
+
+// utilization is the SECOND trigger, and a weaker claim: pegged cores
+// colour the stat, only a deep run queue may flash it
+test("cpuPressureLevel: pegged cores warn and stop there", () => {
+    eq(cpuPressureLevel(0.3, true), "warn")
+    eq(cpuPressureLevel(CPU_PRESSURE_CRIT - 0.01, true), "warn")
+    eq(cpuPressureLevel(0.3, false), "")
+})
+
+// the whole point of the second trigger: it must survive the kernel
+// having no PSI to offer at all
+test("cpuPressureLevel: pegged cores warn on a psi=0 kernel too", () => {
+    eq(cpuPressureLevel(null, true), "warn")
+    eq(cpuPressureLevel(null, false), "")
+})
+
+// PSI still owns critical, and outranks utilization wherever they meet
+test("cpuPressureLevel: a deep queue outranks a merely busy machine", () => {
+    eq(cpuPressureLevel(CPU_PRESSURE_CRIT, true), "critical")
+    eq(cpuPressureLevel(CPU_PRESSURE_WARN, false), "warn")
+})
+
+const busyHist = (...vs: number[]) => vs.map(v => ({ v }))
+const flat = (v: number, n = CPU_BUSY_SAMPLES) => busyHist(...Array.from({ length: n }, () => v))
+
+// a shell three seconds old has watched startup peg the cores and
+// knows nothing about the machine yet
+test("cpuPinned: silent until the whole window has been observed", () => {
+    eq(cpuPinned([]), false)
+    eq(cpuPinned(flat(100, CPU_BUSY_SAMPLES - 1)), false)
+    eq(cpuPinned(flat(100)), true)
+})
+
+// a mean, not every(): one scheduler dip must not disarm a condition
+// that took fifteen seconds to arm
+test("cpuPinned: one dip does not disarm it", () => {
+    const dipped = flat(100, CPU_BUSY_SAMPLES - 1)
+    dipped.push({ v: 90 })
+    eq(cpuPinned(dipped), true)
+})
+
+// and the flip side — a busy machine with real headroom stays quiet
+test("cpuPinned: a heavy but not pegged load stays clear", () => {
+    eq(cpuPinned(flat(CPU_BUSY_WARN - 1)), false)
+    eq(cpuPinned(flat(CPU_BUSY_WARN)), true)
+    const sawtooth = Array.from({ length: CPU_BUSY_SAMPLES }, (_, i) => (i % 2 ? 100 : 80))
+    eq(cpuPinned(busyHist(...sawtooth)), false)
+})
+
+// only the older samples are pegged; the window has moved on
+test("cpuPinned: reads the tail, not the whole history", () => {
+    eq(cpuPinned([...flat(100), ...flat(10)]), false)
+})
+
+test("cpuAlertText: a stalled machine is quoted its stall figure", () => {
+    eq(cpuAlertText("critical", 93.4), "Severe CPU contention — stalled 93% of the last minute")
+    eq(cpuAlertText("warn", 61), "High CPU contention — stalled 61% of the last minute")
+})
+
+// the bug this exists to avoid: "stalled 3% of the last minute" printed
+// under a stat that is lit precisely because nothing is stalling
+test("cpuAlertText: a merely pegged machine is not quoted a stall figure", () => {
+    // the window is derived from stats_interval, so match the shape
+    // rather than pinning a number this file does not own
+    eq(/^Every core busy for the last \d+s$/.test(cpuAlertText("warn", 3)), true)
+    eq(cpuAlertText("warn", null).includes("stalled"), false)
+})
+
+test("cpuAlertText: nothing to say when nothing is lit", () => {
+    eq(cpuAlertText("", 99), "")
 })
