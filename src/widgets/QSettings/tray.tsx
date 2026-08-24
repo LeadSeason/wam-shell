@@ -2,6 +2,7 @@ import { createBinding, createState, For, With, onCleanup } from "gnim"
 import { Gdk, Gtk } from "ags/gtk4"
 import app from "ags/gtk4/app"
 import AstalTray from "gi://AstalTray"
+import Gio from "gi://Gio?version=2.0"
 import Config from "../../config"
 import { connect, disconnect } from "../../lib/metrics"
 
@@ -118,13 +119,7 @@ export default function Tray({
         watched.clear()
     })
 
-    // Items with no icon are not shown: a hollow registration (an
-    // Electron app whose object died exports no properties at all)
-    // would otherwise sit in the grid as an empty, useless pill. One
-    // whose properties resolve later reappears via the refilter above.
-    const visibleItems = trayItems.as(items =>
-        items.filter(item => item.gicon !== null && (filter ? filter(item) : true)),
-    )
+    const visibleItems = trayItems.as(items => (filter ? items.filter(filter) : items))
 
     // spacing semantics: 0 = no inline margins, so stylesheet rules
     // (incl. user.scss) control the icon gap; >0 = multiplier of the
@@ -134,7 +129,13 @@ export default function Tray({
     const gap = spacing > 0 ? spacing * BASE : null
 
     const renderItem = (item: AstalTray.TrayItem) => {
-        const gicon = createBinding(item, "gicon")
+        // A hollow registration (an Electron app whose object died
+        // exports no properties at all) has no icon: show the standard
+        // fallback glyph rather than an empty pill, so the item stays
+        // visible and clickable until its properties resolve (or never).
+        const gicon = createBinding(item, "gicon").as(
+            g => g ?? new Gio.ThemedIcon({ name: "image-missing-symbolic" }),
+        )
         const tooltip = createBinding(item, "tooltip_markup")
 
         /* Isn't reactive */

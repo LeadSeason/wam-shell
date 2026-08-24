@@ -76,12 +76,14 @@ fill it in later. The pinned/unpinned filter is therefore re-evaluated
 on every relevant `notify::`, otherwise a pinned item that resolved
 late would stay in quick settings forever and never reach the bar.
 
-Items whose `gicon` is null are not rendered at all. A hollow
-registration — an Electron app whose D-Bus object died: it exports an
-empty node, no properties at all — would otherwise sit in the grid as
-an empty, useless pill. Such an item can also never match
-`tray.always_on_panel` (there is no id, title or tooltip to match); it
-reappears if the app starts serving properties again.
+Items whose `gicon` is null are rendered with the
+`image-missing-symbolic` fallback glyph instead of an empty pill — a
+hollow registration (an Electron app whose D-Bus object died: it
+exports an empty node, no properties at all) stays visible and
+clickable. Such an item can also never match `tray.always_on_panel`
+(there is no id, title or tooltip to match), so it always lands in
+quick settings; its real icon appears if the app starts serving
+properties again.
 
 ## Icon spacing (`tray.spacing`)
 
