@@ -42,15 +42,30 @@ export default function Tray({
     // whatever is there at add time, so without a re-filter a pinned
     // item that resolved late stays in the quick settings forever and
     // never reaches the bar. Re-derive the list when any property the
-    // filter or the renderer reads changes. A copied array keeps the
-    // same item objects, so For reuses the existing buttons.
+    // filter or the renderer reads changes.
     // The item is kept alongside its handler ids: at item-removed time
     // the registry may no longer hand it out for disconnecting.
     const watched = new Map<string, { item: AstalTray.TrayItem; handlerIds: number[] }>()
 
-    function refilter() {
-        setTrayItems(items => items.slice())
+    // Emitted only when the filtered MEMBERSHIP actually changes: every
+    // emission makes For remove and re-append each child (there is no
+    // insert-at-position), which yanks hover/click state — and a
+    // property poll that changes nothing visible (monux pushes a
+    // NewToolTip every 2s) would otherwise re-flow the grid constantly.
+    const applyFilter = (items: AstalTray.TrayItem[]) => (filter ? items.filter(filter) : items)
+
+    const [visibleItems, setVisibleItems] = createState(applyFilter(trayItems.get()))
+
+    function syncVisible() {
+        const next = applyFilter(trayItems.get())
+        const prev = visibleItems.get()
+        if (next.length !== prev.length || next.some((item, i) => item !== prev[i])) {
+            setVisibleItems(next)
+        }
     }
+
+    const unsubVisible = trayItems.subscribe(syncVisible)
+    onCleanup(unsubVisible)
 
     // disconnected when this instance is destroyed (the bar mount dies
     // with its monitor on hotplug): gnim only auto-disposes JSX-prop
@@ -59,11 +74,11 @@ export default function Tray({
         watched.set(item_id, {
             item: t,
             handlerIds: [
-                connect(t, "notify::gicon", refilter),
-                connect(t, "notify::id", refilter),
-                connect(t, "notify::title", refilter),
-                connect(t, "notify::icon-name", refilter),
-                connect(t, "notify::tooltip-markup", refilter),
+                connect(t, "notify::gicon", syncVisible),
+                connect(t, "notify::id", syncVisible),
+                connect(t, "notify::title", syncVisible),
+                connect(t, "notify::icon-name", syncVisible),
+                connect(t, "notify::tooltip-markup", syncVisible),
             ],
         })
 
@@ -118,8 +133,6 @@ export default function Tray({
         }
         watched.clear()
     })
-
-    const visibleItems = trayItems.as(items => (filter ? items.filter(filter) : items))
 
     // spacing semantics: 0 = no inline margins, so stylesheet rules
     // (incl. user.scss) control the icon gap; >0 = multiplier of the
@@ -204,7 +217,14 @@ export default function Tray({
             // only has an effect inside the quick settings window
             cssClasses={["QSSection"]}
         >
-            <For each={visibleItems}>{renderItem}</For>
+            {/* each child in an explicit FlowBoxChild: gtk_flow_box_remove
+            on a BARE child detaches the wrapper but leaves the child
+            parented to it, so the remove/re-append For does on every
+            emission orphans the buttons (the grid visibly re-flows) —
+            removing/re-appending the wrapper itself is clean */}
+            <For each={visibleItems}>
+                {item => <Gtk.FlowBoxChild>{renderItem(item)}</Gtk.FlowBoxChild>}
+            </For>
         </Gtk.FlowBox>
     )
 }
