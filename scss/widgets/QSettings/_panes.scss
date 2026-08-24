@@ -98,6 +98,13 @@ window#QSettings {
         font-size: s.$font-small;
         color: t.$accent;
     }
+    // the device sound is ACTUALLY coming out of right now — a stream
+    // pinned to a non-default device keeps playing there, so the default
+    // tag alone does not say which device is sounding
+    .audioPlayingTag {
+        font-size: s.$font-small;
+        color: t.$green;
+    }
     .audioRoute {
         opacity: s.$quiet-opacity;
         margin: 0 2px;

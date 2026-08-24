@@ -10,6 +10,7 @@ import { PercentEntry } from "../PercentEntry"
 import { audioPorts, refreshPorts, setPort } from "../../../lib/audioPorts"
 import { scrollDelta } from "../../../lib/scrollStep"
 import { inputMeter, METER_CLIENT, meterSupported, outputMeter } from "../../../lib/audioMeter"
+import { watchDefaultEndpoint } from "../../../lib/defaultEndpoint"
 import { qsVisible } from "../MediaSection"
 import Config from "../../../config"
 
@@ -408,6 +409,7 @@ function DeviceRow({
     open,
     toggle,
     meter,
+    playingIds,
 }: {
     endpoint: AstalWp.Endpoint
     role: "output" | "input"
@@ -417,6 +419,10 @@ function DeviceRow({
      *  whichever device is default, so the bar follows the default
      *  rather than being fixed to the row it started on */
     meter?: Accessor<number>
+    /** ids of the devices live streams actually play through / record
+     *  from — NOT the same as default: a pinned stream keeps sounding
+     *  on its device across default changes */
+    playingIds: Accessor<Set<number>>
 }) {
     const isDefault = createBinding(endpoint, "isDefault")
     // ports come from pactl rather than astal: set_route() does nothing
@@ -465,6 +471,11 @@ function DeviceRow({
                             cssClasses={["audioDefaultTag"]}
                             label={"default"}
                             visible={isDefault}
+                        />
+                        <label
+                            cssClasses={["audioPlayingTag"]}
+                            label={role === "input" ? "recording" : "playing"}
+                            visible={playingIds.as(ids => ids.has(endpoint.id))}
                         />
                     </box>
                     {/* the port, which is the only thing that tells one of
@@ -706,6 +717,40 @@ export function AudioPane({
     const appStreams = createBinding(wp, isOutput ? "streams" : "recorders").as(s =>
         (s ?? []).filter(x => !`${x.name ?? ""} ${x.description ?? ""}`.includes(METER_CLIENT)),
     )
+    // the devices sound ACTUALLY goes to: a stream pinned to a device
+    // (the routing below, pavucontrol, wireplumber's stream restore)
+    // keeps playing there across default changes, so the "default" tag
+    // alone does not say which device is sounding. Follow-default
+    // streams count toward the current default endpoint (tracked with
+    // the same grace as the slider/OSD, so a re-enumeration blip does
+    // not move the mark)
+    const [defaultEndpoint, setDefaultEndpoint] = createState<AstalWp.Endpoint | null>(null)
+    onCleanup(watchDefaultEndpoint(wp, isOutput ? "speakers" : "microphones", setDefaultEndpoint))
+    const [playingIds, setPlayingIds] = createState<Set<number>>(new Set())
+    {
+        let streamDisposers: (() => void)[] = []
+        const rescan = () => {
+            for (const d of streamDisposers) d()
+            const streams = appStreams.get()
+            streamDisposers = streams.map(s => createBinding(s, "targetEndpoint").subscribe(rescan))
+            const fallback = defaultEndpoint.get()
+            setPlayingIds(
+                new Set(
+                    streams
+                        .map(s => (s.targetEndpoint ?? fallback)?.id)
+                        .filter((id): id is number => id !== undefined),
+                ),
+            )
+        }
+        const unStreams = appStreams.subscribe(rescan)
+        const unDefault = defaultEndpoint.subscribe(rescan)
+        onCleanup(() => {
+            unStreams()
+            unDefault()
+            for (const d of streamDisposers) d()
+        })
+        rescan()
+    }
     // cards appear in both panes: changing a profile is how an output
     // or an input is enabled in the first place (a card set to "Analog
     // Stereo Output" has no source at all)
@@ -748,6 +793,7 @@ export function AudioPane({
                             endpoint={ep}
                             role={direction}
                             meter={metered ? meter.level : undefined}
+                            playingIds={playingIds}
                             {...rowState(`port:${ep.id}`)}
                         />
                     )}
