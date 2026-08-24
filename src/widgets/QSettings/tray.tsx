@@ -2,6 +2,7 @@ import { createBinding, createState, For, With, onCleanup } from "gnim"
 import { Gdk, Gtk } from "ags/gtk4"
 import app from "ags/gtk4/app"
 import AstalTray from "gi://AstalTray"
+import Gio from "gi://Gio?version=2.0"
 import Config from "../../config"
 import { connect, disconnect } from "../../lib/metrics"
 
@@ -35,10 +36,52 @@ export default function Tray({
     const iconTheme = Gtk.IconTheme.get_for_display(Gdk.Display.get_default()!)
     const pathOwners = new Map<string, Set<string>>() // path -> item ids
 
+    // An item's properties resolve ASYNCHRONOUSLY after item-added —
+    // Electron apps register a hollow item first (id, title, tooltip and
+    // icon all null) and fill it in later. The filter below runs against
+    // whatever is there at add time, so without a re-filter a pinned
+    // item that resolved late stays in the quick settings forever and
+    // never reaches the bar. Re-derive the list when any property the
+    // filter or the renderer reads changes.
+    // The item is kept alongside its handler ids: at item-removed time
+    // the registry may no longer hand it out for disconnecting.
+    const watched = new Map<string, { item: AstalTray.TrayItem; handlerIds: number[] }>()
+
+    // Emitted only when the filtered MEMBERSHIP actually changes: every
+    // emission makes For remove and re-append each child (there is no
+    // insert-at-position), which yanks hover/click state — and a
+    // property poll that changes nothing visible (monux pushes a
+    // NewToolTip every 2s) would otherwise re-flow the grid constantly.
+    const applyFilter = (items: AstalTray.TrayItem[]) => (filter ? items.filter(filter) : items)
+
+    const [visibleItems, setVisibleItems] = createState(applyFilter(trayItems.get()))
+
+    function syncVisible() {
+        const next = applyFilter(trayItems.get())
+        const prev = visibleItems.get()
+        if (next.length !== prev.length || next.some((item, i) => item !== prev[i])) {
+            setVisibleItems(next)
+        }
+    }
+
+    const unsubVisible = trayItems.subscribe(syncVisible)
+    onCleanup(unsubVisible)
+
     // disconnected when this instance is destroyed (the bar mount dies
     // with its monitor on hotplug): gnim only auto-disposes JSX-prop
     // bindings, not manual connects
     function addItem(t: AstalTray.TrayItem, item_id: string) {
+        watched.set(item_id, {
+            item: t,
+            handlerIds: [
+                connect(t, "notify::gicon", syncVisible),
+                connect(t, "notify::id", syncVisible),
+                connect(t, "notify::title", syncVisible),
+                connect(t, "notify::icon-name", syncVisible),
+                connect(t, "notify::tooltip-markup", syncVisible),
+            ],
+        })
+
         const path = t.iconThemePath
         if (path) {
             let owners = pathOwners.get(path)
@@ -74,17 +117,22 @@ export default function Tray({
             for (const [path, owners] of pathOwners) {
                 if (owners.delete(item_id) && owners.size === 0) pathOwners.delete(path)
             }
+            const entry = watched.get(item_id)
+            if (entry) {
+                for (const id of entry.handlerIds) disconnect(entry.item, id)
+                watched.delete(item_id)
+            }
             // Filter on item.get_item_id() NOT item.get_id().
             setTrayItems(items => items.filter(item => item.get_item_id() !== item_id))
         }),
     ]
     onCleanup(() => {
         for (const id of registryHandlers) disconnect(registry, id)
+        for (const { item, handlerIds } of watched.values()) {
+            for (const id of handlerIds) disconnect(item, id)
+        }
+        watched.clear()
     })
-
-    // TODO: Icons served as raw pixmaps may still not show up.
-
-    const visibleItems = trayItems.as(items => (filter ? items.filter(filter) : items))
 
     // spacing semantics: 0 = no inline margins, so stylesheet rules
     // (incl. user.scss) control the icon gap; >0 = multiplier of the
@@ -94,7 +142,13 @@ export default function Tray({
     const gap = spacing > 0 ? spacing * BASE : null
 
     const renderItem = (item: AstalTray.TrayItem) => {
-        const gicon = createBinding(item, "gicon")
+        // A hollow registration (an Electron app whose object died
+        // exports no properties at all) has no icon: show the standard
+        // fallback glyph rather than an empty pill, so the item stays
+        // visible and clickable until its properties resolve (or never).
+        const gicon = createBinding(item, "gicon").as(
+            g => g ?? new Gio.ThemedIcon({ name: "image-missing-symbolic" }),
+        )
         const tooltip = createBinding(item, "tooltip_markup")
 
         /* Isn't reactive */
@@ -163,7 +217,14 @@ export default function Tray({
             // only has an effect inside the quick settings window
             cssClasses={["QSSection"]}
         >
-            <For each={visibleItems}>{renderItem}</For>
+            {/* each child in an explicit FlowBoxChild: gtk_flow_box_remove
+            on a BARE child detaches the wrapper but leaves the child
+            parented to it, so the remove/re-append For does on every
+            emission orphans the buttons (the grid visibly re-flows) —
+            removing/re-appending the wrapper itself is clean */}
+            <For each={visibleItems}>
+                {item => <Gtk.FlowBoxChild>{renderItem(item)}</Gtk.FlowBoxChild>}
+            </For>
         </Gtk.FlowBox>
     )
 }

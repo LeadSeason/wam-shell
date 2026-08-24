@@ -176,6 +176,15 @@ widget-class list comment in `scss/widgets/bar/bar.scss`.
   cell. Bind `visible` on an explicit `<Gtk.FlowBoxChild>` instead —
   the child keeps its slot, so one that becomes visible later lands in
   place. Reference: `vpn.tsx`, `NightLightButton`.
+- **A `For` inside a FlowBox needs explicit `<Gtk.FlowBoxChild>`
+  children.** `For` has no insert-at-position, so every emission
+  removes and re-appends each child — and `gtk_flow_box_remove` on a
+  BARE child detaches the auto-created wrapper from the box but leaves
+  the child parented to it: the re-append then fails
+  (`gtk_flow_box_child_set_child` criticals) and the grid visibly
+  re-flows into a mangled state. Removing/re-appending the wrapper
+  itself is clean. Same rule as the `visible` one above: the wrapper
+  must be the thing gnim manages. Reference: `QSettings/tray.tsx`.
 - **A too-wide FlowBox child flips the grid to one column — and the
   overflow is below the scroll fold, not gone.** A homogeneous FlowBox
   derives column width from the widest child's NATURAL width, and a
