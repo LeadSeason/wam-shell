@@ -482,7 +482,12 @@ const unsubPick = players.subscribe(pick)
 hookPlayers(p => {
     const status = createBinding(p, "playbackStatus").subscribe(() => {
         bumpElig(eligVersion.get() + 1)
-        if (p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING) {
+        // gated on isEligible: browsers keep an MPRIS player alive for
+        // muted/background tabs (and for scrubbed private sessions) that
+        // flip in and out of PLAYING with no user intent. Letting one of
+        // those trigger exclusive-pause meant real playback (Spotify, mpv)
+        // got paused out from under the user by a phantom tab
+        if (p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING && isEligible(p)) {
             lastPlaying = p
             // a newly playing player always takes over, even from a
             // scroll-pinned one
