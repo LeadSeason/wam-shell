@@ -32,8 +32,31 @@ const rawPlayers = createBinding(mpris, "players")
 // duplicates reporting the same identity and track
 export const players = rawPlayers.as(list => {
     if (hidePlayers) return []
+
+    // KDE's Plasma Browser Integration extension polyfills MPRIS for
+    // the browser's active tab IN ADDITION to the browser's own native
+    // bridge (chromium's org.mpris.MediaPlayer2.<browser>.instance<pid>
+    // bus name) — same identity, near-identical title, so the dedup
+    // below (keyed on identity+title, which differ slightly: the
+    // integration's title is undecorated, the native one carries the
+    // window's tab-count/suffix chrome) does not catch it. That leaves
+    // the same tab owning two independent players, and a video starting
+    // makes the second one look like "another player started" to the
+    // exclusive-pause hook further down — pausing the tab out from
+    // under itself within a second of every play. kde:pid on the
+    // integration player matches the pid embedded in the native bus
+    // name; when it does, the integration entry is a pure duplicate.
+    const nativePids = new Set(
+        list.map(p => /\.instance(\d+)$/.exec(p.busName)?.[1]).filter((x): x is string => !!x),
+    )
+    const deduped = list.filter(p => {
+        if (!p.busName.endsWith(".plasma-browser-integration")) return true
+        const pid = p.get_meta("kde:pid")?.deep_unpack<number>()
+        return pid == null || !nativePids.has(String(pid))
+    })
+
     const seen = new Set<string>()
-    return list.filter(p => {
+    return deduped.filter(p => {
         const key = `${p.identity}\n${p.title}`
         if (seen.has(key)) return false
         seen.add(key)
