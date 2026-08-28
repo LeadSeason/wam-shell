@@ -12,6 +12,7 @@ import { isBrowserThumb, recoverBrowserArt } from "./browserArt"
 import { isFile } from "./utils"
 import { registerDispose } from "./lifecycle"
 import { createScrollCycler } from "./scrollCycle"
+import { dedupePlayers } from "./mprisDedup"
 
 // Shared MPRIS state + helpers, used by the QS media section and the
 // panel media widget/popup.
@@ -26,43 +27,13 @@ const hidePlayers = GLib.getenv("WAM_SHELL_NO_MPRIS") === "1"
 
 const rawPlayers = createBinding(mpris, "players")
 
-// one process can own several MPRIS names when multiple bridges are
-// installed (mpv-mpris uses mpv.instance<PID>, others mpv.instance-<id>
-// and bare "mpv"): each name shows up as its own player. collapse
-// duplicates reporting the same identity and track
-export const players = rawPlayers.as(list => {
-    if (hidePlayers) return []
-
-    // KDE's Plasma Browser Integration extension polyfills MPRIS for
-    // the browser's active tab IN ADDITION to the browser's own native
-    // bridge (chromium's org.mpris.MediaPlayer2.<browser>.instance<pid>
-    // bus name) — same identity, near-identical title, so the dedup
-    // below (keyed on identity+title, which differ slightly: the
-    // integration's title is undecorated, the native one carries the
-    // window's tab-count/suffix chrome) does not catch it. That leaves
-    // the same tab owning two independent players, and a video starting
-    // makes the second one look like "another player started" to the
-    // exclusive-pause hook further down — pausing the tab out from
-    // under itself within a second of every play. kde:pid on the
-    // integration player matches the pid embedded in the native bus
-    // name; when it does, the integration entry is a pure duplicate.
-    const nativePids = new Set(
-        list.map(p => /\.instance(\d+)$/.exec(p.busName)?.[1]).filter((x): x is string => !!x),
-    )
-    const deduped = list.filter(p => {
-        if (!p.busName.endsWith(".plasma-browser-integration")) return true
-        const pid = p.get_meta("kde:pid")?.deep_unpack<number>()
-        return pid == null || !nativePids.has(String(pid))
-    })
-
-    const seen = new Set<string>()
-    return deduped.filter(p => {
-        const key = `${p.identity}\n${p.title}`
-        if (seen.has(key)) return false
-        seen.add(key)
-        return true
-    })
-})
+// one media session can own several MPRIS names — several bridges for
+// the same mpv process, or a browser tab exposed by both the browser's
+// native bridge and KDE's Plasma Browser Integration. Collapsing them
+// is not cosmetic: an undeduped twin looks like "another player
+// started" to the exclusive-pause hook further down, which then pauses
+// the tab out from under itself. Rules and rationale: lib/mprisDedup
+export const players = rawPlayers.as(list => (hidePlayers ? [] : dedupePlayers(list)))
 
 /** browsers scrub private-session metadata instead of hiding it: the
  *  track title arrives as an anonymized "<X> is playing media"
