@@ -449,27 +449,58 @@ function pick() {
 // the player that most recently entered PLAYING state
 let lastPlaying: AstalMpris.Player | null = null
 
+/** `p` just started playing: it takes over as the active player, and
+ *  exclusive playback pauses everything else. Callers gate on
+ *  isEligible — browsers keep an MPRIS player alive for muted/background
+ *  tabs (and for scrubbed private sessions) that flip in and out of
+ *  PLAYING with no user intent, and letting one of those in here meant
+ *  real playback (Spotify, mpv) got paused out from under the user by a
+ *  phantom tab */
+function startedPlaying(p: AstalMpris.Player) {
+    lastPlaying = p
+    // a newly playing player always takes over, even from a
+    // scroll-pinned one
+    if (overridePlayer.get() !== p) setOverride(null)
+    // exclusive playback wherever playback starts from — shell
+    // buttons, the player's own UI or playerctl: pause the rest
+    for (const other of players.get()) {
+        if (other !== p && other.playbackStatus === AstalMpris.PlaybackStatus.PLAYING) {
+            other.pause()
+        }
+    }
+}
+
+// A player appearing on the bus ALREADY playing counts as having started
+// to play — the status subscription below cannot see it. astal appends a
+// player to the manager's list on notify::available, i.e. only once its
+// proxy has synced its properties, so one that was playing by then never
+// emits a playbackStatus transition and the subscription has nothing to
+// fire on. Exclusive playback missed that case entirely: launching mpv
+// while a browser tab was playing left both of them sounding.
+//
+// Except during startup, when astal enumerates everything that was
+// ALREADY running before the shell existed (its init() lists the bus and
+// adds every org.mpris.MediaPlayer2.* name it finds). Those must be
+// adopted silently — treating them as "just started" would mean the
+// shell pauses whatever the user had going every time it starts, and a
+// restart is not a request to stop the music. The window covers that
+// enumeration burst; the cost is that playback started within it is
+// adopted rather than made exclusive.
+//
+// Read off the clock rather than armed as a timer: nothing has to HAPPEN
+// when the window closes, so a source that exists only to flip a bool is
+// one more thing to own, dispose and leak. (It also showed up in the
+// perf harness's startup sample as a live timer the base leg had not.)
+const ADOPT_GRACE_MS = 2500
+const startedAt = GLib.get_monotonic_time() / 1000
+const adopting = () => GLib.get_monotonic_time() / 1000 - startedAt < ADOPT_GRACE_MS
+
 const unsubPick = players.subscribe(pick)
 hookPlayers(p => {
     const status = createBinding(p, "playbackStatus").subscribe(() => {
         bumpElig(eligVersion.get() + 1)
-        // gated on isEligible: browsers keep an MPRIS player alive for
-        // muted/background tabs (and for scrubbed private sessions) that
-        // flip in and out of PLAYING with no user intent. Letting one of
-        // those trigger exclusive-pause meant real playback (Spotify, mpv)
-        // got paused out from under the user by a phantom tab
         if (p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING && isEligible(p)) {
-            lastPlaying = p
-            // a newly playing player always takes over, even from a
-            // scroll-pinned one
-            if (overridePlayer.get() !== p) setOverride(null)
-            // exclusive playback wherever playback starts from — shell
-            // buttons, the player's own UI or playerctl: pause the rest
-            for (const other of players.get()) {
-                if (other !== p && other.playbackStatus === AstalMpris.PlaybackStatus.PLAYING) {
-                    other.pause()
-                }
-            }
+            startedPlaying(p)
         }
         pick()
     })
@@ -477,6 +508,10 @@ hookPlayers(p => {
         bumpElig(eligVersion.get() + 1)
         pick()
     })
+    if (!adopting() && p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING && isEligible(p)) {
+        startedPlaying(p)
+        pick()
+    }
     return () => {
         status()
         title()
