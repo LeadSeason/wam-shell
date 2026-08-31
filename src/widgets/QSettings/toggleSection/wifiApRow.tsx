@@ -1,7 +1,7 @@
-import { Accessor, Setter, createBinding, createComputed, createState } from "gnim"
+import { Accessor, Setter, createBinding, createComputed, createState, onCleanup } from "gnim"
 import { OverlayIcon, bandBadgeOf } from "./ToggleButton"
 import AstalNetwork from "gi://AstalNetwork?version=0.1"
-import { execAsync } from "../../../lib/metrics"
+import { connect, disconnect, execAsync } from "../../../lib/metrics"
 import { Gtk } from "ags/gtk4"
 import Pango from "gi://Pango?version=1.0"
 import { savedNetworks, profileId } from "./savedNetworks"
@@ -11,6 +11,7 @@ import { createDelayer } from "../../delay"
 const KEY_MGMT_PSK = 0x100
 const KEY_MGMT_802_1X = 0x200
 const KEY_MGMT_SAE = 0x400
+const AP_FLAGS_PRIVACY = 0x1
 
 export function securityOf(ap: AstalNetwork.AccessPoint): string {
     if (ap.rsnFlags & KEY_MGMT_SAE) return "WPA3"
@@ -18,10 +19,28 @@ export function securityOf(ap: AstalNetwork.AccessPoint): string {
     if (ap.rsnFlags & KEY_MGMT_802_1X) return "Enterprise"
     if (ap.rsnFlags !== 0) return "WPA2"
     if (ap.wpaFlags !== 0) return "WPA"
+    if (ap.flags & AP_FLAGS_PRIVACY) return "WEP"
     return "Open"
 }
 
-const secured = (ap: AstalNetwork.AccessPoint) => ap.rsnFlags !== 0 || ap.wpaFlags !== 0
+function securityDetails(sec: string): { label: string; cssClass: string } {
+    if (sec === "WPA3" || sec === "WPA2" || sec === "Enterprise") {
+        return { label: sec, cssClass: "secure" }
+    }
+    if (sec === "WPA" || sec === "WEP") {
+        return { label: sec, cssClass: "weak" }
+    }
+    return { label: "insecure", cssClass: "open" }
+}
+
+function securityIconOf(sec: string): { icon: string; cssClass: string } {
+    if (sec === "Open") return { icon: "channel-insecure-symbolic", cssClass: "open" }
+    if (sec === "WPA" || sec === "WEP") return { icon: "channel-secure-symbolic", cssClass: "weak" }
+    return { icon: "channel-secure-symbolic", cssClass: "secure" }
+}
+
+const secured = (ap: AstalNetwork.AccessPoint) =>
+    ap.rsnFlags !== 0 || ap.wpaFlags !== 0 || (ap.flags & AP_FLAGS_PRIVACY) !== 0
 
 export function bandOf(ap: AstalNetwork.AccessPoint): string {
     if (ap.frequency >= 5925) return "6GHz"
@@ -223,11 +242,13 @@ export function ApRow({
     }
 
     const sec = securityOf(ap)
-    const details: [string, string][] = [
-        ["BSSID", ap.bssid],
-        ["Band", `${bandOf(ap)} (ch ${Math.round(channelOf(ap.frequency))})`],
-        ["Max bitrate", ap.maxBitrate > 0 ? `${Math.round(ap.maxBitrate / 1000)} Mb/s` : "—"],
-        ["Security", sec],
+    const secInfo = securityDetails(sec)
+    const secIcon = securityIconOf(sec)
+    const details: [string, string, string][] = [
+        ["BSSID", ap.bssid, ""],
+        ["Band", `${bandOf(ap)} (ch ${Math.round(channelOf(ap.frequency))})`, ""],
+        ["Max bitrate", ap.maxBitrate > 0 ? `${Math.round(ap.maxBitrate / 1000)} Mb/s` : "—", ""],
+        ["Security", secInfo.label, secInfo.cssClass],
     ]
 
     return (
@@ -262,9 +283,16 @@ export function ApRow({
                 </box>
                 {/* the chevron fades in on row hover (scss) and
                 stays lit while its panel is open; its slot keeps
-                the width so rows never shift. security is in the
-                details panel — no per-row lock icon */}
-                <box cssClasses={["wifiActions"]}>
+                the width so rows never shift. the lock icon always
+                shows whether the network requires a password. */}
+                <box cssClasses={["wifiActions"]} spacing={4}>
+                    <box widthRequest={28} halign={Gtk.Align.CENTER}>
+                        <image
+                            cssClasses={["wifiSecurityIcon", secIcon.cssClass]}
+                            iconName={secIcon.icon}
+                            tooltipText={sec === "Open" ? "Open network" : "Password protected"}
+                        />
+                    </box>
                     <box widthRequest={32} halign={Gtk.Align.CENTER}>
                         <button
                             cssClasses={detailsOpen.as(o =>
@@ -292,11 +320,11 @@ export function ApRow({
                 transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
             >
                 <box cssClasses={["wifiDetails"]} orientation={Gtk.Orientation.VERTICAL}>
-                    {details.map(([key, value]) => (
+                    {details.map(([key, value, valueClass]) => (
                         <box>
                             <label cssClasses={["key"]} label={key} xalign={0} hexpand />
                             <label
-                                cssClasses={["value"]}
+                                cssClasses={["value", ...(valueClass ? [valueClass] : [])]}
                                 label={value}
                                 xalign={1}
                                 maxWidthChars={24}
@@ -355,9 +383,26 @@ export function PasswordPrompt({
 }: PasswordPromptProps) {
     let entry: Gtk.Entry | null = null
     let ssidEntry: Gtk.Entry | null = null
+    let iconPressId = 0
     // hidden join: failures (typically a wrong password) must not
     // vanish silently — the prompt stays open with an error
     const [error, setError] = createState("")
+    const [passwordVisible, setPasswordVisible] = createState(false)
+
+    onCleanup(() => {
+        if (entry && iconPressId) disconnect(entry, iconPressId)
+    })
+
+    function setVisibilityIcon(self: Gtk.Entry, visible: boolean) {
+        self.set_icon_from_icon_name(
+            Gtk.EntryIconPosition.SECONDARY,
+            visible ? "view-conceal-symbolic" : "view-reveal-symbolic",
+        )
+        self.set_icon_tooltip_text(
+            Gtk.EntryIconPosition.SECONDARY,
+            visible ? "Hide password" : "Show password",
+        )
+    }
 
     function submit() {
         const password = entry?.get_text() ?? ""
@@ -418,10 +463,20 @@ export function PasswordPrompt({
                 $={self => {
                     entry = self
                     self.grab_focus()
+                    self.set_icon_activatable(Gtk.EntryIconPosition.SECONDARY, true)
+                    setVisibilityIcon(self, passwordVisible.get())
+                    iconPressId = connect(self, "icon-press", (self, pos) => {
+                        if (pos !== Gtk.EntryIconPosition.SECONDARY) return
+                        setPasswordVisible(visible => {
+                            const next = !visible
+                            setVisibilityIcon(self, next)
+                            return next
+                        })
+                    })
                 }}
                 cssClasses={["textInput"]}
                 placeholderText={"Password (empty for open)"}
-                visibility={false}
+                visibility={passwordVisible}
                 inputPurpose={Gtk.InputPurpose.PASSWORD}
                 onActivate={submit}
             />

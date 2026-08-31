@@ -45,6 +45,17 @@ window#QSettings {
         }
         .value {
             font-size: s.$font-small;
+
+            &.secure {
+                color: t.$teal;
+                font-weight: s.$weight-bold;
+            }
+            &.weak {
+                color: t.$peach;
+            }
+            &.open {
+                color: t.$red;
+            }
         }
         .profileOption {
             @include u.row(s.$row-padding-tight);
@@ -107,6 +118,18 @@ window#QSettings {
     // only fades in on row hover — the slot keeps its width, so no
     // layout shift
     .wifiActions {
+        .wifiSecurityIcon {
+            &.secure {
+                color: t.$teal;
+            }
+            &.weak {
+                color: t.$peach;
+            }
+            &.open {
+                color: t.$red;
+            }
+        }
+
         // generous click target: the chevron must not need precision
         .details {
             margin: 0;
