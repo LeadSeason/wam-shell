@@ -321,32 +321,28 @@ function PowerDetails() {
         cap > 0 ? avg / cap : 1,
     )
 
-    // The RAM tile's sub line: used/total GB with swap fill at rest —
-    // and swap fill plus an in+out rate while swapping is actually
-    // happening, the GB figures stepping aside (the sub's 20-char
-    // budget cannot hold both, and the GBs are in the panel's
-    // tooltip). Imperative, NOT createComputed([swapIn, swapOut, …]):
-    // both rates start 0 and gnim's array-form dep cache keys on falsy
-    // checks (AGENTS.md), which would freeze the sub at its first
-    // swap-free reading
-    const [ramSub, setRamSub] = createState("")
-    const syncRamSub = () => {
-        const [used, total] = Sys.ramSize.get()
-        const [sw, swTotal] = Sys.swapSize.get()
-        const fill = swTotal > 0 ? `sw ${Math.round((sw / swTotal) * 100)}%` : ""
+    // The swap tile's sub line: used/total GB at rest — and a rate
+    // while swapping is actually happening, the GB figures stepping
+    // aside (the sub's 20-char budget cannot hold both; both
+    // directions live in the panel tooltip's SWAP line). Imperative,
+    // NOT createComputed([swapSize, swapIn, swapOut, …]): the rates
+    // start 0 and gnim's array-form dep cache keys on falsy checks
+    // (AGENTS.md), which would freeze the sub at its first swap-free
+    // reading
+    const [swapSub, setSwapSub] = createState("")
+    const syncSwapSub = () => {
+        const [used, total] = Sys.swapSize.get()
         const rate = Sys.swapIn.get() + Sys.swapOut.get()
-        if (rate > Sys.SWAP_NOISE_BPS)
-            setRamSub([fill, Sys.formatRate(rate)].filter(Boolean).join(" · "))
-        else setRamSub(fill ? `${used}/${total} GB ${fill}` : `${used}/${total} GB`)
+        if (rate > Sys.SWAP_NOISE_BPS) setSwapSub(`swapping · ${Sys.formatRate(rate)}`)
+        else setSwapSub(total > 0 ? `${used}/${total} GB` : "")
     }
-    const ramSubUnsubs = [
-        Sys.ramSize.subscribe(syncRamSub),
-        Sys.swapSize.subscribe(syncRamSub),
-        Sys.swapIn.subscribe(syncRamSub),
-        Sys.swapOut.subscribe(syncRamSub),
+    const swapSubUnsubs = [
+        Sys.swapSize.subscribe(syncSwapSub),
+        Sys.swapIn.subscribe(syncSwapSub),
+        Sys.swapOut.subscribe(syncSwapSub),
     ]
-    onCleanup(() => ramSubUnsubs.forEach(u => u()))
-    syncRamSub()
+    onCleanup(() => swapSubUnsubs.forEach(u => u()))
+    syncSwapSub()
 
     return (
         <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
@@ -439,18 +435,11 @@ function PowerDetails() {
                     visible={Energy.hasBatt}
                 />
             </TileSection>
-            {/* moved stats (gated by show_stats) */}
             {/* `|| hasFan` keeps the fan reading alive when show_stats
             is off: powerDetails polls it whenever the pane is open,
             independent of the stats poll, and it showed unconditionally
             back when it rode the CPU temperature tile */}
             <TileSection title={"System"} visible={Config.quicksettings.showStats || Power.hasFan}>
-                <StatTile
-                    icon="memory-symbolic"
-                    big={Sys.ram.as(r => `${r}%`)}
-                    sub={ramSub}
-                    visible={Config.quicksettings.showStats}
-                />
                 {/* root-fs fill, the pane's spelling of the panel's DISK
                 stat: same level, same thresholds, absolute numbers the
                 bar only carries in its tooltip. Solidstate glyph rather
@@ -486,6 +475,34 @@ function PowerDetails() {
                     big={Sys.uptimeSeconds.as(s => Sys.formatUptime(s))}
                     sub={"uptime"}
                     visible={Config.quicksettings.showStats}
+                />
+            </TileSection>
+            {/* Memory, the RAM resource in one place: fill, its swap
+            extension, and — while churning — the swap activity rate
+            that used to live in the RAM tile's own sub line. Sits
+            beside CPU and GPU so the three resource sections read as
+            a trio: Memory, CPU, GPU */}
+            <TileSection title={"Memory"} visible={Config.quicksettings.showStats}>
+                <StatTile
+                    icon="memory-symbolic"
+                    big={Sys.ram.as(r => `${r}%`)}
+                    sub={createComputed([Sys.ramSize], ([used, total]) => `${used}/${total} GB`)}
+                    visible={Config.quicksettings.showStats}
+                />
+                {/* the flash-stick glyph, not a disk one: swap is memory
+                the kernel spills to disk — its identity is the memory
+                half, and the storage tile above already owns the drive
+                look. Hidden whole on machines with no swap at all,
+                which is why the section's own flag does not need it */}
+                <StatTile
+                    icon="media-flash-symbolic"
+                    big={Sys.swapSize.as(([used, total]) =>
+                        total > 0 ? `${Math.round((used / total) * 100)}%` : "—",
+                    )}
+                    sub={swapSub}
+                    visible={Sys.swapSize.as(
+                        ([, total]) => Config.quicksettings.showStats && total > 0,
+                    )}
                 />
             </TileSection>
             <TileSection

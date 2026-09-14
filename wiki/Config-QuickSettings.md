@@ -11,7 +11,7 @@ Section: `[quicksettings]`
 | `show_battery_percentage` | bool          | `true`  | Percentage next to the battery icon on the panel                                                                                                                                                                                                                                                                       |
 | `battery_blink`           | bool          | `true`  | Blink the panel battery icon while the battery is discharging                                                                                                                                                                                                                                                          |
 | `show_device_names`       | bool          | `false` | Overlay the active input/output device name on the volume sliders                                                                                                                                                                                                                                                      |
-| `show_stats`              | bool          | `false` | Performance stats tiles in the power mode pane: ram+swap/root-fs storage/disk I/O/uptime under System, cpu utilization + load average in the CPU section, a GPU section, and network rates; collected only while the pane is open. Does not gate the chassis-fan tile (see below)                                      |
+| `show_stats`              | bool          | `false` | Performance stats tiles in the power mode pane: a Memory section (ram, swap), then root-fs storage/disk I/O/uptime under System, cpu utilization + load average in the CPU section, a GPU section, and network rates; collected only while the pane is open. Does not gate the chassis-fan tile (see below)            |
 | `stats_on_panel`          | bool          | `false` | Resource utilization monitor on the panel: cpu/ram/gpu percentage, each with a sparkline, root-filesystem storage fill, plus ↓/↑ network rates. Every GPU gets a readout of its own. Clicking it opens the popup on the Power Mode pane                                                                                |
 | `stats_interval`          | int (ms)      | `1000`  | Time between stat updates; lower is smoother graphs at higher cpu cost                                                                                                                                                                                                                                                 |
 | `power_profile_on_panel`  | bool          | `true`  | Active power profile icon in the bar's quicksettings label                                                                                                                                                                                                                                                             |
@@ -117,14 +117,15 @@ until something has _already_ stalled, and it is absent entirely on a
 
 Swap **activity** is measured too — pages per second in and out, from
 `/proc/vmstat`'s cumulative `pswpin`/`pswpout` counters — and shows
-only while it is happening: the RAM tile's subtitle trades its
-used/total GB for the swap fill plus a combined rate (`sw 38% ·
-3.5 MB/s`), and the panel tooltip gains a `SWAP` line with both
-directions. A rate, deliberately not a level and not an alarm: idle
-pages parking in swap is normal kernel housekeeping, and PSI already
-owns "this is hurting" — the rate only says how hard the kernel is
-churning. Sub-page-per-second trickle is treated as silence, so a
-single stray page after a resume does not flash the readouts.
+only while it is happening: the Memory section's swap tile trades its
+used/total GB subtitle for a combined rate (`swapping · 3.5 MB/s`),
+and the panel tooltip gains a `SWAP` line with both directions. A
+rate, deliberately not a level and not an alarm: idle pages parking in
+swap is normal kernel housekeeping, and PSI already owns "this is
+hurting" — the rate only says how hard the kernel is churning.
+Sub-page-per-second trickle is treated as silence, so a single stray
+page after a resume does not flash the readouts. The swap tile hides
+entirely on a machine with no swap configured.
 
 **Storage is the root filesystem's fill** — warn at 95% used, critical
 at 99. The tie to RAM is the point of the stat: a full root fs is
@@ -177,7 +178,8 @@ stat whose trigger is not the number printed beside it, and quoting a
 3% stall figure at someone whose cores are pegged reads as the panel
 contradicting itself.
 
-The pane's sections run Battery, System, CPU, GPU, Network. CPU and
+The pane's sections run Battery, System, Memory, CPU, GPU, Network.
+CPU and
 GPU are adjacent and share a shape — utilization, then thermals and
 clock, then power — so the two read as a pair.
 
