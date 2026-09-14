@@ -21,6 +21,23 @@ export const [cpu, setCpu] = createState(0)
 export const [ram, setRam] = createState(0)
 export const [ramSize, setRamSize] = createState<[number, number]>([0, 0]) // used,total GB
 export const [swapSize, setSwapSize] = createState<[number, number]>([0, 0]) // used,total GB
+// swap ACTIVITY, not fill: pages moving between RAM and swap, in B/s.
+// in = read back into RAM, out = written out to swap. A rate, not an
+// alarm: idle pages parking in swap is normal kernel housekeeping,
+// and PSI already owns "this is hurting" — this only says how hard
+// the kernel is churning
+export const [swapIn, setSwapIn] = createState(0)
+export const [swapOut, setSwapOut] = createState(0)
+// below one page per second is a stray page, not swapping. Real churn
+// moves many pages a second; without a floor a single post-resume
+// page would flash the readouts for a tick
+export const SWAP_NOISE_BPS = 4096
+// root-filesystem fill. Storage is RAM's spare tank: a full root fs
+// is where a swapfile stops growing and ENOSPC starts failing writes,
+// which is why this sits beside RAM on the panel rather than under
+// the disk I/O rates. used %, and used,total GB for the tooltips
+export const [disk, setDisk] = createState(0)
+export const [diskSize, setDiskSize] = createState<[number, number]>([0, 0])
 export const [loadAvg, setLoadAvg] = createState(0)
 // PSI memory "some" avg60: the share of the last minute at least one
 // task sat STALLED on memory. This, not swap usage, is what "everything
@@ -33,6 +50,21 @@ export const [memPressure, setMemPressure] = createState<number | null>(null)
 // use; >= WARN sustained over a minute is real pressure
 export const MEM_PRESSURE_WARN = 5
 export const MEM_PRESSURE_CRIT = 20
+
+// The band between idle and WARN (~0.3% resting, 5% warning) used to be
+// invisible everywhere: nothing surfaces until the warning card fires.
+// ELEVATED is where the RAM tile starts quoting the stall figure — 2%
+// of avg60 is a sustained second of stalls every minute, above anything
+// an idle box produces and clear of launch spikes, well short of hurt
+export const MEM_PRESSURE_ELEVATED = 2
+
+/** the RAM tile's sub while PSI is elevated: "stalled N%", "" at rest.
+ *  Rounding matches the warning card's stall figure. null (a psi=0
+ *  kernel) is rest — there is no figure to quote */
+export function ramStalledText(psi: number | null): string {
+    if (psi === null || psi < MEM_PRESSURE_ELEVATED) return ""
+    return `stalled ${Math.round(psi)}%`
+}
 
 // pure parser, exported for tests: the "some" line's avg60 out of any
 // /proc/pressure/* file ("some avg10=0.00 avg60=0.05 avg300=0.21 total=…").
@@ -71,6 +103,25 @@ export type PressureLevel = "" | "warn" | "critical"
 // 90% really is 90%.
 export const RAM_USED_WARN = 90
 export const RAM_USED_CRIT = 96
+
+// Root-fs fill thresholds, on used% like RAM's fallback. The lines sit
+// far above RAM's on purpose: a filesystem lives at high fill for
+// years without that being news, so warn only when under a twentieth
+// remains and critical when a sliver is all that is left — ENOSPC
+// territory, where writes fail and swap has nowhere to grow. Percent,
+// not absolute GB, because capacities span 50x and no one figure is
+// "low" on both a 60 GB and a 2 TB disk; a big drive colours early in
+// absolute terms, which is the cheaper error.
+export const DISK_USED_WARN = 95
+export const DISK_USED_CRIT = 99
+
+// pure, exported for tests: the published used% already rounded, the
+// thresholds compare against exactly what the label prints
+export function diskPressureLevel(usedPct: number): PressureLevel {
+    if (usedPct >= DISK_USED_CRIT) return "critical"
+    if (usedPct >= DISK_USED_WARN) return "warn"
+    return ""
+}
 
 // pure, exported for tests: the worse of the two readings. A psi=0
 // kernel passes null and leaves the used% fallback as the only vote
@@ -152,6 +203,7 @@ export function cpuAlertText(level: PressureLevel, psi: number | null): string {
 export const [cpuLevel, setCpuLevel] = createState<PressureLevel>("")
 
 export const [ramLevel, setRamLevel] = createState<PressureLevel>("")
+export const [diskLevel, setDiskLevel] = createState<PressureLevel>("")
 // the WORST of the cards. The panel does NOT flash off this — each card
 // flashes off its own level (gpuLevelFor) — it is what drives the shared
 // heartbeat and answers "is any card in trouble" for the tooltip.
@@ -172,6 +224,7 @@ function syncPressurePulse() {
     const critical =
         cpuLevel.get() === "critical" ||
         ramLevel.get() === "critical" ||
+        diskLevel.get() === "critical" ||
         gpuLevel.get() === "critical"
     if (critical && pulseTimer === 0) {
         pulseTimer = timeoutAdd(
@@ -207,6 +260,13 @@ function publishRamLevel() {
     const next = ramPressureLevel(memPressure.get(), ram.get())
     if (next === ramLevel.get()) return
     setRamLevel(next)
+    syncPressurePulse()
+}
+
+function publishDiskLevel() {
+    const next = diskPressureLevel(disk.get())
+    if (next === diskLevel.get()) return
+    setDiskLevel(next)
     syncPressurePulse()
 }
 
@@ -1065,6 +1125,28 @@ async function readLoadAvg(): Promise<number> {
     return Number((await readFileAsync("/proc/loadavg")).split(" ")[0]) || 0
 }
 
+// statfs on / through Gio — a metadata syscall, not a disk read, so
+// the sync call costs nothing on the main loop. ONLY the root
+// filesystem: it is where a swapfile lives (the RAM tie-in that puts
+// this stat beside RAM at all), and on the single-partition layout
+// most machines ship it is everything else too. A separate /home
+// filling up is invisible here, on purpose — the I/O rates below
+// cover the disk, not the partitions on it. Gio's filesystem::free is
+// statvfs's f_bavail, i.e. what this user can still write: the ext4
+// root reserve is already excluded, so 100% is exactly where user
+// writes (and swapfile growth) start failing — the honest reading,
+// if a few points pessimistic
+const rootFile = Gio.File.new_for_path("/")
+function readDiskSpace(): [number, number] {
+    // used,total bytes; [0,0] when the fs answers nothing, so the
+    // step skips publishing rather than flashing 100%
+    const info = rootFile.query_filesystem_info("filesystem::size,filesystem::free", null)
+    const total = Number(info.get_attribute_uint64("filesystem::size"))
+    const free = Number(info.get_attribute_uint64("filesystem::free"))
+    if (total <= 0) return [0, 0]
+    return [total - free, total]
+}
+
 async function readUptime(): Promise<number> {
     return Math.floor(Number((await readFileAsync("/proc/uptime")).split(" ")[0]) || 0)
 }
@@ -1102,6 +1184,36 @@ async function readDisk(): Promise<[number, number]> {
     }
     prevDisk = { rSec, wSec, t: now }
     return [Math.round(read), Math.round(write)]
+}
+
+// 4 KiB pages, same as parseProcStat: every arch the shell runs on
+const SWAP_PAGE = 4096
+
+// pure parser, exported for tests: /proc/vmstat's cumulative swap
+// counters since boot. Lines are exactly "pswpin N"; anything else
+// (or nothing — a kernel without swap) reads as zero
+export function parseVmstatSwap(text: string): { inPages: number; outPages: number } {
+    return {
+        inPages: Number(text.match(/^pswpin (\d+)$/m)?.[1] ?? 0),
+        outPages: Number(text.match(/^pswpout (\d+)$/m)?.[1] ?? 0),
+    }
+}
+
+// swap activity rate from the vmstat counters' delta — the same shape
+// as readDisk/readNet: cumulative counter, actual elapsed divisor
+let prevSwap: { inPages: number; outPages: number; t: number } | null = null
+async function readSwapIo(): Promise<[number, number]> {
+    const { inPages, outPages } = parseVmstatSwap(await readFileAsync("/proc/vmstat"))
+    const now = GLib.get_monotonic_time() / 1000 // us -> ms
+    let inB = 0,
+        outB = 0
+    if (prevSwap && now > prevSwap.t) {
+        const dt = (now - prevSwap.t) / 1000
+        inB = Math.max(0, ((inPages - prevSwap.inPages) * SWAP_PAGE) / dt)
+        outB = Math.max(0, ((outPages - prevSwap.outPages) * SWAP_PAGE) / dt)
+    }
+    prevSwap = { inPages, outPages, t: now }
+    return [Math.round(inB), Math.round(outB)]
 }
 
 // the rate divisor is the actual elapsed time: ticks slip while a
@@ -1146,6 +1258,19 @@ const poll = createPoll("", INTERVAL, () => {
         setRam(r)
         push(ramHist.get(), setRamHist, r)
         publishRamLevel()
+    })
+    step("diskSpace", () => {
+        const [used, total] = readDiskSpace()
+        if (total <= 0) return
+        const toGB = (b: number) => Math.round((b / 1024 / 1024 / 1024) * 10) / 10
+        setDiskSize([toGB(used), toGB(total)])
+        setDisk(Math.round((100 * used) / total))
+        publishDiskLevel()
+    })
+    step("swapIo", async () => {
+        const [inB, outB] = await readSwapIo()
+        setSwapIn(inB)
+        setSwapOut(outB)
     })
     step("load", async () => setLoadAvg(await readLoadAvg()))
     if (hasCpuPsi)

@@ -150,6 +150,16 @@ window#QSettings {
     }
     .statTileValue {
         @include u.display;
+        // the storage tile's big number speaks the pane's two-level
+        // vocabulary (see the pressure warnings) when the root fs is
+        // running out — yellow at warn, red at critical, same
+        // thresholds as the panel's DISK stat
+        &.warn {
+            color: t.$yellow;
+        }
+        &.critical {
+            color: t.$red;
+        }
     }
     .statTileSub {
         @include u.subtitle;
