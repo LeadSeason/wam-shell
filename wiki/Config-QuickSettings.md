@@ -31,6 +31,12 @@ at that moment, so the culprit is visible at a glance. Not
 config-gated; it only exists while there is pressure to report, and
 needs a kernel with PSI on (the default).
 
+Below that threshold, an elevated stall average — 2% or more of the
+last minute — shows in the Memory section's RAM tile as `stalled N%`
+(the used/total GB subtitle steps aside), so the climb toward the
+warning is visible rather than arriving as a surprise. At rest the
+subtitle is just the GB figures.
+
 A second warning covers GPU memory: VRAM fill from the amdgpu sysfs
 (`mem_info_vram_*`) or the nvidia-smi stream, plus amdgpu GTT fill —
 there is no PSI for GPU memory, so these are plain used/total

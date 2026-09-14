@@ -51,6 +51,21 @@ export const [memPressure, setMemPressure] = createState<number | null>(null)
 export const MEM_PRESSURE_WARN = 5
 export const MEM_PRESSURE_CRIT = 20
 
+// The band between idle and WARN (~0.3% resting, 5% warning) used to be
+// invisible everywhere: nothing surfaces until the warning card fires.
+// ELEVATED is where the RAM tile starts quoting the stall figure — 2%
+// of avg60 is a sustained second of stalls every minute, above anything
+// an idle box produces and clear of launch spikes, well short of hurt
+export const MEM_PRESSURE_ELEVATED = 2
+
+/** the RAM tile's sub while PSI is elevated: "stalled N%", "" at rest.
+ *  Rounding matches the warning card's stall figure. null (a psi=0
+ *  kernel) is rest — there is no figure to quote */
+export function ramStalledText(psi: number | null): string {
+    if (psi === null || psi < MEM_PRESSURE_ELEVATED) return ""
+    return `stalled ${Math.round(psi)}%`
+}
+
 // pure parser, exported for tests: the "some" line's avg60 out of any
 // /proc/pressure/* file ("some avg10=0.00 avg60=0.05 avg300=0.21 total=…").
 // One parser for memory and cpu — the format is the kernel's, not the

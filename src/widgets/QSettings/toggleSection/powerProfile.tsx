@@ -321,6 +321,27 @@ function PowerDetails() {
         cap > 0 ? avg / cap : 1,
     )
 
+    // The RAM tile's sub: used/total GB at rest, and the PSI stall
+    // figure while elevated — the 2-4% band that used to be invisible
+    // everywhere, above idle but below the warning card's 5%. The GB
+    // figures step aside (20-char budget; they live in the panel
+    // tooltip). Imperative, NOT createComputed([ramSize, memPressure],
+    // …): memPressure starts null and gnim's array-form dep cache keys
+    // on falsy checks (AGENTS.md), which would freeze the sub at its
+    // first reading
+    const [ramSub, setRamSub] = createState("")
+    const syncRamSub = () => {
+        const stalled = Sys.ramStalledText(Sys.memPressure.get())
+        if (stalled !== "") setRamSub(stalled)
+        else {
+            const [used, total] = Sys.ramSize.get()
+            setRamSub(`${used}/${total} GB`)
+        }
+    }
+    const ramSubUnsubs = [Sys.ramSize.subscribe(syncRamSub), Sys.memPressure.subscribe(syncRamSub)]
+    onCleanup(() => ramSubUnsubs.forEach(u => u()))
+    syncRamSub()
+
     // The swap tile's sub line: used/total GB at rest — and a rate
     // while swapping is actually happening, the GB figures stepping
     // aside (the sub's 20-char budget cannot hold both; both
@@ -486,7 +507,7 @@ function PowerDetails() {
                 <StatTile
                     icon="memory-symbolic"
                     big={Sys.ram.as(r => `${r}%`)}
-                    sub={createComputed([Sys.ramSize], ([used, total]) => `${used}/${total} GB`)}
+                    sub={ramSub}
                     visible={Config.quicksettings.showStats}
                 />
                 {/* the flash-stick glyph, not a disk one: swap is memory
