@@ -115,6 +115,17 @@ popup's warning (5% / 20% of the last minute), and plain
 until something has _already_ stalled, and it is absent entirely on a
 `psi=0` kernel, where the fill percentage is the only vote there is.
 
+Swap **activity** is measured too — pages per second in and out, from
+`/proc/vmstat`'s cumulative `pswpin`/`pswpout` counters — and shows
+only while it is happening: the RAM tile's subtitle trades its
+used/total GB for the swap fill plus a combined rate (`sw 38% ·
+3.5 MB/s`), and the panel tooltip gains a `SWAP` line with both
+directions. A rate, deliberately not a level and not an alarm: idle
+pages parking in swap is normal kernel housekeeping, and PSI already
+owns "this is hurting" — the rate only says how hard the kernel is
+churning. Sub-page-per-second trickle is treated as silence, so a
+single stray page after a resume does not flash the readouts.
+
 **Storage is the root filesystem's fill** — warn at 95% used, critical
 at 99. The tie to RAM is the point of the stat: a full root fs is
 where a swapfile stops growing and writes start failing, so the

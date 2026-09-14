@@ -321,6 +321,33 @@ function PowerDetails() {
         cap > 0 ? avg / cap : 1,
     )
 
+    // The RAM tile's sub line: used/total GB with swap fill at rest —
+    // and swap fill plus an in+out rate while swapping is actually
+    // happening, the GB figures stepping aside (the sub's 20-char
+    // budget cannot hold both, and the GBs are in the panel's
+    // tooltip). Imperative, NOT createComputed([swapIn, swapOut, …]):
+    // both rates start 0 and gnim's array-form dep cache keys on falsy
+    // checks (AGENTS.md), which would freeze the sub at its first
+    // swap-free reading
+    const [ramSub, setRamSub] = createState("")
+    const syncRamSub = () => {
+        const [used, total] = Sys.ramSize.get()
+        const [sw, swTotal] = Sys.swapSize.get()
+        const fill = swTotal > 0 ? `sw ${Math.round((sw / swTotal) * 100)}%` : ""
+        const rate = Sys.swapIn.get() + Sys.swapOut.get()
+        if (rate > Sys.SWAP_NOISE_BPS)
+            setRamSub([fill, Sys.formatRate(rate)].filter(Boolean).join(" · "))
+        else setRamSub(fill ? `${used}/${total} GB ${fill}` : `${used}/${total} GB`)
+    }
+    const ramSubUnsubs = [
+        Sys.ramSize.subscribe(syncRamSub),
+        Sys.swapSize.subscribe(syncRamSub),
+        Sys.swapIn.subscribe(syncRamSub),
+        Sys.swapOut.subscribe(syncRamSub),
+    ]
+    onCleanup(() => ramSubUnsubs.forEach(u => u()))
+    syncRamSub()
+
     return (
         <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
             <TileSection title={"Battery"} visible={bat.isPresent}>
@@ -421,13 +448,7 @@ function PowerDetails() {
                 <StatTile
                     icon="memory-symbolic"
                     big={Sys.ram.as(r => `${r}%`)}
-                    sub={createComputed(
-                        [Sys.ramSize, Sys.swapSize],
-                        ([used, total], [sw, swTotal]) =>
-                            swTotal > 0
-                                ? `${used}/${total} GB sw ${Math.round((sw / swTotal) * 100)}%`
-                                : `${used}/${total} GB`,
-                    )}
+                    sub={ramSub}
                     visible={Config.quicksettings.showStats}
                 />
                 {/* root-fs fill, the pane's spelling of the panel's DISK

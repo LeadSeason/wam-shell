@@ -21,6 +21,17 @@ export const [cpu, setCpu] = createState(0)
 export const [ram, setRam] = createState(0)
 export const [ramSize, setRamSize] = createState<[number, number]>([0, 0]) // used,total GB
 export const [swapSize, setSwapSize] = createState<[number, number]>([0, 0]) // used,total GB
+// swap ACTIVITY, not fill: pages moving between RAM and swap, in B/s.
+// in = read back into RAM, out = written out to swap. A rate, not an
+// alarm: idle pages parking in swap is normal kernel housekeeping,
+// and PSI already owns "this is hurting" — this only says how hard
+// the kernel is churning
+export const [swapIn, setSwapIn] = createState(0)
+export const [swapOut, setSwapOut] = createState(0)
+// below one page per second is a stray page, not swapping. Real churn
+// moves many pages a second; without a floor a single post-resume
+// page would flash the readouts for a tick
+export const SWAP_NOISE_BPS = 4096
 // root-filesystem fill. Storage is RAM's spare tank: a full root fs
 // is where a swapfile stops growing and ENOSPC starts failing writes,
 // which is why this sits beside RAM on the panel rather than under
@@ -1160,6 +1171,36 @@ async function readDisk(): Promise<[number, number]> {
     return [Math.round(read), Math.round(write)]
 }
 
+// 4 KiB pages, same as parseProcStat: every arch the shell runs on
+const SWAP_PAGE = 4096
+
+// pure parser, exported for tests: /proc/vmstat's cumulative swap
+// counters since boot. Lines are exactly "pswpin N"; anything else
+// (or nothing — a kernel without swap) reads as zero
+export function parseVmstatSwap(text: string): { inPages: number; outPages: number } {
+    return {
+        inPages: Number(text.match(/^pswpin (\d+)$/m)?.[1] ?? 0),
+        outPages: Number(text.match(/^pswpout (\d+)$/m)?.[1] ?? 0),
+    }
+}
+
+// swap activity rate from the vmstat counters' delta — the same shape
+// as readDisk/readNet: cumulative counter, actual elapsed divisor
+let prevSwap: { inPages: number; outPages: number; t: number } | null = null
+async function readSwapIo(): Promise<[number, number]> {
+    const { inPages, outPages } = parseVmstatSwap(await readFileAsync("/proc/vmstat"))
+    const now = GLib.get_monotonic_time() / 1000 // us -> ms
+    let inB = 0,
+        outB = 0
+    if (prevSwap && now > prevSwap.t) {
+        const dt = (now - prevSwap.t) / 1000
+        inB = Math.max(0, ((inPages - prevSwap.inPages) * SWAP_PAGE) / dt)
+        outB = Math.max(0, ((outPages - prevSwap.outPages) * SWAP_PAGE) / dt)
+    }
+    prevSwap = { inPages, outPages, t: now }
+    return [Math.round(inB), Math.round(outB)]
+}
+
 // the rate divisor is the actual elapsed time: ticks slip while a
 // previous sample is in flight, and a fixed INTERVAL would inflate it
 let prevNet: { rx: number; tx: number; t: number } | null = null
@@ -1210,6 +1251,11 @@ const poll = createPoll("", INTERVAL, () => {
         setDiskSize([toGB(used), toGB(total)])
         setDisk(Math.round((100 * used) / total))
         publishDiskLevel()
+    })
+    step("swapIo", async () => {
+        const [inB, outB] = await readSwapIo()
+        setSwapIn(inB)
+        setSwapOut(outB)
     })
     step("load", async () => setLoadAvg(await readLoadAvg()))
     if (hasCpuPsi)

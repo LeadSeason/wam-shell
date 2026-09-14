@@ -25,6 +25,10 @@ import {
     pressurePulse,
     ramLevel,
     ramSize,
+    swapIn,
+    swapOut,
+    swapSize,
+    SWAP_NOISE_BPS,
     loadAvg,
 } from "../../../lib/sysstats"
 import type { PressureLevel } from "../../../lib/sysstats"
@@ -253,8 +257,20 @@ export default function SysStats() {
         const lines = [
             `CPU ${cpu.get()}%   load ${loadAvg.get().toFixed(2)}`,
             `RAM ${ram.get()}%   ${rUsed}/${rTotal} GB`,
-            `DISK ${disk.get()}%   ${dUsed}/${dTotal} GB`,
         ]
+        // swap activity, a line that exists only for the duration of
+        // the churn: the fill percentage rides along since this is the
+        // one moment it is interesting — at rest the pane's RAM tile
+        // carries it. Gated on the noise floor, not > 0, so a single
+        // stray page cannot flash a line into the tooltip for a tick
+        if (swapIn.get() + swapOut.get() > SWAP_NOISE_BPS) {
+            const [sw, swTotal] = swapSize.get()
+            const fill = swTotal > 0 ? `${Math.round((sw / swTotal) * 100)}%   ` : ""
+            lines.push(
+                `SWAP ${fill}in ${formatRate(swapIn.get())} · out ${formatRate(swapOut.get())}`,
+            )
+        }
+        lines.push(`DISK ${disk.get()}%   ${dUsed}/${dTotal} GB`)
         const cards = gpus.get()
         const ids = cards.map(g => g.id)
         for (const [i, g] of cards.entries())

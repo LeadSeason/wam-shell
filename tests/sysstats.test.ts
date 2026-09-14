@@ -27,6 +27,7 @@ import {
     CPU_BUSY_WARN,
     parseProcStat,
     ramPressureLevel,
+    parseVmstatSwap,
     diskPressureLevel,
     DISK_USED_WARN,
     DISK_USED_CRIT,
@@ -481,6 +482,22 @@ test("diskPressureLevel: the two thresholds, exactly", () => {
     eq(diskPressureLevel(DISK_USED_CRIT - 1), "warn")
     eq(diskPressureLevel(DISK_USED_CRIT), "critical")
     eq(diskPressureLevel(100), "critical")
+})
+
+// /proc/vmstat: pswpin/pswpout are cumulative pages since boot; the
+// reader deltas them into the swap activity rate
+test("parseVmstatSwap: reads the cumulative pswpin/pswpout pages", () => {
+    const vmstat = ["nr_free_pages 1234567", "pswpin 1861", "pswpout 4097", ""].join("\n")
+    eq(parseVmstatSwap(vmstat), { inPages: 1861, outPages: 4097 })
+})
+
+test("parseVmstatSwap: absent, malformed or trailing text is zero, not NaN", () => {
+    eq(parseVmstatSwap(""), { inPages: 0, outPages: 0 })
+    eq(parseVmstatSwap("pswpin abc\npswpout 1\n"), { inPages: 0, outPages: 1 })
+    // "pswpin 7 extra" is not a vmstat line the kernel emits — strict
+    // match, so a trailing payload cannot half-parse
+    eq(parseVmstatSwap("pswpin 7 extra\n"), { inPages: 0, outPages: 0 })
+    eq(parseVmstatSwap("npswpin 9\nnpswpout 9\n"), { inPages: 0, outPages: 0 })
 })
 
 // CPU flashes like RAM and GPU do, so the thresholds carry the whole
