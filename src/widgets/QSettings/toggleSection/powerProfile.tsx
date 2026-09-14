@@ -430,6 +430,19 @@ function PowerDetails() {
                     )}
                     visible={Config.quicksettings.showStats}
                 />
+                {/* root-fs fill, the pane's spelling of the panel's DISK
+                stat: same level, same thresholds, absolute numbers the
+                bar only carries in its tooltip. Solidstate glyph rather
+                than a second spinning platter — the I/O tile below
+                already wears that one, and two identical icons in one
+                grid read as one repeated stat */}
+                <StatTile
+                    icon="drive-harddisk-solidstate-symbolic"
+                    big={Sys.disk.as(d => `${d}%`)}
+                    bigClasses={Sys.diskLevel.as(l => ["statTileValue", ...(l !== "" ? [l] : [])])}
+                    sub={createComputed([Sys.diskSize], ([used, total]) => `${used}/${total} GB`)}
+                    visible={Config.quicksettings.showStats}
+                />
                 <StatTile
                     icon="drive-harddisk-symbolic"
                     big={Sys.diskRead.as(r => `↓ ${Sys.formatRate(r)}`)}

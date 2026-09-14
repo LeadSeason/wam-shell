@@ -21,6 +21,12 @@ export const [cpu, setCpu] = createState(0)
 export const [ram, setRam] = createState(0)
 export const [ramSize, setRamSize] = createState<[number, number]>([0, 0]) // used,total GB
 export const [swapSize, setSwapSize] = createState<[number, number]>([0, 0]) // used,total GB
+// root-filesystem fill. Storage is RAM's spare tank: a full root fs
+// is where a swapfile stops growing and ENOSPC starts failing writes,
+// which is why this sits beside RAM on the panel rather than under
+// the disk I/O rates. used %, and used,total GB for the tooltips
+export const [disk, setDisk] = createState(0)
+export const [diskSize, setDiskSize] = createState<[number, number]>([0, 0])
 export const [loadAvg, setLoadAvg] = createState(0)
 // PSI memory "some" avg60: the share of the last minute at least one
 // task sat STALLED on memory. This, not swap usage, is what "everything
@@ -71,6 +77,25 @@ export type PressureLevel = "" | "warn" | "critical"
 // 90% really is 90%.
 export const RAM_USED_WARN = 90
 export const RAM_USED_CRIT = 96
+
+// Root-fs fill thresholds, on used% like RAM's fallback. The lines sit
+// far above RAM's on purpose: a filesystem lives at high fill for
+// years without that being news, so warn only when under a twentieth
+// remains and critical when a sliver is all that is left — ENOSPC
+// territory, where writes fail and swap has nowhere to grow. Percent,
+// not absolute GB, because capacities span 50x and no one figure is
+// "low" on both a 60 GB and a 2 TB disk; a big drive colours early in
+// absolute terms, which is the cheaper error.
+export const DISK_USED_WARN = 95
+export const DISK_USED_CRIT = 99
+
+// pure, exported for tests: the published used% already rounded, the
+// thresholds compare against exactly what the label prints
+export function diskPressureLevel(usedPct: number): PressureLevel {
+    if (usedPct >= DISK_USED_CRIT) return "critical"
+    if (usedPct >= DISK_USED_WARN) return "warn"
+    return ""
+}
 
 // pure, exported for tests: the worse of the two readings. A psi=0
 // kernel passes null and leaves the used% fallback as the only vote
@@ -152,6 +177,7 @@ export function cpuAlertText(level: PressureLevel, psi: number | null): string {
 export const [cpuLevel, setCpuLevel] = createState<PressureLevel>("")
 
 export const [ramLevel, setRamLevel] = createState<PressureLevel>("")
+export const [diskLevel, setDiskLevel] = createState<PressureLevel>("")
 // the WORST of the cards. The panel does NOT flash off this — each card
 // flashes off its own level (gpuLevelFor) — it is what drives the shared
 // heartbeat and answers "is any card in trouble" for the tooltip.
@@ -172,6 +198,7 @@ function syncPressurePulse() {
     const critical =
         cpuLevel.get() === "critical" ||
         ramLevel.get() === "critical" ||
+        diskLevel.get() === "critical" ||
         gpuLevel.get() === "critical"
     if (critical && pulseTimer === 0) {
         pulseTimer = timeoutAdd(
@@ -207,6 +234,13 @@ function publishRamLevel() {
     const next = ramPressureLevel(memPressure.get(), ram.get())
     if (next === ramLevel.get()) return
     setRamLevel(next)
+    syncPressurePulse()
+}
+
+function publishDiskLevel() {
+    const next = diskPressureLevel(disk.get())
+    if (next === diskLevel.get()) return
+    setDiskLevel(next)
     syncPressurePulse()
 }
 
@@ -1065,6 +1099,28 @@ async function readLoadAvg(): Promise<number> {
     return Number((await readFileAsync("/proc/loadavg")).split(" ")[0]) || 0
 }
 
+// statfs on / through Gio — a metadata syscall, not a disk read, so
+// the sync call costs nothing on the main loop. ONLY the root
+// filesystem: it is where a swapfile lives (the RAM tie-in that puts
+// this stat beside RAM at all), and on the single-partition layout
+// most machines ship it is everything else too. A separate /home
+// filling up is invisible here, on purpose — the I/O rates below
+// cover the disk, not the partitions on it. Gio's filesystem::free is
+// statvfs's f_bavail, i.e. what this user can still write: the ext4
+// root reserve is already excluded, so 100% is exactly where user
+// writes (and swapfile growth) start failing — the honest reading,
+// if a few points pessimistic
+const rootFile = Gio.File.new_for_path("/")
+function readDiskSpace(): [number, number] {
+    // used,total bytes; [0,0] when the fs answers nothing, so the
+    // step skips publishing rather than flashing 100%
+    const info = rootFile.query_filesystem_info("filesystem::size,filesystem::free", null)
+    const total = Number(info.get_attribute_uint64("filesystem::size"))
+    const free = Number(info.get_attribute_uint64("filesystem::free"))
+    if (total <= 0) return [0, 0]
+    return [total - free, total]
+}
+
 async function readUptime(): Promise<number> {
     return Math.floor(Number((await readFileAsync("/proc/uptime")).split(" ")[0]) || 0)
 }
@@ -1146,6 +1202,14 @@ const poll = createPoll("", INTERVAL, () => {
         setRam(r)
         push(ramHist.get(), setRamHist, r)
         publishRamLevel()
+    })
+    step("diskSpace", () => {
+        const [used, total] = readDiskSpace()
+        if (total <= 0) return
+        const toGB = (b: number) => Math.round((b / 1024 / 1024 / 1024) * 10) / 10
+        setDiskSize([toGB(used), toGB(total)])
+        setDisk(Math.round((100 * used) / total))
+        publishDiskLevel()
     })
     step("load", async () => setLoadAvg(await readLoadAvg()))
     if (hasCpuPsi)

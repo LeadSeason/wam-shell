@@ -11,8 +11,8 @@ Section: `[quicksettings]`
 | `show_battery_percentage` | bool          | `true`  | Percentage next to the battery icon on the panel                                                                                                                                                                                                                                                                       |
 | `battery_blink`           | bool          | `true`  | Blink the panel battery icon while the battery is discharging                                                                                                                                                                                                                                                          |
 | `show_device_names`       | bool          | `false` | Overlay the active input/output device name on the volume sliders                                                                                                                                                                                                                                                      |
-| `show_stats`              | bool          | `false` | Performance stats tiles in the power mode pane: ram+swap/disk/uptime under System, cpu utilization + load average in the CPU section, a GPU section, and network rates; collected only while the pane is open. Does not gate the chassis-fan tile (see below)                                                          |
-| `stats_on_panel`          | bool          | `false` | Resource utilization monitor on the panel: cpu/ram/gpu percentage, each with a sparkline, plus ↓/↑ network rates. Every GPU gets a readout of its own. Clicking it opens the popup on the Power Mode pane                                                                                                              |
+| `show_stats`              | bool          | `false` | Performance stats tiles in the power mode pane: ram+swap/root-fs storage/disk I/O/uptime under System, cpu utilization + load average in the CPU section, a GPU section, and network rates; collected only while the pane is open. Does not gate the chassis-fan tile (see below)                                      |
+| `stats_on_panel`          | bool          | `false` | Resource utilization monitor on the panel: cpu/ram/gpu percentage, each with a sparkline, root-filesystem storage fill, plus ↓/↑ network rates. Every GPU gets a readout of its own. Clicking it opens the popup on the Power Mode pane                                                                                |
 | `stats_interval`          | int (ms)      | `1000`  | Time between stat updates; lower is smoother graphs at higher cpu cost                                                                                                                                                                                                                                                 |
 | `power_profile_on_panel`  | bool          | `true`  | Active power profile icon in the bar's quicksettings label                                                                                                                                                                                                                                                             |
 | `hide_on_media_play`      | bool          | `true`  | Close the popup when a player starts playing; pausing leaves it open                                                                                                                                                                                                                                                   |
@@ -114,6 +114,20 @@ popup's warning (5% / 20% of the last minute), and plain
 "this is hurting" rather than "this is full" — but it says nothing
 until something has _already_ stalled, and it is absent entirely on a
 `psi=0` kernel, where the fill percentage is the only vote there is.
+
+**Storage is the root filesystem's fill** — warn at 95% used, critical
+at 99. The tie to RAM is the point of the stat: a full root fs is
+where a swapfile stops growing and writes start failing, so the
+kernel's escape valve for memory pressure jams exactly when storage
+runs out. It has no sparkline, because fill moves on the scale of
+hours and a 32-second window draws a flat line; it still colours and
+flashes with everything else. The thresholds are far above RAM's since
+a filesystem lives at high fill for years without that being news.
+Only the root filesystem is watched — that is where a swapfile lives,
+and on single-partition machines it is everything anyway. The pane's
+System section (`show_stats`) carries the same reading as a tile with
+used/total GB underneath, its big number taking the warn/critical
+colours at the same thresholds.
 
 **CPU answers to two different questions, and they are not the same
 question.** The first is `/proc/pressure/cpu` — how deep the run queue

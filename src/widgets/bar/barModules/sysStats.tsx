@@ -7,6 +7,9 @@ import {
     cpuLevel,
     cpuPressure,
     ram,
+    disk,
+    diskLevel,
+    diskSize,
     gpuHistFor,
     gpuIds,
     gpuLevelFor,
@@ -171,6 +174,9 @@ const short = (hist: Accessor<{ v: number }[]>) => hist.as(h => h.slice(-BARS))
 // The panel's 8px rhythm alone left every graph equidistant from the
 // label before it and the label after it, so each sparkline read as
 // belonging to the NEXT stat — the tighter inner gap is what pairs them.
+// `hist` omitted = readout only (storage: a 32-second window of a
+// number that moves by the hour draws a flat line that says nothing
+// the number itself hasn't), while the level still colours and flashes.
 function Stat({
     name,
     label,
@@ -179,7 +185,7 @@ function Stat({
 }: {
     name: string
     label: Accessor<string>
-    hist: Accessor<{ v: number }[]>
+    hist?: Accessor<{ v: number }[]>
     level?: Accessor<PressureLevel>
 }) {
     const classes = level ? level.as(l => [name, ...(l !== "" ? [l] : [])]) : [name]
@@ -213,14 +219,16 @@ function Stat({
     return (
         <box cssClasses={group} spacing={4}>
             <label cssClasses={classes} label={label} />
-            <Graph
-                hist={short(hist)}
-                className={name}
-                slots={BARS}
-                level={level}
-                height={GRAPH_HEIGHT}
-                hexpand={false}
-            />
+            {hist && (
+                <Graph
+                    hist={short(hist)}
+                    className={name}
+                    slots={BARS}
+                    level={level}
+                    height={GRAPH_HEIGHT}
+                    hexpand={false}
+                />
+            )}
         </box>
     )
 }
@@ -241,9 +249,11 @@ export default function SysStats() {
 
     const tip = () => {
         const [rUsed, rTotal] = ramSize.get()
+        const [dUsed, dTotal] = diskSize.get()
         const lines = [
             `CPU ${cpu.get()}%   load ${loadAvg.get().toFixed(2)}`,
             `RAM ${ram.get()}%   ${rUsed}/${rTotal} GB`,
+            `DISK ${disk.get()}%   ${dUsed}/${dTotal} GB`,
         ]
         const cards = gpus.get()
         const ids = cards.map(g => g.id)
@@ -265,6 +275,10 @@ export default function SysStats() {
         if (ramLevel.get() !== "")
             alerts.push(
                 ramLevel.get() === "critical" ? "Severe memory pressure" : "High memory pressure",
+            )
+        if (diskLevel.get() !== "")
+            alerts.push(
+                diskLevel.get() === "critical" ? "Storage nearly full" : "Storage running low",
             )
         // one alert per saturated card, NAMED once there is a second
         // card to confuse it with — the panel used to flash a single
@@ -299,6 +313,10 @@ export default function SysStats() {
             />
             <Stat name="statCpu" label={cpu.as(v => `CPU ${v}%`)} hist={cpuHist} level={cpuLevel} />
             <Stat name="statRam" label={ram.as(v => `RAM ${v}%`)} hist={ramHist} level={ramLevel} />
+            {/* root-fs fill, beside RAM on purpose: it is the tank swap
+            grows into, and a full one is memory pressure's emergency
+            arriving by another door. No sparkline — see Stat */}
+            <Stat name="statDisk" label={disk.as(v => `DISK ${v}%`)} level={diskLevel} />
             {/* ONE STAT PER CARD. A single slot following the discrete
             card meant a saturated iGPU flashed its red block over the
             dGPU's healthy numbers, and the iGPU had no readout at all.

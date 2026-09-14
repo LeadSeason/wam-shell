@@ -27,6 +27,9 @@ import {
     CPU_BUSY_WARN,
     parseProcStat,
     ramPressureLevel,
+    diskPressureLevel,
+    DISK_USED_WARN,
+    DISK_USED_CRIT,
     sumDiskSectors,
 } from "../src/lib/sysstats"
 
@@ -465,6 +468,19 @@ test("ramPressureLevel: the worse of the two votes wins", () => {
     eq(ramPressureLevel(25, 10), "critical")
     eq(ramPressureLevel(0, 91), "warn")
     eq(ramPressureLevel(6, 10), "warn")
+})
+
+// storage: the lines sit far above RAM's on purpose — a filesystem at
+// 85% has years of that being normal, and a warn that never clears
+// teaches the eye to ignore the yellow
+test("diskPressureLevel: the two thresholds, exactly", () => {
+    eq(diskPressureLevel(0), "")
+    eq(diskPressureLevel(85), "") // comfortably full, not news
+    eq(diskPressureLevel(DISK_USED_WARN - 1), "")
+    eq(diskPressureLevel(DISK_USED_WARN), "warn")
+    eq(diskPressureLevel(DISK_USED_CRIT - 1), "warn")
+    eq(diskPressureLevel(DISK_USED_CRIT), "critical")
+    eq(diskPressureLevel(100), "critical")
 })
 
 // CPU flashes like RAM and GPU do, so the thresholds carry the whole

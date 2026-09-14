@@ -79,6 +79,11 @@ window.Bar {
         .statGpu {
             color: t.$peach;
         }
+        // storage: root-fs fill, teal — the one palette slot the stats
+        // had left, and a cooler neighbour for RAM's green
+        .statDisk {
+            color: t.$teal;
+        }
         .statNet {
             color: t.$mauve;
         }
@@ -89,12 +94,14 @@ window.Bar {
         // Pressure, in the same two steps the power pane's warnings use.
         // Only the stats that end in something worse than slowness get
         // here: a pegged CPU keeps its own colour, a full VRAM carve-out
-        // is a compositor crash and a stalled allocator is the OOM
-        // killer, so those two take over the graph AND its readout.
+        // is a compositor crash, a stalled allocator is the OOM killer
+        // and a full root fs is swap with nowhere left to grow — so
+        // those take over the graph AND its readout.
         // Beats .statRam/.statGpu on specificity, which is the point.
         .statCpu,
         .statRam,
         .statGpu,
+        .statDisk,
         .statGraph {
             &.warn {
                 color: t.$yellow;
@@ -146,7 +153,8 @@ window.Bar {
         // label twice a second, and the panel jitters if it does.
         .statCpu.critical,
         .statRam.critical,
-        .statGpu.critical {
+        .statGpu.critical,
+        .statDisk.critical {
             font-weight: s.$weight-bold;
         }
     }
