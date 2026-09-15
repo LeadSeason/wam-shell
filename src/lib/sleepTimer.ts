@@ -891,13 +891,15 @@ function fire() {
     muteActiveStreams()
     armPauseSweep()
     // dim to a fraction of the current brightness, never below the floor
+    // and never above the level the screen already had (a screen that is
+    // already dimmer than the floor must not be brightened)
     if (Config.sleepTimer.dim) {
         const brightness = Brightness.get_default()
         if (brightness.screenIsPresent) {
             preDimLevel = brightness.screen
-            dimmedToLevel = Math.max(
-                Config.sleepTimer.dimFloor,
-                preDimLevel * Config.sleepTimer.dimLevel,
+            dimmedToLevel = Math.min(
+                preDimLevel,
+                Math.max(Config.sleepTimer.dimFloor, preDimLevel * Config.sleepTimer.dimLevel),
             )
             brightness.screen = dimmedToLevel
         }
