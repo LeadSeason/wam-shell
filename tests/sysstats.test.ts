@@ -19,6 +19,8 @@ import {
     shortGpuName,
     parsePsiAvg60,
     cpuAlertText,
+    ramStalledText,
+    MEM_PRESSURE_ELEVATED,
     cpuPinned,
     cpuPressureLevel,
     CPU_PRESSURE_WARN,
@@ -27,6 +29,10 @@ import {
     CPU_BUSY_WARN,
     parseProcStat,
     ramPressureLevel,
+    parseVmstatSwap,
+    diskPressureLevel,
+    DISK_USED_WARN,
+    DISK_USED_CRIT,
     sumDiskSectors,
 } from "../src/lib/sysstats"
 
@@ -467,6 +473,35 @@ test("ramPressureLevel: the worse of the two votes wins", () => {
     eq(ramPressureLevel(6, 10), "warn")
 })
 
+// storage: the lines sit far above RAM's on purpose — a filesystem at
+// 85% has years of that being normal, and a warn that never clears
+// teaches the eye to ignore the yellow
+test("diskPressureLevel: the two thresholds, exactly", () => {
+    eq(diskPressureLevel(0), "")
+    eq(diskPressureLevel(85), "") // comfortably full, not news
+    eq(diskPressureLevel(DISK_USED_WARN - 1), "")
+    eq(diskPressureLevel(DISK_USED_WARN), "warn")
+    eq(diskPressureLevel(DISK_USED_CRIT - 1), "warn")
+    eq(diskPressureLevel(DISK_USED_CRIT), "critical")
+    eq(diskPressureLevel(100), "critical")
+})
+
+// /proc/vmstat: pswpin/pswpout are cumulative pages since boot; the
+// reader deltas them into the swap activity rate
+test("parseVmstatSwap: reads the cumulative pswpin/pswpout pages", () => {
+    const vmstat = ["nr_free_pages 1234567", "pswpin 1861", "pswpout 4097", ""].join("\n")
+    eq(parseVmstatSwap(vmstat), { inPages: 1861, outPages: 4097 })
+})
+
+test("parseVmstatSwap: absent, malformed or trailing text is zero, not NaN", () => {
+    eq(parseVmstatSwap(""), { inPages: 0, outPages: 0 })
+    eq(parseVmstatSwap("pswpin abc\npswpout 1\n"), { inPages: 0, outPages: 1 })
+    // "pswpin 7 extra" is not a vmstat line the kernel emits — strict
+    // match, so a trailing payload cannot half-parse
+    eq(parseVmstatSwap("pswpin 7 extra\n"), { inPages: 0, outPages: 0 })
+    eq(parseVmstatSwap("npswpin 9\nnpswpout 9\n"), { inPages: 0, outPages: 0 })
+})
+
 // CPU flashes like RAM and GPU do, so the thresholds carry the whole
 // weight of not crying wolf: a full-width build settles near 25%
 test("cpuPressureLevel: the two thresholds, exactly", () => {
@@ -559,4 +594,21 @@ test("cpuAlertText: a merely pegged machine is not quoted a stall figure", () =>
 
 test("cpuAlertText: nothing to say when nothing is lit", () => {
     eq(cpuAlertText("", 99), "")
+})
+
+// the RAM tile quotes the stall figure from ELEVATED (2%) up — the
+// band between an idle box (~0.3%) and the warning card's 5% that was
+// previously invisible everywhere
+test("ramStalledText: silent at rest and on a psi=0 kernel", () => {
+    eq(ramStalledText(null), "")
+    eq(ramStalledText(0), "")
+    eq(ramStalledText(0.3), "") // idle
+    eq(ramStalledText(MEM_PRESSURE_ELEVATED - 0.01), "")
+})
+
+test("ramStalledText: quotes the rounded figure from elevated upward", () => {
+    eq(ramStalledText(MEM_PRESSURE_ELEVATED), "stalled 2%")
+    eq(ramStalledText(4.4), "stalled 4%") // rounding matches the warning card
+    eq(ramStalledText(5), "stalled 5%") // the band the card fires in, still quoted
+    eq(ramStalledText(25), "stalled 25%")
 })
