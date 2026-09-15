@@ -467,7 +467,8 @@ function getSleepTimerConfig() {
         // top-level on_panel key would leak in otherwise
         onPanel: r.bool("on_panel", true, { sectionOnly: true }),
         // dim the screen on fire: dim_level as a fraction of the current
-        // brightness (default 0.4), never below the dim_floor minimum
+        // brightness (default 0.4), floored at dim_floor but never raised
+        // above the level the screen already had
         dim: r.bool("dim", true),
         dimLevel: r.num("dim_level", 0.4, { min: 0, max: 1 }),
         dimFloor: r.num("dim_floor", 0.15, { min: 0, max: 1 }),
