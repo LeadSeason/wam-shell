@@ -1,10 +1,14 @@
-import { Accessor, Setter, createBinding, createComputed, createState, onCleanup } from "gnim"
+import { Accessor, Setter, With, createBinding, createComputed, createState, onCleanup } from "gnim"
 import { OverlayIcon, bandBadgeOf } from "./ToggleButton"
 import AstalNetwork from "gi://AstalNetwork?version=0.1"
+import Gio from "gi://Gio?version=2.0"
+import GLib from "gi://GLib?version=2.0"
 import { connect, disconnect, execAsync } from "../../../lib/metrics"
 import { Gtk } from "ags/gtk4"
 import Pango from "gi://Pango?version=1.0"
 import { savedNetworks, profileId } from "./savedNetworks"
+import { loadSecrets, type WifiSecrets } from "../../../lib/wifiSecrets"
+import { qrMatrix, wifiQrPayload } from "../../../lib/wifiQr"
 import { createDelayer } from "../../delay"
 
 // NM 80211ApSecurityFlags key-mgmt bits
@@ -55,6 +59,69 @@ export function channelOf(freq: number): number {
     return (freq - 5000) / 5
 }
 
+// password onto the clipboard via wl-copy. The text is never logged; a
+// failure says so without echoing anything about the payload (capture.ts
+// copies files the same subprocess+stdin-pipe way; a PSK is ≤63 bytes so
+// the synchronous write to wl-copy's pipe cannot stall)
+function copyToClipboard(text: string | null | undefined) {
+    if (!text) return
+    if (GLib.find_program_in_path("wl-copy") === null) {
+        console.warn("wifi: wl-copy not found — password not copied")
+        return
+    }
+    let copier: Gio.Subprocess | null = null
+    try {
+        copier = Gio.Subprocess.new(["wl-copy"], Gio.SubprocessFlags.STDIN_PIPE)
+        const sink = copier.get_stdin_pipe()
+        if (!sink) throw new Error("no stdin pipe")
+        sink.write_all(text, null)
+        sink.close(null)
+    } catch {
+        copier?.force_exit()
+        console.warn("wifi: clipboard copy failed")
+    }
+}
+
+const QR_IMAGE_SIZE = 200
+const QR_QUIET_MODULES = 4
+
+/** the scannable code itself, drawn with cairo: white card + dark
+ *  modules. Scanner-facing colors are deliberately NOT themed — inverted
+ *  or low-contrast codes fail to scan, which is the one job this has */
+function QrImage({ payload }: { payload: string }) {
+    const matrix = qrMatrix(payload)
+    function draw(_self: Gtk.DrawingArea, cr: any, w: number, h: number) {
+        const module = Math.floor(Math.min(w, h) / (matrix.size + QR_QUIET_MODULES * 2))
+        if (module <= 0) return
+        const side = module * matrix.size
+        const ox = Math.floor((w - side) / 2)
+        const oy = Math.floor((h - side) / 2)
+        cr.setSourceRGB(1, 1, 1)
+        cr.rectangle(0, 0, w, h)
+        cr.fill()
+        cr.setSourceRGB(0, 0, 0)
+        // one path, one fill: up to ~1400 tiny rects per code
+        for (let row = 0; row < matrix.size; row++) {
+            for (let col = 0; col < matrix.size; col++) {
+                if (!matrix.dark(row, col)) continue
+                cr.rectangle(ox + col * module, oy + row * module, module, module)
+            }
+        }
+        cr.fill()
+    }
+    return (
+        <Gtk.DrawingArea
+            $={self => {
+                self.set_content_width(QR_IMAGE_SIZE)
+                self.set_content_height(QR_IMAGE_SIZE)
+                self.set_draw_func(draw)
+            }}
+            cssClasses={["wifiQrImage"]}
+            halign={Gtk.Align.CENTER}
+        />
+    )
+}
+
 // password prompt: replaces the pane content while set
 export interface WifiPrompt {
     ssid: string
@@ -102,8 +169,79 @@ export function ApRow({
     )
     const isKnown = savedNetworks.as(map => map.has(ap.ssid))
 
+    // ---- stored-secret reveal + share QR ----
+    // `secrets` is the parsed nmcli output, loaded lazily when the details
+    // panel first opens (same trigger as loadAutoconnect); null until
+    // then — and after a failed read (`secretsFailed`), which hides the QR
+    // and shows "Not available" for the password
+    const [secrets, setSecrets] = createState<WifiSecrets | null>(null)
+    const [secretsFailed, setSecretsFailed] = createState(false)
+    const [showSecret, setShowSecret] = createState(false)
+    const [qrPayload, setQrPayload] = createState<string | null>(null)
+    const [passwordRowVisible, setPasswordRowVisible] = createState(false)
+    const [passwordLabel, setPasswordLabel] = createState("…")
+    const [qrOpen, setQrOpen] = createState(false)
+    let secretsRequested = false
+
+    // every bound value above is its own state, refreshed imperatively on
+    // each input change — a createComputed over them goes stale on
+    // initially-falsy deps (see AGENTS.md)
+    function refreshSecretRows() {
+        const known = isKnown.get()
+        const s = secrets.get()
+        // 802.1X has no single-password form: neither row exists for it
+        const ent = !!s && (s.keyMgmt === "wpa-eap" || s.keyMgmt === "802-1x")
+        setPasswordRowVisible(known && secured(ap) && !ent)
+        const payload =
+            known && s && !ent
+                ? wifiQrPayload({
+                      ssid: ap.ssid,
+                      keyMgmt: s.keyMgmt,
+                      password: s.psk,
+                      hidden: s.hidden,
+                  })
+                : null
+        setQrPayload(payload)
+    }
+    function refreshPasswordLabel() {
+        const s = secrets.get()
+        setPasswordLabel(
+            secretsFailed.get()
+                ? "Not available"
+                : showSecret.get() && s?.psk
+                  ? s.psk
+                  : s?.psk
+                    ? "••••••••"
+                    : "…",
+        )
+    }
+    function loadSecretsIfNeeded() {
+        if (secretsRequested) return
+        secretsRequested = true
+        loadSecrets(profileId(ap))
+            .then(s => {
+                setSecrets(s)
+                refreshSecretRows()
+                refreshPasswordLabel()
+            })
+            .catch(() => {
+                // fixed string only — the exec error echoes argv
+                setSecretsFailed(true)
+                refreshSecretRows()
+                refreshPasswordLabel()
+            })
+    }
+    const unwatchKnown = isKnown.subscribe(() => {
+        if (!isKnown.get()) setShowSecret(false)
+        refreshSecretRows()
+        refreshPasswordLabel()
+    })
+    refreshSecretRows()
+    refreshPasswordLabel()
+
     // tracked and cancelled on teardown (see widgets/delay.ts)
     const delay = createDelayer("wifiApRow")
+    onCleanup(() => unwatchKnown())
 
     function fail(msg: string, e: unknown) {
         console.warn(`wifi: ${msg}:`, e)
@@ -302,7 +440,10 @@ export function ApRow({
                             onClicked={() => {
                                 const opening = !detailsOpen.get()
                                 setDetailsOpen(opening)
-                                if (opening && isKnown.get()) loadAutoconnect()
+                                if (opening && isKnown.get()) {
+                                    loadAutoconnect()
+                                    loadSecretsIfNeeded()
+                                }
                             }}
                         >
                             <image
@@ -332,6 +473,49 @@ export function ApRow({
                             />
                         </box>
                     ))}
+                    {/* stored-secret reveal: no row gesture — the nested
+                        reveal/copy buttons would lose their clicks (see
+                        AGENTS.md) */}
+                    <box visible={passwordRowVisible} spacing={5} cssClasses={["wifiPasswordRow"]}>
+                        <label cssClasses={["key"]} label={"Password"} xalign={0} />
+                        <label
+                            cssClasses={["value", "wifiPasswordValue"]}
+                            hexpand
+                            xalign={1}
+                            label={passwordLabel}
+                            maxWidthChars={18}
+                            ellipsize={Pango.EllipsizeMode.END}
+                        />
+                        <box
+                            visible={secrets.as(s => !!s?.psk)}
+                            spacing={2}
+                            cssClasses={["wifiPasswordButtons"]}
+                        >
+                            <button
+                                cssClasses={["wifiPasswordButton"]}
+                                tooltipText={showSecret.as(v =>
+                                    v ? "Hide password" : "Show password",
+                                )}
+                                onClicked={() => {
+                                    setShowSecret(!showSecret.get())
+                                    refreshPasswordLabel()
+                                }}
+                            >
+                                <image
+                                    iconName={showSecret.as(v =>
+                                        v ? "view-conceal-symbolic" : "view-reveal-symbolic",
+                                    )}
+                                />
+                            </button>
+                            <button
+                                cssClasses={["wifiPasswordButton"]}
+                                tooltipText={"Copy password"}
+                                onClicked={() => copyToClipboard(secrets.get()?.psk)}
+                            >
+                                <image iconName={"edit-copy-symbolic"} />
+                            </button>
+                        </box>
+                    </box>
                     <box visible={isKnown} spacing={5} cssClasses={["wifiDetailAction"]}>
                         <Gtk.GestureClick button={1} onPressed={toggleAutoconnect} />
                         <label label={"Auto-connect"} hexpand xalign={0} />
@@ -341,6 +525,42 @@ export function ApRow({
                             sensitive={false}
                             active={autoconnect.as(a => a === true)}
                         />
+                    </box>
+                    {/* scannable join code for the stored profile, in its
+                        own slot box so a late secrets load re-mounts in
+                        place (With appends at the parent's end) */}
+                    <box
+                        visible={qrPayload.as(p => p !== null)}
+                        orientation={Gtk.Orientation.VERTICAL}
+                    >
+                        <box spacing={5} cssClasses={["wifiDetailAction"]}>
+                            <Gtk.GestureClick
+                                button={1}
+                                onPressed={() => setQrOpen(!qrOpen.get())}
+                            />
+                            <label label={"Share QR code"} hexpand xalign={0} />
+                            <image iconName={"send-to-symbolic"} />
+                            <image
+                                iconName={qrOpen.as(o =>
+                                    o ? "pan-up-symbolic" : "pan-down-symbolic",
+                                )}
+                            />
+                        </box>
+                        <revealer
+                            revealChild={qrOpen}
+                            transitionDuration={150}
+                            transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
+                        >
+                            <box cssClasses={["wifiQr"]} orientation={Gtk.Orientation.VERTICAL}>
+                                <With value={qrPayload}>{p => p && <QrImage payload={p} />}</With>
+                                <label
+                                    cssClasses={["wifiQrHint"]}
+                                    label={`Scan to join "${ap.ssid}"`}
+                                    xalign={0.5}
+                                    halign={Gtk.Align.CENTER}
+                                />
+                            </box>
+                        </revealer>
                     </box>
                     <box
                         visible={createComputed([active, isKnown], (a, k) => !a && k)}
