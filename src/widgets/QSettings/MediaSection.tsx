@@ -80,6 +80,11 @@ function Player({ player }: { player: AstalMpris.Player }) {
     // button needs the same value four ways
     const loop = createBinding(player, "loopStatus")
     const localCover = coverState(player)
+    // the art as the PLAYER published it: a data: url means the player
+    // encoded exactly the pixels it wants shown (Telegram caps its song
+    // thumbs at 320px) — no bigger copy exists anywhere to soften in
+    // anticipation of, so smallArt's blur only costs detail
+    const rawArt = createBinding(player, "artUrl")
     // an arabic/hebrew title should hug the right edge, like the rest
     // of the shell does (see isRtl in lib/utils): the artist follows the
     // title's direction so the two lines share an edge even when the
@@ -195,8 +200,13 @@ function Player({ player }: { player: AstalMpris.Player }) {
                         // (chromium caps its mpris art at 150px, and
                         // lib/browserArt could not find the page): there
                         // are no pixels left to recover, so soften it
-                        // rather than show a hard 4x upscale
-                        ...(c && isSmallCover(c) ? ["smallArt"] : []),
+                        // rather than show a hard 4x upscale. data: art
+                        // (Telegram's 320px thumb) is a deliberate cap,
+                        // not a recoverable miss — show it sharp; when it
+                        // is gone the noArt gradient above takes over
+                        ...(c && isSmallCover(c) && !rawArt.get().startsWith("data:")
+                            ? ["smallArt"]
+                            : []),
                     ])}
                     css={localCover.as(c =>
                         // the path goes into a double-quoted CSS string:
