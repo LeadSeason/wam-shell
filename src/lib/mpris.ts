@@ -7,7 +7,8 @@ import { Accessor, createBinding, createComputed, createState, onCleanup } from 
 import { connect, disconnect, execAsync, idleAdd, timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
 import { hyprDispatch } from "./hyprDispatch"
-import { cachedCover, downloadCover } from "./coverArt"
+import { cachedCover, downloadCover, isSmallCover } from "./coverArt"
+import { upgradeSmallCover } from "./embeddedArt"
 import { isBrowserThumb, recoverBrowserArt } from "./browserArt"
 import { isFile } from "./utils"
 import { registerDispose } from "./lifecycle"
@@ -557,6 +558,9 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
     // bigger version one request away. Resolve artUrl ourselves, and
     // keep coverArt as the fallback for the schemes it handles and we
     // do not (data:image, and players that only expose a local file).
+    // For a deliberately capped thumbnail whose track file we can still
+    // name (xesam:url), maybeUpgradeFromFile digs the embedded art out
+    // of the file itself.
     const fallback = () => {
         const url = cover.get()
         if (!url) return ""
@@ -584,6 +588,32 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
     let upgradedFor: string | null = null
     let upgradedFrom: string | null = null
 
+    // players that cap their published art (Telegram encodes its 320px
+    // thumbnail as a data: url, so neither the cdn rewrites above nor the
+    // browser-art recovery can help) sometimes still name the source file
+    // in xesam:url — pull the embedded cover at full size and swap it in
+    // when what we have renders small. gated on isSmallCover so the tag
+    // parse only runs when it can actually matter; the swap no-ops when
+    // the embedded art is missing or no bigger than the published one
+    let embeddedSwap: { from: string; to: string } | null = null
+    const maybeUpgradeFromFile = (local: string) => {
+        if (!local || !isSmallCover(local)) return
+        const trackUrl = player.get_meta("xesam:url")?.deep_unpack<string>() ?? ""
+        if (!trackUrl) return
+        // the pair we resolved for must still be on screen when the
+        // parse comes back
+        const artAt = art.get()
+        const titleAt = title.get()
+        upgradeSmallCover(local, trackUrl)
+            .then(path => {
+                if (!path) return
+                if (art.get() !== artAt || title.get() !== titleAt) return
+                embeddedSwap = { from: local, to: `file://${path}` }
+                setLocal(embeddedSwap.to)
+            })
+            .catch(e => console.warn("embedded art extraction failed:", e))
+    }
+
     const update = () => {
         if (upgradedFor !== null && upgradedFor === title.get() && cover.get() === upgradedFrom)
             return
@@ -595,7 +625,17 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
         upgradedFor = null
         upgradedFrom = null
         const url = art.get() || ""
-        if (!url.startsWith("http")) return setLocal(fallback())
+        if (!url.startsWith("http")) {
+            let local = fallback()
+            // a metadata re-emission (some players re-send it on seek)
+            // would otherwise drop back to the small art for a frame
+            // before the cached swap re-applies
+            if (embeddedSwap && embeddedSwap.from === local && isFile(embeddedSwap.to.slice(7)))
+                local = embeddedSwap.to
+            setLocal(local)
+            maybeUpgradeFromFile(local)
+            return
+        }
 
         const cached = cachedCover(url)
         if (cached) return setLocal(cached)
