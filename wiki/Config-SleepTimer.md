@@ -23,6 +23,9 @@ Section: `[sleep_timer]`
   `$XDG_RUNTIME_DIR/wam-shell/sleep-timer.json`) but not a reboot. A
   timer that expires while the shell is down does not fire
   retroactively — you get one notification that it expired.
+- Cancelling the timer (pill toggle or the `sleep-timer cancel` request)
+  also restores the pre-dim brightness: a cancel declares the sleep
+  session over.
 - With the alarm on, the pill also offers a text field: whatever you
   type shows as a critical, never-expiring notification when the timer
   hits 0. It is a per-timer message, not a config key — stopping the

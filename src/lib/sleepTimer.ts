@@ -938,8 +938,9 @@ function restoreDim() {
 
 export function startSleepTimer(minutes: number) {
     if (foreignOwned) return // a stale-but-live timer belongs to the other shell instance
+    // cancelSleepTimer restores a fired timer's dim, so extending after a
+    // fire still brings the pre-dim level back
     cancelSleepTimer()
-    restoreDim()
     stopAlarm()
     if (minutes <= 0) return
     deadline = Date.now() + minutes * 60_000
@@ -955,6 +956,13 @@ export function cancelSleepTimer() {
     setPaused(false)
     stopAlarm()
     unmuteStreams()
+    // a cancel declares the sleep session over: bring the pre-dim level
+    // back (a user's own adjustments still win — restoreDim's epsilon
+    // guard) and, as importantly, drop the dim state. Left live, a stale
+    // preDimLevel arms restoreDim's other triggers — any media play
+    // (undim-on-play) or the next start — and the screen jumps to a level
+    // captured at a fire long past
+    restoreDim()
     clearState()
 }
 
@@ -1009,9 +1017,7 @@ sleep-timer status
             ].join(" ")
         if (foreignOwned) return "another shell instance owns the timer"
         if (arg === "cancel" || arg === "0") {
-            // startSleepTimer(0), not cancelSleepTimer: only the former
-            // also restores a fired timer's dim
-            startSleepTimer(0)
+            cancelSleepTimer()
             return "cancelled"
         }
         // the same syntax the quick settings entry takes, so a keybind
