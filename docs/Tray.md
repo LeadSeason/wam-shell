@@ -68,7 +68,7 @@ the bar window's `heightRequest` is a floor and not a cap — a 9th tray
 item used to wrap onto a second line and show up as a full-width strip
 under the bar holding the overflow icons.
 
-## Late-resolving and hollow items
+## Late-resolving, hollow and dead items
 
 An item's properties (id, title, tooltip, icon) resolve asynchronously
 after `item-added` — Electron apps register a hollow item first and
@@ -76,14 +76,25 @@ fill it in later. The pinned/unpinned filter is therefore re-evaluated
 on every relevant `notify::`, otherwise a pinned item that resolved
 late would stay in quick settings forever and never reach the bar.
 
-Items whose `gicon` is null are rendered with the
-`image-missing-symbolic` fallback glyph instead of an empty pill — a
-hollow registration (an Electron app whose D-Bus object died: it
-exports an empty node, no properties at all) stays visible and
-clickable. Such an item can also never match `tray.always_on_panel`
-(there is no id, title or tooltip to match), so it always lands in
-quick settings; its real icon appears if the app starts serving
-properties again.
+Three layers decide what actually renders:
+
+- **Zombies hide immediately.** An app that dies without unregistering
+  its StatusNotifierItem leaves a registration whose bus name has no
+  owner. The watcher is supposed to reap these, but doesn't always
+  (dead Electron registrations have been observed lingering for days),
+  so the tray tracks `NameOwnerChanged` itself — at item-add time and
+  continuously — and hides items whose name is unowned.
+- **Hollow registrations hide after a grace period.** An item that
+  exports nothing at all — no icon, no title, no tooltip; Signal before
+  its window first opens is the classic case — shows the
+  `image-missing-symbolic` fallback for 30 seconds, then stops
+  rendering. If the app's properties arrive later the item reappears on
+  its own. Such an item can also never match `tray.always_on_panel`
+  (there is no id, title or tooltip to match).
+- **Content with no resolvable icon still renders.** An item that HAS
+  content but whose icon cannot be resolved keeps the
+  `image-missing-symbolic` fallback glyph rather than an empty pill, so
+  it stays visible and clickable.
 
 ## Icon spacing (`tray.spacing`)
 
