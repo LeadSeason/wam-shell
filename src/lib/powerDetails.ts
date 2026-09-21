@@ -99,7 +99,9 @@ const battRing: number[] = []
 
 // battery health: full vs design capacity. Charge (µAh) or energy
 // (µWh) depending on the firmware — the ratio is the same. Static
-// for practical purposes, so read once at startup, not polled
+// for practical purposes, so read once at startup, not polled.
+// Some gauges report full ABOVE design (fresh/recalibrated cells),
+// which is real but reads like a bug — cap at 100.
 const healthDir = ["/sys/class/power_supply/BAT0", "/sys/class/power_supply/BAT1"].find(
     d =>
         GLib.file_test(`${d}/charge_full`, GLib.FileTest.EXISTS) ||
@@ -112,7 +114,7 @@ const battHealthPct = (() => {
     const design =
         Number(read(`${healthDir}/charge_full_design`)) ||
         Number(read(`${healthDir}/energy_full_design`))
-    return full > 0 && design > 0 ? Math.round((full / design) * 100) : 0
+    return full > 0 && design > 0 ? Math.min(100, Math.round((full / design) * 100)) : 0
 })()
 export const hasBattHealth = battHealthPct > 0
 export { battHealthPct }
