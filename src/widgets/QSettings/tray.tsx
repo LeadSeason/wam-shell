@@ -3,8 +3,15 @@ import { Gdk, Gtk } from "ags/gtk4"
 import app from "ags/gtk4/app"
 import AstalTray from "gi://AstalTray"
 import Gio from "gi://Gio?version=2.0"
+import GLib from "gi://GLib?version=2.0"
 import Config from "../../config"
-import { connect, disconnect } from "../../lib/metrics"
+import { connect, disconnect, timeoutAdd, sourceRemove } from "../../lib/metrics"
+import {
+    BusNameLiveness,
+    HOLLOW_GRACE_MS,
+    hasRenderableContent,
+    itemBusName,
+} from "../../lib/trayHealth"
 
 export default function Tray({
     filter,
@@ -54,10 +61,34 @@ export default function Tray({
     // NewToolTip every 2s) would otherwise re-flow the grid constantly.
     const applyFilter = (items: AstalTray.TrayItem[]) => (filter ? items.filter(filter) : items)
 
-    const [visibleItems, setVisibleItems] = createState(applyFilter(trayItems.get()))
+    // Dead-item filtering, see lib/trayHealth.ts. Zombies (bus name
+    // with no owner) hide immediately; hollow registrations (nothing
+    // exported at all) hide once HOLLOW_GRACE_MS has passed, so a
+    // slow-starting app still gets its grace window.
+    const registeredAt = new Map<string, number>()
+    const graceTimers = new Map<string, number>()
+    const deadNames = new Set<string>()
+
+    const liveness = new BusNameLiveness((name, alive) => {
+        if (alive) deadNames.delete(name)
+        else deadNames.add(name)
+        syncVisible()
+    })
+
+    function isDisplayable(item: AstalTray.TrayItem): boolean {
+        const itemId = item.get_item_id()
+        const name = itemBusName(itemId)
+        if (name !== null && deadNames.has(name)) return false
+        if (hasRenderableContent(item)) return true
+        return Date.now() - (registeredAt.get(itemId) ?? 0) < HOLLOW_GRACE_MS
+    }
+
+    const displayableItems = () => applyFilter(trayItems.get()).filter(isDisplayable)
+
+    const [visibleItems, setVisibleItems] = createState(displayableItems())
 
     function syncVisible() {
-        const next = applyFilter(trayItems.get())
+        const next = displayableItems()
         const prev = visibleItems.get()
         if (next.length !== prev.length || next.some((item, i) => item !== prev[i])) {
             setVisibleItems(next)
@@ -66,6 +97,11 @@ export default function Tray({
 
     const unsubVisible = trayItems.subscribe(syncVisible)
     onCleanup(unsubVisible)
+    onCleanup(() => {
+        liveness.dispose()
+        for (const timer of graceTimers.values()) sourceRemove(timer)
+        graceTimers.clear()
+    })
 
     // disconnected when this instance is destroyed (the bar mount dies
     // with its monitor on hotplug): gnim only auto-disposes JSX-prop
@@ -78,9 +114,26 @@ export default function Tray({
                 connect(t, "notify::id", syncVisible),
                 connect(t, "notify::title", syncVisible),
                 connect(t, "notify::icon-name", syncVisible),
+                connect(t, "notify::tooltip", syncVisible),
                 connect(t, "notify::tooltip-markup", syncVisible),
             ],
         })
+
+        registeredAt.set(item_id, Date.now())
+        const name = itemBusName(item_id)
+        if (name) liveness.watch(name)
+        // re-run the hollow check when the grace window expires, in case
+        // no further property update ever arrives to trigger it
+        if (!graceTimers.has(item_id)) {
+            graceTimers.set(
+                item_id,
+                timeoutAdd("tray.hollowGrace", GLib.PRIORITY_DEFAULT, HOLLOW_GRACE_MS, () => {
+                    graceTimers.delete(item_id)
+                    syncVisible()
+                    return GLib.SOURCE_REMOVE
+                }),
+            )
+        }
 
         const path = t.iconThemePath
         if (path) {
@@ -122,6 +175,14 @@ export default function Tray({
                 for (const id of entry.handlerIds) disconnect(entry.item, id)
                 watched.delete(item_id)
             }
+            registeredAt.delete(item_id)
+            const timer = graceTimers.get(item_id)
+            if (timer !== undefined) {
+                sourceRemove(timer)
+                graceTimers.delete(item_id)
+            }
+            const name = itemBusName(item_id)
+            if (name) liveness.unwatch(name)
             // Filter on item.get_item_id() NOT item.get_id().
             setTrayItems(items => items.filter(item => item.get_item_id() !== item_id))
         }),
@@ -142,10 +203,10 @@ export default function Tray({
     const gap = spacing > 0 ? spacing * BASE : null
 
     const renderItem = (item: AstalTray.TrayItem) => {
-        // A hollow registration (an Electron app whose object died
-        // exports no properties at all) has no icon: show the standard
-        // fallback glyph rather than an empty pill, so the item stays
-        // visible and clickable until its properties resolve (or never).
+        // only displayable items reach here (see isDisplayable). An item
+        // that HAS content but no resolvable icon still renders, with the
+        // standard fallback glyph rather than an empty pill, so it stays
+        // clickable until its icon resolves (or the theme grows the name)
         const gicon = createBinding(item, "gicon").as(
             g => g ?? new Gio.ThemedIcon({ name: "image-missing-symbolic" }),
         )
