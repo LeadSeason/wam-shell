@@ -135,7 +135,10 @@ size. Mullvad already solved this problem for their own tray; the lock
 is their answer, taken verbatim. `mullvad-open-symbolic.svg` is the
 same lock with the shackle redrawn open (lifted right leg, relative
 arcs) for the down state — Mullvad's own tray signals unsecured by
-recolour, which a symbolic icon cannot do.
+recolour, which a symbolic icon cannot do. `obscura-symbolic.svg` is an
+original drawing of the Obscura robot (antennae, square eyes, smile
+notch): the brand set ships only colour app icons, and the face details
+are held at 1px+ so they survive as knockouts at true 16px.
 
 One renderer lesson the mole hunt bought, recorded so it is not paid
 for twice: **GTK 4.22's built-in SVG renderer mangles ABSOLUTE arc

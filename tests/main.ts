@@ -41,6 +41,7 @@ import "./sleepTimerState.test"
 import "./vpn.test"
 import "./vpn-nm.test"
 import "./vpn-proton.test"
+import "./obscura.test"
 import "./hyprDispatch.test"
 import "./wifiQr.test"
 // summary() must come after every suite has registered. This one used to
