@@ -760,6 +760,21 @@
 #                  hint (e.g. wam-shell's own bluetooth
 #                  connect/disconnect) are always excluded, regardless
 #                  of this list. default []
+# history_retention_days - days a desktop notification stays in the
+#                  center's main history before it moves to the
+#                  archive: hidden from the main list, still browsable
+#                  through the archive chip. 0 archives nothing.
+#                  criticals are exempt: they stay active until
+#                  dismissed by hand, like their banners.
+#                  default 1
+# archive_retention_days - days a desktop notification is kept at all
+#                  before it is deleted from the daemon, measured from
+#                  arrival (the archive holds items for
+#                  archive_retention_days - history_retention_days
+#                  after they move). 0 keeps the archive forever; keep
+#                  it larger than history_retention_days. provider
+#                  items (github & co.) keep their own caches and are
+#                  unaffected. default 7
 # popup_providers - list of provider names ("github", "youtube", ...)
 #                  whose items may also raise transient banners,
 #                  alongside the center. empty (default) = provider
@@ -773,6 +788,8 @@
 # position = "topRight"
 # popup_width = 460
 # transient_apps = ["Spotify"]
+# history_retention_days = 1
+# archive_retention_days = 7
 # popup_providers = []
 
 # ════════════════════════════════════════════════════════════════════

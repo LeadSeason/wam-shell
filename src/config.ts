@@ -672,6 +672,14 @@ function getNotificationsConfig() {
         // but excluded from the center's history. Lowercased once here,
         // so every comparison site can match without repeating it
         transientApps: r.strList("transient_apps", []).map(a => a.toLowerCase()),
+        // days a desktop notification stays in the center's main history
+        // before it moves to the archive; 0 archives nothing. criticals
+        // are exempt — they stay active until dismissed
+        historyRetentionDays: r.num("history_retention_days", 1, { min: 0 }),
+        // days a desktop notification is kept at all before it is
+        // deleted from the daemon, measured from arrival; 0 keeps the
+        // archive forever. should be larger than history_retention_days
+        archiveRetentionDays: r.num("archive_retention_days", 7, { min: 0 }),
     }
 }
 
