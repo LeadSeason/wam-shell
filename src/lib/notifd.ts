@@ -2,7 +2,14 @@ import AstalNotifd from "gi://AstalNotifd?version=0.1"
 import Gio from "gi://Gio?version=2.0"
 import GLib from "gi://GLib?version=2.0"
 import { Accessor, createBinding, createState } from "gnim"
-import { connect, disconnect, idleAdd, timeoutAdd, sourceRemove } from "./metrics"
+import {
+    connect,
+    disconnect,
+    idleAdd,
+    timeoutAdd,
+    timeoutAddSeconds,
+    sourceRemove,
+} from "./metrics"
 import Config from "../config"
 import { providers } from "./notificationProviders"
 import type { ProviderItem } from "./notificationProviders"
@@ -17,6 +24,7 @@ import {
 } from "./popupStack"
 import type { PopupEntry, PopupGroup, PopupTimer } from "./popupStack"
 import { booleanHint } from "./utils"
+import { historyZone } from "./relTime"
 // The stack's RULES live in lib/popupStack, which has no import-time
 // side effects so the unit suite can pin them without this module's
 // D-Bus probe and AstalNotifd.get_default() coming along. Re-exported
@@ -107,24 +115,109 @@ if (useOurs) sanitizePersistedTransientHints()
 const notifd = AstalNotifd.get_default()
 
 const notifications = createBinding(notifd, "notifications")
-// notifications that belong in the center's history: everything except
-// ones with the spec `transient` hint ("excluded from persistency" —
+// What belongs in the center's history at all: everything except ones
+// with the spec `transient` hint ("excluded from persistency" —
 // attention-only events like a device connecting) and apps filtered out
-// via notifications.transient_apps. Popups are unaffected by both.
-// booleanHint, not n.transient: senders exist that put an int32 in the
-// hint, and astal's getter logs a GLib critical on every such read
-export const persistent: Accessor<AstalNotifd.Notification[]> = notifications.as(list =>
-    list.filter(
+// via notifications.transient_apps. Popups are unaffected by any of it.
+// booleanHint, not n.transient: senders exist that put an int32 in
+// the hint, and astal's getter logs a GLib critical on every such read
+const inHistory = (n: AstalNotifd.Notification): boolean =>
+    !booleanHint(n.get_hint("transient")) &&
+    !Config.notifications.transientApps.includes((n.appName || "unknown").toLowerCase())
+
+// Criticals are never evicted, from either list or the sweep below:
+// aging one out would hide it from the center without ever dismissing
+// it — and it carries no timeout, so hidden is hidden indefinitely
+const isCritical = (n: AstalNotifd.Notification): boolean =>
+    n.urgency === AstalNotifd.Urgency.CRITICAL
+
+// the main list the center shows: everything still inside
+// notifications.history_retention_days
+export const active: Accessor<AstalNotifd.Notification[]> = notifications.as(list => {
+    const now = Math.floor(GLib.get_real_time() / 1_000_000)
+    return list.filter(
         n =>
-            !booleanHint(n.get_hint("transient")) &&
-            !Config.notifications.transientApps.includes((n.appName || "unknown").toLowerCase()),
-    ),
-)
-export const count = persistent.as(n => n.length)
+            inHistory(n) &&
+            (isCritical(n) ||
+                historyZone(
+                    n.time,
+                    Config.notifications.historyRetentionDays,
+                    Config.notifications.archiveRetentionDays,
+                    now,
+                ) === "active"),
+    )
+})
+
+// past history_retention_days but not yet due for deletion: hidden
+// from the main list, browsable through the center's archive filter
+export const archived: Accessor<AstalNotifd.Notification[]> = notifications.as(list => {
+    const now = Math.floor(GLib.get_real_time() / 1_000_000)
+    return list.filter(
+        n =>
+            inHistory(n) &&
+            !isCritical(n) &&
+            historyZone(
+                n.time,
+                Config.notifications.historyRetentionDays,
+                Config.notifications.archiveRetentionDays,
+                now,
+            ) === "archived",
+    )
+})
+export const count = active.as(n => n.length)
 export const dnd = createBinding(notifd, "dontDisturb")
 
 export function toggleDnd() {
     notifd.dontDisturb = !notifd.dontDisturb
+}
+
+// --- history retention ------------------------------------------------
+//
+// [notifications] archive_retention_days deletes desktop notifications
+// from the daemon — and so from the center — once they are older than
+// the window. The center's history is a "what did I miss recently"
+// list, not a log: history_retention_days moves an old row out of the
+// main list into the archive, and this sweep is what bounds the
+// archive. The filters in `active`/`archived` hide a row the moment
+// the list changes; this sweep is what actually dismisses the "gone"
+// ones, so the daemon's persisted state stays bounded instead of
+// growing for as long as the shell runs. Criticals are exempt (see
+// `isCritical`).
+//
+// Hourly is plenty: the unit is days, and the display filters mean a
+// row is never more than one sweep interval past the cutoff.
+const RETENTION_SWEEP_SEC = 60 * 60
+
+function sweepHistory() {
+    const now = Math.floor(GLib.get_real_time() / 1_000_000)
+    for (const n of notifd.notifications) {
+        if (isCritical(n)) continue
+        const zone = historyZone(
+            n.time,
+            Config.notifications.historyRetentionDays,
+            Config.notifications.archiveRetentionDays,
+            now,
+        )
+        if (zone === "gone") n.dismiss()
+    }
+}
+
+// only our daemon carries a persisted history to prune; with a system
+// daemon the notification list is empty anyway
+let sweepSource: number | null = null
+if (useOurs && Config.notifications.archiveRetentionDays > 0) {
+    // the daemon restored its persisted history at startup: prune what
+    // the previous session left behind before it can show
+    sweepHistory()
+    sweepSource = timeoutAddSeconds(
+        "notifd:historyRetention",
+        GLib.PRIORITY_DEFAULT,
+        RETENTION_SWEEP_SEC,
+        () => {
+            sweepHistory()
+            return GLib.SOURCE_CONTINUE
+        },
+    )
 }
 
 // Sources muted from the notification center: their notifications still
@@ -644,6 +737,11 @@ export function dispose() {
     if (tickSource !== null) {
         sourceRemove(tickSource)
         tickSource = null
+    }
+    // the hourly retention sweep must not fire against a torn-down module
+    if (sweepSource !== null) {
+        sourceRemove(sweepSource)
+        sweepSource = null
     }
     // collapse animations still in flight, and removals deferred out of
     // a gesture handler, would otherwise fire removePopup on a module

@@ -7,11 +7,12 @@ import app from "ags/gtk4/app"
 import { Accessor, For, createComputed, createRoot, createState } from "gnim"
 import {
     LOCAL_SOURCE,
+    active,
+    archived,
     count,
     dnd,
     mutedApps,
     mutedProviders,
-    persistent,
     toggleAppMute,
     toggleDnd,
     toggleProviderMute,
@@ -117,8 +118,11 @@ registry.register({
 
 // flat list of the center's history (transient-hinted and filtered apps
 // excluded), newest first (ties broken by id: notifications sent within
-// the same second still order by arrival)
-const sorted = persistent.as(list => [...list].sort((a, b) => b.time - a.time || b.id - a.id))
+// the same second still order by arrival). The archive is the same
+// shape: local notifications past history_retention_days, browsable
+// through the archive filter
+const sorted = active.as(list => [...list].sort((a, b) => b.time - a.time || b.id - a.id))
+const archivedSorted = archived.as(list => [...list].sort((a, b) => b.time - a.time || b.id - a.id))
 
 // header filter: case-insensitive substring match on the app name.
 // createComputed over both inputs: sorted.as alone would not recompute
@@ -137,6 +141,12 @@ const [providerFilter, setProviderFilter] = createState<string | null>(null)
 // with the mute list, so the chip's filter and its mute cannot drift
 // apart into two different spellings of "local"
 const LOCAL_FILTER = LOCAL_SOURCE
+// special filter value: the local daemon's ARCHIVE — notifications past
+// history_retention_days, kept until archive_retention_days. A filter
+// value rather than a separate mode so mutual exclusion with the
+// provider chips is the existing single-state toggle, not a second
+// piece of state kept in sync by hand
+const ARCHIVE_FILTER = "archive"
 
 interface Row {
     key: string
@@ -190,18 +200,22 @@ function providerRowKey(item: ProviderItem): string {
 // here — the deps spread must be evaluated when the lazy window is
 // built, by which time every provider has registered
 function buildMerged() {
-    // sources: desktop list, one items accessor per provider, the two
-    // filters. Values arrive in the same order
+    // sources: the two desktop lists, one items accessor per provider,
+    // the two filters. Values arrive in the same order
     return createComputed(
-        [sorted, ...providers.map(p => p.items), providerFilter, query],
+        [sorted, archivedSorted, ...providers.map(p => p.items), providerFilter, query],
         (...vals) => {
-            const desktop = vals[0] as AstalNotifd.Notification[]
             const pFilter = vals[vals.length - 2] as string | null
             const q = vals[vals.length - 1] as string
             const rows: Row[] = []
-            // a filter replaces the view entirely: a provider's own
-            // items, or just the local daemon's for the local filter
-            if (!pFilter || pFilter === LOCAL_FILTER) {
+            // a filter replaces the view entirely: the archive, a
+            // provider's own items, or just the local daemon's for the
+            // local filter
+            if (!pFilter || pFilter === LOCAL_FILTER || pFilter === ARCHIVE_FILTER) {
+                const desktop =
+                    pFilter === ARCHIVE_FILTER
+                        ? (vals[1] as AstalNotifd.Notification[])
+                        : (vals[0] as AstalNotifd.Notification[])
                 for (const n of desktop) {
                     // the time is part of the key: replaces_id makes the
                     // daemon emit a NEW Notification object with the same
@@ -223,7 +237,7 @@ function buildMerged() {
             }
             providers.forEach((p, i) => {
                 if (pFilter && p.name !== pFilter) return
-                for (const item of vals[1 + i] as ProviderItem[]) {
+                for (const item of vals[2 + i] as ProviderItem[]) {
                     rows.push({
                         // The key covers everything the row DRAWS, not
                         // just the item's identity.
@@ -295,10 +309,11 @@ let signInTarget: ReturnType<typeof buildSignInTarget>
 // hold items. Deps are evaluated at window build (registry final)
 function buildClearable() {
     return createComputed(
-        [providerFilter, count, ...providers.map(p => p.items)],
-        (f, localCount, ...itemLists) => {
+        [providerFilter, count, archived, ...providers.map(p => p.items)],
+        (f, localCount, archiveCount, ...itemLists) => {
             if (!f) return false
             if (f === LOCAL_FILTER) return localCount > 0
+            if (f === ARCHIVE_FILTER) return archiveCount > 0
             const i = providers.findIndex(p => p.name === f)
             return i >= 0 && ((itemLists[i] as ProviderItem[] | undefined)?.length ?? 0) > 0
         },
@@ -389,6 +404,13 @@ function ItemRow({ row }: { row: Row }) {
 function dismissRow(r: Row) {
     if (r.desktop) r.desktop.dismiss()
     else guarded(() => r.item!.dismiss())()
+}
+
+/** Empty the archive. The middle-click gesture on the archive band —
+ *  the same gesture rows and folded groups already use to clear — and
+ *  what the clear-all button does while the archive view is picked. */
+function clearArchive() {
+    for (const n of [...archived.get()]) n.dismiss()
 }
 
 /** A run of notifications from one app, folded behind a single line
@@ -604,9 +626,11 @@ function ensureWindow() {
                                         tooltipText={providerFilter.as(f =>
                                             f === LOCAL_FILTER
                                                 ? "Clear all local notifications"
-                                                : f
-                                                  ? `Clear all ${f} notifications`
-                                                  : "Pick a source to clear",
+                                                : f === ARCHIVE_FILTER
+                                                  ? "Clear all archived notifications"
+                                                  : f
+                                                    ? `Clear all ${f} notifications`
+                                                    : "Pick a source to clear",
                                         )}
                                         onClicked={() => {
                                             const f = providerFilter.get()
@@ -616,7 +640,9 @@ function ensureWindow() {
                                                 // notifications the centre
                                                 // never showed are not ours
                                                 // to clear
-                                                for (const n of [...persistent.get()]) n.dismiss()
+                                                for (const n of [...active.get()]) n.dismiss()
+                                            } else if (f === ARCHIVE_FILTER) {
+                                                clearArchive()
                                             } else if (f) {
                                                 const p = providers.find(x => x.name === f)
                                                 for (const item of [...(p?.items.get() ?? [])])
@@ -744,6 +770,56 @@ function ensureWindow() {
                                         onChanged={self => setQuery(self.text)}
                                     />
                                 </revealer>
+                                {/* the archive as a full-width band
+                                above the list, not a chip in the
+                                filter row: an archive with something
+                                in it must be impossible to scroll past
+                                or forget. Always present — a control
+                                that appears and disappears is one you
+                                stop noticing — but dimmed and inert
+                                while empty, except when the archive
+                                view itself is showing (then it is the
+                                way back out). Middle-click empties it,
+                                the center's usual clear gesture */}
+                                <button
+                                    cssClasses={createComputed(
+                                        [archived, providerFilter],
+                                        (a, f) => [
+                                            "archiveButton",
+                                            ...(f === ARCHIVE_FILTER ? ["active"] : []),
+                                            ...(a.length === 0 && f !== ARCHIVE_FILTER
+                                                ? ["disabled"]
+                                                : []),
+                                        ],
+                                    )}
+                                    sensitive={createComputed(
+                                        [archived, providerFilter],
+                                        (a, f) => a.length > 0 || f === ARCHIVE_FILTER,
+                                    )}
+                                    tooltipText="Show the archive (middle-click to clear)"
+                                    onClicked={() =>
+                                        setProviderFilter(
+                                            providerFilter.get() === ARCHIVE_FILTER
+                                                ? null
+                                                : ARCHIVE_FILTER,
+                                        )
+                                    }
+                                >
+                                    <Gtk.GestureClick
+                                        button={2}
+                                        onReleased={() => clearArchive()}
+                                    />
+                                    <box spacing={6} halign={Gtk.Align.CENTER}>
+                                        <image iconName="folder-symbolic" />
+                                        <label label="Archive" />
+                                        <label
+                                            cssClasses={["count"]}
+                                            label={archived.as(l =>
+                                                l.length > 0 ? String(l.length) : "",
+                                            )}
+                                        />
+                                    </box>
+                                </button>
                                 {/* fixed-height body: switching between
                                 an empty source and a full one must not
                                 resize the card. Empty sources fill the
@@ -843,15 +919,24 @@ function ensureWindow() {
                                             vexpand
                                         >
                                             <PaneEmpty
-                                                icon={query.as(q =>
-                                                    q.trim() === ""
-                                                        ? "mail-inbox-symbolic"
-                                                        : "system-search-symbolic",
+                                                icon={createComputed(
+                                                    [query, providerFilter],
+                                                    (q, f) => {
+                                                        if (q.trim() !== "")
+                                                            return "system-search-symbolic"
+                                                        return f === ARCHIVE_FILTER
+                                                            ? "folder-symbolic"
+                                                            : "mail-inbox-symbolic"
+                                                    },
                                                 )}
-                                                title={query.as(q =>
-                                                    q.trim() === ""
-                                                        ? "No notifications"
-                                                        : "No matches",
+                                                title={createComputed(
+                                                    [query, providerFilter],
+                                                    (q, f) => {
+                                                        if (q.trim() !== "") return "No matches"
+                                                        return f === ARCHIVE_FILTER
+                                                            ? "No archived notifications"
+                                                            : "No notifications"
+                                                    },
                                                 )}
                                                 hint=""
                                             />

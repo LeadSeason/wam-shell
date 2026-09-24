@@ -86,6 +86,36 @@ const MONTHS = [
 ]
 
 /**
+ * Which part of the notification center's history a timestamp belongs
+ * to: the active list (age within `history_retention_days`), the
+ * archive (older, but still within `archive_retention_days`), or gone
+ * (past both, due for deletion).
+ *
+ * Both windows are measured from ARRIVAL, not from each other, and a
+ * non-positive window disables its step: retention 0 archives nothing,
+ * archive 0 deletes nothing. With archiveDays <= retentionDays (a
+ * misconfiguration) items are deleted at the cap without ever being
+ * archived — the archive is simply always empty.
+ *
+ * Urgency is deliberately not an input: criticals are exempt at the
+ * call sites (they are never evicted), so this stays pure time math.
+ */
+export type HistoryZone = "active" | "archived" | "gone"
+
+export function historyZone(
+    time: number,
+    retentionDays: number,
+    archiveDays: number,
+    nowSec: number,
+): HistoryZone {
+    if (retentionDays <= 0) return "active"
+    const age = nowSec - time
+    if (age <= retentionDays * DAY) return "active"
+    if (archiveDays > 0 && age > archiveDays * DAY) return "gone"
+    return "archived"
+}
+
+/**
  * The day-bucket a timestamp belongs to, for dividers in a list that
  * spans more than one day.
  *

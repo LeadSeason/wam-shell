@@ -1,6 +1,6 @@
 import GLib from "gi://GLib?version=2.0"
 import { test, eq } from "./framework"
-import { relTime, dayBucket } from "../src/lib/relTime"
+import { relTime, dayBucket, historyZone } from "../src/lib/relTime"
 
 // a fixed "now" so nothing here depends on when the suite runs
 const NOW = GLib.DateTime.new_local(2026, 8, 6, 14, 30, 0)!.to_unix()
@@ -62,4 +62,38 @@ test("dayBucket: earlier in the week names the day, in English", () => {
 test("dayBucket: past a week falls back to a date, in English", () => {
     const old = GLib.DateTime.new_local(2026, 7, 20, 9, 0, 0)!
     eq(dayBucket(old.to_unix(), NOW), "20 July")
+})
+
+test("historyZone: inside the retention window is active", () => {
+    eq(historyZone(NOW, 1, 7, NOW), "active")
+    eq(historyZone(NOW - DAY, 1, 7, NOW), "active") // exactly at the window
+})
+
+test("historyZone: past retention but within the cap is archived", () => {
+    eq(historyZone(NOW - DAY - MIN, 1, 7, NOW), "archived")
+    eq(historyZone(NOW - 7 * DAY, 1, 7, NOW), "archived") // exactly at the cap
+})
+
+test("historyZone: past the archive cap is gone", () => {
+    eq(historyZone(NOW - 7 * DAY - MIN, 1, 7, NOW), "gone")
+})
+
+test("historyZone: a non-positive retention archives nothing", () => {
+    eq(historyZone(NOW - 30 * DAY, 0, 7, NOW), "active")
+    eq(historyZone(NOW - 30 * DAY, -1, 7, NOW), "active")
+})
+
+test("historyZone: a non-positive cap deletes nothing", () => {
+    eq(historyZone(NOW - 30 * DAY, 1, 0, NOW), "archived")
+    eq(historyZone(NOW - 30 * DAY, 1, -1, NOW), "archived")
+})
+
+test("historyZone: a cap at or below retention deletes without archiving", () => {
+    // the misconfiguration documented in relTime.ts: the archive is
+    // always empty, items are deleted at the cap
+    eq(historyZone(NOW - DAY - MIN, 1, 1, NOW), "gone")
+})
+
+test("historyZone: a future timestamp is active, like a negative age", () => {
+    eq(historyZone(NOW + HOUR, 1, 7, NOW), "active")
 })

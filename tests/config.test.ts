@@ -84,6 +84,8 @@ test("config: documented defaults without a config file", () => {
     eq(c.tray.onPanel, false, "tray.onPanel")
     eq(c.tray.alwaysOnPanel, [], "tray.alwaysOnPanel")
     eq(c.notifications.popupTimeout, 5000, "notifications.popupTimeout")
+    eq(c.notifications.historyRetentionDays, 1, "notifications.historyRetentionDays")
+    eq(c.notifications.archiveRetentionDays, 7, "notifications.archiveRetentionDays")
     eq(c.notifications.daemon, "auto", "notifications.daemon")
     eq(c.osd.position, "bottom", "osd.position")
     eq(c.panels, [], "panels")
@@ -206,6 +208,8 @@ always_on_panel = "notalist"
 [notifications]
 position = "bottomLeft"
 popup_timeout = -1
+history_retention_days = -5
+archive_retention_days = -5
 daemon = "bogus"
 
 [workspaces]
@@ -226,12 +230,35 @@ left = ["osicon", "bogus-widget", "clock"]
     eq(c.tray.alwaysOnPanel, [], "tray.alwaysOnPanel")
     eq(c.notifications.position, "topRight", "notifications.position")
     eq(c.notifications.popupTimeout, 5000, "notifications.popupTimeout")
+    eq(
+        c.notifications.historyRetentionDays,
+        1,
+        "notifications.historyRetentionDays negative falls back",
+    )
+    eq(
+        c.notifications.archiveRetentionDays,
+        7,
+        "notifications.archiveRetentionDays negative falls back",
+    )
     eq(c.notifications.daemon, "auto", "notifications.daemon")
     eq(c.workspaces.position, "left", "workspaces.position")
     eq(c.quicksettings.avatar, "", "quicksettings.avatar non-string falls back")
     eq(c.panels.length, 1, "panels.length")
     eq(c.panels[0].position, "top", "panels[0].position")
     eq(c.panels[0].left, ["osicon", "clock"], "panels[0].left filters unknown widgets")
+})
+
+test("config: retention keys 0 disable archiving and deletion", () => {
+    const c = loadConfig(
+        { DESKTOP_SESSION: "hyprland" },
+        `
+[notifications]
+history_retention_days = 0
+archive_retention_days = 0
+`,
+    )
+    eq(c.notifications.historyRetentionDays, 0, "notifications.historyRetentionDays")
+    eq(c.notifications.archiveRetentionDays, 0, "notifications.archiveRetentionDays")
 })
 
 test("config: harvest hide_when_screen_sharing toggles the streaming-mode mask", () => {
