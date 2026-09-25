@@ -36,7 +36,7 @@ import { init as initYouTube } from "./src/lib/youtube"
 import { init as initTodoist } from "./src/lib/todoist"
 import { init as initProtonmail } from "./src/lib/protonmail"
 import { forceExitStreamedChildren } from "./src/lib/streamLines"
-import { applyBlurRules, applyQSettingsNoAnim, initPowerSaverBlur } from "./src/lib/layerBlur"
+import { applyQSettingsNoAnim } from "./src/lib/osd"
 import { connect, disconnect } from "./src/lib/metrics"
 import { runDisposers } from "./src/lib/lifecycle"
 
@@ -77,14 +77,9 @@ function main() {
     initTodoist()
     initProtonmail()
 
-    // compositor blur rules for [appearance] blur: runtime keywords, so
-    // they land whenever they land — before or after the windows exist.
-    // The power-saver listener goes FIRST: it seeds the suspension state
-    // that applyBlurRules and the first style compile both read
-    initPowerSaverBlur()
-    applyBlurRules()
-    // not part of applyBlurRules: the close ghost exists with or without
-    // blur, so the rule applies regardless of the [appearance] setting
+    // no_anim on the quick settings layer: kills the compositor's
+    // fade-out replay of the collapsed media card (the close ghost) —
+    // see lib/osd.ts, where the rule lives beside the OSD's own
     applyQSettingsNoAnim()
 
     if (Config.swayGaps && (Config.desktopSession == "sway" || Config.desktopSession == "i3"))

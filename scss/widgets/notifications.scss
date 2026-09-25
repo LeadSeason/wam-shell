@@ -19,10 +19,11 @@
 // Widget classes — banner: .popups (stack), .popup (row), .toast (card),
 // .toastBody, .timeoutBar (countdown), .thumb. Center: .notifications
 // (window card), .header, .windowTitle, .filtersRow, .archiveButton
-// (band above the list), .zone/.needs/.feed,
+// (band below the list), .zone/.needs/.feed,
 // .zoneTitle, .filter (search entry), .dayDivider,
 // .group/.groupHead/.groupRows,
-// .centerRow, .art. Shared within a row: .appName, .appIcon, .summary,
+// .centerRow, .art, .clearState (trash/spinner stack on the clear-all
+// button). Shared within a row: .appName, .appIcon, .summary,
 // .body, .time, .actions, .dismiss, .muteApp, .mutedMark, .count,
 // .critical/.low (urgency),
 // .rtl.
@@ -278,16 +279,17 @@ window.Notifications {
         }
     }
 
-    // the archive band: full-width, straight above the list, so an
-    // archive with something in it cannot be scrolled past or forgotten
-    // — a chip in the filter row was exactly the opposite. Framed and
-    // given real height so it reads as a button, not a divider; pressed
-    // while the archive view is showing (the same rule as the DND
-    // button: a mode has to look pressed); permanently on screen, but
-    // dimmed to the disabled tone while there is nothing in it
+    // the archive band: full-width, below the list. Above the list it
+    // pushed the feed down for a destination the list visits rarely;
+    // below it stays reachable without ever pushing what matters —
+    // a chip in the filter row was the opposite failure, too easy to
+    // miss. Framed and given real height so it reads as a button, not a
+    // divider; pressed while the archive view is showing (the same rule
+    // as the DND button: a mode has to look pressed); permanently on
+    // screen, but dimmed to the disabled tone while there is nothing in it
     button.archiveButton {
         @include u.button-framed(s.$gap s.space(10px));
-        margin: 0 s.$gap-small s.$gap-small;
+        margin: s.$gap-small s.$gap-small 0;
 
         &.active {
             background-color: t.$accent40;
