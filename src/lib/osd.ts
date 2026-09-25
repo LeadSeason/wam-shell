@@ -258,6 +258,31 @@ if (gatesOnLayerRule) {
         .finally(settleLayerRule)
 }
 
+// The quick settings close ghost: Hyprland's layer fade-out replays the
+// surface's last committed buffer, and the revealer's settled collapse
+// paints the media card ALONE (its art's min-height survives the
+// zero-height allocation that blanks every other section), so the
+// player lingered as a fading ghost on every close. no_anim takes the
+// compositor animation out of it; the open/close motion that survives is
+// the GTK-side reveal slide, which is unaffected. Same artifact and same
+// cure as the OSD's no_anim rule above, except QS hides on every close
+// rather than once per session, so there is no first-show gate — the
+// rule is fire-and-forget at startup, and runtime application lands on
+// the existing surface (verified live on 0.56.2). Lives here beside the
+// OSD rule: it is the same hyprctl grammar and the same fire-and-forget
+// shape, whatever window it targets.
+export function applyQSettingsNoAnim(): void {
+    if (Config.desktopSession !== "hyprland") return
+    const ns = `${Config.instanceName}QSettings`
+    execAsync([
+        "hyprctl",
+        "eval",
+        `hl.layer_rule({ match = { namespace = "${ns}" }, no_anim = true })`,
+    ])
+        .catch(() => execAsync(["hyprctl", "keyword", "layerrule", `noanim, ${ns}`]))
+        .catch(e => console.warn("qsettings: could not apply no_anim layer rule:", e))
+}
+
 // caps/num lock. GDK4 reports the state on the keyboard device
 // (notify::caps/num-lock-state), compositor-agnostic, so this works on
 // every session; kbLayout's ensureLockSource publishes it as
