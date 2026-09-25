@@ -4,12 +4,14 @@ import Graphene from "gi://Graphene?version=1.0"
 import AstalNotifd from "gi://AstalNotifd?version=0.1"
 import Pango from "gi://Pango?version=1.0"
 import app from "ags/gtk4/app"
-import { Accessor, For, createComputed, createRoot, createState } from "gnim"
+import { Accessor, For, createComputed, createRoot, createState, onCleanup } from "gnim"
 import {
     LOCAL_SOURCE,
     active,
     archived,
     count,
+    dismissMany,
+    dismissProgress,
     dnd,
     mutedApps,
     mutedProviders,
@@ -410,8 +412,20 @@ function dismissRow(r: Row) {
  *  the same gesture rows and folded groups already use to clear — and
  *  what the clear-all button does while the archive view is picked. */
 function clearArchive() {
-    for (const n of [...archived.get()]) n.dismiss()
+    // paced like the other clear gestures: one idle-sliced drain, one
+    // list rebuild at the end — see dismissMany
+    dismissMany([...archived.get()])
 }
+
+// rows a folded group constructs per idle turn once opened — same
+// time-boxed-slice idea as dismissMany: a huge expansion streams in
+// instead of blocking one click (and one frame) on the whole run
+const BUILD_SLICE_MS = 8
+
+// a local clear below this many rows finishes in a single drain slice
+// (~tens of ms) — beneath the threshold the spinner would flash for a
+// frame and read as a glitch rather than feedback
+const BUSY_CLEAR_MIN = 20
 
 /** A run of notifications from one app, folded behind a single line
  *  until asked for. Its open state is local: gnim's For rebuilds a group
@@ -427,6 +441,69 @@ function FeedGroup({ block }: { block: Extract<FeedBlock<Row>, { kind: "group" }
     const rtl = (head.desktop ? fromDesktop(head.desktop) : fromItem(head.item!)).rtl
 
     const [open, setOpen] = createState(false)
+    // rows construct lazily on the FIRST expand, a few per idle turn —
+    // not here, hidden inside the closed revealer. A folded group can
+    // hold thousands of rows, and building them with the window made
+    // the first open of a fat list ~1s and left a tree present() must
+    // re-traverse on every open (~0.5s measured). Growing the list
+    // slice by slice also paces a huge expansion: the rows stream in
+    // over about a second instead of janking one click for a second.
+    // (A For appends at the END of its parent — for a growing list that
+    // is exactly the right order.)
+    const [built, setBuilt] = createState<Row[]>([])
+    let buildStarted = false
+    let buildSource: number | null = null
+    let teardownSource: number | null = null
+    const startBuild = () => {
+        // a rebuild starts from scratch — any partial teardown is stale
+        if (teardownSource !== null) {
+            sourceRemove(teardownSource)
+            teardownSource = null
+        }
+        if (buildStarted) return
+        buildStarted = true
+        let end = 0
+        const pump = () => {
+            buildSource = null
+            const t0 = GLib.get_monotonic_time()
+            while (
+                end < block.rows.length &&
+                GLib.get_monotonic_time() - t0 < BUILD_SLICE_MS * 1000
+            )
+                end++
+            setBuilt(block.rows.slice(0, end))
+            if (end < block.rows.length) {
+                buildSource = idleAdd("notifGroup:buildRows", GLib.PRIORITY_DEFAULT_IDLE, pump)
+            }
+            return GLib.SOURCE_REMOVE
+        }
+        buildSource = idleAdd("notifGroup:buildRows", GLib.PRIORITY_DEFAULT_IDLE, pump)
+    }
+    const closeGroup = () => {
+        setOpen(false)
+        // a build still streaming stops with the close — otherwise its
+        // slices keep landing after the teardown below empties the list
+        if (buildSource !== null) {
+            sourceRemove(buildSource)
+            buildSource = null
+            buildStarted = false
+        }
+        // rows do not outlive the closed group: left in the tree they
+        // put the per-open present() traversal cost back (measured
+        // ~0.5s at ~1.2k rows) and hold their memory. Wait out the
+        // collapse animation so the rows do not vanish mid-slide
+        teardownSource = timeoutAdd("notifGroup:teardown", GLib.PRIORITY_DEFAULT, 160, () => {
+            teardownSource = null
+            buildStarted = false
+            setBuilt([])
+            return GLib.SOURCE_REMOVE
+        })
+    }
+    onCleanup(() => {
+        if (buildSource !== null) sourceRemove(buildSource)
+        if (teardownSource !== null) sourceRemove(teardownSource)
+    })
+
     return (
         <box
             $={self => {
@@ -438,13 +515,29 @@ function FeedGroup({ block }: { block: Extract<FeedBlock<Row>, { kind: "group" }
             <button
                 cssClasses={["groupHead"]}
                 tooltipText={`${block.rows.length} from ${block.appName} — middle-click to clear them all`}
-                onClicked={() => setOpen(!open.get())}
+                onClicked={() => {
+                    if (open.get()) closeGroup()
+                    else {
+                        setOpen(true)
+                        startBuild()
+                    }
+                }}
             >
                 {/* middle click clears the whole run, matching what it
                 does on a single row. A folded group is exactly the case
                 where clearing one at a time is tedious, and the count is
                 right there to say how many are going */}
-                <Gtk.GestureClick button={2} onReleased={() => block.rows.forEach(dismissRow)} />
+                <Gtk.GestureClick
+                    button={2}
+                    onReleased={() => {
+                        // a folded run can hold hundreds of rows — pace
+                        // desktop clears; provider items are their own
+                        // (network-paced) dismiss
+                        const desktops = block.rows.flatMap(r => (r.desktop ? [r.desktop] : []))
+                        if (desktops.length > 0) dismissMany(desktops)
+                        else block.rows.forEach(dismissRow)
+                    }}
+                />
                 <box spacing={8}>
                     <image iconName={block.iconName} pixelSize={16} />
                     <label
@@ -489,9 +582,9 @@ function FeedGroup({ block }: { block: Extract<FeedBlock<Row>, { kind: "group" }
                     // rtl class instead
                     marginStart={10}
                 >
-                    {block.rows.map(r => (
-                        <ItemRow row={r} />
-                    ))}
+                    <For each={built} id={(r: Row) => r.key}>
+                        {r => <ItemRow row={r} />}
+                    </For>
                 </box>
             </revealer>
         </box>
@@ -623,14 +716,18 @@ function ensureWindow() {
                                     the picked source holds items */}
                                     <button
                                         sensitive={clearable}
-                                        tooltipText={providerFilter.as(f =>
-                                            f === LOCAL_FILTER
-                                                ? "Clear all local notifications"
-                                                : f === ARCHIVE_FILTER
-                                                  ? "Clear all archived notifications"
-                                                  : f
-                                                    ? `Clear all ${f} notifications`
-                                                    : "Pick a source to clear",
+                                        tooltipText={createComputed(
+                                            [providerFilter, dismissProgress],
+                                            (f, p) =>
+                                                p
+                                                    ? `Clearing ${p.done} of ${p.total}…`
+                                                    : f === LOCAL_FILTER
+                                                      ? "Clear all local notifications"
+                                                      : f === ARCHIVE_FILTER
+                                                        ? "Clear all archived notifications"
+                                                        : f
+                                                          ? `Clear all ${f} notifications`
+                                                          : "Pick a source to clear",
                                         )}
                                         onClicked={() => {
                                             const f = providerFilter.get()
@@ -639,8 +736,12 @@ function ensureWindow() {
                                                 // daemon's: transient
                                                 // notifications the centre
                                                 // never showed are not ours
-                                                // to clear
-                                                for (const n of [...active.get()]) n.dismiss()
+                                                // to clear. Paced: one
+                                                // idle-sliced drain, one
+                                                // list rebuild at the end —
+                                                // a per-row rebuild froze
+                                                // the shell at ~1.2k rows
+                                                dismissMany([...active.get()])
                                             } else if (f === ARCHIVE_FILTER) {
                                                 clearArchive()
                                             } else if (f) {
@@ -650,7 +751,34 @@ function ensureWindow() {
                                             }
                                         }}
                                     >
-                                        <image iconName="user-trash-symbolic" />
+                                        {/* trash while idle, spinner while a
+                                            big drain runs: the held list
+                                            means the rows visibly change
+                                            only at the END of the drain,
+                                            which at ~1.2k rows is 1–2s of
+                                            dead air after the click. Small
+                                            drains stay on trash — a
+                                            spinner flashing for 50ms reads
+                                            as a glitch, not feedback. The
+                                            two live in one box with
+                                            opposite `visible` bindings: an
+                                            invisible child takes no box
+                                            space, so the swap costs no
+                                            layout hole */}
+                                        <box cssClasses={["clearState"]}>
+                                            <image
+                                                iconName="user-trash-symbolic"
+                                                visible={dismissProgress.as(
+                                                    p => !(p && p.total > BUSY_CLEAR_MIN),
+                                                )}
+                                            />
+                                            <Gtk.Spinner
+                                                $={self => self.start()}
+                                                visible={dismissProgress.as(
+                                                    p => !!(p && p.total > BUSY_CLEAR_MIN),
+                                                )}
+                                            />
+                                        </box>
                                     </button>
                                 </box>
                                 {/* local + provider filter chips: click
@@ -770,56 +898,6 @@ function ensureWindow() {
                                         onChanged={self => setQuery(self.text)}
                                     />
                                 </revealer>
-                                {/* the archive as a full-width band
-                                above the list, not a chip in the
-                                filter row: an archive with something
-                                in it must be impossible to scroll past
-                                or forget. Always present — a control
-                                that appears and disappears is one you
-                                stop noticing — but dimmed and inert
-                                while empty, except when the archive
-                                view itself is showing (then it is the
-                                way back out). Middle-click empties it,
-                                the center's usual clear gesture */}
-                                <button
-                                    cssClasses={createComputed(
-                                        [archived, providerFilter],
-                                        (a, f) => [
-                                            "archiveButton",
-                                            ...(f === ARCHIVE_FILTER ? ["active"] : []),
-                                            ...(a.length === 0 && f !== ARCHIVE_FILTER
-                                                ? ["disabled"]
-                                                : []),
-                                        ],
-                                    )}
-                                    sensitive={createComputed(
-                                        [archived, providerFilter],
-                                        (a, f) => a.length > 0 || f === ARCHIVE_FILTER,
-                                    )}
-                                    tooltipText="Show the archive (middle-click to clear)"
-                                    onClicked={() =>
-                                        setProviderFilter(
-                                            providerFilter.get() === ARCHIVE_FILTER
-                                                ? null
-                                                : ARCHIVE_FILTER,
-                                        )
-                                    }
-                                >
-                                    <Gtk.GestureClick
-                                        button={2}
-                                        onReleased={() => clearArchive()}
-                                    />
-                                    <box spacing={6} halign={Gtk.Align.CENTER}>
-                                        <image iconName="folder-symbolic" />
-                                        <label label="Archive" />
-                                        <label
-                                            cssClasses={["count"]}
-                                            label={archived.as(l =>
-                                                l.length > 0 ? String(l.length) : "",
-                                            )}
-                                        />
-                                    </box>
-                                </button>
                                 {/* fixed-height body: switching between
                                 an empty source and a full one must not
                                 resize the card. Empty sources fill the
@@ -1000,6 +1078,59 @@ function ensureWindow() {
                                         </box>
                                     </Gtk.ScrolledWindow>
                                 </box>
+                                {/* the archive as a full-width band below
+                                    the list, not a chip in the filter row
+                                    and not above the list: the list is
+                                    the reason the center exists, and a
+                                    band it visits rarely should not push
+                                    it down — the archive is a destination
+                                    for old rows, not a headline. Always
+                                    present — a control that appears and
+                                    disappears is one you stop noticing —
+                                    but dimmed and inert while empty,
+                                    except when the archive view itself
+                                    is showing (then it is the way back
+                                    out). Middle-click empties it, the
+                                    center's usual clear gesture */}
+                                <button
+                                    cssClasses={createComputed(
+                                        [archived, providerFilter],
+                                        (a, f) => [
+                                            "archiveButton",
+                                            ...(f === ARCHIVE_FILTER ? ["active"] : []),
+                                            ...(a.length === 0 && f !== ARCHIVE_FILTER
+                                                ? ["disabled"]
+                                                : []),
+                                        ],
+                                    )}
+                                    sensitive={createComputed(
+                                        [archived, providerFilter],
+                                        (a, f) => a.length > 0 || f === ARCHIVE_FILTER,
+                                    )}
+                                    tooltipText="Show the archive (middle-click to clear)"
+                                    onClicked={() =>
+                                        setProviderFilter(
+                                            providerFilter.get() === ARCHIVE_FILTER
+                                                ? null
+                                                : ARCHIVE_FILTER,
+                                        )
+                                    }
+                                >
+                                    <Gtk.GestureClick
+                                        button={2}
+                                        onReleased={() => clearArchive()}
+                                    />
+                                    <box spacing={6} halign={Gtk.Align.CENTER}>
+                                        <image iconName="folder-symbolic" />
+                                        <label label="Archive" />
+                                        <label
+                                            cssClasses={["count"]}
+                                            label={archived.as(l =>
+                                                l.length > 0 ? String(l.length) : "",
+                                            )}
+                                        />
+                                    </box>
+                                </button>
                             </box>
                         </revealer>
                     </box>

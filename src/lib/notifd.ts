@@ -33,6 +33,7 @@ export { capPopups, displayGroups, groupPopups, popupDuration, staleArrivalKeys 
 export type { PopupEntry, PopupGroup, PopupTimer }
 import { registerDispose } from "./lifecycle"
 import { writeFileAtomic } from "./atomicWrite"
+import { createHoldable } from "./hold"
 
 // Shared notification daemon state. The first instantiation becomes
 // the daemon (so swaync must not run alongside).
@@ -114,7 +115,115 @@ if (useOurs) sanitizePersistedTransientHints()
 
 const notifd = AstalNotifd.get_default()
 
-const notifications = createBinding(notifd, "notifications")
+// The daemon emits notify::notifications for EVERY resolve, and each
+// emit re-runs everything derived from the list (the center's active /
+// sorted / merged / feed chain). Dismissing a long list one by one —
+// the center's clear gestures — used to mean a full re-derive and list
+// rebuild per row: quadratic, and clearing ~1.2k rows froze the shell.
+// The source is holdable (dismissMany) so a whole clear is one recompute.
+const notificationsHold = createHoldable<AstalNotifd.Notification[]>(notifd.get_notifications())
+const notifications = notificationsHold.accessor
+let notificationsNotifyId = connect(notifd, "notify::notifications", () => {
+    // while held, skip even marshalling the list: mark the miss and let
+    // the release catch-up re-read it once. Measured, the marshal alone
+    // was ~0.8ms per emit at 1.2k rows, and with it the hold saved
+    // nothing. (markMissed, not publish: publish would pay the marshal
+    // — and the handler returning here WITHOUT a mark is the bug where
+    // a clear drains the daemon while the center shows the old list.)
+    if (notificationsHold.held()) {
+        notificationsHold.markMissed()
+        return
+    }
+    notificationsHold.publish(notifd.get_notifications())
+})
+
+// a dismiss slice never runs longer than this on one idle turn, so the
+// drain (and anything else the main loop owes the frame) stays alive
+// while a long list clears. Idle priority: after GTK's paint/resize
+// idles, the drain fills spare frame time instead of delaying a paint.
+const DISMISS_SLICE_MS = 8
+
+// pumps in flight, so dispose() can cancel them with the module
+const dismissPumps = new Set<number>()
+
+// clearing feedback. The drain is invisible by design — the held list
+// means nothing re-derives until the whole drain lands — which at ~1.2k
+// rows is 1–2s of clicking clear and seeing nothing happen. Each pump
+// records its progress; the accessor sums every pump in flight so two
+// overlapping clears (a click on top of the retention sweep) read as one
+// operation, and drops to null the moment the last pump finishes.
+const pumpProgress = new Map<number, { done: number; total: number }>()
+let nextPumpProgressId = 0
+const [progressTick, bumpProgress] = createState(0)
+export const dismissProgress: Accessor<{ done: number; total: number } | null> = new Accessor(
+    () => {
+        progressTick.get()
+        if (pumpProgress.size === 0) return null
+        let done = 0
+        let total = 0
+        for (const p of pumpProgress.values()) {
+            done += p.done
+            total += p.total
+        }
+        return { done, total }
+    },
+    cb => progressTick.subscribe(cb),
+)
+
+/** Dismiss many notifications without freezing the shell.
+ *
+ *  Resolving one notification is cheap; resolving a thousand in a tight
+ *  loop is not — the daemon rebuilds its list and emits
+ *  notify::notifications per resolve, and measured from a clear-all
+ *  click the loop blocked the main loop for seconds (and, before the
+ *  holdable source, each emit also re-derived the whole center). Slices
+ *  of `DISMISS_SLICE_MS` run on idle under ONE list hold spanning the
+ *  whole drain, so everything derived from the list re-derives a single
+ *  time, when the last slice lands. Between slices the main loop
+ *  breathes: input, painting, and the rest of the shell stay live while
+ *  the list drains.
+ *
+ *  Rows resolved by other means mid-drain (a second clear click, a row
+ *  dismissed by hand) are skipped — `dismiss()` on an already-resolved
+ *  notification only logs a daemon warning, but a clear-all against a
+ *  stale snapshot would log it a thousand times.
+ *
+ *  Returns immediately; the drain's progress is observable through
+ *  `dismissProgress`, and completion as the list rebuilding once at the
+ *  end.
+ */
+export function dismissMany(list: AstalNotifd.Notification[]) {
+    if (list.length === 0) return
+    const release = notificationsHold.acquire(() => notifd.get_notifications())
+    const progressId = nextPumpProgressId++
+    const tick = (done: number) => {
+        pumpProgress.set(progressId, { done, total: list.length })
+        bumpProgress(v => v + 1)
+    }
+    tick(0)
+    let i = 0
+    const pump = () => {
+        dismissPumps.delete(pumpSource)
+        const start = GLib.get_monotonic_time()
+        while (i < list.length && GLib.get_monotonic_time() - start < DISMISS_SLICE_MS * 1000) {
+            const n = list[i]
+            i++
+            if (notifd.get_notification(n.id)) n.dismiss()
+        }
+        tick(i)
+        if (i < list.length) {
+            pumpSource = idleAdd("notifd:dismissMany", GLib.PRIORITY_DEFAULT_IDLE, pump)
+            dismissPumps.add(pumpSource)
+        } else {
+            pumpProgress.delete(progressId)
+            bumpProgress(v => v + 1)
+            release()
+        }
+        return GLib.SOURCE_REMOVE
+    }
+    let pumpSource = idleAdd("notifd:dismissMany", GLib.PRIORITY_DEFAULT_IDLE, pump)
+    dismissPumps.add(pumpSource)
+}
 // What belongs in the center's history at all: everything except ones
 // with the spec `transient` hint ("excluded from persistency" —
 // attention-only events like a device connecting) and apps filtered out
@@ -190,16 +299,21 @@ const RETENTION_SWEEP_SEC = 60 * 60
 
 function sweepHistory() {
     const now = Math.floor(GLib.get_real_time() / 1_000_000)
-    for (const n of notifd.notifications) {
-        if (isCritical(n)) continue
-        const zone = historyZone(
-            n.time,
-            Config.notifications.historyRetentionDays,
-            Config.notifications.archiveRetentionDays,
-            now,
-        )
-        if (zone === "gone") n.dismiss()
-    }
+    // paced like the center's clear gestures: a sweep after long uptime
+    // can resolve every entry past the archive cutoff at once
+    dismissMany(
+        notifd.notifications.filter(n => {
+            if (isCritical(n)) return false
+            return (
+                historyZone(
+                    n.time,
+                    Config.notifications.historyRetentionDays,
+                    Config.notifications.archiveRetentionDays,
+                    now,
+                ) === "gone"
+            )
+        }),
+    )
 }
 
 // only our daemon carries a persisted history to prune; with a system
@@ -765,6 +879,16 @@ export function dispose() {
         disconnect(notifd, resolvedId)
         resolvedId = 0
     }
+    if (notificationsNotifyId) {
+        disconnect(notifd, notificationsNotifyId)
+        notificationsNotifyId = 0
+    }
+    // a drain still running at shutdown must not fire dismiss against a
+    // torn-down module (its hold is deliberately NOT released: that would
+    // notify subscribers during teardown; the holdable dies with the module)
+    for (const src of dismissPumps) sourceRemove(src)
+    dismissPumps.clear()
+    pumpProgress.clear()
 }
 
 export default notifd
