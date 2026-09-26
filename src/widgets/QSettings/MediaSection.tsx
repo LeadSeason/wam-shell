@@ -229,7 +229,6 @@ function Player({ player }: { player: AstalMpris.Player }) {
                     $type="overlay"
                     cssClasses={["mediaVeil"]}
                     valign={Gtk.Align.END}
-                    heightRequest={128}
                     canTarget={false}
                 />
                 <box
