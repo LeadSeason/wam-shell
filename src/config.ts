@@ -108,9 +108,25 @@ function getDesktopSession(): string {
     // socket, so its absence is the same class of answer as a missing
     // I3SOCK — fall back to the compositor-agnostic paths instead.
     if (desktop === "hyprland") {
-        if (typeof GLib.getenv("HYPRLAND_INSTANCE_SIGNATURE") !== "string") {
+        const his = GLib.getenv("HYPRLAND_INSTANCE_SIGNATURE")
+        if (typeof his !== "string") {
             console.error("hyprland ipc HYPRLAND_INSTANCE_SIGNATURE env missing")
             return "" // Fallback
+        }
+        // The env var being SET is not enough: it survives the compositor
+        // it names, so a stale signature (compositor restarting, an old
+        // instance) points at a socket that is not there — and astal's
+        // get_default() reads from the connection without checking the
+        // connect succeeded, which segfaults the whole process inside
+        // the library. try/catch cannot help a segfault; a stat can
+        // (#225). Both sockets: hyprland.vala opens .socket.sock for
+        // requests and .socket2.sock for events.
+        const sockDir = `${GLib.get_user_runtime_dir()}/hypr/${his}`
+        for (const sock of [".socket.sock", ".socket2.sock"]) {
+            if (!GLib.file_test(`${sockDir}/${sock}`, GLib.FileTest.EXISTS)) {
+                console.error(`hyprland ipc socket missing: ${sockDir}/${sock}`)
+                return "" // Fallback
+            }
         }
         return "hyprland"
     }

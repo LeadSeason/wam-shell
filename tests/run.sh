@@ -42,7 +42,12 @@ chmod +x "$TMP/main" "$TMP/config-dump" "$TMP/metrics-probe"
 # HYPRLAND_INSTANCE_SIGNATURE is set alongside DESKTOP_SESSION because
 # config.ts preflights it the same way it preflights I3SOCK for sway:
 # without it the session resolves to "" and the suite would be testing a
-# compositor-less shell rather than the hyprland one it means to.
+# compositor-less shell rather than the hyprland one it means to. The
+# preflight also stats the ipc sockets themselves (a stale signature
+# segfaults inside libastal-hyprland, #225), so the fake session needs
+# fake sockets on disk to resolve to "hyprland".
+mkdir -p "$TMP/rt/hypr/wam-shell-tests"
+touch "$TMP/rt/hypr/wam-shell-tests/.socket.sock" "$TMP/rt/hypr/wam-shell-tests/.socket2.sock"
 XDG_CONFIG_HOME="$TMP/config" \
 XDG_CACHE_HOME="$TMP/cache" \
 XDG_RUNTIME_DIR="$TMP/rt" \
