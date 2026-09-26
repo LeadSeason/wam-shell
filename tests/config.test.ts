@@ -56,6 +56,21 @@ test("config: hyprland without HYPRLAND_INSTANCE_SIGNATURE falls back to empty",
     eq(c.desktopSession, "")
 })
 
+test("config: hyprland with a stale signature (no sockets) falls back to empty", () => {
+    // the env var being set is not enough: it survives the compositor it
+    // names, and reaching AstalHyprland.get_default() with a dead socket
+    // segfaults inside the library (#225). A runtime dir without the
+    // sockets is the stale-signature case.
+    const rt = `${TMP}/rt-stale-signature`
+    GLib.mkdir_with_parents(rt, 0o700)
+    const c = loadConfig({
+        DESKTOP_SESSION: "hyprland",
+        HYPRLAND_INSTANCE_SIGNATURE: "stale-instance",
+        XDG_RUNTIME_DIR: rt,
+    })
+    eq(c.desktopSession, "")
+})
+
 test("config: sway session requires I3SOCK", () => {
     const c = loadConfig({ DESKTOP_SESSION: "sway", I3SOCK: "/tmp/fake.sock" })
     eq(c.desktopSession, "sway")
