@@ -115,14 +115,30 @@ if (useOurs) sanitizePersistedTransientHints()
 
 const notifd = AstalNotifd.get_default()
 
-// The daemon emits notify::notifications for EVERY resolve, and each
-// emit re-runs everything derived from the list (the center's active /
-// sorted / merged / feed chain). Dismissing a long list one by one —
-// the center's clear gestures — used to mean a full re-derive and list
-// rebuild per row: quadratic, and clearing ~1.2k rows froze the shell.
-// The source is holdable (dismissMany) so a whole clear is one recompute.
+// The daemon emits notify::notifications for EVERY resolve and EVERY
+// arrival, and each emit re-runs everything derived from the list (the
+// center's active / sorted / merged / feed chain). Dismissing a long
+// list one by one — the center's clear gestures — used to mean a full
+// re-derive and list rebuild per row: quadratic, and clearing ~1.2k
+// rows froze the shell. The source is holdable so a whole clear
+// (dismissMany) or an arrival burst (below) is one recompute.
 const notificationsHold = createHoldable<AstalNotifd.Notification[]>(notifd.get_notifications())
 const notifications = notificationsHold.accessor
+
+// Arrivals get the same treatment the clear-all drain got: the daemon
+// emits notify::notifications per ARRIVAL too, and each emit re-ran the
+// whole derived chain (active filter, sort, merged rows, feed build) —
+// O(n) per arrival, so a bulk burst cost O(n) per notify and visibly
+// busy minutes (#312). The first emit of a burst takes a short hold;
+// everything arriving inside the window marks the miss, and the
+// release's catch-up re-reads the list ONCE. Leading edge, fixed window
+// (not a resetting debounce): a sustained burst gets one re-derive per
+// window rather than starving the publish forever. Banners are
+// unaffected — they ride the separate "notified" signal.
+const ARRIVAL_BATCH_MS = 75
+let arrivalHoldRelease: (() => void) | null = null
+let arrivalHoldSource = 0
+
 let notificationsNotifyId = connect(notifd, "notify::notifications", () => {
     // while held, skip even marshalling the list: mark the miss and let
     // the release catch-up re-read it once. Measured, the marshal alone
@@ -134,7 +150,23 @@ let notificationsNotifyId = connect(notifd, "notify::notifications", () => {
         notificationsHold.markMissed()
         return
     }
-    notificationsHold.publish(notifd.get_notifications())
+    // first emit of a burst: hold the list for the batch window, and
+    // mark this very emit missed so the release publishes it — acquire
+    // alone swallows nothing
+    arrivalHoldRelease = notificationsHold.acquire(() => notifd.get_notifications())
+    notificationsHold.markMissed()
+    arrivalHoldSource = timeoutAdd(
+        "notifd:arrivalBatch",
+        GLib.PRIORITY_DEFAULT,
+        ARRIVAL_BATCH_MS,
+        () => {
+            arrivalHoldSource = 0
+            const release = arrivalHoldRelease
+            arrivalHoldRelease = null
+            release?.()
+            return GLib.SOURCE_REMOVE
+        },
+    )
 })
 
 // a dismiss slice never runs longer than this on one idle turn, so the
@@ -882,6 +914,14 @@ export function dispose() {
     if (notificationsNotifyId) {
         disconnect(notifd, notificationsNotifyId)
         notificationsNotifyId = 0
+    }
+    // an arrival batch window still open at shutdown: cancel the source
+    // WITHOUT releasing the hold — releasing would notify subscribers
+    // during teardown (same rule as the dismissMany holds below)
+    if (arrivalHoldSource) {
+        sourceRemove(arrivalHoldSource)
+        arrivalHoldSource = 0
+        arrivalHoldRelease = null
     }
     // a drain still running at shutdown must not fire dismiss against a
     // torn-down module (its hold is deliberately NOT released: that would
