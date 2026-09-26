@@ -75,6 +75,16 @@ window#QSettings {
         // stay solid instead of fading away from them
         filter: blur(16px);
         margin: 0 -18px -18px;
+        // what gtk measures is the css minimum PLUS the margins, so the
+        // box has to carry at least what the bleed spends or it measures
+        // negative and warns ("reported min width -36 ..."). The 128px
+        // veil height lives HERE, not as a heightRequest on the widget:
+        // a property lands after construction, and the box is measured
+        // once before it does — a css minimum is there from the start.
+        // Both land back on what the card had: width 36 - 36 = 0,
+        // height 146 - 18 = 128
+        min-width: 36px;
+        min-height: 128px + 18px;
     }
     // a track with no art: a flat panel rather than a black hole, and
     // the scrim above still keeps the text legible
