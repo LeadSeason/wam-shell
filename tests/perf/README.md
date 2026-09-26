@@ -57,7 +57,10 @@ poll-phase jitter on spawn counts (±2 on idle; churn spawn counts are
 not gated at all — refresh coalescing makes them load-dominated, so
 churn gates on leaks only), physical battery events
 (`qsHeader:batTimeDebounce`), OSD triggers from the session's
-WirePlumber/MPRIS (`osd:hide`), per-tray-item signal buckets that
+WirePlumber/MPRIS (`osd:hide`), one-shot startup timers whose
+alive-at-sample count races the live session (`osd:layerRuleWait`,
+`bar:brightnessReveal`, `tray.hollowGrace` — one per tray item still
+waiting on its final icon), per-tray-item signal buckets that
 scale with whatever tray apps the developer happens to run,
 per-Bluetooth-device signal buckets that scale with whatever devices
 are in range during a leg, and the `Gtk_EditableLabel` signal bucket

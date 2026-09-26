@@ -44,7 +44,11 @@
 #     bar:brightnessReveal (same one-shot-startup-timer class: the
 #     750ms reveal delayer armed when the async brightness seed lands
 #     — the BASE leg measured 1 and then 0 on the same commit, issue
-#     #276), the
+#     #276), tray.hollowGrace (one per tray item still waiting on its
+#     final icon — the alive count at sample time races the live
+#     session's tray apps answering, not the code being measured:
+#     flagged 0→4, 4→5 and 3→4 on unrelated branches and 1→0 / 5→4 in
+#     the other direction, all on one day of identical trees, #315), the
 #     Gtk_EditableLabel:* signal bucket (PercentEntry rows in the audio
 #     panes scale with the live session's audio streams, which come and
 #     go between legs — measured 4→0, 0→6 and 2→0 across runs of
@@ -186,7 +190,8 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
             | with_entries(select(.key != "qsHeader:batTimeDebounce"
                 and .key != "osd:hide"
                 and .key != "osd:layerRuleWait"
-                and .key != "bar:brightnessReveal"))
+                and .key != "bar:brightnessReveal"
+                and .key != "tray.hollowGrace"))
             | with_entries(.value = .value.alive)),
         signalsByName: (.signals.byName
             | with_entries(select(.key
@@ -214,6 +219,7 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
         osdTimer: .metrics.timers.byLabel["osd:hide"],
         osdLayerRuleTimer: .metrics.timers.byLabel["osd:layerRuleWait"],
         brightnessRevealTimer: .metrics.timers.byLabel["bar:brightnessReveal"],
+        hollowGraceTimer: .metrics.timers.byLabel["tray.hollowGrace"],
         traySignals: (.metrics.signals.byName
             | with_entries(select(.key
                 | startswith("AstalTray_TrayItem:") or startswith("Gtk_GestureClick:")))),
