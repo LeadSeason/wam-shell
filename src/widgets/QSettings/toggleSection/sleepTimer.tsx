@@ -153,7 +153,10 @@ export function SleepTimerWidget({
                         />
                     </button>
                 </box>
-                <box spacing={8}>
+                {/* hidden while the alarm is on: the ring itself is the
+                wake-up signal, and with alarm_only the timer never dims
+                at all — there is nothing to undim */}
+                <box spacing={8} visible={alarmEnabled.as(a => !a)}>
                     <image iconName={"display-brightness-symbolic"} />
                     <label label={"Undim on play"} xalign={0} hexpand />
                     <button
