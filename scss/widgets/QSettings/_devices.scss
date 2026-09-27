@@ -1,3 +1,4 @@
+@use "sass:color";
 @use "active-theme" as t;
 @use "../../conf.scss" as s;
 @use "../../ui.scss" as u;
@@ -242,11 +243,55 @@ window#QSettings {
         .accountLine {
             margin-top: 6px;
         }
+        // a fixable action failure (missing operator rights) — the red
+        // the expired account line wears, for the same reason: it is a
+        // "do something" cue, not ambience. The remedies live in the
+        // actions row (button.vpnAction / .vpnNoticeCopy), not here.
+        // .vpnWarn is the informational tier of the same idea: the
+        // connection works but something is off (daemon health, blocked
+        // UDP, captive portals). An attention chip — bold yellow text
+        // on the tinted background, the same yellow/yellow20 pair the
+        // feature rows wear for "blocked by policy" — because a
+        // blocked path IS the headline when it applies, not ambience
+        .vpnWarn {
+            margin-top: 6px;
+            padding: s.$gap-small s.$gap;
+            border-radius: s.$radius;
+            background-color: t.$yellow20;
+
+            label.vpnWarnText {
+                color: t.$yellow;
+                font-weight: s.$weight-bold;
+            }
+        }
+        .vpnNotice {
+            color: t.$red;
+            margin-top: 6px;
+        }
     }
 
     button.vpnAction {
         @include u.button-framed(s.$btn-padding-lg);
         margin: 0;
+    }
+
+    // the notice's clipboard fallback, at the actions row's right end
+    // (the polkit Fix rides the row as a regular vpnAction)
+    button.vpnNoticeCopy {
+        @include u.icon-button;
+        margin: 0;
+    }
+
+    // the logged-out banner above the frozen surfaces: a real heading,
+    // not a .paneSection eyebrow — it names the pane's whole state, not
+    // a group within it. No rule under it (that mixin divides lists;
+    // this heads one frozen block). The negative bottom margin cancels
+    // most of the pane box's 10px spacing: the heading must HUG the
+    // frozen content it names — at section distance it floats, and
+    // reads as the label of a hidden section
+    .vpnLastKnown {
+        @include u.title;
+        margin: 10px 0 -18px s.$gap-small;
     }
 
     button.locRow {
@@ -277,6 +322,90 @@ window#QSettings {
 
     .vpnFeature {
         padding: s.$gap-small 0;
+
+        // a feature the tailnet does not offer: padlocked and dimmed,
+        // so "not available" reads differently from "still reading".
+        // The description keeps its normal color — it carries the fix
+        &.unavailable {
+            .featLabel,
+            .vpnFeatureLock {
+                color: t.$subtext0;
+            }
+        }
+
+        // a feature that works but is ineffective until the user acts (no
+        // policy rule targets this machine): the warning color the
+        // expiring-account line wears, plus a flag in words — color
+        // alone read as decoration (a nudge, not a lock)
+        &.attention .featLabel {
+            color: t.$yellow;
+        }
+    }
+
+    // the "blocked by policy" pill on an attention-flagged feature
+    .vpnFeatureFlag {
+        font-size: s.$font-tiny;
+        color: t.$yellow;
+        background-color: t.$yellow20;
+        border-radius: s.$radius-pill;
+        padding: 0 6px;
+    }
+
+    // the peer/device catalogue: one card, a status dot per row,
+    // hairline-separated; rows are buttons — clicking copies the
+    // device's tailscale address (vpnPane's copyAddress)
+    .vpnDevices {
+        @include u.card;
+    }
+
+    .vpnDevice {
+        @include u.row(s.$btn-padding-lg);
+        border: solid s.$border transparent;
+        margin: 0;
+
+        // this row is the machine the shell runs on: the name carries
+        // the accent, like the "current" exit-node row
+        &.self .devName {
+            color: t.$accent;
+            font-weight: s.$weight-bold;
+        }
+
+        // hairline between rows, indented under the label column and
+        // drawn in the house rule color — raw text at 80% read as a
+        // heavy bar. A sized background strip, not a border-top: the
+        // row's 2px transparent frame has to stay uniform or hover
+        // fills show unpainted strips. 26px = row padding 10 + dot 8
+        // + gap 8; the right end insets by the same padding
+        + .vpnDevice {
+            background-image: linear-gradient(to right, u.$rule-color, u.$rule-color);
+            background-repeat: no-repeat;
+            background-position: 26px 0;
+            background-size: calc(100% - 36px) s.$hairline;
+        }
+
+        &:not(.online) label {
+            color: t.$subtext0;
+        }
+
+        &.online .vpnDeviceDot {
+            background-color: t.$green;
+        }
+    }
+
+    .vpnDeviceDot {
+        min-width: 8px;
+        min-height: 8px;
+        border-radius: 50%;
+        background-color: t.$subtext0;
+    }
+
+    // the "this device" badge beside the self row's name
+    .vpnDeviceSelf {
+        font-size: s.$font-tiny;
+        color: t.$accent;
+        background-color: t.$accent20;
+        border-radius: s.$radius-pill;
+        padding: 0 6px;
     }
 
     // tray menus: the one definition, shared with popover.scss

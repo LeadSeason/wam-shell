@@ -140,6 +140,13 @@ original drawing of the Obscura robot (antennae, square eyes, smile
 notch): the brand set ships only colour app icons, and the face details
 are held at 1px+ so they survive as knockouts at true 16px.
 
+`tailscale-symbolic.svg` (the VPN pills and bar indicator, `apps/`) is
+an original drawing of the Tailscale mesh mark: three dots at a
+triangle's corners joined by the triangle's edges, drawn with quads and
+relative-arc dots (no strokes). The brand mark is a dense multi-dot
+mesh — every simplification kept aliasing into moiré at 16px, while the
+three-node triangle is the shape the mark itself abstracts from.
+
 One renderer lesson the mole hunt bought, recorded so it is not paid
 for twice: **GTK 4.22's built-in SVG renderer mangles ABSOLUTE arc
 commands (`A`) in symbolic icons** — the same geometry with relative

@@ -9,7 +9,8 @@ import AstalBattery from "gi://AstalBattery?version=0.1"
 import { atChargeLimit } from "../../../lib/batteryCap"
 import ArchUpdates from "../../../lib/archUpdates"
 import trayNeedsAttention from "../../../lib/trayAttention"
-import { connectedBackend } from "../../../lib/vpn"
+import { connectedBackend, isConnected } from "../../../lib/vpn"
+import tailscaleBackend from "../../../lib/vpn/tailscale"
 import { inhibited } from "../../../lib/idleInhibit"
 import { recording } from "../../../lib/capture"
 import Brightness from "../../../lib/brightness"
@@ -248,6 +249,23 @@ function vpnIndicator() {
     ) as Gtk.Image // TS Jank
 }
 
+// dedicated to Tailscale: vpnIndicator renders only the FIRST connected
+// backend, so with two VPNs up one of them would go invisible. Passive
+// like the other cluster indicators — button 1 opens quick settings;
+// the Tailscale tray app owns tray behaviour
+function tailscaleIndicator() {
+    return (
+        <image
+            cssClasses={["tailscaleIndicator"]}
+            iconName={"tailscale-symbolic"}
+            visible={tailscaleBackend.status.as(s => isConnected(s))}
+            tooltipText={tailscaleBackend.status.as(s =>
+                s.server ? `Tailscale connected: ${s.server}` : "Tailscale connected",
+            )}
+        />
+    ) as Gtk.Image // TS Jank
+}
+
 function Battery() {
     const bat = AstalBattery.get_default()
     const batIcon = createBinding(bat, "batteryIconName")
@@ -413,6 +431,7 @@ function ButtonLabel() {
             {keepAwakeIndicator()}
             {recordingIndicator()}
             {vpnIndicator()}
+            {tailscaleIndicator()}
             {bat.isPresent && <Battery />}
             {/* Bound, not read once: the daemon probe in config.ts is
             async and lands AFTER this widget is built, so reading a

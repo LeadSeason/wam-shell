@@ -10,6 +10,7 @@
 import "./mullvad"
 import "./protonvpn"
 import "./obscura"
+import "./tailscale"
 import "./networkmanager"
 
 export * from "./registry"
