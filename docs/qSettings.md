@@ -29,6 +29,46 @@ It closes on ESC, on click-away, and on the panel button (it's a toggle).
   only those, rather than cutting every backend down to what they all
   share. `qsPane vpn:<backend>` opens one directly; a bare `qsPane vpn`
   opens the first detected.
+    - **Tailscale** (poll-based — its CLI has no follow mode): the
+      picker lists the tailnet's exit nodes, the details card shows the
+      WireGuard endpoint, and a Devices card lists the tailnet's
+      machines — this one first, named and badged "this device" (online
+      status, OS/IP, direct-or-DERP-relay, exit-node marker, last seen
+      when offline) — clicking a device copies its magic-DNS name
+      (falling back to the tailscale IP). A logged-out
+      node gets a "Login…" action that starts the auth flow and opens
+      the URL in the browser. A Features card exposes four set-flags:
+      shields-up, accept-dns, accept-routes, and Tailscale SSH — the
+      last gated on the tailnet actually offering SSH (cap/ssh in the
+      status document; locked switches explain why). (Read
+      back via `tailscale get`, applied via `tailscale set`.) The CLI
+      exposes no per-peer OS version, so rows show the OS name only.
+      `tailscale up/down/set` need root or operator
+      rights — run `sudo tailscale up --operator=$USER` once (it grants
+      control AND performs the login; the `set --operator` form the CLI
+      suggests is broken upstream, tailscale/tailscale#18294), or the
+      toggle fails and the pane names the fix in red: a Fix button runs
+      it through pkexec/polkit (the session agent draws the password
+      dialog, and the auth URL the command prints still opens in the
+      browser) when pkexec is installed, and a copy button puts the
+      bare command on the clipboard as the manual fallback (older
+      builds failed silently; the reason lands in the journal either
+      way). A yellow warning line under the status carries health news
+      without demanding action: daemon health lines (read every poll)
+      and netcheck's blocking facts (read on pane open — outbound UDP
+      blocked means everything relays through DERP, a captive portal
+      means sign in to the network first). A
+      logged-out
+      node shows "Logged out" and Login alone: reconnect and location
+      picking hide (nothing to reconnect to), the auth URL opens in the
+      browser — the shell streams the CLI's output so both the URL and
+      an operator-rights denial reach the pane — and the picker,
+      Features and Devices stay visible but insensitive under a "Last
+      known state" heading. A
+      connected Tailscale also gets its own passive indicator on the
+      panel (next to the generic VPN one, which only shows the first
+      connected backend) — tray-style interaction is left to the
+      Tailscale tray app itself.
 - **Stats section** (optional, `quicksettings.show_stats`): cpu/ram/gpu/
   network graphs; the same stats can go on the panel
   (`quicksettings.stats_on_panel`).

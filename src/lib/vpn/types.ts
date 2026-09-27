@@ -66,6 +66,17 @@ export interface VpnFeature {
     key: string // stable, for the widget's list identity
     label: string
     tooltip?: string
+    /** a one-line explanation under the label — what the switch
+     *  actually does, visible without a hover. An accessor when the
+     *  wording depends on state (e.g. why the feature is locked) */
+    description?: string | Accessor<string>
+    /** false = the tailnet/plan does not offer this feature to this
+     *  node: the switch renders insensitive. Absent = always available */
+    available?: Accessor<boolean>
+    /** true = the feature works but is ineffective until the user
+     *  acts somewhere else (e.g. no policy rule targets this machine):
+     *  the label takes the warning color. Ignored when unavailable */
+    attention?: Accessor<boolean>
     // null = "the backend did not say", which is not "off": the switch
     // renders insensitive rather than lying about a state it never read
     value: Accessor<boolean | null>
@@ -84,6 +95,36 @@ export interface VpnDetails {
     protocol: string
     ip: string
     location: string
+}
+
+/** one row of the pane's device list (a backend's peer catalogue —
+ * Tailscale's tailnet). `meta` is a composed subline the backend
+ * builds ("Linux · 100.100.100.100 · direct", "last seen 3h"); ""
+ * when there is nothing to say */
+export interface VpnDevice {
+    id: string // stable list identity
+    label: string
+    online: boolean
+    /** this row is the machine the shell runs on — the pane renders
+     *  it leading the list, named and badged */
+    self: boolean
+    /** what clicking the row copies — the magic-DNS name (resolves in
+     *  a browser on the tailnet), falling back to the tailscale IP.
+     *  "" when the daemon reported neither (row renders insensitive) */
+    copy: string
+    meta: string
+}
+
+/** the pane's problem line: what to show and what to copy (see
+ *  VpnBackend.notice) */
+export interface VpnNotice {
+    text: string
+    command?: string
+    /** a one-click remedy for the problem the line names (e.g. pkexec
+     *  for the operator-rights fix). The backend runs it and clears the
+     *  notice on success; absent where the platform cannot offer one —
+     *  the copy button remains the fallback */
+    fix?: { label: string; run(): void }
 }
 
 export interface VpnBackend {
@@ -106,6 +147,29 @@ export interface VpnBackend {
     // "connecting"
     disconnect(): void
     reconnect(): void
+    /** a login the shell can start for the user (Tailscale's auth-URL
+     *  flow). The pane renders a Login action for disconnected states
+     *  when a backend provides one */
+    login?(): void
+
+    /** a human-readable problem line for the pane (e.g. an action that
+     *  failed for a fixable reason). `command` is the fix to offer as a
+     *  clipboard copy — it differs from the sentence the user reads (no
+     *  curly quotes, nothing but what a terminal accepts). null = nothing
+     *  to say */
+    notice?: Accessor<VpnNotice | null>
+
+    /** the daemon has no tailnet identity (Tailscale's logged-out
+     *  states): the pane offers Login alone — reconnect and location
+     *  picking mean nothing — and leaves the surfaces below the
+     *  actions row visible but insensitive, as last known state.
+     *  Absent = the concept does not apply (an NM profile) */
+    loggedOut?: Accessor<boolean>
+
+    /** informational warnings about the connection's health (daemon
+     *  health lines, blocked-UDP facts): the pane shows them in yellow
+     *  under the status. Empty/absent = nothing to warn about */
+    warnings?: Accessor<string[]>
 
     // ---- optional surfaces. An absent field means the pane does not
     // render that section at all — this is what keeps a backend with no
@@ -120,6 +184,9 @@ export interface VpnBackend {
         /** the currently selected location's id, "" when unknown */
         current: Accessor<string>
     }
+    /** peer/device catalogue (a tailnet's machines). The pane renders
+     * online rows bright and offline rows dim */
+    devices?: Accessor<VpnDevice[]>
     features?: Accessor<VpnFeature[]>
     account?: Accessor<VpnAccount | null>
     details?: Accessor<VpnDetails | null>
