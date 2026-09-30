@@ -13,6 +13,13 @@ import { connectedBackend, isConnected } from "../../../lib/vpn"
 import tailscaleBackend from "../../../lib/vpn/tailscale"
 import { inhibited } from "../../../lib/idleInhibit"
 import { recording } from "../../../lib/capture"
+import {
+    cameraActive,
+    cameraUsers,
+    describeUsers,
+    enable as enableCaptureWatch,
+    micActive,
+} from "../../../lib/captureWatch"
 import Brightness from "../../../lib/brightness"
 import { alarming } from "../../../lib/sleepTimer"
 import { execAsync, timeoutAdd, sourceRemove } from "../../../lib/metrics"
@@ -31,7 +38,7 @@ const registry = CommandRegistry.get_default()
  * -settings.
  */
 
-function audioWidget(driver: AstalWp.Endpoint): Gtk.MenuButton {
+function audioWidget(driver: AstalWp.Endpoint, kind: "speakers" | "microphones"): Gtk.MenuButton {
     // reactivity, Scrollable, Right click to mute
     const [visible, setVisible] = createState<boolean>(false)
     // the delayer's timers die with the bar (monitor hotplug) — and it
@@ -77,6 +84,14 @@ ${GLib.markup_escape_text(driver.description ?? "", -1)}`) // Keep this indent. 
         }),
     )
 
+    // The microphone slot doubles as the privacy indicator: while any
+    // capture stream is recording a source, the icon blinks red —
+    // a MUTED mic being recorded included, that is exactly the
+    // recording worth noticing. Same CSS-keyframe blink as .draining
+    // (battery) and .harvestIcon.sharing.
+    const iconClasses =
+        kind === "microphones" ? micActive.as(live => (live ? ["micLive"] : [])) : []
+
     return (
         <box tooltipMarkup={tooltip}>
             <Gtk.EventControllerScroll
@@ -100,7 +115,7 @@ ${GLib.markup_escape_text(driver.description ?? "", -1)}`) // Keep this indent. 
                     return true
                 }}
             />
-            <image iconName={createBinding(driver, "volumeIcon")} />
+            <image iconName={createBinding(driver, "volumeIcon")} cssClasses={iconClasses} />
             <revealer revealChild={visible} transitionType={Gtk.RevealerTransitionType.SLIDE_RIGHT}>
                 <label
                     marginStart={5}
@@ -226,6 +241,25 @@ function recordingIndicator() {
             iconName={"media-record-symbolic"}
             visible={recording}
             tooltipText={"Recording — run `record` again to stop"}
+        />
+    ) as Gtk.Image // TS Jank
+}
+
+// The camera is the other MUST-see state: a call keeps the grab open
+// for the whole meeting and the failure mode is forgetting it exists.
+// Steady red like the recording dot — the blink is the mic's job —
+// with the tooltip naming who is on the other end of the lens.
+// Detection comes from the shared capture watcher (lib/captureWatch):
+// a device-backed source being grabbed, portal screencasts excluded.
+function cameraIndicator() {
+    return (
+        <image
+            cssClasses={["cameraDot"]}
+            iconName={"camera-web-symbolic"}
+            visible={cameraActive}
+            tooltipText={cameraUsers.as(users =>
+                users.length > 0 ? `Camera in use: ${describeUsers(users)}` : "Camera in use",
+            )}
         />
     ) as Gtk.Image // TS Jank
 }
@@ -417,10 +451,15 @@ function ButtonLabel() {
         const endpoint = trackDefault(prop)
         return (
             <box visible={endpoint.as(e => e !== null)}>
-                <With value={endpoint}>{e => e && audioWidget(e)}</With>
+                <With value={endpoint}>{e => e && audioWidget(e, prop)}</With>
             </box>
         )
     }
+
+    // the privacy indicators (camera dot, mic blink) ride the shared
+    // capture watcher: start it here, once per cluster build — the
+    // harvest pill may have started it already, enable() is idempotent
+    enableCaptureWatch()
 
     return (
         <box spacing={12}>
@@ -430,6 +469,7 @@ function ButtonLabel() {
             {Config.quicksettings.powerProfileOnPanel && powerProfile()}
             {keepAwakeIndicator()}
             {recordingIndicator()}
+            {cameraIndicator()}
             {vpnIndicator()}
             {tailscaleIndicator()}
             {bat.isPresent && <Battery />}

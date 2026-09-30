@@ -17,3 +17,13 @@ spelling).
   mask sees right now and what it recently masked on, with the exact
   value to add for each.
 - Changes apply on restart: `wam restart`.
+
+The PipeWire watcher behind this mask also drives the bar's two other
+privacy indicators: the camera dot (steady red while an app is grabbing
+a real camera — a call with video on) and the microphone blink (the
+panel's mic icon blinks red while an app records a microphone, muted
+included). `ignore_apps` silences the camera dot the same way it
+silences the mask; portal screencasts light the mask but deliberately
+not the camera dot, which only answers to a device-backed camera being
+grabbed. See [[quicksettings|Config-QuickSettings]] for the indicator
+descriptions.

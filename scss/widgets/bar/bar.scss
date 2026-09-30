@@ -173,7 +173,8 @@ window.Bar {
     // .sysStats { margin-right: 12px; }
     // classes: .osIcon, workspaces, clock button, .sysStats, .netStats, .sleepTimer,
     // .trayItem, .QSettings, .keyboardLayout, .swayNC, .media, .harvest, .brightness,
-    // .windowTitle, .batteryPercent, .recordingDot, .tailscaleIndicator
+    // .windowTitle, .batteryPercent, .recordingDot, .tailscaleIndicator, .cameraDot,
+    // .micLive
 
     // the panel's plain widgets: no frame until the pointer arrives
     clock button,
@@ -195,6 +196,32 @@ window.Bar {
     // rather than as another status glyph.
     .recordingDot {
         color: t.$red;
+    }
+
+    // Camera in use: same semantics as the recording dot — a call
+    // keeps the grab open for the whole meeting, so steady red, not a
+    // status glyph. The tooltip names the takers.
+    .cameraDot {
+        color: t.$red;
+    }
+
+    // Microphone live: the mic volume icon IS the indicator, so it
+    // blinks to read as "this is now recording" rather than as another
+    // mute state — also while muted, which is the recording worth
+    // noticing. Same keyframe rhythm as the sharing harvest icon.
+    .micLive {
+        color: t.$red;
+        animation: micLiveBlink 1.2s ease-in-out infinite;
+    }
+
+    @keyframes micLiveBlink {
+        0%,
+        100% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.25;
+        }
     }
 
     // the panel's two pills: framed by default so they read as clickable
