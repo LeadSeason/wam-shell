@@ -818,6 +818,19 @@
 #           deriving it from timeout
 # volume, microphone, brightness, layout, lock_keys -
 #           per-trigger toggles. default true
+# feedback - play the sound theme's short "volume changed" click each
+#           time the volume pill appears, so a level driven with the
+#           keyboard can be heard as well as seen. the click plays
+#           through the default sink, so it scales with the level
+#           itself. follows the volume toggle (volume = false silences
+#           it too) and stays silent while muted. needs pw-play or
+#           paplay plus the freedesktop sound theme (preferred: fast
+#           to sound), falling back to canberra-gtk-play or ffplay;
+#           without any of them it is simply silent. default true
+# feedback_volume - loudness multiplier for that click, applied to the
+#           decoded audio (4.0 = four times the amplitude, +12dB). the
+#           theme click peaks around -17dBFS so even the 6.0 max stays
+#           clear of clipping. default 4.0
 # [osd]
 # enabled = true
 # position = "bottom"
@@ -830,6 +843,8 @@
 # brightness = true
 # layout = true
 # lock_keys = true
+# feedback = true
+# feedback_volume = 4.0
 
 # ════════════════════════════════════════════════════════════════════
 # Night light (hyprsunset, hyprland only)

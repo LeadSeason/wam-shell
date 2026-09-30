@@ -21,6 +21,22 @@ Section: `[osd]`
 | `brightness`         | bool                              | `true`     | Show a pill when the brightness changes                                                                                                                                      |
 | `layout`             | bool                              | `true`     | Show a pill when the keyboard layout changes                                                                                                                                 |
 | `lock_keys`          | bool                              | `true`     | Show a pill when Caps Lock / Num Lock toggle                                                                                                                                 |
+| `feedback`           | bool                              | `true`     | Play the sound theme's short "volume changed" click whenever the volume pill appears, so a keyboard-driven level change can be heard as well as seen                         |
+| `feedback_volume`    | float (0–6)                       | `4.0`      | Loudness multiplier for that click; 4.0 is four times the amplitude (+12 dB). The theme click peaks around −17 dBFS, so even the 6.0 max stays clear of clipping             |
 
 Muting shows the crossed icon and a "Muted" label with no level bar;
 unmuting brings the bar back at the real level.
+
+The feedback click plays through the default sink at the stream's own
+volume, so it scales with the level being set — raising the volume
+audibly ramps. `feedback_volume` multiplies the decoded audio itself
+(4.0 = four times the amplitude); the theme click peaks around −17 dBFS,
+so even the 6.0 maximum stays clear of clipping. It follows the
+`volume` toggle
+(`volume = false` silences it too) and stays silent while muted. It
+needs `pw-play` or
+`paplay` plus the freedesktop sound theme (preferred: they start
+sounding ~70 ms after spawn, which a tick lives on), falling back to
+`canberra-gtk-play` (theme-aware, but a GTK app that needs ~150 ms
+before its first sample) or `ffplay`; without any of them it is simply
+silent.
