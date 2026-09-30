@@ -34,6 +34,12 @@ them config-gated — a privacy indicator you can switch off is not one:
   screencasts do not count: they grab a virtual source, not the
   camera. Apps in [[screenshare|Config-ScreenShare]] `ignore_apps`
   never light it.
+  Blind spot: apps that open the V4L2 device directly bypass
+  PipeWire and cannot be seen — Chromium/Brave without
+  `chrome://flags/#enable-webrtc-pipewire-capturer` does exactly
+  this on calls. Firefox, Flatpaks and flag-enabled Chromium go
+  through the portal and light the dot; the kernel's camera LED
+  remains the only truth for the rest.
 - **Microphone blink** (blinking red) — an app is recording a
   microphone, a muted mic included. The mic volume icon itself is the
   indicator, so it shows only while a microphone device exists.
