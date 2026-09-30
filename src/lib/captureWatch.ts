@@ -38,6 +38,26 @@ import { registerDispose } from "./lifecycle"
 // Mask journal lines keep the "screenShare:" prefix — that is the
 // name `wam screen-share` and the wiki document; indicator flips log
 // as "captureWatch:".
+//
+// Direct V4L2 grabs: Chromium-family browsers default to their own
+// V4L2 capture backend on Linux — the camera device is opened
+// directly and NO PipeWire stream exists, so the graph above cannot
+// see the grab (audio cannot bypass the sound server, which is why
+// the microphone has no such gap). For those, the holder of the
+// device node itself is the truth: an idle-sliced /proc sweep finds
+// the processes keeping a /dev/video* fd open. PipeWire's own holder
+// is excluded — graph users already cover that path, with proper app
+// names and the ignore list. A grab lights the state only after two
+// consecutive sweeps agree, which is what filters the sub-second
+// device-enumeration probes apps do on page load; clearing is
+// immediate. Sweeps run every 20s while nothing holds the camera —
+// unless the mic is live with no camera seen yet: a call is where a
+// direct grab appears next, so the mic going live triggers a sweep
+// right away and keeps the cadence eager until the camera shows up
+// (or the call ends). An open fd alone does not make a capture — the
+// holder must also have the device mapped, which is how controls
+// panels (cameractrls) stay out of the picture while real grabbers
+// (Chromium, gst, ffmpeg — all mmap their buffers) count.
 
 const [sharing, setSharing] = createState(false)
 export { sharing }
@@ -47,6 +67,14 @@ export { sharing }
 // the takers
 export type CaptureUser = { app: string; node: string }
 
+// The camera state has two sources (see the direct-V4L2 note below):
+// graph users from the pw-dump parse, and direct device holders from
+// the /proc sweep. Both feed the exported cameraUsers through
+// syncCameraUsers, which also owns the flip logging — the sources
+// themselves update silently, a flip is one journal line no matter
+// which path spotted it.
+const [graphCameraUsers, setGraphCameraUsers] = createState<CaptureUser[]>([])
+const [directCameraUsers, setDirectCameraUsers] = createState<CaptureUser[]>([])
 const [cameraUsers, setCameraUsers] = createState<CaptureUser[]>([])
 const [micUsers, setMicUsers] = createState<CaptureUser[]>([])
 export { cameraUsers, micUsers }
@@ -316,29 +344,241 @@ export function describeUsers(users: CaptureUser[]): string {
     return users.map(u => u.app || u.node || "unknown").join(", ")
 }
 
-// indicator state update with flip diagnostics, the counterpart of the
-// mask's below: a grab that appears and vanishes between polls is gone
-// before anyone can inspect the graph, so the journal is the record
-// (prefixed captureWatch: — the mask's lines stay screenShare:)
+function sameUsers(a: CaptureUser[], b: CaptureUser[]): boolean {
+    return a.length === b.length && a.every((u, i) => u.app === b[i].app && u.node === b[i].node)
+}
+
+// silent internal-state update — true when the value changed
+function applyUsers(
+    current: Accessor<CaptureUser[]>,
+    set: (u: CaptureUser[]) => void,
+    next: CaptureUser[],
+): boolean {
+    const prev = current.get()
+    if (sameUsers(prev, next)) return false
+    set(next)
+    return true
+}
+
+// the exported camera state: graph users first, then direct holders
+// not already covered (a direct grab and a graph grab of the same app
+// never coexist — an app uses one backend — but two different apps
+// can, one per path)
+export function mergeCameraUsers(graph: CaptureUser[], direct: CaptureUser[]): CaptureUser[] {
+    const out = [...graph]
+    for (const d of direct) {
+        const name = d.app.toLowerCase()
+        if (!out.some(u => u.app.toLowerCase() === name || u.node.toLowerCase() === name))
+            out.push(d)
+    }
+    return out
+}
+
+function syncCameraUsers() {
+    const next = mergeCameraUsers(graphCameraUsers.get(), directCameraUsers.get())
+    const prev = cameraUsers.get()
+    if (sameUsers(prev, next)) return
+    console.warn(
+        next.length > 0
+            ? `captureWatch: camera in use — ${describeUsers(next)}`
+            : "captureWatch: camera released",
+    )
+    setCameraUsers(next)
+}
+
+// microphone state update with flip diagnostics: a grab that appears
+// and vanishes between polls is gone before anyone can inspect the
+// graph, so the journal is the record (prefixed captureWatch: — the
+// mask's lines stay screenShare:). The camera's counterpart lives in
+// syncCameraUsers.
 function setUsers(
     current: Accessor<CaptureUser[]>,
-    set: (users: CaptureUser[]) => void,
+    set: (u: CaptureUser[]) => void,
     next: CaptureUser[],
     what: string,
 ) {
-    const prev = current.get()
-    if (
-        prev.length === next.length &&
-        prev.every((p, i) => p.app === next[i].app && p.node === next[i].node)
-    )
-        return
+    if (!applyUsers(current, set, next)) return
     console.warn(
         next.length > 0
             ? `captureWatch: ${what} in use — ${describeUsers(next)}`
             : `captureWatch: ${what} released`,
     )
-    set(next)
 }
+
+// ---- direct V4L2 holders (bypassing PipeWire) ---------------------------
+//
+// See the header note: Chromium-family browsers grab the camera device
+// directly, with no PipeWire stream for the graph above to see. The
+// holder of the device node is then the only witness.
+
+// processes whose device holding IS the PipeWire path — covered by the
+// graph parse with proper app names, excluded here so a grab is not
+// attributed twice
+const V4L2_EXCLUDED_COMM = new Set(["pipewire", "wireplumber"])
+
+// pids per idle slice: each slice stays a few ms, so the bar never
+// stalls on the sweep
+const V4L2_SLICE = 15
+// full pass over /proc this often while nothing holds the camera —
+// direct grabs are the exception, and a fallback must not burn cpu for
+// the happy case
+const V4L2_SWEEP_MS = 20_000
+// a sweep that found holders re-checks this soon: the state lights only
+// when two consecutive sweeps agree (header note — why)
+const V4L2_CONFIRM_MS = 2_000
+// while the mic is live and no camera is seen yet, a direct grab is
+// exactly what is most likely to appear next (a call) — sweep at call
+// cadence instead of the slow one
+const V4L2_EAGER_MS = 6_000
+
+// the slow cadence unless a call is live: mic in use with no camera
+// seen yet is when the eager sweep earns its keep
+function nextSweepMs(): number {
+    return micUsers.get().length > 0 && cameraUsers.get().length === 0
+        ? V4L2_EAGER_MS
+        : V4L2_SWEEP_MS
+}
+
+// comm of `pid` when it holds a /dev/video* fd open, else null.
+// Exported for tests — feed it a fake proc tree. The comm read happens
+// only after a video fd is found: holders are rare, and naming is
+// needed just for the tooltip and the PipeWire exclusion.
+export function pidHoldsVideo(root: string, pid: string): string | null {
+    let fdDir: GLib.Dir
+    try {
+        fdDir = GLib.Dir.open(`${root}/${pid}/fd`, 0)
+    } catch {
+        return null // vanished mid-scan, or not ours to read
+    }
+    for (let fd; (fd = fdDir.read_name()) !== null;) {
+        try {
+            if (!GLib.file_read_link(`${root}/${pid}/fd/${fd}`).startsWith("/dev/video")) continue
+        } catch {
+            continue // not a symlink, or the fd closed while we looked
+        }
+        try {
+            const [, bytes] = GLib.file_get_contents(`${root}/${pid}/comm`)
+            const comm = new TextDecoder().decode(bytes).trim()
+            // a holder whose holding IS the PipeWire path is the graph
+            // parse's to name — here it means "not a direct grab"
+            if (V4L2_EXCLUDED_COMM.has(comm)) return null
+            // an open fd alone is not a capture: webcam control panels
+            // (cameractrls) hold the device for ioctls and no frames
+            // ever flow. A capture maps its buffers — Chromium, gst and
+            // ffmpeg all do — so the mapping is the streaming evidence
+            if (!mapsDevice(root, pid)) return null
+            return comm
+        } catch {
+            return null // vanished right after opening it
+        }
+    }
+    return null
+}
+
+// does `pid` have the camera device mapped? read()-style grabbers
+// (rare) are missed here — and additionally covered whenever their
+// grab is routed through PipeWire
+function mapsDevice(root: string, pid: string): boolean {
+    try {
+        const [, bytes] = GLib.file_get_contents(`${root}/${pid}/maps`)
+        return new TextDecoder().decode(bytes).includes("/dev/video")
+    } catch {
+        return false
+    }
+}
+
+// lights only when two consecutive sweeps agree on the holder list — a
+// lone sweep finding holders is what a camera-enumeration probe looks
+// like. Clearing is immediate. Exported for tests.
+export function holderTracker(emit: (holders: string[]) => void) {
+    let prev: string[] | null = null
+    let lit = false
+    const same = (a: string[], b: string[]) =>
+        a.length === b.length && a.every((h, i) => h === b[i])
+    return {
+        sweep(holders: string[]) {
+            const stable = prev !== null && same(prev, holders)
+            prev = holders
+            if (holders.length === 0) {
+                if (lit) {
+                    lit = false
+                    emit([])
+                }
+                return
+            }
+            if (!lit && !stable) return
+            lit = true
+            emit(holders)
+        },
+    }
+}
+
+let cameraPoll = 0
+let sweepIdle = 0
+
+const directTracker = holderTracker(holders => {
+    const users = holders
+        .map(comm => ({ app: comm, node: "" }))
+        .filter(u => !ignoredCaptureUser(u, Config.screenShare.ignoreApps))
+    if (applyUsers(directCameraUsers, setDirectCameraUsers, users)) syncCameraUsers()
+})
+
+// one full pass over /proc, chunked across idle callbacks; delivers the
+// holder list to the tracker and schedules the next pass — soon after
+// holders were seen (the confirm), otherwise at the slow cadence
+function sweepDirectHolders() {
+    sweepIdle = 0
+    let procDir: GLib.Dir
+    try {
+        procDir = GLib.Dir.open("/proc", 0)
+    } catch {
+        return scheduleSweep(V4L2_SWEEP_MS)
+    }
+    const pids: string[] = []
+    for (let name; (name = procDir.read_name()) !== null;) {
+        if (/^[0-9]+$/.test(name)) pids.push(name)
+    }
+    const holders = new Set<string>()
+    let i = 0
+    const step = () => {
+        const until = Math.min(i + V4L2_SLICE, pids.length)
+        for (; i < until; i++) {
+            const comm = pidHoldsVideo("/proc", pids[i])
+            if (comm !== null) holders.add(comm)
+        }
+        if (i < pids.length) return GLib.SOURCE_CONTINUE
+        sweepIdle = 0
+        directTracker.sweep([...holders].sort())
+        scheduleSweep(holders.size > 0 ? V4L2_CONFIRM_MS : nextSweepMs())
+        return GLib.SOURCE_REMOVE
+    }
+    sweepIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, step)
+}
+
+function scheduleSweep(ms: number) {
+    if (disposed || cameraPoll) return
+    cameraPoll = timeoutAdd("captureWatch:cameraPoll", GLib.PRIORITY_DEFAULT, ms, () => {
+        cameraPoll = 0
+        sweepDirectHolders()
+        return GLib.SOURCE_REMOVE
+    })
+}
+
+// A call opens mic and camera together: the mic stream shows up in the
+// graph instantly, and the camera — often grabbed directly by the
+// browser at the same moment — is worth an immediate sweep instead of
+// waiting out the pending one. The mic staying live keeps the eager
+// cadence alive through nextSweepMs, covering a camera toggled on a
+// moment later.
+micActive.subscribe(() => {
+    if (!micActive.get() || disposed || cameraUsers.get().length > 0) return
+    if (sweepIdle !== 0) return // a sweep is already walking /proc
+    if (cameraPoll !== 0) {
+        sourceRemove(cameraPoll)
+        cameraPoll = 0
+    }
+    sweepDirectHolders()
+})
 
 async function evaluate() {
     if (evaluating) {
@@ -372,18 +612,17 @@ async function evaluate() {
         setSharing(next)
 
         // the indicators: a dump that does not parse leaves the last
-        // known state (header note: why not fail closed here)
+        // known state (header note: why not fail closed here). The
+        // ignore list filters the camera users too — "never a privacy
+        // event from this app"; direct V4L2 holders are filtered at
+        // sweep time
         if (graph) {
             const users = captureUsersOf(graph)
-            // the ignore list filters the camera users too —
-            // "never a privacy event from this app"
-            setUsers(
-                cameraUsers,
-                setCameraUsers,
-                users.camera.filter(u => !ignoredCaptureUser(u, Config.screenShare.ignoreApps)),
-                "camera",
-            )
             setUsers(micUsers, setMicUsers, users.mic, "microphone")
+            const graphUsers = users.camera.filter(
+                u => !ignoredCaptureUser(u, Config.screenShare.ignoreApps),
+            )
+            if (applyUsers(graphCameraUsers, setGraphCameraUsers, graphUsers)) syncCameraUsers()
         }
     } catch (e) {
         console.warn("screenShare: pw-dump failed, failing closed (masking):", e)
@@ -474,6 +713,10 @@ export function enable() {
     disposed = false
     respawnDelay = 5_000
     spawnMonitor()
+    // first direct-holder sweep shortly after start: a shell restarted
+    // in the middle of a call (the interesting case) lights within a
+    // few seconds instead of a full slow-cadence wait
+    scheduleSweep(2_000)
 }
 
 // convention for lib modules with long-lived sources, even though the
@@ -487,6 +730,14 @@ export function dispose() {
     if (respawn) {
         sourceRemove(respawn)
         respawn = 0
+    }
+    if (cameraPoll) {
+        sourceRemove(cameraPoll)
+        cameraPoll = 0
+    }
+    if (sweepIdle) {
+        GLib.source_remove(sweepIdle)
+        sweepIdle = 0
     }
     monitor?.force_exit()
     monitor = null

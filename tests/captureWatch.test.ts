@@ -5,7 +5,12 @@ import {
     ignoredCaptureUser,
     parseCaptureUsers,
     graphBurstRouter,
+    holderTracker,
+    mergeCameraUsers,
+    pidHoldsVideo,
 } from "../src/lib/captureWatch"
+import GLib from "gi://GLib?version=2.0"
+import Gio from "gi://Gio?version=2.0"
 
 // minimal pw-dump shape: an array of objects with info.props
 function dumpWith(...propsList: Record<string, string>[]): string {
@@ -304,4 +309,76 @@ test("captureWatch: an unreadable burst schedules once and does not wedge the ro
     eq(scheduled, 1)
     feed(r, [{ id: 1, type: "PipeWire:Interface:Node", info: {} }])
     eq(scheduled, 2)
+})
+
+// ---- direct V4L2 holders -------------------------------------------------
+
+test("captureWatch: pidHoldsVideo reads a fake proc tree", () => {
+    // layout mirrors /proc: numeric pid dirs with comm + an fd dir of
+    // symlinks; a root-owned-looking pid (no fd dir) is just skipped.
+    // An fd counts only when the pid also MAPS the device — holding it
+    // open for ioctls is a controls panel, not a capture
+    const root = `${GLib.get_tmp_dir()}/wam-capture-test-${GLib.random_int()}`
+    const mkdir = (p: string) => GLib.mkdir_with_parents(p, 0o700)
+    const write = (p: string, s: string) => GLib.file_set_contents(p, s)
+    const link = (p: string, target: string) =>
+        Gio.File.new_for_path(p).make_symbolic_link(target, null)
+
+    mkdir(`${root}/100/fd`)
+    write(`${root}/100/comm`, "brave\n")
+    link(`${root}/100/fd/3`, "/dev/video0")
+    write(`${root}/100/maps`, "7f0000000000-7f0000001000 rw-s 00000000 00:06 12 /dev/video0\n")
+    mkdir(`${root}/101/fd`)
+    write(`${root}/101/comm`, "pipewire\n")
+    link(`${root}/101/fd/4`, "/dev/video0")
+    write(`${root}/101/maps`, "7f0000000000-7f0000001000 rw-s 00000000 00:06 12 /dev/video0\n")
+    mkdir(`${root}/102/fd`)
+    write(`${root}/102/comm`, "bash\n")
+    link(`${root}/102/fd/1`, "/dev/null")
+    mkdir(`${root}/103`)
+    write(`${root}/103/comm`, "gone\n")
+    mkdir(`${root}/104/fd`)
+    write(`${root}/104/comm`, "cameractrlsgtk4\n")
+    link(`${root}/104/fd/5`, "/dev/video0")
+    write(
+        `${root}/104/maps`,
+        "7f0000000000-7f0000010000 r-xp 00000000 08:01 123 /usr/bin/python3\n",
+    )
+    write(`${root}/nonnumeric`, "")
+
+    eq(pidHoldsVideo(root, "100"), "brave")
+    eq(pidHoldsVideo(root, "101"), null) // the PipeWire path is the graph's job
+    eq(pidHoldsVideo(root, "102"), null)
+    eq(pidHoldsVideo(root, "103"), null) // no fd dir
+    eq(pidHoldsVideo(root, "104"), null) // open but not capturing
+    eq(pidHoldsVideo(root, "999"), null) // no such pid
+
+    GLib.spawn_command_line_sync(`rm -rf ${root}`)
+})
+
+test("captureWatch: holder tracker lights on two agreeing sweeps, clears on one empty", () => {
+    const emitted: string[][] = []
+    const t = holderTracker(holders => emitted.push(holders))
+    t.sweep(["brave"]) // first sighting: could be an enumeration probe
+    eq(emitted, [])
+    t.sweep(["brave"]) // confirmed
+    eq(emitted, [["brave"]])
+    t.sweep(["brave", "cheese"]) // identity change while lit propagates
+    eq(emitted, [["brave"], ["brave", "cheese"]])
+    t.sweep([]) // released
+    eq(emitted, [["brave"], ["brave", "cheese"], []])
+    t.sweep(["cheese"]) // relighting needs agreement again
+    eq(emitted.length, 3)
+    t.sweep(["cheese"])
+    eq(emitted[3], ["cheese"])
+})
+
+test("captureWatch: mergeCameraUsers appends direct holders the graph does not name", () => {
+    const firefox = { app: "Firefox", node: "firefox" }
+    eq(mergeCameraUsers([firefox], [{ app: "firefox", node: "" }]), [firefox])
+    eq(mergeCameraUsers([firefox], [{ app: "brave", node: "" }]), [
+        firefox,
+        { app: "brave", node: "" },
+    ])
+    eq(mergeCameraUsers([], [{ app: "brave", node: "" }]), [{ app: "brave", node: "" }])
 })

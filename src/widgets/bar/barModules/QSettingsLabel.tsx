@@ -19,6 +19,7 @@ import {
     describeUsers,
     enable as enableCaptureWatch,
     micActive,
+    micUsers,
 } from "../../../lib/captureWatch"
 import Brightness from "../../../lib/brightness"
 import { alarming } from "../../../lib/sleepTimer"
@@ -68,9 +69,21 @@ function audioWidget(driver: AstalWp.Endpoint, kind: "speakers" | "microphones")
     const updateTooltip = () => {
         // device names/descriptions are hardware-controlled ("Tom &
         // Jerry's Headphones") — tooltipMarkup parses Pango markup;
-        // either can also be null transiently
-        setTooltip(`${GLib.markup_escape_text(driver.name ?? "", -1)}  
-${GLib.markup_escape_text(driver.description ?? "", -1)}`) // Keep this indent. New line.
+        // either can also be null transiently. Only non-empty lines
+        // make it in — many devices have no description at all, and a
+        // blank band in a tooltip reads as broken spacing
+        const lines: string[] = []
+        if (driver.name?.trim()) lines.push(GLib.markup_escape_text(driver.name, -1))
+        if (driver.description?.trim() && driver.description !== driver.name)
+            lines.push(GLib.markup_escape_text(driver.description, -1))
+        // the mic doubles as the privacy indicator: while a capture is
+        // live, hover names who is on the other end of it (same as the
+        // camera dot's tooltip)
+        if (kind === "microphones" && micActive.get())
+            lines.push(
+                `<b>Recording:</b> ${GLib.markup_escape_text(describeUsers(micUsers.get()), -1)}`,
+            )
+        setTooltip(lines.join("\n"))
     }
     updateTooltip()
     disposers.push(
@@ -83,6 +96,9 @@ ${GLib.markup_escape_text(driver.description ?? "", -1)}`) // Keep this indent. 
             updateTooltip()
         }),
     )
+    if (kind === "microphones") {
+        disposers.push(micUsers.subscribe(updateTooltip))
+    }
 
     // The microphone slot doubles as the privacy indicator: while any
     // capture stream is recording a source, the icon blinks red —

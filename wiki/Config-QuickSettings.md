@@ -33,16 +33,19 @@ them config-gated — a privacy indicator you can switch off is not one:
   video call most commonly; the tooltip names the apps. Portal
   screencasts do not count: they grab a virtual source, not the
   camera. Apps in [[screenshare|Config-ScreenShare]] `ignore_apps`
-  never light it.
-  Blind spot: apps that open the V4L2 device directly bypass
-  PipeWire and cannot be seen — Chromium/Brave without
-  `chrome://flags/#enable-webrtc-pipewire-capturer` does exactly
-  this on calls. Firefox, Flatpaks and flag-enabled Chromium go
-  through the portal and light the dot; the kernel's camera LED
-  remains the only truth for the rest.
+  never light it. Chromium-family browsers (Brave, Chrome, Edge)
+  default to grabbing the camera device directly, bypassing PipeWire
+  entirely — those are caught too, by a slow `/proc` sweep for
+  processes holding a `/dev/video*` device open. The sweep is keyed to
+  call activity: the mic going live triggers an immediate check and
+  keeps the checks eager while the mic stays live, so a call's camera
+  lights within seconds; a camera grab outside a call takes up to
+  ~20s to show. The sweep never names more than the holding process
+  (`brave`), not the tab or site.
 - **Microphone blink** (blinking red) — an app is recording a
   microphone, a muted mic included. The mic volume icon itself is the
-  indicator, so it shows only while a microphone device exists.
+  indicator, so it shows only while a microphone device exists, and
+  hovering it names the recording apps, same as the camera dot.
 
 All three ride the PipeWire capture watcher that also feeds the
 screen-share mask, so they follow the audio/video graph as it changes
