@@ -201,4 +201,4 @@ export function dispose() {
 }
 
 // tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)
-registerDispose("screenShare", dispose)
+registerDispose("captureWatch", dispose)

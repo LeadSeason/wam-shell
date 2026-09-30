@@ -24,7 +24,7 @@ import {
     scrollActivePlayer,
 } from "../../lib/mpris"
 import { isSmallCover } from "../../lib/coverArt"
-import { sharing, enable as enableShareWatch } from "../../lib/screenShare"
+import { sharing, enable as enableShareWatch } from "../../lib/captureWatch"
 import Config from "../../config"
 import { isRtl } from "../../lib/utils"
 import { pressable } from "../pressable"

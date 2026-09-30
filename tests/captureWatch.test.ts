@@ -1,5 +1,5 @@
 import { test, eq } from "./framework"
-import { parseVideoInputs, ignoredVideoInput } from "../src/lib/screenShare"
+import { parseVideoInputs, ignoredVideoInput } from "../src/lib/captureWatch"
 
 // minimal pw-dump shape: an array of objects with info.props
 function dumpWith(...propsList: Record<string, string>[]): string {
