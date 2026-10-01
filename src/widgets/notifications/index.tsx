@@ -371,13 +371,16 @@ function guarded<A extends unknown[]>(call: (...args: A) => void): (...args: A) 
 function ItemRow({ row }: { row: Row }) {
     if (row.desktop) {
         const n = row.desktop
-        const hasDefault = n.get_actions().some(a => a.get_id() === "default")
+        const data = fromDesktop(n)
         return (
             <CenterRow
-                data={fromDesktop(n)}
+                data={data}
                 dismissLabel="Dismiss"
                 onActivate={() => {
-                    if (hasDefault) n.invoke("default")
+                    // the row's own word for it: a linked row invokes
+                    // the default action, a dismiss-only one stays inert
+                    // — visibly, via the missing mark
+                    if (data.activation !== null) n.invoke("default")
                 }}
                 onDismiss={() => n.dismiss()}
                 onAction={id => n.invoke(id)}
