@@ -170,7 +170,7 @@ export default function PopupRow({ group }: { group: PopupEntry[] }) {
         },
     })
 
-    const data = entry.desktop ? fromDesktop(entry.desktop) : fromItem(entry.item!)
+    const data = entry.desktop ? fromDesktop(entry.desktop) : fromItem(entry.item!, entry.critical)
     // a banner with no timer draws no countdown: a bar pinned at full
     // that never moves reads as a stalled progress indicator
     const timedFor = (key: string) => (popupTimer(key)?.duration ?? 0) !== 0
@@ -242,7 +242,11 @@ export default function PopupRow({ group }: { group: PopupEntry[] }) {
                         >
                             {group.slice(1).map(p => (
                                 <Toast
-                                    data={p.desktop ? fromDesktop(p.desktop) : fromItem(p.item!)}
+                                    data={
+                                        p.desktop
+                                            ? fromDesktop(p.desktop)
+                                            : fromItem(p.item!, p.critical)
+                                    }
                                     countdown={countdownFor(p.key)}
                                     timed={timedFor(p.key)}
                                     {...handlers(p)}
