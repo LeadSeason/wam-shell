@@ -828,9 +828,10 @@
 #           to sound), falling back to canberra-gtk-play or ffplay;
 #           without any of them it is simply silent. default true
 # feedback_volume - loudness multiplier for that click, applied to the
-#           decoded audio (4.0 = four times the amplitude, +12dB). the
-#           theme click peaks around -17dBFS so even the 6.0 max stays
-#           clear of clipping. default 4.0
+#           decoded audio: 1.0 is the theme click at its own loudness,
+#           2.0 = twice the amplitude (+6dB). the theme click peaks
+#           around -17dBFS so even the 6.0 max stays clear of clipping.
+#           default 1.0
 # [osd]
 # enabled = true
 # position = "bottom"
@@ -844,7 +845,7 @@
 # layout = true
 # lock_keys = true
 # feedback = true
-# feedback_volume = 4.0
+# feedback_volume = 1.0
 
 # ════════════════════════════════════════════════════════════════════
 # Night light (hyprsunset, hyprland only)

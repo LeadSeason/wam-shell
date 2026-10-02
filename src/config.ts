@@ -726,10 +726,11 @@ function getOsdConfig() {
         // and muted frames stay silent (nothing would be heard anyway)
         feedback: r.bool("feedback", true),
         // loudness multiplier for that click, applied to the decoded
-        // audio (4.0 = four times the amplitude, +12dB). The theme
-        // click peaks around -17dBFS: even the 6.0 ceiling stays at
-        // ~0.83 peak, clear of clipping
-        feedbackVolume: r.num("feedback_volume", 4.0, { min: 0, max: 6 }),
+        // audio: 1.0 is the theme click at its own loudness, 2.0 is
+        // twice the amplitude (+6dB). The theme click peaks around
+        // -17dBFS: even the 6.0 ceiling stays at ~0.83 peak, clear of
+        // clipping
+        feedbackVolume: r.num("feedback_volume", 1.0, { min: 0, max: 6 }),
     }
 }
 
