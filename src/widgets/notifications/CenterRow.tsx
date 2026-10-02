@@ -214,6 +214,34 @@ export default function CenterRow({
                                 {/* the age and the dismiss button share one slot,
                         so hovering a row cannot shift the list under the
                         pointer */}
+                                {/* The mark slot announces the body click in
+                                both directions. Linked rows: the
+                                external-link glyph, warming on hover via
+                                `.hot` (the row's motion state — CSS
+                                :hover is unreliable on layer-shell).
+                                Dismiss-only rows: a dim close glyph, the
+                                same word the Dismiss button speaks — it
+                                swaps out on hover, where the real
+                                button takes its place, exactly like the
+                                timestamp beside it */}
+                                {data.activation !== null ? (
+                                    <image
+                                        cssClasses={active.as(a =>
+                                            a ? ["linkedMark", "hot"] : ["linkedMark"],
+                                        )}
+                                        iconName="external-link-symbolic"
+                                        pixelSize={12}
+                                        tooltipText={data.activation}
+                                    />
+                                ) : (
+                                    <image
+                                        cssClasses={["dismissMark"]}
+                                        iconName="window-close-symbolic"
+                                        pixelSize={12}
+                                        tooltipText="No action — dismiss only"
+                                        visible={active.as(a => !a)}
+                                    />
+                                )}
                                 {/* a muted app still collects rows here —
                             that is the point of muting rather than
                             blocking — so the list has to say which ones

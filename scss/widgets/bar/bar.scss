@@ -165,6 +165,85 @@ window.Bar {
         }
     }
 
+    // prayer times pill: countdown to the next prayer, today's full
+    // timetable in the popover with the next prayer highlighted. Framed
+    // like the other popover pills (.media, .harvest)
+    .prayerTimes {
+        @include u.button-framed;
+        margin: s.$padding-small s.$padding;
+
+        button {
+            @include u.button-quiet(0 s.$padding-small);
+            border-width: 0;
+        }
+
+        .prayerTimesPill {
+            font-size: s.$font-small;
+        }
+
+        popover {
+            .prayerTimesPopover {
+                padding: s.$popup-padding;
+                // floor the width at the longest content ("Yesterday" /
+                // "Wed, 31.12.2026" in the day nav): the day label varies
+                // per browsed day, and a popover that resizes per click
+                // reads as flicker
+                min-width: 210px;
+            }
+
+            // day browser header: the arrows stretch over the side
+            // thirds (a small icon button was too fiddly to hit), the
+            // label is a button that snaps back to today
+            .prayerDayNav {
+                margin-bottom: 2px;
+
+                button {
+                    @include u.button-quiet(2px 0);
+                    margin: 0;
+                    min-height: 26px;
+                }
+
+                .prayerDayLabel label {
+                    @include u.eyebrow;
+                    padding: 0 s.$gap;
+                    // fixed width at the longest text ("Wed, 31.12.2026"):
+                    // a label that resizes per day makes the stretching
+                    // nav arrows on either side move with every click
+                    min-width: 120px;
+                }
+            }
+
+            .prayerRow {
+                padding: 2px s.$padding-small;
+                border-radius: s.$radius-small;
+
+                &.next {
+                    background-color: t.$surface1;
+
+                    label {
+                        color: t.$accent;
+                        font-weight: s.$weight-bold;
+                    }
+                }
+            }
+
+            // offsets section, bottom of the popover (hidden when no
+            // offset_* key is set)
+            .prayerOffsets {
+                margin-top: 2px;
+
+                .prayerOffsetsTitle {
+                    @include u.eyebrow;
+                    margin-top: 2px;
+                }
+
+                .prayerOffsetRow {
+                    @include u.subtitle;
+                }
+            }
+        }
+    }
+
     // gap between panel widgets; GTK css has no box spacing, so margins
     > centerbox > box > *:not(:last-child) {
         margin-right: s.$bar-widget-spacing;
@@ -173,8 +252,8 @@ window.Bar {
     // .sysStats { margin-right: 12px; }
     // classes: .osIcon, workspaces, clock button, .sysStats, .netStats, .sleepTimer,
     // .trayItem, .QSettings, .keyboardLayout, .swayNC, .media, .harvest, .brightness,
-    // .windowTitle, .batteryPercent, .recordingDot, .tailscaleIndicator, .cameraDot,
-    // .micLive
+    // .windowTitle, .batteryPercent, .recordingDot, .tailscaleIndicator, .prayerTimes,
+    // .cameraDot, .micLive
 
     // the panel's plain widgets: no frame until the pointer arrives
     clock button,

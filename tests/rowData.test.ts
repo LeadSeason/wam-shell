@@ -66,9 +66,18 @@ test("rowData: provider items carry no urgency of their own", () => {
     eq(fromItem(item({ summary: "x" })).urgency, "normal")
 })
 
+test("rowData: the popup's critical flag reaches the row's urgency", () => {
+    eq(fromItem(item({ summary: "x" }), true).urgency, "critical")
+    eq(fromItem(item({ summary: "x" }), false).urgency, "normal")
+})
+
 test("rowData: actions map across, absent becomes an empty list", () => {
     eq(fromItem(item({})).actions, [])
     eq(fromItem(item({ actions: [{ id: "done", label: "Mark done", run: () => {} }] })).actions, [
         { id: "done", label: "Mark done" },
     ])
+})
+
+test("rowData: provider items are always linked — activate() is the contract", () => {
+    eq(fromItem(item({})).activation, "Open")
 })

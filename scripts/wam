@@ -124,6 +124,19 @@ usage: wam <command>
                    manage the systemd user service ($SERVICE)
   harvest setup    guided Harvest credentials setup (token, account id,
                    writes ~/.config/wam-shell/harvest.env, verifies)
+  prayer-times setup [place]
+                   geocode a city ("Springfield, Illinois") or postal
+                   code once via OpenStreetMap and write [prayer_times]
+                   latitude/longitude (+ enabled = true) into the active
+                   config — the pill's alternative to GeoClue detection
+  prayer-times set <key> <value>
+                   set another [prayer_times] key in the active config:
+                   method, madhab, high_latitude_rule, enabled, on_panel,
+                   visible_prayers (3 = Fajr, Dhuhr, Maghrib; 5 = all),
+                   pill_format (time, countdown, both),
+                   minimize_when_screen_sharing (bare time while sharing),
+                   notify (banner + chime at prayer time), notify_sound,
+                   offset_fajr … offset_isha (minutes, -120…120)
   config <edit|path|show|diff|sync>
                    edit the config in $EDITOR (seeds the commented
                    template on first run), print its path, print it,
@@ -876,6 +889,262 @@ EOF
 EOF
 }
 
+# --- prayer times ---------------------------------------------------------------
+
+cmd_prayer_times() {
+    case "${1:-}" in
+        setup)
+            shift
+            cmd_prayer_times_setup "$@"
+            ;;
+        set)
+            shift
+            cmd_prayer_times_set "$@"
+            ;;
+        *) die "usage: wam prayer-times <setup [place…] | set <key> <value>>" ;;
+    esac
+}
+
+# jsonv2 is one flat object per match; split the array on object
+# boundaries and pull lat/lon/display_name out of each, tab-separated
+parse_nominatim() {
+    awk '
+        BEGIN { RS="\\},\\{"; OFS="\t" }
+        {
+            lat = lon = name = ""
+            if (match($0, /"lat":"-?[0-9.]+"/)) lat = substr($0, RSTART + 7, RLENGTH - 8)
+            if (match($0, /"lon":"-?[0-9.]+"/)) lon = substr($0, RSTART + 7, RLENGTH - 8)
+            if (match($0, /"display_name":"([^"\\]|\\.)*"/)) {
+                name = substr($0, RSTART + 16, RLENGTH - 17)
+                gsub(/\\"/, "\"", name)
+            }
+            if (lat != "" && lon != "") print lat, lon, name
+        }
+    '
+}
+
+# The file prayer-times commands write: the active config, but never
+# the install's pristine template — a dirty config.toml makes
+# `wam update` refuse the tree. Seed a user config from it first, like
+# `wam config edit` does. (config-override.toml IS the values file by
+# design and stays a valid target.)
+prayer_config_file() {
+    local f
+    f="$(active_config_file)"
+    if [[ "$f" == "$ROOT/config.toml" ]]; then
+        local config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+        mkdir -p "$config_home/wam-shell"
+        cp "$ROOT/config.toml" "$config_home/wam-shell/config.toml"
+        f="$config_home/wam-shell/config.toml"
+        # stderr: the caller captures this function's stdout as the path
+        log "Created $f from the commented template" >&2
+    fi
+    printf '%s\n' "$f"
+}
+
+# Section-aware writer: set the given keys (key=value args, in order)
+# inside an existing uncommented [prayer_times] section — replacing
+# uncommented lines, inserting at the section's end for the ones only
+# present commented (never duplicating a key, TOML rejects that) — or
+# append the section at EOF when absent. Values must be TOML-ready:
+# callers quote strings themselves (`method="tehran"` → method = "tehran").
+write_prayer_keys() { # <file> <key=value>…
+    local f="$1"
+    shift
+    local tmp np=$# pairs="$*"
+    tmp="$(mktemp)"
+    awk -v np="$np" -v pairs="$pairs" '
+        function emit(i,   kv, eq) {
+            kv = pair[i]
+            eq = index(kv, "=")
+            print substr(kv, 1, eq - 1) " = " substr(kv, eq + 1)
+            pair[i] = ""
+        }
+        function emit_missing(   i) {
+            for (i = 1; i <= np; i++) if (pair[i] != "") emit(i)
+        }
+        BEGIN {
+            split(pairs, pair, " ")
+            re = "^[[:space:]]*("
+            for (i = 1; i <= np; i++) {
+                eq = index(pair[i], "=")
+                re = re (i > 1 ? "|" : "") substr(pair[i], 1, eq - 1)
+            }
+            re = re ")[[:space:]]*="
+        }
+        /^\[[[:space:]]*prayer_times[[:space:]]*\][[:space:]]*$/ { insec = 1; seen = 1; print; next }
+        /^\[/ {
+            if (insec) emit_missing()
+            insec = 0
+            print
+            next
+        }
+        insec && $0 ~ re {
+            k = $0
+            sub(/[[:space:]]*=.*/, "", k)
+            gsub(/[[:space:]]/, "", k)
+            for (i = 1; i <= np; i++)
+                if (index(pair[i], k "=") == 1) {
+                    emit(i)
+                    break
+                }
+            next
+        }
+        { print }
+        END {
+            if (insec) emit_missing()
+            else if (!seen) {
+                print ""
+                print "[prayer_times]"
+                emit_missing()
+            }
+        }
+    ' "$f" >"$tmp" && cat "$tmp" >"$f"
+    rm -f "$tmp"
+}
+
+cmd_prayer_times_setup() {
+    command -v curl >/dev/null || die "curl is required for the location lookup"
+
+    local f
+    f="$(prayer_config_file)"
+
+    # existing coordinates: show them and confirm the replace, like the
+    # harvest credential flow
+    if [[ -f "$f" ]]; then
+        local cur
+        cur="$(awk -F'=' '
+            /^\[[[:space:]]*prayer_times[[:space:]]*\]/ { s = 1; next }
+            /^\[/ { s = 0 }
+            s && /^[[:space:]]*(latitude|longitude)[[:space:]]*=/ {
+                gsub(/[[:space:]]/, "", $2)
+                printf "%s%s", $2, NR ? " " : ""
+            }
+        ' "$f")"
+        if [[ -n "$cur" && "$cur" != "0 0 " ]]; then
+            log "Current coordinates in $f: $cur"
+            # `|| true`: EOF on stdin must not kill the script under
+            # set -e — the default (keep) applies instead
+            read -r -p "Replace them? [y/N] " replace || true
+            [[ "$replace" =~ ^[Yy] ]] || {
+                log "Kept existing coordinates"
+                return
+            }
+        fi
+    fi
+
+    local query="$*"
+    if [[ -z "$query" ]]; then
+        cat <<'EOF'
+
+  Name the place the prayer times are computed for — a city (add the
+  country when the name is common: "Springfield, Illinois"), or a
+  postal code. Looked up once via OpenStreetMap's Nominatim service;
+  the coordinates go into your config, nothing else is sent anywhere.
+
+EOF
+        read -r -p "City or postal code: " query || true
+    fi
+    [[ -n "$query" ]] || die "no place given"
+
+    log "Looking up \"$query\"…"
+    local response
+    response="$(curl -sS --max-time 15 -G \
+        -H "User-Agent: wam-shell" \
+        --data-urlencode "q=$query" \
+        --data-urlencode "format=jsonv2" \
+        --data-urlencode "limit=5" \
+        https://nominatim.openstreetmap.org/search)" ||
+        die "could not reach the geocoding service"
+
+    local matches count
+    matches="$(printf '%s' "$response" | parse_nominatim)"
+    [[ -n "$matches" ]] || die "no matches for \"$query\" — try adding the country"
+    count="$(printf '%s\n' "$matches" | grep -c .)"
+
+    printf '%s\n' "$matches" | awk -F'\t' '{ printf "  %d) %s  (%s, %s)\n", NR, $3, $1, $2 }'
+    local pick=1
+    if [[ "$count" -gt 1 ]]; then
+        read -r -p "Number to use [1]: " pick || true
+        pick="${pick:-1}"
+    fi
+    [[ "$pick" =~ ^[0-9]+$ ]] || die "not a number"
+    ((pick >= 1 && pick <= count)) || die "pick a number between 1 and $count"
+
+    local lat lon name
+    IFS=$'\t' read -r lat lon name <<<"$(printf '%s\n' "$matches" | sed -n "${pick}p")"
+    awk -v lat="$lat" -v lon="$lon" \
+        'BEGIN { exit !(lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) }' ||
+        die "implausible coordinates ($lat, $lon) — refusing to write them"
+
+    if [[ ! -f "$f" ]]; then
+        mkdir -p "$(dirname "$f")"
+        cp "$ROOT/config.toml" "$f"
+        log "Created $f from the commented template"
+    fi
+    cp "$f" "$f.bak-prayer-times"
+    write_prayer_keys "$f" "enabled=true" "latitude=$lat" "longitude=$lon"
+
+    log "Wrote to $f (backup: $f.bak-prayer-times):"
+    log "  [prayer_times] enabled = true, latitude = $lat, longitude = $lon — $name"
+    log "Applies on restart: wam restart"
+}
+
+# Set one [prayer_times] key in the active config. The value lists mirror
+# src/config.ts getPrayerTimesConfig — keep the two in sync.
+cmd_prayer_times_set() { # <key> <value>
+    local key="${1:-}" value="${2:-}"
+    [[ -n "$key" ]] ||
+        die "usage: wam prayer-times set <enabled|on_panel|method|madhab|high_latitude_rule|visible_prayers|pill_format|minimize_when_screen_sharing|notify|notify_sound|offset_fajr|offset_dhuhr|offset_asr|offset_maghrib|offset_isha> <value>"
+    [[ -n "$value" ]] || die "no value given for $key"
+    case "$key" in
+        enabled | on_panel | minimize_when_screen_sharing | notify)
+            [[ "$value" =~ ^(true|false)$ ]] || die "$key must be true or false"
+            ;;
+        method)
+            [[ "$value" =~ ^(jafari|tehran|mwl|egypt|karachi|makkah|qatar|kuwait|north_america|singapore)$ ]] ||
+                die "method must be one of: jafari tehran mwl egypt karachi makkah qatar kuwait north_america singapore"
+            ;;
+        madhab)
+            [[ "$value" =~ ^(shafi|hanafi)$ ]] || die "madhab must be shafi or hanafi"
+            ;;
+        high_latitude_rule)
+            [[ "$value" =~ ^(middle_of_the_night|seventh_of_the_night|twilight_angle)$ ]] ||
+                die "high_latitude_rule must be one of: middle_of_the_night seventh_of_the_night twilight_angle"
+            ;;
+        visible_prayers)
+            [[ "$value" =~ ^(3|5)$ ]] ||
+                die "visible_prayers must be 3 (Fajr, Dhuhr, Maghrib) or 5 (all five prayers)"
+            ;;
+        offset_fajr | offset_dhuhr | offset_asr | offset_maghrib | offset_isha)
+            [[ "$value" =~ ^-?[0-9]+$ ]] && ((value >= -120 && value <= 120)) ||
+                die "$key must be whole minutes between -120 and 120"
+            ;;
+        pill_format)
+            [[ "$value" =~ ^(time|countdown|both)$ ]] ||
+                die "pill_format must be time, countdown or both"
+            ;;
+        notify_sound)
+            [[ "$value" = /* ]] || die "notify_sound must be an absolute file path"
+            ;;
+        *)
+            die "unknown prayer-times key \"$key\" — settable: enabled on_panel method madhab high_latitude_rule visible_prayers pill_format minimize_when_screen_sharing notify notify_sound offset_fajr offset_dhuhr offset_asr offset_maghrib offset_isha (coordinates: wam prayer-times setup)"
+            ;;
+    esac
+    # TOML-ready: strings quoted, booleans and numbers bare
+    case "$key" in
+        enabled | on_panel | minimize_when_screen_sharing | notify | visible_prayers | offset_*) ;;
+        *) value="\"$value\"" ;;
+    esac
+
+    local f
+    f="$(prayer_config_file)"
+    cp "$f" "$f.bak-prayer-times"
+    write_prayer_keys "$f" "$key=$value"
+    log "Wrote to $f (backup: $f.bak-prayer-times): [prayer_times] $key = $value"
+    log "Applies on restart: wam restart"
+}
+
 # --- status / version -----------------------------------------------------------
 
 cmd_status() {
@@ -1154,6 +1423,7 @@ redact() {
         -e 's/\b(gh[pousr]_)[A-Za-z0-9]{10,}/\1<redacted>/g' \
         -e 's/\b(ya29\.|1\/\/)[A-Za-z0-9._~+/-]{10,}/\1<redacted>/g' \
         -e 's/\b([Bb]earer )[A-Za-z0-9._~+/-]{10,}={0,2}/\1<redacted>/g' \
+        -e 's/\b(latitude|longitude)([[:space:]]*=[[:space:]]*)-?[0-9]+\.[0-9]+/\1\2<redacted>/gI' \
         -e 's/\b([A-Za-z_]*(token|password|passwd|secret|api[_-]?key))("?[[:space:]]*[:=][[:space:]]*"?)[^"'"'"',}[:space:]]{6,}/\1\3<redacted>/gI'
 }
 
@@ -1650,6 +1920,10 @@ case "${1:-}" in
     harvest)
         shift
         cmd_harvest "$@"
+        ;;
+    prayer-times)
+        shift
+        cmd_prayer_times "$@"
         ;;
     config)
         shift

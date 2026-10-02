@@ -14,6 +14,7 @@ import SwayNC from "./barModules/swayNC"
 import KeyboardLayout from "./barModules/keyboardLayout"
 import SysStats from "./barModules/sysStats"
 import NetStats from "./barModules/netStats"
+import PrayerTimes from "./barModules/prayerTimes"
 import QSettingsLabel from "./barModules/QSettingsLabel"
 import Media from "./barModules/media"
 import SleepTimer from "./barModules/sleepTimer"
@@ -60,6 +61,10 @@ function moduleFor(name: string, gdkMonitor: Gdk.Monitor) {
             // enabled=false means "no tracking at all" and wins even
             // over an authoritative panel entry
             return Config.netstats.enabled ? <NetStats /> : null
+        case "prayertimes":
+            // same rule: enabled=false means the module never starts,
+            // panel entry or not
+            return Config.prayerTimes.enabled ? <PrayerTimes /> : null
         case "tray":
             return trayWidget()
         case "quicksettings":
@@ -176,6 +181,7 @@ export default function Bar({
                 <SleepTimer />
                 {Config.quicksettings.statsOnPanel && <SysStats />}
                 {Config.netstats.enabled && Config.netstats.onPanel && <NetStats />}
+                {Config.prayerTimes.enabled && Config.prayerTimes.onPanel && <PrayerTimes />}
                 {Config.media.enabled && <Media monitor={gdkMonitor} />}
                 {Config.tray.position == "left" && tray}
                 <QSettingsLabel />

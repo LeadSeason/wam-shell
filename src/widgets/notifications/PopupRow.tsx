@@ -16,6 +16,7 @@ import {
 import Toast from "./Toast"
 import { acquireClock } from "../../lib/relTime"
 import { fromDesktop, fromItem } from "./rowData"
+import type { RowData } from "./rowData"
 
 // Pure view over the popup controller in lib/notifd: the countdown,
 // expiry and hover-freeze live there, so rows like this one can be
@@ -125,12 +126,16 @@ export default function PopupRow({ group }: { group: PopupEntry[] }) {
     // dispatch: a throwing activate/dismiss/run must not escape into the
     // event machinery, so they are guarded the way lib/notify guards its
     // own action handlers
-    const handlers = (p: PopupEntry) => ({
+    // `data` rides along with its entry: whether a click does anything
+    // at all (data.activation) is derived once in rowData, and reading
+    // it here — rather than re-deriving "has a default action" from the
+    // raw notification — is what keeps the banner's behavior and its
+    // linked mark from ever disagreeing
+    const handlers = (p: PopupEntry, data: RowData) => ({
         onActivate: () => {
             removePopupDeferred(p.key)
             if (p.desktop) {
-                if (p.desktop.get_actions().some(a => a.get_id() === "default"))
-                    p.desktop.invoke("default")
+                if (data.activation !== null) p.desktop.invoke("default")
             } else {
                 try {
                     p.item!.activate()
@@ -170,7 +175,7 @@ export default function PopupRow({ group }: { group: PopupEntry[] }) {
         },
     })
 
-    const data = entry.desktop ? fromDesktop(entry.desktop) : fromItem(entry.item!)
+    const data = entry.desktop ? fromDesktop(entry.desktop) : fromItem(entry.item!, entry.critical)
     // a banner with no timer draws no countdown: a bar pinned at full
     // that never moves reads as a stalled progress indicator
     const timedFor = (key: string) => (popupTimer(key)?.duration ?? 0) !== 0
@@ -210,7 +215,7 @@ export default function PopupRow({ group }: { group: PopupEntry[] }) {
                     // survived the cap: ten arrivals read "10", where
                     // group.length silently topped out at MAX_POPUPS
                     count={popupArrivals(entry)}
-                    {...handlers(entry)}
+                    {...handlers(entry, data)}
                 />
                 {/* the rest of the group, dealt out on hover. Indented
                 so the card above still reads as the one that stands for
@@ -240,14 +245,19 @@ export default function PopupRow({ group }: { group: PopupEntry[] }) {
                             // header does
                             marginStart={16}
                         >
-                            {group.slice(1).map(p => (
-                                <Toast
-                                    data={p.desktop ? fromDesktop(p.desktop) : fromItem(p.item!)}
-                                    countdown={countdownFor(p.key)}
-                                    timed={timedFor(p.key)}
-                                    {...handlers(p)}
-                                />
-                            ))}
+                            {group.slice(1).map(p => {
+                                const d = p.desktop
+                                    ? fromDesktop(p.desktop)
+                                    : fromItem(p.item!, p.critical)
+                                return (
+                                    <Toast
+                                        data={d}
+                                        countdown={countdownFor(p.key)}
+                                        timed={timedFor(p.key)}
+                                        {...handlers(p, d)}
+                                    />
+                                )
+                            })}
                         </box>
                     </revealer>
                 )}
