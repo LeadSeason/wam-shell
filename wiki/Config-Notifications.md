@@ -17,6 +17,7 @@ Section: `[notifications]`
 | `popup_providers`        | list of strings                       | `[]`         | Provider names (`"github"`, `"youtube"`, …) whose items may also raise transient banners alongside the center; empty = provider notifications live in the center only                                                                                            |
 
 - The daemon choice is made at startup — restart the shell after changing daemons. Forcing `"wam-shell"` while another daemon already owns the bus name still leaves notifications with that daemon.
+- A notification whose app sent a "default" action — and every provider item, which always opens — carries a small external-link mark beside its timestamp, on both the banner and the center row; hovering it says what a click will do (the action's own label). Dismiss-only rows carry a dim close mark in the same slot instead: no action is attached, so the body click does nothing and the only move is dismissal (swipe or right-click a banner; hover a center row for its Dismiss button).
 - A sender's requested timeout always wins over `popup_timeout` (`0` = stays until dismissed); the setting only applies when the sender leaves it unspecified.
 - Notifications carrying the spec "transient" hint are always excluded from the center, regardless of `transient_apps`.
 - Deletion past `archive_retention_days` is enforced by an hourly sweep plus a filter on the lists, so a row can linger up to an hour past the cutoff before it disappears.

@@ -24,7 +24,8 @@
 // .group/.groupHead/.groupRows,
 // .centerRow, .art, .clearState (trash/spinner stack on the clear-all
 // button). Shared within a row: .appName, .appIcon, .summary,
-// .body, .time, .actions, .dismiss, .muteApp, .mutedMark, .count,
+// .body, .time, .actions, .dismiss, .muteApp, .mutedMark, .linkedMark,
+// .dismissMark, .count,
 // .critical/.low (urgency),
 // .rtl.
 
@@ -79,6 +80,23 @@
     // interrupt. Dim, because it is a property of the row rather than
     // anything asking to be acted on
     .mutedMark {
+        color: t.$subtext0;
+        opacity: s.$quiet-opacity;
+    }
+
+    // the linked mark: this row's body click does something (the
+    // tooltip names what). Quiet at rest — an invitation, not a shout;
+    // only the center warms it (`.hot`, driven from the row's motion
+    // state, since layer-shell :hover is unreliable)
+    .linkedMark {
+        color: t.$subtext0;
+    }
+
+    // the dismiss-only counterpart: same slot, opposite word. Dimmer
+    // than the link mark — it is a property of the row ("nothing here
+    // asks to be opened"), not an invitation — and in the center it
+    // swaps out on hover, where the real Dismiss button takes over
+    .dismissMark {
         color: t.$subtext0;
         opacity: s.$quiet-opacity;
     }
@@ -370,6 +388,12 @@ window.Notifications {
         }
 
         @include row-buttons;
+
+        // hover (or keyboard focus) warms the linked mark: the row is
+        // saying "Enter opens this" the same way the focus ring does
+        .linkedMark.hot {
+            color: t.$accent;
+        }
 
         .appIcon {
             margin-top: 1px;

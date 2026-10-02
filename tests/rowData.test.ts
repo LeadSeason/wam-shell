@@ -77,3 +77,7 @@ test("rowData: actions map across, absent becomes an empty list", () => {
         { id: "done", label: "Mark done" },
     ])
 })
+
+test("rowData: provider items are always linked — activate() is the contract", () => {
+    eq(fromItem(item({})).activation, "Open")
+})

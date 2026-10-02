@@ -319,6 +319,29 @@ export default function Toast({
                             {/* an empty headline still needs the time pushed to
                     the far edge */}
                             {headline === "" && <label hexpand />}
+                            {/* The mark slot announces the body click in
+                                both directions: linked rows get the
+                                external-link glyph, dismiss-only rows
+                                a dim close glyph — so "nothing to
+                                open" is written on the card rather
+                                than implied by a missing icon */}
+                            {data.activation !== null ? (
+                                <image
+                                    cssClasses={["linkedMark"]}
+                                    iconName="external-link-symbolic"
+                                    pixelSize={12}
+                                    tooltipText={data.activation}
+                                    valign={Gtk.Align.START}
+                                />
+                            ) : (
+                                <image
+                                    cssClasses={["dismissMark"]}
+                                    iconName="window-close-symbolic"
+                                    pixelSize={12}
+                                    tooltipText="No action — dismiss only"
+                                    valign={Gtk.Align.START}
+                                />
+                            )}
                             <label
                                 cssClasses={["time"]}
                                 label={nowSec.as(n => relTime(data.time, n))}
