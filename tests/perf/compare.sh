@@ -146,8 +146,13 @@ git -C "$ROOT" worktree add "$WORKTREE" "$BASE_SHA" >/dev/null 2>&1 \
 
 # .sys/ and node_modules/ are gitignored: a fresh worktree has neither
 # and ags/gnim resolve to nothing. Link them from the main checkout.
-ln -s "$ROOT/.sys" "$WORKTREE/.sys"
-ln -s "$ROOT/node_modules" "$WORKTREE/node_modules"
+# Only when the worktree is NOT the main checkout: running the compare
+# from the main tree itself once replaced .sys with a symlink to
+# itself, which broke ags resolution for everything that ran after
+if [[ "$WORKTREE" != "$ROOT" ]]; then
+    ln -sfn "$ROOT/.sys" "$WORKTREE/.sys"
+    ln -sfn "$ROOT/node_modules" "$WORKTREE/node_modules"
+fi
 
 # --- legs (sequential, never concurrent) ---------------------------------
 

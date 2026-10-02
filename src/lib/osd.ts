@@ -8,6 +8,7 @@ import Brightness from "./brightness"
 import hyprsunset, { OUTDOOR_GAMMA, refreshHyprsunset } from "./hyprsunset"
 import { ensureLayoutSource, ensureLockSource, layoutOsdText, lockKeyState } from "./kbLayout"
 import { watchDefaultEndpoint } from "./defaultEndpoint"
+import { click as volumeFeedbackClick } from "./volumeFeedback"
 import { registerDispose } from "./lifecycle"
 
 // OSD state and triggers. Widgets read `content`/`visible`; triggers
@@ -91,6 +92,13 @@ function show(c: Omit<OsdContent, "kind">, kind: OsdKind) {
 function present(c: Omit<OsdContent, "kind">, kind: OsdKind) {
     setContent({ ...c, kind })
     setVisible(true)
+    // audio feedback rides the pill's actual appearance, not the show()
+    // request: a pill held back for the layer rule clicks when it
+    // finally paints, and everything that silences the pill (disabled,
+    // startup grace) silences the click with it. `value === null` is the
+    // muted frame — no click into a muted sink. Microphone pills carry
+    // no level to confirm and get none
+    if (kind === "volume" && c.value !== null) volumeFeedbackClick()
     if (hideSource !== null) sourceRemove(hideSource)
     // the duration belongs to the kind, not the widget: a layout pill
     // that replaces a volume pill must take the layout timeout with it,
