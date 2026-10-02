@@ -57,7 +57,15 @@
 #     scale with the live session's real tray items) and the
 #     AstalBluetooth_Device:* buckets (they scale with whatever
 #     Bluetooth devices are in range during a leg — measured 10→4
-#     connected on identical trees)
+#     connected on identical trees), and captureWatch:cameraPoll —
+#     but only up to ONE instance. That timer is the direct-V4L2
+#     sweep: a Chromium-family browser opens /dev/video* directly, no
+#     PipeWire stream exists, and polling /proc is the only way to see
+#     the grab — so the poller re-arms forever by design while nothing
+#     holds the camera (deterministic 0→1 on startup, idle-1mon and
+#     churn; the sweep itself is idle-sliced). scheduleSweep refuses a
+#     second timer, so two alive would mean a bug the bound still
+#     catches
 # Everything else must diff to exactly zero. Timing/RSS/HTTP are
 # reported, never gated.
 set -uo pipefail
@@ -191,7 +199,8 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
                 and .key != "osd:hide"
                 and .key != "osd:layerRuleWait"
                 and .key != "bar:brightnessReveal"
-                and .key != "tray.hollowGrace"))
+                and .key != "tray.hollowGrace"
+                and (.key != "captureWatch:cameraPoll" or .value.alive > 1)))
             | with_entries(.value = .value.alive)),
         signalsByName: (.signals.byName
             | with_entries(select(.key
