@@ -47,6 +47,20 @@ const GRAPH_HEIGHT = 14
 const SAMPLE_WIDTH = 2
 const HEAD_MARGIN = 2
 
+// Fixed slot for the live rate readout, in characters. The sysStats
+// group is left-anchored on the bar, so every change of this label's
+// width shoves the modules to its right (tray, QSettings, …) sideways;
+// a width that adapts to traffic therefore keeps "moving the bar"
+// whenever a burst exceeds the recent maximum. Reserving a constant
+// width instead makes the whole right side of the bar static — the
+// price is the empty space inside the slot when the rate is low, which
+// is why this is sized to the widest PLAUSIBLE string rather than the
+// theoretical one: "↓99.9 MB/s" per direction (~800 Mbit/s both ways;
+// larger bursts make the label overflow and shift once, they don't
+// clip). The arrows count wider than a digit, so the slot carries a
+// little slack beyond its string.
+const NET_RATE_CHARS = 21
+
 // Alpha the area fill carries at the top of the widget, fading to
 // nothing at the floor. A flat wash reads as one grey block at 12px
 // tall; the gradient is what lets a peak look like a peak.
@@ -360,9 +374,12 @@ export default function SysStats() {
             0-100 axis, and a rate has no such ceiling — it would need
             an autoscale, and an autoscaled graph of an idle link draws
             the same shape as a saturated one. The rate reads fine as a
-            number */}
+            number, pinned to a fixed widthChars slot so its swings
+            can't shove the modules to the right (see NET_RATE_CHARS) */}
             <label
                 cssClasses={["statNet"]}
+                widthChars={NET_RATE_CHARS}
+                xalign={1}
                 label={createComputed(
                     [netDown, netUp],
                     (d, u) => `↓${formatRate(d)} ↑${formatRate(u)}`,
