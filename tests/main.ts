@@ -46,6 +46,7 @@ import "./obscura.test"
 import "./tailscale.test"
 import "./hyprDispatch.test"
 import "./wifiQr.test"
+import "./prayerTimes.test"
 // summary() must come after every suite has registered. This one used to
 // sit BELOW the call, which worked only because ES imports hoist — a
 // move to a dynamic import, or a reader "fixing" the order the other

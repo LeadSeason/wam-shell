@@ -28,6 +28,7 @@ variables. Each page below that needs credentials says so.
 - [[Media|Config-Media]]
 - [[Screen share|Config-ScreenShare]] — ignore-list for the media/Harvest privacy mask
 - [[Net stats|Config-Netstats]] — cumulative bandwidth totals
+- [[Prayer times|Config-PrayerTimes]] — local prayer times pill on the bar
 - [[Harvest|Config-Harvest]] — time tracking widget (needs a token)
 
 ### Quick settings
