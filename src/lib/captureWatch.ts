@@ -450,7 +450,13 @@ export function pidHoldsVideo(root: string, pid: string): string | null {
     } catch {
         return null // vanished mid-scan, or not ours to read
     }
-    for (let fd; (fd = fdDir.read_name()) !== null;) {
+    // a sweep opens one of these PER PROCESS — collect the names and
+    // close the handle before any of the returns below; leaving
+    // hundreds of them to the GC per pass shows up as mystery fds
+    const fds: string[] = []
+    for (let fd; (fd = fdDir.read_name()) !== null;) fds.push(fd)
+    fdDir.close()
+    for (const fd of fds) {
         try {
             if (!GLib.file_read_link(`${root}/${pid}/fd/${fd}`).startsWith("/dev/video")) continue
         } catch {
@@ -538,6 +544,11 @@ function sweepDirectHolders() {
     for (let name; (name = procDir.read_name()) !== null;) {
         if (/^[0-9]+$/.test(name)) pids.push(name)
     }
+    // a GLib.Dir is a real fd: close it as soon as the names are read
+    // rather than waiting for the GC to finalize the object — the sweep
+    // runs forever, and stray handles here is how the shell collects
+    // mystery fds (the perf gate flagged exactly this)
+    procDir.close()
     const holders = new Set<string>()
     let i = 0
     const step = () => {

@@ -268,10 +268,18 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
         # except on churn, where it still swings with whatever the live
         # session plays between legs (44→51 against a branch, 51→44
         # comparing that same branch against itself): a real leak over
-        # 100 cycles grows by hundreds, so ±8 costs no detection
+        # 100 cycles grows by hundreds, so ±8 costs no detection.
+        # Outside churn the allowance is ±2, not ±1: one long-lived
+        # watched child costs TWO owned fds on modern glib — the
+        # stdout pipe plus a pidfd (measured: the dev shell holding
+        # four streamLines children showed four pidfds beside the four
+        # pipe read ends) — so any branch adding exactly one monitor
+        # (the captureWatch pw-dump -m watcher, a new vpn listener) must
+        # clear ±2. A real leak still fails: it grows by hundreds on
+        # churn
         # NOTE: no apostrophes in this jq program — it is single-quoted
         if ($path | test("^churn\\.fdsOwned$")) then 8
-        elif ($path | test("\\.fdsOwned$")) then 1
+        elif ($path | test("\\.fdsOwned$")) then 2
         elif ($path | test("\\.fds$")) then 999
         elif ($path | test("\\.subprocesses\\.")) then 2
         else 0 end;
