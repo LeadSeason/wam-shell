@@ -47,13 +47,14 @@ import "./tailscale.test"
 import "./hyprDispatch.test"
 import "./wifiQr.test"
 import "./volumeFeedback.test"
+import "./prayerTimes.test"
 // summary() must come after every suite has registered. This one used to
 // sit BELOW the call, which worked only because ES imports hoist — a
 // move to a dynamic import, or a reader "fixing" the order the other
 // way, would have dropped it from the tally and from the exit code
 // without so much as a warning
 import "./bluetooth.test"
-import "./screenShare.test"
+import "./captureWatch.test"
 import { summary } from "./framework"
 
 summary()

@@ -66,7 +66,11 @@ per-Bluetooth-device signal buckets that scale with whatever devices
 are in range during a leg, and the `Gtk_EditableLabel` signal bucket
 (`PercentEntry` rows in the audio panes scale with the live session's
 audio streams — measured 4→0, 0→6 and 2→0 across runs of identical
-trees).
+trees). `captureWatch:cameraPoll` is exempted up to one alive
+instance: it is the direct-V4L2 camera sweep, which must poll /proc
+on a slow cadence forever while nothing holds the camera (a direct
+grab produces no PipeWire stream to watch), and its guard refuses a
+second timer, so the bound still catches a respawn bug.
 
 Report-only (never gated): time to first frame, RSS, context switches,
 blocking-ms, HTTP counts. Local runs have real desktop noise — an

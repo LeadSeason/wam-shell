@@ -81,10 +81,14 @@ fills, which turns stroked glyphs into solid blobs.
 
 `cpu-symbolic.svg`, `memory-symbolic.svg`, `temperature-symbolic.svg`,
 `gpu-symbolic.svg`, `hourglass-symbolic.svg`, `speedometer-symbolic.svg`,
-`fan-symbolic.svg` (the power pane's stat tiles) and
-`dark-mode-symbolic.svg` (the Dark Style toggle) are original drawings.
-Adwaita ships none of these names, so nothing upstream can be copied
-for them.
+`fan-symbolic.svg` (the power pane's stat tiles), `dark-mode-symbolic.svg`
+(the Dark Style toggle) and `external-link-symbolic.svg` (the notification
+row's linked mark: a frame whose top-right corner is opened where the
+arrow leaves it, so the shaft nests flush in the gap) are original
+drawings. Adwaita ships none of these names, so nothing upstream can be
+copied for them — for the linked mark the nearest native glyph,
+`send-to-symbolic`, is an arrow leaving a tray and reads as "share", not
+as "opens something".
 
 They used to be **Papirus** copies, and that was the whole problem: two
 icon sets drawn to different grids and different optical weights, sitting

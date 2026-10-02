@@ -36,6 +36,17 @@ export interface RowData {
     time: number
     urgency: Urgency
     actions: RowAction[]
+    /**
+     * What clicking the row BODY does, as a verb for the mark's tooltip —
+     * the desktop notification's "default" action label, "Open" for a
+     * provider item (activate() is part of the provider contract), or
+     * null when the row is dismiss-only. Both surfaces draw the linked
+     * mark from this and nothing else; before it existed the "default"
+     * action was filtered out here and its existence re-derived from the
+     * raw notification in two widgets, which is how a linked row and a
+     * dead one could look identical.
+     */
+    activation: string | null
     /** the row's base direction, taken from whichever text leads it */
     rtl: boolean
 }
@@ -97,6 +108,10 @@ export function fromDesktop(n: AstalNotifd.Notification): RowData {
     const appName = n.get_app_name() || "unknown"
     const appIcon = appIconFor(n.get_app_icon(), n.get_app_name() ?? "")
     const summary = distinct(n.get_summary(), appName)
+    // "default" is the whole-row click, not a button — and its label is
+    // what the row's linked mark quotes, so the tooltip says what a
+    // click will actually do
+    const defaultAction = n.get_actions().find(a => a.get_id() === "default")
     return {
         appName,
         summary,
@@ -107,16 +122,16 @@ export function fromDesktop(n: AstalNotifd.Notification): RowData {
         imagePath: isPath(image) ? imagePathOf(image) : null,
         time: n.get_time(),
         urgency: urgencyOf(n),
-        // "default" is the whole-row click, not a button
         actions: n
             .get_actions()
             .filter(a => a.get_id() !== "default")
             .map(a => ({ id: a.get_id(), label: a.get_label() })),
+        activation: defaultAction ? defaultAction.get_label() || "Open" : null,
         rtl: isRtl(n.get_summary() || appName),
     }
 }
 
-export function fromItem(item: ProviderItem): RowData {
+export function fromItem(item: ProviderItem, critical = false): RowData {
     const summary = distinct(item.summary, item.appName)
     return {
         appName: item.appName,
@@ -125,8 +140,13 @@ export function fromItem(item: ProviderItem): RowData {
         iconName: item.iconName,
         imagePath: item.imagePath ?? null,
         time: item.time,
-        urgency: "normal",
+        // the item itself carries no urgency — the POPUP does (gcal's
+        // critical reminders, todoist's due tasks): the caller passes it
+        // through, or the banner silently loses its critical spine
+        urgency: critical ? "critical" : "normal",
         actions: (item.actions ?? []).map(a => ({ id: a.id, label: a.label })),
+        // activate() is part of the provider contract — every item opens
+        activation: "Open",
         rtl: isRtl(item.summary || item.appName),
     }
 }

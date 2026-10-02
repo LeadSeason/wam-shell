@@ -57,7 +57,15 @@
 #     scale with the live session's real tray items) and the
 #     AstalBluetooth_Device:* buckets (they scale with whatever
 #     Bluetooth devices are in range during a leg — measured 10→4
-#     connected on identical trees)
+#     connected on identical trees), and captureWatch:cameraPoll —
+#     but only up to ONE instance. That timer is the direct-V4L2
+#     sweep: a Chromium-family browser opens /dev/video* directly, no
+#     PipeWire stream exists, and polling /proc is the only way to see
+#     the grab — so the poller re-arms forever by design while nothing
+#     holds the camera (deterministic 0→1 on startup, idle-1mon and
+#     churn; the sweep itself is idle-sliced). scheduleSweep refuses a
+#     second timer, so two alive would mean a bug the bound still
+#     catches
 # Everything else must diff to exactly zero. Timing/RSS/HTTP are
 # reported, never gated.
 set -uo pipefail
@@ -191,7 +199,8 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
                 and .key != "osd:hide"
                 and .key != "osd:layerRuleWait"
                 and .key != "bar:brightnessReveal"
-                and .key != "tray.hollowGrace"))
+                and .key != "tray.hollowGrace"
+                and (.key != "captureWatch:cameraPoll" or .value.alive > 1)))
             | with_entries(.value = .value.alive)),
         signalsByName: (.signals.byName
             | with_entries(select(.key
@@ -259,10 +268,18 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
         # except on churn, where it still swings with whatever the live
         # session plays between legs (44→51 against a branch, 51→44
         # comparing that same branch against itself): a real leak over
-        # 100 cycles grows by hundreds, so ±8 costs no detection
+        # 100 cycles grows by hundreds, so ±8 costs no detection.
+        # Outside churn the allowance is ±2, not ±1: one long-lived
+        # watched child costs TWO owned fds on modern glib — the
+        # stdout pipe plus a pidfd (measured: the dev shell holding
+        # four streamLines children showed four pidfds beside the four
+        # pipe read ends) — so any branch adding exactly one monitor
+        # (the captureWatch pw-dump -m watcher, a new vpn listener) must
+        # clear ±2. A real leak still fails: it grows by hundreds on
+        # churn
         # NOTE: no apostrophes in this jq program — it is single-quoted
         if ($path | test("^churn\\.fdsOwned$")) then 8
-        elif ($path | test("\\.fdsOwned$")) then 1
+        elif ($path | test("\\.fdsOwned$")) then 2
         elif ($path | test("\\.fds$")) then 999
         elif ($path | test("\\.subprocesses\\.")) then 2
         else 0 end;

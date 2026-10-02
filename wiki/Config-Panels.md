@@ -17,14 +17,14 @@ Section: none — these keys live at the top level of `config.toml`.
 Each `[[panel]]` block spawns a bar on the matching monitors. When none
 are defined the classic single bar is used and the keys above apply.
 
-| Key                         | Type                 | Default        | What it does                                                                                                                                                                    |
-| --------------------------- | -------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `monitors`                  | list of strings      | `[]`           | Same matching as `bar_monitors`; empty = every monitor                                                                                                                          |
-| `position`                  | `"top"` / `"bottom"` | `"top"`        | Which screen edge the bar sits on                                                                                                                                               |
-| `class`                     | string               | unset          | Extra CSS class on the panel window for per-panel styling (`class = "laptop"` → `window.Bar.laptop`)                                                                            |
-| `height`                    | int (px)             | `bar_height`   | This panel's height                                                                                                                                                             |
-| `floating`                  | bool                 | `bar_floating` | Whether this panel floats                                                                                                                                                       |
-| `left` / `center` / `right` | list of strings      | —              | Widgets per section; available: `osicon`, `workspaces`, `clock`, `stats`, `tray`, `quicksettings`, `language`, `notifications`, `media`, `sleeptimer`, `harvest`, `windowtitle` |
+| Key                         | Type                 | Default        | What it does                                                                                                                                                                                               |
+| --------------------------- | -------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `monitors`                  | list of strings      | `[]`           | Same matching as `bar_monitors`; empty = every monitor                                                                                                                                                     |
+| `position`                  | `"top"` / `"bottom"` | `"top"`        | Which screen edge the bar sits on                                                                                                                                                                          |
+| `class`                     | string               | unset          | Extra CSS class on the panel window for per-panel styling (`class = "laptop"` → `window.Bar.laptop`)                                                                                                       |
+| `height`                    | int (px)             | `bar_height`   | This panel's height                                                                                                                                                                                        |
+| `floating`                  | bool                 | `bar_floating` | Whether this panel floats                                                                                                                                                                                  |
+| `left` / `center` / `right` | list of strings      | —              | Widgets per section; available: `osicon`, `workspaces`, `clock`, `stats`, `tray`, `quicksettings`, `language`, `notifications`, `media`, `sleeptimer`, `harvest`, `windowtitle`, `netstats`, `prayertimes` |
 
 ```toml
 [[panel]]
