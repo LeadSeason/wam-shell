@@ -13,7 +13,7 @@ import {
 import Config from "../config"
 import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { registerDispose } from "./lifecycle"
-import { sharing, enable as enableShareWatch } from "./screenShare"
+import { sharing, enable as enableShareWatch } from "./captureWatch"
 import { addProviderPopup, dnd } from "./notifd"
 
 // Local prayer times, computed offline by the bundled `adhan` library —

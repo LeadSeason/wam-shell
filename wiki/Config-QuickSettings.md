@@ -23,6 +23,34 @@ Section: `[quicksettings]`
 | `avatar`                  | string (path) | `""`    | Absolute path to the avatar image, square crop ~96x96 recommended (`scripts/prepare-avatar.sh` resizes); empty uses the login avatar from AccountsService, falling back to the OS icon                                                                                                                                 |
 | `battery_full_at`         | int (percent) | auto    | Charge cap the header ring treats as full; auto-detected from sysfs (`charge_control_end_threshold`) when exposed, else 100; set explicitly to override. At the cap the battery UI shows "on AC"/"charge limit" only while the adapter holds it there — a battery discharging at the cap shows the drain and time left |
 
+## Panel privacy indicators
+
+Three capture states put a privacy glyph in the panel cluster, none of
+them config-gated — a privacy indicator you can switch off is not one:
+
+- **Recording dot** (steady red) — the shell's own `record` is running.
+- **Camera dot** (steady red) — an app is grabbing a real camera, a
+  video call most commonly; the tooltip names the apps. Portal
+  screencasts do not count: they grab a virtual source, not the
+  camera. Apps in [[screenshare|Config-ScreenShare]] `ignore_apps`
+  never light it. Chromium-family browsers (Brave, Chrome, Edge)
+  default to grabbing the camera device directly, bypassing PipeWire
+  entirely — those are caught too, by a slow `/proc` sweep for
+  processes holding a `/dev/video*` device open. The sweep is keyed to
+  call activity: the mic going live triggers an immediate check and
+  keeps the checks eager while the mic stays live, so a call's camera
+  lights within seconds; a camera grab outside a call takes up to
+  ~20s to show. The sweep never names more than the holding process
+  (`brave`), not the tab or site.
+- **Microphone blink** (blinking red) — an app is recording a
+  microphone, a muted mic included. The mic volume icon itself is the
+  indicator, so it shows only while a microphone device exists, and
+  hovering it names the recording apps, same as the camera dot.
+
+All three ride the PipeWire capture watcher that also feeds the
+screen-share mask, so they follow the audio/video graph as it changes
+rather than polling.
+
 The power mode pane also shows a memory-pressure warning (yellow, red
 when severe) whenever the kernel's PSI reports tasks stalled on memory
 for a sustained share of the last minute — the state behind "everything

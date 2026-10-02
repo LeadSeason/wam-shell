@@ -1292,7 +1292,7 @@ video_inputs() {
 }
 
 # The effective ignore list, one entry per line: the built-ins first
-# (kept in sync with ALWAYS_IGNORED in src/lib/screenShare.ts), then
+# (kept in sync with ALWAYS_IGNORED in src/lib/captureWatch.ts), then
 # the ignore_apps entries of the active config. Single-line arrays
 # only — a multi-line TOML array just shows as not-ignored here, the
 # shell itself still honours it.
