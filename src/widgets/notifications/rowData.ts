@@ -131,7 +131,7 @@ export function fromDesktop(n: AstalNotifd.Notification): RowData {
     }
 }
 
-export function fromItem(item: ProviderItem): RowData {
+export function fromItem(item: ProviderItem, critical = false): RowData {
     const summary = distinct(item.summary, item.appName)
     return {
         appName: item.appName,
@@ -140,7 +140,10 @@ export function fromItem(item: ProviderItem): RowData {
         iconName: item.iconName,
         imagePath: item.imagePath ?? null,
         time: item.time,
-        urgency: "normal",
+        // the item itself carries no urgency — the POPUP does (gcal's
+        // critical reminders, todoist's due tasks): the caller passes it
+        // through, or the banner silently loses its critical spine
+        urgency: critical ? "critical" : "normal",
         actions: (item.actions ?? []).map(a => ({ id: a.id, label: a.label })),
         // activate() is part of the provider contract — every item opens
         activation: "Open",

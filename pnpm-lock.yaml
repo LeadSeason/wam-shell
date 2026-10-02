@@ -7,6 +7,9 @@ settings:
 importers:
     .:
         dependencies:
+            adhan:
+                specifier: ^4.4.6
+                version: 4.4.6
             ags:
                 specifier: link:.sys/ags
                 version: link:.sys/ags
@@ -28,6 +31,12 @@ importers:
                 version: 3.9.6
 
 packages:
+    adhan@4.4.6:
+        resolution:
+            {
+                integrity: sha512-cpLLcr6qxx+mLc6jgSXJwAAHxDFrhXhVLuzRbZPrpQKIEpJw+0LcfG6u9WEjq66kcTX/2sCkI3VztgRoUXBnFg==,
+            }
+
     fuse.js@7.5.0:
         resolution:
             {
@@ -57,6 +66,8 @@ packages:
             }
 
 snapshots:
+    adhan@4.4.6: {}
+
     fuse.js@7.5.0: {}
 
     prettier@3.9.6: {}

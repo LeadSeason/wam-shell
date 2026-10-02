@@ -626,6 +626,76 @@
 # enabled = true
 # on_panel = false
 
+# [prayer_times] - local Muslim prayer times on the bar: a pill counting
+#                  down to the next prayer, with today's full timetable
+#                  in its popover (next prayer highlighted). computed
+#                  offline by the bundled adhan library — no network.
+#                  DISABLED by default: while disabled the module never
+#                  starts and never resolves a location. the times are
+#                  astronomical calculations, not your local mosque's
+#                  timetable — verify once against your local authority
+# enabled - compute prayer times at all; false also hides the pill even
+#           when "prayertimes" sits in a [[panel]] list. default false
+# latitude - coordinates the times are computed for. both 0 = detect
+# longitude   once via GeoClue2 (city-level accuracy, a one-shot read,
+#             not tracking; often blocked or disabled on desktops). set
+#             BOTH to override detection or to avoid location access
+#             entirely — easiest via: wam prayer-times setup
+#             defaults 0
+# method - calculation convention. "jafari" (default; Ithna Ashari:
+#          Fajr 16°, Isha 14°, Maghrib 4° past sunset), "tehran"
+#          (Institute of Geophysics, Tehran: Fajr 17.7°, Maghrib 4.5°),
+#          or a Sunni method: "mwl", "egypt", "karachi", "makkah",
+#          "qatar", "kuwait", "north_america", "singapore"
+# madhab - Asr shadow rule: "shafi" (default; shadow = object length) or
+#          "hanafi" (shadow = twice). ignored by jafari
+# high_latitude_rule - how Fajr/Isha are estimated where the sun never
+#          reaches their twilight angles (far north/south in summer):
+#          "middle_of_the_night" (default), "seventh_of_the_night",
+#          "twilight_angle"
+# visible_prayers - which prayers the popover lists (and the pill counts
+#          down to): 3 = Fajr, Dhuhr, Maghrib; 5 (default) = all five
+#          prayers (Sunrise is a marker, not a prayer — never shown)
+# pill_format - what the pill shows for the next prayer: "time"
+#          (default; "Fajr 05:27"), "countdown" ("Fajr in 6:16"), or
+#          "both". the popover browses any day's times via the ‹ › arrows
+# minimize_when_screen_sharing - while screen sharing, shrink the pill to
+#          the bare time ("05:27") — no prayer name, no countdown.
+#          default true
+# notify - audible banner at each prayer time (the visible set only):
+#          CRITICAL-flagged — high priority, stays until dismissed —
+#          and SUPPRESSED under DND; the chime still plays. a shell
+#          (re)start never re-notifies a prayer already in.
+#          default false
+# notify_sound - absolute path of the sound file for the chime; empty
+#          (default) = the freedesktop theme bell. played through the
+#          first of pw-play, paplay, canberra-gtk-play, ffplay
+# offset_fajr … offset_isha - per-prayer shift in whole minutes, applied
+#          after calculation (-120…120, default 0) — for conventions that
+#          run a fixed number of minutes off the calculated time, e.g.
+#          offset_fajr = 15. active offsets are listed in their own
+#          section at the bottom of the pill's popover
+# on_panel - show the pill on the panel (legacy layout; with [[panel]]
+#            lists, add "prayertimes" to a list instead). default false
+# [prayer_times]
+# enabled = false
+# latitude = 0
+# longitude = 0
+# method = "jafari"
+# madhab = "shafi"
+# high_latitude_rule = "middle_of_the_night"
+# visible_prayers = 5
+# pill_format = "time"
+# minimize_when_screen_sharing = true
+# notify = false
+# notify_sound = ""
+# offset_fajr = 0
+# offset_dhuhr = 0
+# offset_asr = 0
+# offset_maghrib = 0
+# offset_isha = 0
+# on_panel = false
+
 # [bluetooth] - bluetooth quick settings pane
 # notifications - send a notification when a device connects/disconnects
 #                 or reports low battery (<= 20%). default true

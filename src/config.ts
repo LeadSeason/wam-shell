@@ -308,6 +308,83 @@ function getNetstatsConfig() {
     }
 }
 
+function getPrayerTimesConfig() {
+    const r = createReader(configData, "prayer_times", { sectionOnly: true })
+    // the oneOf lists are mirrored in scripts/wam (cmd_prayer_times_set)
+    // — keep the two in sync
+
+    // which prayers the popover lists (and the pill counts down to):
+    // 3 = Fajr, Dhuhr, Maghrib; 5 = all five prayers. Hand-checked
+    // because oneOf is strings-only and num's range would allow 4
+    const vpRaw = r.raw("visible_prayers")
+    let visiblePrayers = 5
+    if (vpRaw !== undefined) {
+        if (vpRaw === 3 || vpRaw === 5) visiblePrayers = vpRaw
+        else
+            console.error(
+                `Config "prayer_times.visible_prayers" must be 3 or 5, got ${JSON.stringify(vpRaw)}`,
+            )
+    }
+
+    return {
+        // local prayer times (lib/prayerTimes); off = the module never
+        // starts, never resolves a location, and the pill stays hidden
+        enabled: r.bool("enabled", false),
+        // both 0 = auto-detect once via GeoClue2; set BOTH to override
+        // auto-detection (or to avoid location access entirely)
+        latitude: r.num("latitude", 0, { min: -90, max: 90 }),
+        longitude: r.num("longitude", 0, { min: -180, max: 180 }),
+        method: r.oneOf(
+            "method",
+            [
+                "jafari",
+                "tehran",
+                "mwl",
+                "egypt",
+                "karachi",
+                "makkah",
+                "qatar",
+                "kuwait",
+                "north_america",
+                "singapore",
+            ],
+            "jafari",
+        ),
+        // Asr shadow rule; ignored by jafari (always shafi)
+        madhab: r.oneOf("madhab", ["shafi", "hanafi"], "shafi"),
+        // how Fajr/Isha are estimated where the sun never reaches their
+        // twilight angles (far north/south in summer)
+        highLatitudeRule: r.oneOf(
+            "high_latitude_rule",
+            ["middle_of_the_night", "seventh_of_the_night", "twilight_angle"],
+            "middle_of_the_night",
+        ),
+        visiblePrayers,
+        // while screen sharing, shrink the pill to the bare time
+        // ("05:27") — no prayer name, no countdown
+        minimizeWhenScreenSharing: r.bool("minimize_when_screen_sharing", true),
+        // audible, transient banner at each prayer time (the visible set
+        // only): NORMAL urgency — auto-expires, respects DND — plus one
+        // chime. default false
+        notify: r.bool("notify", false),
+        // sound file for the chime; empty = the freedesktop theme bell
+        notifySound: r.str("notify_sound", ""),
+        // what the pill shows for the next prayer: its clock time, the
+        // countdown, or both ("Fajr 05:27 · in 6:16")
+        pillFormat: r.oneOf("pill_format", ["time", "countdown", "both"], "time"),
+        // per-prayer minute shifts, applied after calculation — e.g.
+        // offset_fajr = 15 when your convention runs 15 minutes late
+        offsetFajr: r.num("offset_fajr", 0, { min: -120, max: 120 }),
+        offsetDhuhr: r.num("offset_dhuhr", 0, { min: -120, max: 120 }),
+        offsetAsr: r.num("offset_asr", 0, { min: -120, max: 120 }),
+        offsetMaghrib: r.num("offset_maghrib", 0, { min: -120, max: 120 }),
+        offsetIsha: r.num("offset_isha", 0, { min: -120, max: 120 }),
+        // legacy non-[[panel]] bar layout only; panel lists name the
+        // widget directly ("prayertimes")
+        onPanel: r.bool("on_panel", false),
+    }
+}
+
 function getMediaConfig() {
     const r = createReader(configData, "media")
     return {
@@ -758,6 +835,7 @@ const PANEL_WIDGETS = [
     "harvest",
     "windowtitle",
     "netstats",
+    "prayertimes",
 ]
 
 function getPanelsConfig(): PanelConfig[] {
@@ -880,6 +958,7 @@ export default class Config {
     static notifications = getNotificationsConfig()
     static sleepTimer = getSleepTimerConfig()
     static netstats = getNetstatsConfig()
+    static prayerTimes = getPrayerTimesConfig()
     static harvest = getHarvestConfig()
     static calendar = getCalendarConfig()
     static github = getGitHubConfig()
