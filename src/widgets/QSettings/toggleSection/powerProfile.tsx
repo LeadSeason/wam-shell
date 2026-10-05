@@ -51,7 +51,10 @@ const PROFILE_INFO: Record<string, { name: string; desc: string }> = {
     },
 }
 
-export function profileInfo(id: string): { name: string; desc: string } {
+export function profileInfo(id: string | null): { name: string; desc: string } {
+    // null when power-profiles-daemon is installed but not running
+    // (masked in favour of TLP, say): the binary check above passes
+    if (!id) return { name: "Unavailable", desc: "" }
     return (
         PROFILE_INFO[id] ?? {
             name: id.charAt(0).toUpperCase() + id.slice(1).replaceAll("-", " "),
