@@ -824,7 +824,11 @@ function VramPressureWarning() {
 
 export function PowerProfilesWidget({ pane, name }: { pane: Accessor<string>; name: string }) {
     const powerProfiles = AstalPowerProfiles.get_default()
-    const profiles = powerProfiles.get_profiles()
+    // bound, not snapshotted: a one-shot get_profiles() here bakes in
+    // whatever the daemon answered when the shell started, so a shell
+    // that booted before power-profiles-daemon keeps an empty pane
+    // forever even once the daemon appears (#330)
+    const profiles = createBinding(powerProfiles, "profiles")
 
     // the details poll and the stats poll run only while this pane is
     // on screen
@@ -838,47 +842,67 @@ export function PowerProfilesWidget({ pane, name }: { pane: Accessor<string>; na
     return (
         <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
             <box orientation={Gtk.Orientation.VERTICAL} cssClasses={["paneCard"]} spacing={2}>
-                {profiles.map(profile => {
-                    const active = createBinding(powerProfiles, "activeProfile").as(
-                        a => a === profile.profile,
-                    )
-                    const info = profileInfo(profile.profile)
-                    return (
-                        <box
-                            cssName={"button"}
-                            cssClasses={active.as(a => ["paneRow", ...(a ? ["active"] : [])])}
-                            spacing={10}
-                        >
-                            <Gtk.GestureClick
-                                button={1}
-                                onPressed={() => {
-                                    execAsync(["powerprofilesctl", "set", profile.profile]).catch(
-                                        e => console.warn(e),
-                                    )
-                                }}
-                            />
-                            <image
-                                iconName={`power-profile-${profile.profile}-symbolic`}
-                                pixelSize={16}
-                                valign={Gtk.Align.CENTER}
-                            />
-                            <box orientation={Gtk.Orientation.VERTICAL} hexpand spacing={1}>
-                                <label cssClasses={["paneRowName"]} label={info.name} xalign={0} />
-                                <label
-                                    cssClasses={["paneRowDesc"]}
-                                    label={info.desc}
-                                    xalign={0}
-                                    visible={info.desc !== ""}
+                <box
+                    orientation={Gtk.Orientation.VERTICAL}
+                    spacing={2}
+                    visible={profiles.as(p => p.length === 0)}
+                >
+                    <label cssClasses={["paneRowName"]} label={"Unavailable"} xalign={0} />
+                    <label
+                        cssClasses={["paneRowDesc"]}
+                        label={"power-profiles-daemon is not running"}
+                        xalign={0}
+                    />
+                </box>
+                <For each={profiles} id={p => p.profile ?? ""}>
+                    {profile => {
+                        const active = createBinding(powerProfiles, "activeProfile").as(
+                            a => a === profile.profile,
+                        )
+                        const info = profileInfo(profile.profile)
+                        return (
+                            <box
+                                cssName={"button"}
+                                cssClasses={active.as(a => ["paneRow", ...(a ? ["active"] : [])])}
+                                spacing={10}
+                            >
+                                <Gtk.GestureClick
+                                    button={1}
+                                    onPressed={() => {
+                                        execAsync([
+                                            "powerprofilesctl",
+                                            "set",
+                                            profile.profile,
+                                        ]).catch(e => console.warn(e))
+                                    }}
+                                />
+                                <image
+                                    iconName={`power-profile-${profile.profile}-symbolic`}
+                                    pixelSize={16}
+                                    valign={Gtk.Align.CENTER}
+                                />
+                                <box orientation={Gtk.Orientation.VERTICAL} hexpand spacing={1}>
+                                    <label
+                                        cssClasses={["paneRowName"]}
+                                        label={info.name}
+                                        xalign={0}
+                                    />
+                                    <label
+                                        cssClasses={["paneRowDesc"]}
+                                        label={info.desc}
+                                        xalign={0}
+                                        visible={info.desc !== ""}
+                                    />
+                                </box>
+                                <image
+                                    iconName={"object-select-symbolic"}
+                                    valign={Gtk.Align.CENTER}
+                                    visible={active}
                                 />
                             </box>
-                            <image
-                                iconName={"object-select-symbolic"}
-                                valign={Gtk.Align.CENTER}
-                                visible={active}
-                            />
-                        </box>
-                    )
-                })}
+                        )
+                    }}
+                </For>
             </box>
             <MemPressureWarning />
             <VramPressureWarning />
