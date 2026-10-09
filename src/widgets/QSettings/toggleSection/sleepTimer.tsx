@@ -164,11 +164,11 @@ export function SleepTimerWidget({
                 at all — there is nothing to undim */}
                 <box spacing={8} visible={alarmEnabled.as(a => !a)}>
                     <image iconName={"display-brightness-symbolic"} />
-                    <label label={"Undim on play"} xalign={0} hexpand />
+                    <label label={"Auto-undim"} xalign={0} hexpand />
                     <button
                         cssClasses={["paneRow", "trailingBtn"]}
                         tooltipText={
-                            "Restore the brightness when media starts playing after the timer fired"
+                            "Let the shell restore the pre-dim brightness on its own: when media plays after the timer fired, and when a fired timer is cancelled or followed by a new one. Off, the screen is only ever changed by you"
                         }
                         onClicked={() => setRestoreOnPlay(!restoreOnPlay.peek())}
                     >

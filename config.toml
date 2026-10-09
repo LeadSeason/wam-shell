@@ -744,11 +744,14 @@
 # alarm_volume - the volume the sink is raised to while the alarm
 #                rings, as a percentage (100 = full). only raises,
 #                never lowers a louder sink. default 80
-# restore_on_play - when media starts playing after the timer fired,
-#                   also restore the pre-dim brightness (starting to
-#                   play always lifts the timer's mutes). like alarm,
-#                   only the default for the pill's checkbox. default
-#                   false
+# restore_on_play - let the shell restore the pre-dim brightness on
+#                   its own: when media starts playing after the timer
+#                   fired (starting to play always lifts the timer's
+#                   mutes), and when a fired timer's dim is cleared by
+#                   a cancel or by starting a new timer. off, the
+#                   screen is never brightened for you — the slider is
+#                   yours. like alarm, only the default for the pill's
+#                   checkbox. default false
 # alarm_only - an alarm is a reminder: when the chime rings, nothing is
 #              paused, muted or dimmed (an alarm should not silence the
 #              machine it is waking you with). with the alarm checkbox
