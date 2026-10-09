@@ -51,7 +51,7 @@ let upInFlight = false
 
 // dedupe before notifying: snapshots arrive rebuilt from scratch, so
 // identity alone would re-notify on every change
-let lastStatus: VpnStatus = status.get()
+let lastStatus: VpnStatus = status.peek()
 function applyStatus(next: VpnStatus) {
     if (
         next.state === lastStatus.state &&
@@ -93,12 +93,12 @@ function onSnapshot(snap: NmSnapshot) {
         snap.devices,
     )
     if (!resolved) {
-        if (currentUuid.get()) setCurrentUuid("")
+        if (currentUuid.peek()) setCurrentUuid("")
         if (!upInFlight && Date.now() >= failedUntil)
             applyStatus({ state: "disconnected", stateLabel: "Disconnected", server: "" })
         return
     }
-    if (currentUuid.get() !== resolved.uuid) setCurrentUuid(resolved.uuid)
+    if (currentUuid.peek() !== resolved.uuid) setCurrentUuid(resolved.uuid)
     if (resolved.state === "connected") lastUuid = resolved.uuid
     applyStatus({
         state: resolved.state,
@@ -121,7 +121,7 @@ function doUp(uuid: string): Promise<void> {
     applyStatus({
         state: "connecting",
         stateLabel: "Connecting",
-        server: profiles.get().find(p => p.uuid === uuid)?.name ?? "",
+        server: profiles.peek().find(p => p.uuid === uuid)?.name ?? "",
     })
     return execAsync(["nmcli", "connection", "up", uuid])
         .then(() => watch.refresh())
@@ -150,7 +150,7 @@ function doUp(uuid: string): Promise<void> {
 }
 
 function up(uuid: string) {
-    if (!uuid || busy.get()) return
+    if (!uuid || busy.peek()) return
     lastUuid = uuid
     setBusy(true)
     doUp(uuid).finally(() => setBusy(false))
@@ -160,10 +160,10 @@ function up(uuid: string) {
 // happily runs several VPNs at once, but the picker's semantics are
 // "change", so the current tunnel comes down first
 function changeTo(uuid: string) {
-    if (!uuid || busy.get()) return
+    if (!uuid || busy.peek()) return
     lastUuid = uuid
     setBusy(true)
-    const current = currentUuid.get()
+    const current = currentUuid.peek()
     const downPhase = current
         ? execAsync(["nmcli", "connection", "down", current]).catch(() => {})
         : Promise.resolve()
@@ -173,7 +173,7 @@ function changeTo(uuid: string) {
 // what connect() activates: the remembered profile when it still
 // exists (profiles come and go at runtime), else the first in the list
 function targetUuid(): string {
-    const list = profiles.get()
+    const list = profiles.peek()
     if (list.some(p => p.uuid === lastUuid)) return lastUuid
     return list[0]?.uuid ?? ""
 }
@@ -202,7 +202,7 @@ const backend: VpnBackend = {
     // no-op when a tunnel is already up: `connection up` on an active
     // profile is an ERROR in nmcli, which would read as "Failed"
     connect: () => {
-        if (!currentUuid.get()) up(targetUuid())
+        if (!currentUuid.peek()) up(targetUuid())
     },
     // never refused (no busy guard): this is also the only way to abort
     // an in-flight attempt, which the interface requires of it. nmcli
@@ -211,7 +211,7 @@ const backend: VpnBackend = {
     // the first beat of our own attempt (the device has not appeared
     // for the watch yet), so fall back to the attempt's target
     disconnect: () => {
-        const uuid = currentUuid.get() || lastUuid
+        const uuid = currentUuid.peek() || lastUuid
         if (!uuid) return
         abortedSeq = actionSeq
         setBusy(true)
@@ -222,7 +222,7 @@ const backend: VpnBackend = {
             .catch(() => watch.refresh())
             .finally(() => setBusy(false))
     },
-    reconnect: () => changeTo(currentUuid.get() || targetUuid()),
+    reconnect: () => changeTo(currentUuid.peek() || targetUuid()),
 
     locations: {
         // each VPN profile IS a location: the picker doubles as the
@@ -233,7 +233,7 @@ const backend: VpnBackend = {
                 id: p.uuid,
                 label: p.name,
                 select: () => {
-                    if (p.uuid !== currentUuid.get()) changeTo(p.uuid)
+                    if (p.uuid !== currentUuid.peek()) changeTo(p.uuid)
                 },
             })),
         ),

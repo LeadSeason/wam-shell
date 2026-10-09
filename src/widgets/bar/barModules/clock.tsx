@@ -44,45 +44,50 @@ function CalendarPopover() {
     const [viewY, setViewY] = createState(now0.getFullYear())
     const [viewM, setViewM] = createState(now0.getMonth()) // 0-based
     // the agenda starts here; clicking a day in the grid moves it
-    const [selectedDay, setSelectedDay] = createState(todayKey.get())
+    const [selectedDay, setSelectedDay] = createState(todayKey.peek())
 
-    const monthLabel = createComputed(
-        [viewY, viewM],
-        (y, m) => GLib.DateTime.new_local(y, m + 1, 1, 0, 0, 0).format("%B %Y") ?? "",
-    )
+    const monthLabel = createComputed(() => {
+        const y = viewY()
+        const m = viewM()
+        return GLib.DateTime.new_local(y, m + 1, 1, 0, 0, 0).format("%B %Y") ?? ""
+    })
 
-    const grid = createComputed(
-        [viewY, viewM, selectedDay, Gcal.visibleEvents, todayKey],
-        (y, m, sel, evts, today) => {
-            // day -> up to 3 distinct calendar colors with events that day
-            const dots = new Map<string, string[]>()
-            for (const e of evts) {
-                for (const d of e.days) {
-                    let arr = dots.get(d)
-                    if (!arr) dots.set(d, (arr = []))
-                    if (arr.length < 3 && !arr.includes(e.color)) arr.push(e.color)
-                }
+    const grid = createComputed(() => {
+        const y = viewY()
+        const m = viewM()
+        const sel = selectedDay()
+        const evts = Gcal.visibleEvents()
+        const today = todayKey()
+        const dots = new Map<string, string[]>()
+        for (const e of evts) {
+            for (const d of e.days) {
+                let arr = dots.get(d)
+                if (!arr) dots.set(d, (arr = []))
+                if (arr.length < 3 && !arr.includes(e.color)) arr.push(e.color)
             }
-            return Gcal.monthGrid(y, m).map(week =>
-                week.map((day): GridCell => ({
-                    ...day,
-                    today: day.key === today,
-                    selected: day.key === sel,
-                    dots: dots.get(day.key) ?? [],
-                })),
-            )
-        },
-    )
+        }
+        return Gcal.monthGrid(y, m).map(week =>
+            week.map((day): GridCell => ({
+                ...day,
+                today: day.key === today,
+                selected: day.key === sel,
+                dots: dots.get(day.key) ?? [],
+            })),
+        )
+    })
 
     // agenda pane: days with events from the selected day onward,
     // empty days skipped (Google's schedule layout)
-    const agenda = createComputed([Gcal.visibleEvents, selectedDay, todayKey], (evts, day, today) =>
-        Gcal.agendaGroups(evts, day, today),
-    )
+    const agenda = createComputed(() => {
+        const evts = Gcal.visibleEvents()
+        const day = selectedDay()
+        const today = todayKey()
+        return Gcal.agendaGroups(evts, day, today)
+    })
 
     const nav = (delta: number) => {
-        let m = viewM.get() + delta
-        let y = viewY.get()
+        let m = viewM.peek() + delta
+        let y = viewY.peek()
         if (m < 0) {
             m = 11
             y--
@@ -247,15 +252,15 @@ function CalendarPopover() {
                             onClicked={() => Gcal.authenticate()}
                         >
                             <label
-                                label={createComputed(
-                                    [Gcal.accountEmails, Gcal.authBusy],
-                                    (a, busy) =>
-                                        busy
-                                            ? "Waiting for sign-in…"
-                                            : a.length > 0
-                                              ? "+ Add Google account"
-                                              : "Sign in to Google Calendar",
-                                )}
+                                label={createComputed(() => {
+                                    const a = Gcal.accountEmails()
+                                    const busy = Gcal.authBusy()
+                                    return busy
+                                        ? "Waiting for sign-in…"
+                                        : a.length > 0
+                                          ? "+ Add Google account"
+                                          : "Sign in to Google Calendar"
+                                })}
                             />
                         </button>
                     </box>

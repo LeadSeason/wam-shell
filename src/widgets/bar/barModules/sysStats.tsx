@@ -111,11 +111,11 @@ function Graph({
                 // every session
                 self.set_content_width(slots * SAMPLE_WIDTH + HEAD_MARGIN)
                 self.set_draw_func((_da: Gtk.DrawingArea, cr: any, w: number, h: number) => {
-                    const samples = hist.get()
+                    const samples = hist.peek()
                     const n = samples.length
                     if (n === 0) return
                     const c = self.get_color()
-                    const beat = level?.get() === "critical" && pressurePulse.get()
+                    const beat = level?.peek() === "critical" && pressurePulse.peek()
 
                     // the newest sample owns the right edge and history
                     // runs backwards from it, so a half-full buffer
@@ -211,21 +211,20 @@ function Stat({
     // It inverts readout AND sparkline together, so what flashes is one
     // object rather than two things blinking near each other.
     //
-    // Imperative, NOT createComputed([level, pressurePulse], …). Both
-    // deps start falsy ("" and false) and gnim's array-form dep cache
-    // keys on falsy checks (AGENTS.md), which left this stuck on
+    // Imperative, not a computed. On gnim 1.8 a computed here went
+    // stale: its array-form dep cache keyed on falsy checks, and with
+    // both deps starting falsy ("" and false) this stayed on
     // ["statGroup"] forever when the level went critical LATE — the
-    // only way it ever goes critical on a real machine. It survived
-    // every demo because a threshold lowered before startup makes the
-    // stat critical at mount, while the deps are still being read for
-    // the first time.
+    // only way it ever goes critical on a real machine. gnim 1.9
+    // tracks by call and fixed that class of bug; the imperative form
+    // stays because the heartbeat read is explicit here anyway.
     const [group, setGroup] = createState<string[]>(["statGroup"])
     if (level) {
         // tracked as a boolean so a beat that changes nothing does not
         // hand GTK a fresh array to diff twice a second
         let lit = false
         const sync = () => {
-            const next = level.get() === "critical" && pressurePulse.get()
+            const next = level.peek() === "critical" && pressurePulse.peek()
             if (next === lit) return
             lit = next
             setGroup(next ? ["statGroup", "statAlarm"] : ["statGroup"])
@@ -266,33 +265,33 @@ export default function SysStats() {
     )
 
     const tip = () => {
-        const [rUsed, rTotal] = ramSize.get()
-        const [dUsed, dTotal] = diskSize.get()
+        const [rUsed, rTotal] = ramSize.peek()
+        const [dUsed, dTotal] = diskSize.peek()
         const lines = [
-            `CPU ${cpu.get()}%   load ${loadAvg.get().toFixed(2)}`,
-            `RAM ${ram.get()}%   ${rUsed}/${rTotal} GB`,
+            `CPU ${cpu.peek()}%   load ${loadAvg.peek().toFixed(2)}`,
+            `RAM ${ram.peek()}%   ${rUsed}/${rTotal} GB`,
         ]
         // swap activity, a line that exists only for the duration of
         // the churn: the fill percentage rides along since this is the
         // one moment it is interesting — at rest the pane's RAM tile
         // carries it. Gated on the noise floor, not > 0, so a single
         // stray page cannot flash a line into the tooltip for a tick
-        if (swapIn.get() + swapOut.get() > SWAP_NOISE_BPS) {
-            const [sw, swTotal] = swapSize.get()
+        if (swapIn.peek() + swapOut.peek() > SWAP_NOISE_BPS) {
+            const [sw, swTotal] = swapSize.peek()
             const fill = swTotal > 0 ? `${Math.round((sw / swTotal) * 100)}%   ` : ""
             lines.push(
-                `SWAP ${fill}in ${formatRate(swapIn.get())} · out ${formatRate(swapOut.get())}`,
+                `SWAP ${fill}in ${formatRate(swapIn.peek())} · out ${formatRate(swapOut.peek())}`,
             )
         }
-        lines.push(`DISK ${disk.get()}%   ${dUsed}/${dTotal} GB`)
-        const cards = gpus.get()
+        lines.push(`DISK ${disk.peek()}%   ${dUsed}/${dTotal} GB`)
+        const cards = gpus.peek()
         const ids = cards.map(g => g.id)
         for (const [i, g] of cards.entries())
             lines.push(
                 `${formatPanelGpu(gpuPanelTag(ids, i), g.busy, g.temp)}` +
                     `   ${g.vram[0]}/${g.vram[1]} MiB`,
             )
-        lines.push(`↓ ${formatRate(netDown.get())}   ↑ ${formatRate(netUp.get())}`)
+        lines.push(`↓ ${formatRate(netDown.peek())}   ↑ ${formatRate(netUp.peek())}`)
         // what the recolored sparkline is trying to say, spelled out —
         // a colour alone cannot say WHICH pool is nearly gone
         const alerts: string[] = []
@@ -301,19 +300,19 @@ export default function SysStats() {
         // can only speak to the second. The line says WHICH, since
         // "stalled 3% of the last minute" under a pegged machine reads
         // as the panel contradicting itself
-        if (cpuLevel.get() !== "") alerts.push(cpuAlertText(cpuLevel.get(), cpuPressure.get()))
-        if (ramLevel.get() !== "")
+        if (cpuLevel.peek() !== "") alerts.push(cpuAlertText(cpuLevel.peek(), cpuPressure.peek()))
+        if (ramLevel.peek() !== "")
             alerts.push(
-                ramLevel.get() === "critical" ? "Severe memory pressure" : "High memory pressure",
+                ramLevel.peek() === "critical" ? "Severe memory pressure" : "High memory pressure",
             )
-        if (diskLevel.get() !== "")
+        if (diskLevel.peek() !== "")
             alerts.push(
-                diskLevel.get() === "critical" ? "Storage nearly full" : "Storage running low",
+                diskLevel.peek() === "critical" ? "Storage nearly full" : "Storage running low",
             )
         // one alert per saturated card, NAMED once there is a second
         // card to confuse it with — the panel used to flash a single
         // block and then quote the other card's healthy figures at you
-        for (const pg of gpuPressures.get())
+        for (const pg of gpuPressures.peek())
             alerts.push(
                 `${pg.level === "critical" ? "Severe" : "High"} GPU memory pressure` +
                     (ids.length > 1 ? ` — ${pg.name}` : ""),
@@ -380,10 +379,11 @@ export default function SysStats() {
                 cssClasses={["statNet"]}
                 widthChars={NET_RATE_CHARS}
                 xalign={1}
-                label={createComputed(
-                    [netDown, netUp],
-                    (d, u) => `↓${formatRate(d)} ↑${formatRate(u)}`,
-                )}
+                label={createComputed(() => {
+                    const d = netDown()
+                    const u = netUp()
+                    return `↓${formatRate(d)} ↑${formatRate(u)}`
+                })}
             />
         </box>
     )

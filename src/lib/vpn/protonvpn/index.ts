@@ -79,7 +79,7 @@ function downAllProton() {
 }
 
 // dedupe before notifying: snapshots arrive rebuilt from scratch
-let lastStatus: VpnStatus = status.get()
+let lastStatus: VpnStatus = status.peek()
 function applyStatus(next: VpnStatus) {
     if (
         next.state === lastStatus.state &&
@@ -183,14 +183,14 @@ function runProton(args: string[], seq: number): Promise<void> {
 }
 
 function connect(args: string[] = []) {
-    if (busy.get()) return
+    if (busy.peek()) return
     // "blocked" (the Failed hold) IS connectable — refusing it would
     // swallow a retry for the whole 10s hold. Anything else (a live
     // tunnel, an in-flight attempt) is not: the location picker's
     // selects land here too, and this is the gate that stops a country
     // pick against a live tunnel from flashing Failed and locking the
     // switch for 10s
-    const s = status.get().state
+    const s = status.peek().state
     if (s !== "disconnected" && s !== "blocked") return
     const seq = ++actionSeq
     setBusy(true)
@@ -220,7 +220,7 @@ const backend: VpnBackend = {
     connect: () => {
         // "blocked" (the Failed hold) is down in every way that
         // matters; refusing it would swallow a retry click
-        const s = status.get().state
+        const s = status.peek().state
         if (s !== "disconnected" && s !== "blocked") return
         connect(lastCountry ? ["--country", lastCountry] : [])
     },
@@ -236,7 +236,7 @@ const backend: VpnBackend = {
     disconnect: () => {
         // no early return while a connect is in flight, whatever the
         // displayed state: killing it IS the disconnect then
-        if (status.get().state === "disconnected" && !connectProc) return
+        if (status.peek().state === "disconnected" && !connectProc) return
         abortedSeq = actionSeq
         const killed = connectProc !== null
         if (connectProc) {
@@ -266,9 +266,9 @@ const backend: VpnBackend = {
         if (killed) armAbortSweep()
     },
     reconnect: () => {
-        if (busy.get()) return
+        if (busy.peek()) return
         const args = lastCountry ? ["--country", lastCountry] : []
-        if (status.get().state === "disconnected") {
+        if (status.peek().state === "disconnected") {
             connect(args)
             return
         }
@@ -321,16 +321,16 @@ const backend: VpnBackend = {
         // fetched lazily on pane open; idempotent, and a failure (not
         // signed in) just leaves the list empty
         ensure: () => {
-            if (!hasProton || countries.get().length > 0) return
+            if (!hasProton || countries.peek().length > 0) return
             execAsync(["protonvpn", "countries", "list"])
                 .then(out => setCountries(parseCountries(out)))
                 .catch(() => {})
         },
         // a guess from the connected server's name, trusted only when
         // it names a country the CLI actually listed
-        current: createComputed([status, countries], (s, list) => {
-            const guess = serverCountryGuess(s.server)
-            return list.some(c => c.code === guess) ? guess : ""
+        current: createComputed(() => {
+            const guess = serverCountryGuess(status().server)
+            return countries().some(c => c.code === guess) ? guess : ""
         }),
     },
     features: new Accessor(() =>
@@ -340,7 +340,7 @@ const backend: VpnBackend = {
             tooltip: def.tooltip,
             value: configValues.as(v => featureOn(v[def.key])),
             set: (on: boolean) => {
-                if (busy.get()) return
+                if (busy.peek()) return
                 setBusy(true)
                 execAsync(["protonvpn", "config", "set", def.key, on ? def.onValue : "off"])
                     .then(() => refreshPane())

@@ -21,7 +21,7 @@ export function backendById(id: string): VpnBackend | undefined {
 /** where a bare `qsPane vpn` lands, so keybinds written against the old
  *  single-pane name keep working. "" when nothing is detected */
 export function firstActiveId(): string {
-    return backends.find(b => b.active.get())?.id ?? ""
+    return backends.find(b => b.active.peek())?.id ?? ""
 }
 
 /** the quick settings pane name for a backend id. An empty id (nothing

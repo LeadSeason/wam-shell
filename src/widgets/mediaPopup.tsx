@@ -168,8 +168,8 @@ function PopupContent({ player }: { player: AstalMpris.Player }) {
             <box spacing={6}>
                 <label
                     cssClasses={["time"]}
-                    label={createComputed([position.accessor, position.known], (p, k) =>
-                        k ? formatTime(p) : "--:--",
+                    label={createComputed(() =>
+                        position.known() ? formatTime(position.accessor()) : "--:--",
                     )}
                 />
                 <Gtk.Scale
@@ -260,7 +260,7 @@ function show() {
     setPopupVisible(true)
     // drop directly below the pill when its position is known — but
     // only if the monitor it was captured on is still plugged in
-    const anchor = popupAnchor.get()
+    const anchor = popupAnchor.peek()
     if (anchor && monitorAlive(anchor.monitor)) win!.gdkmonitor = anchor.monitor
     win!.present()
     rev!.revealChild = true
@@ -277,7 +277,7 @@ function hide() {
         setPopupVisible(false)
         // only clear a pin this popup made; pins from the quick
         // settings card or the panel pill stay
-        if (popupPin && activePlayer.get() === popupPin) overrideActivePlayer(null)
+        if (popupPin && activePlayer.peek() === popupPin) overrideActivePlayer(null)
         popupPin = null
         return GLib.SOURCE_REMOVE
     })
@@ -348,9 +348,7 @@ function ensureWindow() {
                         transitionType={Gtk.RevealerTransitionType.SLIDE_DOWN}
                     >
                         <With
-                            value={createComputed([activePlayer, popupVisible], (p, vis) =>
-                                vis ? p : null,
-                            )}
+                            value={createComputed(() => (popupVisible() ? activePlayer() : null))}
                         >
                             {player =>
                                 player ? (

@@ -31,7 +31,7 @@ connect(nmClient, "connection-added", refreshSaved)
 connect(nmClient, "connection-removed", refreshSaved)
 refreshSaved()
 
-export const known = (ap: AstalNetwork.AccessPoint) => savedNetworks.get().has(ap.ssid)
+export const known = (ap: AstalNetwork.AccessPoint) => savedNetworks.peek().has(ap.ssid)
 // nmcli needs the profile name, which may differ from the SSID
 export const profileId = (ap: AstalNetwork.AccessPoint) =>
-    savedNetworks.get().get(ap.ssid) ?? ap.ssid
+    savedNetworks.peek().get(ap.ssid) ?? ap.ssid

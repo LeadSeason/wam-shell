@@ -20,15 +20,17 @@ export function WifiButton({ navigate }: { navigate: () => void }) {
 }
 
 function WifiToggleButton({ wifi, navigate }: { wifi: AstalNetwork.Wifi; navigate: () => void }) {
-    const subtitle = createComputed(
-        [createBinding(wifi, "enabled"), createBinding(wifi, "ssid")],
-        (enabled, ssid) => (enabled ? ssid || "On" : "Off"),
-    )
+    const subtitle = createComputed(() => {
+        const enabled = createBinding(wifi, "enabled")()
+        const ssid = createBinding(wifi, "ssid")()
+        return enabled ? ssid || "On" : "Off"
+    })
     // band badge on the tile icon, only while associated
-    const badge = createComputed(
-        [createBinding(wifi, "enabled"), createBinding(wifi, "activeAccessPoint")],
-        (enabled, ap) => (enabled && ap ? bandBadgeOf(ap.frequency) : ""),
-    )
+    const badge = createComputed(() => {
+        const enabled = createBinding(wifi, "enabled")()
+        const ap = createBinding(wifi, "activeAccessPoint")()
+        return enabled && ap ? bandBadgeOf(ap.frequency) : ""
+    })
 
     return (
         <DropdownButton

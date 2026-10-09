@@ -24,7 +24,7 @@ import { deltaPoll, scheduleNext, invalidatePolls } from "./sync"
 let mutInFlight = false
 
 function mutate(work: (done: (resync?: boolean) => void) => void) {
-    if (mutInFlight || authDisabled.get()) return
+    if (mutInFlight || authDisabled.peek()) return
     mutInFlight = true
     setBusy(true)
     invalidatePolls()
@@ -39,7 +39,7 @@ function mutate(work: (done: (resync?: boolean) => void) => void) {
 }
 
 export function stopRunning() {
-    const cur = running.get()
+    const cur = running.peek()
     if (!cur) return
     mutate(done => {
         request("PATCH", `/time_entries/${cur.id}/stop`, null, r => {
@@ -62,7 +62,7 @@ export function stopRunning() {
 // stop with intent to resume: same API call, but the entry is kept as the
 // prominent resume target
 export function pauseTimer() {
-    const cur = running.get()
+    const cur = running.peek()
     if (!cur) return
     mutate(done => {
         request("PATCH", `/time_entries/${cur.id}/stop`, null, r => {
@@ -166,14 +166,14 @@ export function resumeEntry(entry: Entry) {
 }
 
 export function resumeLast() {
-    const target = paused.get() ?? recentStopped.get()[0] ?? recents.get()[0] ?? null
+    const target = paused.peek() ?? recentStopped.peek()[0] ?? recents.peek()[0] ?? null
     if (target) resumeEntry(target)
 }
 
 // false when the update could not even be attempted (busy/disabled), so
 // the notes field keeps its dirty state instead of silently dropping text
 export function setNotes(text: string, onDone?: (ok: boolean) => void): boolean {
-    const cur = running.get()
+    const cur = running.peek()
     if (!cur) return false
     return setEntryNotes(cur, text, onDone)
 }
@@ -216,7 +216,7 @@ export function updateEntry(
         onDone?.(true)
         return true
     }
-    if (mutInFlight || authDisabled.get()) return false
+    if (mutInFlight || authDisabled.peek()) return false
     mutate(done => {
         request("PATCH", `/time_entries/${entry.id}`, body, r => {
             try {
@@ -232,7 +232,7 @@ export function updateEntry(
                     } else {
                         if (e.spentDate === localDay()) todayMap.set(e.id, e)
                         refreshStoppedFromMap()
-                        if (paused.get()?.id === e.id) setPaused(e)
+                        if (paused.peek()?.id === e.id) setPaused(e)
                     }
                 } else console.warn(`Harvest: entry update failed (status ${r.status})`)
                 onDone?.(r.ok)
@@ -251,7 +251,7 @@ export function updateEntry(
 export function setHours(entry: Entry, hours: number, onDone?: (ok: boolean) => void): boolean {
     // the server stores hundredths of an hour
     hours = Math.round(hours * 100) / 100
-    if (hours <= 0 || entry.isRunning || mutInFlight || authDisabled.get()) return false
+    if (hours <= 0 || entry.isRunning || mutInFlight || authDisabled.peek()) return false
     mutate(done => {
         const body: Record<string, any> = {}
         if (accountMode.wantsTimestampTimers) {
@@ -277,7 +277,7 @@ export function setHours(entry: Entry, hours: number, onDone?: (ok: boolean) => 
                     const e = mapEntry(r.json)
                     if (e.spentDate === localDay()) todayMap.set(e.id, e)
                     refreshStoppedFromMap()
-                    if (paused.get()?.id === e.id) setPaused(e)
+                    if (paused.peek()?.id === e.id) setPaused(e)
                 } else console.warn(`Harvest: hours update failed (status ${r.status})`)
                 onDone?.(r.ok)
             } finally {
@@ -292,7 +292,7 @@ export function setHours(entry: Entry, hours: number, onDone?: (ok: boolean) => 
 // calling this. Same return contract as setEntryNotes: false = not
 // attempted (busy/disabled)
 export function deleteEntry(entry: Entry): boolean {
-    if (mutInFlight || authDisabled.get()) return false
+    if (mutInFlight || authDisabled.peek()) return false
     mutate(done => {
         request("DELETE", `/time_entries/${entry.id}`, null, r => {
             try {
@@ -301,8 +301,8 @@ export function deleteEntry(entry: Entry): boolean {
                     // reseed (the delta poll can't observe deletions)
                     todayMap.delete(entry.id)
                     refreshStoppedFromMap()
-                    if (paused.get()?.id === entry.id) setPaused(null)
-                    if (running.get()?.id === entry.id) adoptRunning(null)
+                    if (paused.peek()?.id === entry.id) setPaused(null)
+                    if (running.peek()?.id === entry.id) adoptRunning(null)
                 } else console.warn(`Harvest: delete failed (status ${r.status})`)
             } finally {
                 done()

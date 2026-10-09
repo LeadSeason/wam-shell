@@ -7,21 +7,22 @@ import { todayRx, todayTx, monthRx, monthTx, formatBytes } from "../../../lib/ne
 export default function NetStats() {
     const tip = () =>
         [
-            `Today   ↓ ${formatBytes(todayRx.get())}   ↑ ${formatBytes(todayTx.get())}`,
-            `Month   ↓ ${formatBytes(monthRx.get())}   ↑ ${formatBytes(monthTx.get())}`,
+            `Today   ↓ ${formatBytes(todayRx.peek())}   ↑ ${formatBytes(todayTx.peek())}`,
+            `Month   ↓ ${formatBytes(monthRx.peek())}   ↑ ${formatBytes(monthTx.peek())}`,
         ].join("\n")
 
     return (
         <box
             cssClasses={["netStats"]}
-            tooltipText={createComputed([todayRx, todayTx, monthRx, monthTx], tip)}
+            tooltipText={createComputed(() => tip(todayRx(), todayTx(), monthRx(), monthTx()))}
         >
             <label
                 cssClasses={["statNet"]}
-                label={createComputed(
-                    [todayRx, todayTx],
-                    (d, u) => `↓${formatBytes(d)} ↑${formatBytes(u)}`,
-                )}
+                label={createComputed(() => {
+                    const d = todayRx()
+                    const u = todayTx()
+                    return `↓${formatBytes(d)} ↑${formatBytes(u)}`
+                })}
             />
         </box>
     )

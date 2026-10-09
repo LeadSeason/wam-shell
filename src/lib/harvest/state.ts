@@ -68,11 +68,11 @@ function sameEntry(a: Entry | null, b: Entry | null): boolean {
 }
 
 export function adoptRunning(entry: Entry | null) {
-    const prev = running.get()
+    const prev = running.peek()
     if (sameEntry(prev, entry)) return
     // read the pause before adopting clears it: it is what tells a
     // pause apart from a stop
-    const pausedEntry = paused.get()
+    const pausedEntry = paused.peek()
     setRunning(entry)
     if (entry) {
         // a timer running means nothing is paused anymore
@@ -103,7 +103,7 @@ export function refreshStoppedFromMap() {
     // it rebuilds every row (~every poll tick) — steal focus and churn
     // hover/scroll for zero data change. Emit only on real change.
     const timeline = dayTimeline([...todayMap.values()])
-    const prev = todayEntries.get()
+    const prev = todayEntries.peek()
     if (
         prev.length !== timeline.length ||
         prev.some((e, i) => e.id !== timeline[i].id || e.updatedAt !== timeline[i].updatedAt)
@@ -112,7 +112,7 @@ export function refreshStoppedFromMap() {
 }
 
 function refreshDayTotal() {
-    const cur = running.get()
+    const cur = running.peek()
     setDayTotal(stoppedTodaySec + (cur ? todaySeconds(cur) : 0))
 }
 
@@ -131,7 +131,7 @@ function armTicker() {
     if (tickerSource) return
     const fire = () => {
         tickerSource = 0
-        const cur = running.get()
+        const cur = running.peek()
         if (!cur) return GLib.SOURCE_REMOVE
         const secs = liveSeconds(cur)
         setElapsed(secs)
@@ -144,7 +144,7 @@ function armTicker() {
         )
         return GLib.SOURCE_REMOVE
     }
-    const cur = running.get()
+    const cur = running.peek()
     if (cur) {
         tickerSource = timeoutAdd(
             "harvest:ticker",

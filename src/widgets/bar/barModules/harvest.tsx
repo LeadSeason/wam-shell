@@ -140,58 +140,68 @@ export default function HarvestTimer({
 
     const masked = sharing.as(s => s && Config.harvest.hideWhenScreenSharing)
 
-    const visible = createComputed(
-        [Harvest.running, Harvest.paused, workHours, workDays],
-        // a running or paused timer always shows, on any day; the idle
-        // widget exists only inside the days × hours window — or, with
-        // collapse_off_days, as a bare icon on off-days
-        (r, p, wh, wd) =>
-            r !== null || p !== null || (wh && (wd || Config.harvest.collapseOffDays)),
-    )
+    const visible = createComputed(() => {
+        const r = Harvest.running()
+        const p = Harvest.paused()
+        const wh = workHours()
+        const wd = workDays()
+        return r !== null || p !== null || (wh && (wd || Config.harvest.collapseOffDays))
+    })
     // idle + off work_days: the pill keeps only its icon (left click
     // still opens the popup)
-    const collapsed = createComputed(
-        [Harvest.running, Harvest.paused, workDays],
-        (r, p, wd) => Config.harvest.collapseOffDays && r === null && p === null && !wd,
-    )
+    const collapsed = createComputed(() => {
+        const r = Harvest.running()
+        const p = Harvest.paused()
+        const wd = workDays()
+        return Config.harvest.collapseOffDays && r === null && p === null && !wd
+    })
 
-    const label = createComputed(
-        [Harvest.running, Harvest.paused, Harvest.elapsed, Harvest.dayTotal],
-        (r, p, el, total) =>
-            r
-                ? Harvest.formatElapsed(el)
-                : p
-                  ? Harvest.formatElapsed(p.hours * 3600)
-                  : Harvest.formatElapsed(total),
-    )
+    const label = createComputed(() => {
+        const r = Harvest.running()
+        const p = Harvest.paused()
+        const el = Harvest.elapsed()
+        const total = Harvest.dayTotal()
+        return r
+            ? Harvest.formatElapsed(el)
+            : p
+              ? Harvest.formatElapsed(p.hours * 3600)
+              : Harvest.formatElapsed(total)
+    })
 
-    const resumeTarget = createComputed(
-        [Harvest.paused, Harvest.recentStopped, Harvest.recents],
-        (p, stopped, rec) => p ?? stopped[0] ?? rec[0] ?? null,
-    )
+    const resumeTarget = createComputed(() => {
+        const p = Harvest.paused()
+        const stopped = Harvest.recentStopped()
+        const rec = Harvest.recents()
+        return p ?? stopped[0] ?? rec[0] ?? null
+    })
 
-    const tooltip = createComputed(
-        [Harvest.running, Harvest.paused, resumeTarget, masked],
-        (r, p, t, m) => {
-            if (m) return r || p ? "Harvest timer (details hidden while sharing)" : "Harvest"
-            if (r) return `${r.clientName} — ${r.projectName} · ${r.taskName} · right-click to stop`
-            if (p)
-                return `Paused: ${p.clientName} — ${p.projectName} · ${p.taskName} · right-click to resume`
-            if (t)
-                return `Right-click to resume: ${t.clientName} — ${t.projectName} · ${t.taskName}`
-            return "Harvest"
-        },
-    )
+    const tooltip = createComputed(() => {
+        const r = Harvest.running()
+        const p = Harvest.paused()
+        const t = resumeTarget()
+        const m = masked()
+        if (m) return r || p ? "Harvest timer (details hidden while sharing)" : "Harvest"
+        if (r) return `${r.clientName} — ${r.projectName} · ${r.taskName} · right-click to stop`
+        if (p)
+            return `Paused: ${p.clientName} — ${p.projectName} · ${p.taskName} · right-click to resume`
+        if (t) return `Right-click to resume: ${t.clientName} — ${t.projectName} · ${t.taskName}`
+        return "Harvest"
+    })
 
-    const cssClasses = createComputed([Harvest.running, Harvest.paused, masked], (r, p, m) => [
-        "harvest",
-        ...(m ? ["sharing"] : []),
-        // running was only ever implied by the absence of the other two,
-        // so it could not be styled at all
-        ...(r && !m ? ["running"] : []),
-        ...(p && !r ? ["paused"] : []),
-        ...(r || p ? [] : ["idle"]),
-    ])
+    const cssClasses = createComputed(() => {
+        const r = Harvest.running()
+        const p = Harvest.paused()
+        const m = masked()
+        return [
+            "harvest",
+            ...(m ? ["sharing"] : []),
+            // running was only ever implied by the absence of the other two,
+            // so it could not be styled at all
+            ...(r && !m ? ["running"] : []),
+            ...(p && !r ? ["paused"] : []),
+            ...(r || p ? [] : ["idle"]),
+        ]
+    })
 
     let clickArea: Gtk.Box
 
@@ -217,7 +227,7 @@ export default function HarvestTimer({
                 <Gtk.GestureClick
                     button={3}
                     onPressed={() =>
-                        Harvest.running.get() ? Harvest.stopRunning() : Harvest.resumeLast()
+                        Harvest.running.peek() ? Harvest.stopRunning() : Harvest.resumeLast()
                     }
                 />
                 <box spacing={4}>
@@ -227,7 +237,11 @@ export default function HarvestTimer({
                     <label
                         widthChars={5}
                         label={label}
-                        visible={createComputed([masked, collapsed], (m, c) => !m && !c)}
+                        visible={createComputed(() => {
+                            const m = masked()
+                            const c = collapsed()
+                            return !m && !c
+                        })}
                     />
                 </box>
             </box>
@@ -236,14 +250,16 @@ export default function HarvestTimer({
             the same reason as the elapsed */}
             <button
                 cssClasses={["pp"]}
-                visible={createComputed(
-                    [Harvest.running, Harvest.paused, masked],
-                    (r, p, m) => (r !== null || p !== null) && !m,
-                )}
+                visible={createComputed(() => {
+                    const r = Harvest.running()
+                    const p = Harvest.paused()
+                    const m = masked()
+                    return (r !== null || p !== null) && !m
+                })}
                 tooltipText={Harvest.running.as(r => (r ? "Pause" : "Resume"))}
                 sensitive={Harvest.busy.as(b => !b)}
                 onClicked={() =>
-                    Harvest.running.get() ? Harvest.pauseTimer() : Harvest.resumeLast()
+                    Harvest.running.peek() ? Harvest.pauseTimer() : Harvest.resumeLast()
                 }
             >
                 <image

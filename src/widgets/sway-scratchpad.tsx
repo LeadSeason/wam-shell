@@ -35,7 +35,7 @@ export default function Scratchpad() {
 
     // the Fuse index rebuilds only when the scratchpad contents change
     // (tree subscription), not on every search keystroke
-    const fuse = new Fuse(apps.get(), {
+    const fuse = new Fuse(apps.peek(), {
         keys: [
             "name",
             "app_id",
@@ -60,7 +60,7 @@ export default function Scratchpad() {
 
     function search(text: string) {
         if (text.length < 1) {
-            setList(apps.get())
+            setList(apps.peek())
             return
         }
 
@@ -227,7 +227,7 @@ Shows / hides the scratchpad tool on request.
             keymode={Astal.Keymode.ON_DEMAND}
             onNotifyVisible={({ visible }) => {
                 if (visible) {
-                    setList(apps.get())
+                    setList(apps.peek())
                     searchEntry.grab_focus()
                     setReveler(true)
                 } else {
@@ -257,7 +257,7 @@ Shows / hides the scratchpad tool on request.
                         cssClasses={["textInput"]}
                         onNotifyText={({ text }) => search(text)}
                         onActivate={() => {
-                            const first = list.get()[0]
+                            const first = list.peek()[0]
                             if (first) openApp(first)
                         }}
                         placeholderText="Start typing to search"

@@ -219,7 +219,7 @@ function failPower(text: string) {
  * stops an impatient second click from undoing the first.
  */
 export function setPoweredAsync(target: boolean): void {
-    if (powerPending.get() !== null) return
+    if (powerPending.peek() !== null) return
     if (!bluetooth.adapter) return
     resolveAdapterPath()
     setPowerError("")
@@ -393,7 +393,7 @@ export function setDiscoverableAsync(target: boolean): void {
 
 /** flip discoverability, from the state the UI is actually showing */
 export function toggleDiscoverable(): void {
-    setDiscoverableAsync(!discoverable.get())
+    setDiscoverableAsync(!discoverable.peek())
 }
 
 // ------------------------------------------------------------ discovery

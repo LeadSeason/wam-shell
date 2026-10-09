@@ -32,7 +32,7 @@ const [status, setStatus] = createState<VpnStatus>({
 // both the stream and refreshStatus funnel through here; the service
 // republishes the whole line set per change (the stream prints
 // "VPN is disconnected." twice across a disconnect), so dedupe
-let last: VpnStatus = status.get()
+let last: VpnStatus = status.peek()
 function applyStatus(next: VpnStatus) {
     if (
         next.state === last.state &&

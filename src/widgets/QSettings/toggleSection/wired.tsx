@@ -171,7 +171,7 @@ function WiredPane({
     // subscriptions or they stack on the long-lived pane accessor
     const disposers = [
         pane.subscribe(() => {
-            if (pane.get() === name) refresh()
+            if (pane.peek() === name) refresh()
         }),
         createBinding(wired, "state").subscribe(refresh),
     ]

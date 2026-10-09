@@ -184,11 +184,10 @@ export function ApRow({
     let secretsRequested = false
 
     // every bound value above is its own state, refreshed imperatively on
-    // each input change — a createComputed over them goes stale on
-    // initially-falsy deps (see AGENTS.md)
+    // each input change
     function refreshSecretRows() {
-        const known = isKnown.get()
-        const s = secrets.get()
+        const known = isKnown.peek()
+        const s = secrets.peek()
         // 802.1X has no single-password form: neither row exists for it
         const ent = !!s && (s.keyMgmt === "wpa-eap" || s.keyMgmt === "802-1x")
         setPasswordRowVisible(known && secured(ap) && !ent)
@@ -204,11 +203,11 @@ export function ApRow({
         setQrPayload(payload)
     }
     function refreshPasswordLabel() {
-        const s = secrets.get()
+        const s = secrets.peek()
         setPasswordLabel(
-            secretsFailed.get()
+            secretsFailed.peek()
                 ? "Not available"
-                : showSecret.get() && s?.psk
+                : showSecret.peek() && s?.psk
                   ? s.psk
                   : s?.psk
                     ? "••••••••"
@@ -232,7 +231,7 @@ export function ApRow({
             })
     }
     const unwatchKnown = isKnown.subscribe(() => {
-        if (!isKnown.get()) setShowSecret(false)
+        if (!isKnown.peek()) setShowSecret(false)
         refreshSecretRows()
         refreshPasswordLabel()
     })
@@ -253,16 +252,13 @@ export function ApRow({
         })
     }
 
-    const status = createComputed(
-        [active, pending, error, isKnown],
-        (active, pending, error, known) => {
-            if (error) return error
-            if (pending) return "Connecting…"
-            if (active) return "Connected"
-            if (known) return `Known · ${ap.strength}%`
-            return `${ap.strength}%`
-        },
-    )
+    const status = createComputed(() => {
+        if (error()) return error()
+        if (pending()) return "Connecting…"
+        if (active()) return "Connected"
+        if (isKnown()) return `Known · ${ap.strength}%`
+        return `${ap.strength}%`
+    })
     const statusClass = error.as(e => (e ? ["status", "error"] : ["status"]))
 
     function connect(password?: string) {
@@ -274,7 +270,7 @@ export function ApRow({
         let args: string[]
         if (password) {
             args = ["nmcli", "device", "wifi", "connect", ap.ssid, "password", password]
-        } else if (isKnown.get()) {
+        } else if (isKnown.peek()) {
             args = ["nmcli", "connection", "up", "id", profileId(ap)]
         } else {
             args = ["nmcli", "device", "wifi", "connect", ap.ssid]
@@ -283,7 +279,7 @@ export function ApRow({
             if (previous && previous !== ap.ssid) {
                 // profile names differ from SSIDs (NM appends a
                 // counter, e.g. "MyWiFi 1") — nmcli needs the profile name
-                const prevId = savedNetworks.get().get(previous) ?? previous
+                const prevId = savedNetworks.peek().get(previous) ?? previous
                 execAsync(["nmcli", "connection", "up", "id", prevId]).catch(e =>
                     console.warn("wifi restore failed:", e),
                 )
@@ -312,7 +308,7 @@ export function ApRow({
         // bluez-grade hang guard: NM may never answer on some failures
         delay(45_000, () => {
             if (attempt !== connectAttempt) return
-            if (connectingBssid.get() === ap.bssid) {
+            if (connectingBssid.peek() === ap.bssid) {
                 restore()
                 fail("Connection failed", "timed out")
             }
@@ -320,11 +316,11 @@ export function ApRow({
     }
 
     function onClick() {
-        if (busy.get()) return
+        if (busy.peek()) return
         setError("")
-        if (active.get()) return disconnect()
+        if (active.peek()) return disconnect()
         if (!secured(ap)) return connect()
-        if (!isKnown.get()) return setPrompt({ ssid: ap.ssid, ap, onConnect: connect })
+        if (!isKnown.peek()) return setPrompt({ ssid: ap.ssid, ap, onConnect: connect })
         // known + secured: a saved connection without a stored PSK
         // makes "connection up" fail after a dead agent round-trip
         // (and pops the nm-applet modal for an already-aborted
@@ -349,7 +345,7 @@ export function ApRow({
     }
 
     function toggleAutoconnect() {
-        const next = autoconnect.get() !== true
+        const next = autoconnect.peek() !== true
         setAutoconnect(next)
         execAsync([
             "nmcli",
@@ -365,7 +361,7 @@ export function ApRow({
     }
 
     function loadAutoconnect() {
-        if (autoconnect.get() !== null) return
+        if (autoconnect.peek() !== null) return
         execAsync([
             "nmcli",
             "-t",
@@ -438,9 +434,9 @@ export function ApRow({
                             )}
                             tooltipText={"Network details"}
                             onClicked={() => {
-                                const opening = !detailsOpen.get()
+                                const opening = !detailsOpen.peek()
                                 setDetailsOpen(opening)
-                                if (opening && isKnown.get()) {
+                                if (opening && isKnown.peek()) {
                                     loadAutoconnect()
                                     loadSecretsIfNeeded()
                                 }
@@ -497,7 +493,7 @@ export function ApRow({
                                     v ? "Hide password" : "Show password",
                                 )}
                                 onClicked={() => {
-                                    setShowSecret(!showSecret.get())
+                                    setShowSecret(!showSecret.peek())
                                     refreshPasswordLabel()
                                 }}
                             >
@@ -510,7 +506,7 @@ export function ApRow({
                             <button
                                 cssClasses={["wifiPasswordButton"]}
                                 tooltipText={"Copy password"}
-                                onClicked={() => copyToClipboard(secrets.get()?.psk)}
+                                onClicked={() => copyToClipboard(secrets.peek()?.psk)}
                             >
                                 <image iconName={"edit-copy-symbolic"} />
                             </button>
@@ -536,7 +532,7 @@ export function ApRow({
                         <box spacing={5} cssClasses={["wifiDetailAction"]}>
                             <Gtk.GestureClick
                                 button={1}
-                                onPressed={() => setQrOpen(!qrOpen.get())}
+                                onPressed={() => setQrOpen(!qrOpen.peek())}
                             />
                             <label label={"Share QR code"} hexpand xalign={0} />
                             <image iconName={"send-to-symbolic"} />
@@ -563,7 +559,11 @@ export function ApRow({
                         </revealer>
                     </box>
                     <box
-                        visible={createComputed([active, isKnown], (a, k) => !a && k)}
+                        visible={createComputed(() => {
+                            const a = active()
+                            const k = isKnown()
+                            return !a && k
+                        })}
                         spacing={5}
                         cssClasses={["wifiDetailAction"]}
                     >
@@ -630,7 +630,7 @@ export function PasswordPrompt({
             p.onConnect?.(password)
             setPrompt(null)
         } else {
-            if (connectingBssid.get() !== null) return // an attempt is in flight
+            if (connectingBssid.peek() !== null) return // an attempt is in flight
             const ssid = ssidEntry?.get_text() ?? ""
             if (!ssid) return
             const args = ["nmcli", "device", "wifi", "connect", ssid]
@@ -684,7 +684,7 @@ export function PasswordPrompt({
                     entry = self
                     self.grab_focus()
                     self.set_icon_activatable(Gtk.EntryIconPosition.SECONDARY, true)
-                    setVisibilityIcon(self, passwordVisible.get())
+                    setVisibilityIcon(self, passwordVisible.peek())
                     iconPressId = connect(self, "icon-press", (self, pos) => {
                         if (pos !== Gtk.EntryIconPosition.SECONDARY) return
                         setPasswordVisible(visible => {

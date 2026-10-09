@@ -193,7 +193,7 @@ function attachActions(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">
 function mutate(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">, method: string) {
     const threadId = data.id.slice("github:".length)
     request(method, `/notifications/threads/${threadId}`, r => {
-        if (r.ok) setItems(items.get().filter(i => i.id !== data.id))
+        if (r.ok) setItems(items.peek().filter(i => i.id !== data.id))
         else console.warn(`GitHub: thread ${method} failed (status ${r.status})`)
     })
 }

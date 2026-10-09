@@ -55,8 +55,8 @@ function Avatar() {
         // discharging at the cap is not "held" (atChargeLimit, not the
         // percentage alone: UPower's charging flag flickers at the cap)
         const cap = Config.quicksettings.batteryFullAt / 100
-        const atLimit = atChargeLimit(pct.get(), bat.state)
-        const frac = atLimit ? 1 : Math.min(1, Math.ceil((pct.get() / cap) * 100) / 100)
+        const atLimit = atChargeLimit(pct.peek(), bat.state)
+        const frac = atLimit ? 1 : Math.min(1, Math.ceil((pct.peek() / cap) * 100) / 100)
         if (frac > 0.005) {
             cr.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2)
             cr.setSourceRGBA(c.red, c.green, c.blue, 0.95)
@@ -148,7 +148,7 @@ function useBatteryLine(): { line: Accessor<string> } {
     function updateBatTime() {
         const raw = currentBatTime()
 
-        if (raw === batTime.get()) {
+        if (raw === batTime.peek()) {
             // back to the displayed value, drop any pending change
             if (pendingSource !== null) {
                 sourceRemove(pendingSource)
@@ -190,12 +190,11 @@ function useBatteryLine(): { line: Accessor<string> } {
     })
 
     return {
-        line: createComputed([batProc, batTime, batState], (p, t, s) => {
+        line: createComputed(() => {
+            const p = batProc()
+            const t = batTime()
+            const s = batState()
             const pct = `${(p * 100).toFixed(0)}%`
-            // HELD at the charge limit UPower still reports a bogus
-            // timeToFull although nothing is charging (a known quirk).
-            // A battery discharging at the cap is not held: fall through
-            // to the (valid) time-to-empty
             if (atChargeLimit(p, s)) return `${pct} · charge limit`
             return t ? `${pct} · ${t}` : pct
         }),
@@ -245,9 +244,9 @@ function useUptimeLine(): { line: Accessor<string> } {
     const bat = AstalBattery.get_default()
     let stop: (() => void) | null = null
     const unsub = qsVisible.subscribe(() => {
-        if (qsVisible.get() && !stop && !bat.isPresent)
-            stop = poll.subscribe(() => setLine(poll.get()))
-        if (!qsVisible.get() && stop) {
+        if (qsVisible.peek() && !stop && !bat.isPresent)
+            stop = poll.subscribe(() => setLine(poll.peek()))
+        if (!qsVisible.peek() && stop) {
             stop()
             stop = null
         }
@@ -270,10 +269,12 @@ export function HeaderSection() {
     // gated off while there is one
     const { line: batteryLine } = useBatteryLine()
     const { line: uptimeLine } = useUptimeLine()
-    const line = createComputed(
-        [createBinding(bat, "isPresent"), batteryLine, uptimeLine],
-        (present, battery, uptime) => (present ? battery : uptime),
-    )
+    const line = createComputed(() => {
+        const present = createBinding(bat, "isPresent")()
+        const battery = batteryLine()
+        const uptime = uptimeLine()
+        return present ? battery : uptime
+    })
 
     // loginctl needs the session id; the compositor's locker handles the
     // actual Lock signal. Empty when not under systemd-logind.

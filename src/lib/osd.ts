@@ -192,14 +192,14 @@ disposers.push(
         // it lands whenever startup gets out of the way, which on a slow
         // cold login is past the 1.5s grace below — and then popped a
         // brightness banner nobody asked for. The flag says which it is
-        if (!hyprsunset.initialReadDone.get()) return
+        if (!hyprsunset.initialReadDone.peek()) return
         // the other reader of this flag, and the reason the watch does
         // not need to run while the quick settings are closed: refresh
         // when brightness actually changes. Async, so THIS osd still
         // uses the previous value and the next one is correct — which
         // beats the old behaviour of being up to 30s stale
         refreshHyprsunset()
-        const outdoor = hyprsunset.outdoor.get()
+        const outdoor = hyprsunset.outdoor.peek()
         show(
             {
                 icon: "display-brightness-symbolic",
@@ -218,7 +218,7 @@ if (Config.osd.enabled && Config.osd.layout) {
     ensureLayoutSource()
     disposers.push(
         layoutOsdText.subscribe(() => {
-            const text = layoutOsdText.get()
+            const text = layoutOsdText.peek()
             if (!text) return
             show(
                 {
@@ -299,10 +299,10 @@ if (Config.osd.enabled && Config.osd.lockKeys) {
     ensureLockSource()
     // seed from the initial device read, or the first real toggle would
     // only fill prev and its banner would be swallowed
-    let prev = lockKeyState.get()
+    let prev = lockKeyState.peek()
     disposers.push(
         lockKeyState.subscribe(() => {
-            const cur = lockKeyState.get()
+            const cur = lockKeyState.peek()
             if (!cur) return
             if (prev && (cur.caps !== prev.caps || cur.num !== prev.num)) {
                 // two independent checks: a tick where both flip must

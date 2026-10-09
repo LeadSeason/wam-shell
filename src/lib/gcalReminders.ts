@@ -113,7 +113,7 @@ function fireReminder(key: string, id: string) {
     reminderTimers.delete(key)
     // the FRESH item: a sync may have replaced the object, and a hidden
     // event gets no banner
-    const item = items.get().find(i => i.id === id)
+    const item = items.peek().find(i => i.id === id)
     if (!item) return
     // CRITICAL breaks through DND and, by default, never drains — the
     // alarm-clock policy. remind_popup_seconds opts into an explicit
@@ -240,8 +240,8 @@ if (Config.calendar.enabled) {
 
 export function init() {
     if (!Config.calendar.enabled || unsubscribe) return
-    rebuild(visibleEvents.get()) // the cache may already be loaded
-    unsubscribe = visibleEvents.subscribe(() => rebuild(visibleEvents.get()))
+    rebuild(visibleEvents.peek()) // the cache may already be loaded
+    unsubscribe = visibleEvents.subscribe(() => rebuild(visibleEvents.peek()))
 }
 
 // tear-down entry point, run from app.tsx on shutdown (lib/lifecycle)

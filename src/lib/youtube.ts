@@ -137,7 +137,7 @@ function markSeen(id: string) {
     if (seen.has(id)) return
     seen.remember([id])
     itemAccounts.delete(id)
-    setItems(items.get().filter(i => i.id !== id))
+    setItems(items.peek().filter(i => i.id !== id))
 }
 
 // ------------------------------------------------------- channel cache
@@ -423,7 +423,7 @@ function attachActions(
         hide: () => {
             sessionHidden.add(data.id)
             itemAccounts.delete(data.id)
-            setItems(items.get().filter(i => i.id !== data.id))
+            setItems(items.peek().filter(i => i.id !== data.id))
         },
         dismiss: () => markSeen(data.id),
         activate: () => {
@@ -446,7 +446,7 @@ function attachActions(
 // render a partial download
 let thumbFlush = 0
 function fetchDisplayedThumbs() {
-    for (const item of items.get()) {
+    for (const item of items.peek()) {
         const info = thumbInfo.get(item.id)
         if (!info || item.imagePath) continue
         fetchThumb(info.videoId, info.imageUrl, () => {
@@ -458,7 +458,7 @@ function fetchDisplayedThumbs() {
             if (thumbFlush) return
             thumbFlush = timeoutAdd("youtube:thumbFlush", GLib.PRIORITY_DEFAULT, 150, () => {
                 thumbFlush = 0
-                setItems([...items.get()])
+                setItems([...items.peek()])
                 return GLib.SOURCE_REMOVE
             })
         })
@@ -635,7 +635,7 @@ export function poll() {
     armPollWatchdog()
     gate.touch()
     const startSweep = () => {
-        const prev = items.get()
+        const prev = items.peek()
         const merged: ProviderItem[] = []
         const seenIds = new Set<string>()
         let pending = accounts.length
@@ -753,7 +753,7 @@ auth.onAccountRemoved(email => {
     // filter first (the map still knows the account), then drop the
     // mapping — otherwise a failed sweep's keep-stale branch
     // resurrects the removed account's rows
-    setItems(items.get().filter(i => itemAccounts.get(i.id) !== email))
+    setItems(items.peek().filter(i => itemAccounts.get(i.id) !== email))
     for (const [id, acc] of itemAccounts) if (acc === email) itemAccounts.delete(id)
     channelsByAccount.delete(email)
 })

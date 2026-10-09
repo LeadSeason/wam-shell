@@ -43,7 +43,7 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
         setList(
             hyprland.workspaces
                 // id < 0 are special workspaces (scratchpad)
-                .filter(ws => ws.id > 0 && ws.monitor?.name === displayName.get())
+                .filter(ws => ws.id > 0 && ws.monitor?.name === displayName.peek())
                 .filter(
                     ws =>
                         !Config.workspaces.hideEmpty ||
@@ -85,7 +85,7 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
     // which is the useful set to walk anyway.
     const step = createScrollStepper()
     const scrollToNeighbour = (dir: -1 | 0 | 1) => {
-        const list = hyprlandWorkspacesList.get()
+        const list = hyprlandWorkspacesList.peek()
         const focused = list.find(ws => ws.id === hyprland.focusedWorkspace?.id)
         const target = stepThrough(list, focused, dir)
         if (!target) return
@@ -113,7 +113,7 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
         // an address it does not track (a window that closed between
         // the compositor's event and the lookup)
         if (!client) return
-        const next = new Set(urgentClients.get())
+        const next = new Set(urgentClients.peek())
         next.add(client.address)
         setUrgentClients(next)
     })
@@ -121,8 +121,8 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
     disposers.push(
         createBinding(hyprland, "focusedClient").subscribe(() => {
             const focused = hyprland.focusedClient
-            if (!focused || !urgentClients.get().has(focused.address)) return
-            const next = new Set(urgentClients.get())
+            if (!focused || !urgentClients.peek().has(focused.address)) return
+            const next = new Set(urgentClients.peek())
             next.delete(focused.address)
             setUrgentClients(next)
         }),
@@ -130,7 +130,7 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
     disposers.push(
         createBinding(hyprland, "clients").subscribe(() => {
             const live = new Set(hyprland.clients.map(c => c.address))
-            const current = urgentClients.get()
+            const current = urgentClients.peek()
             if ([...current].every(a => live.has(a))) return
             setUrgentClients(new Set([...current].filter(a => live.has(a))))
         }),
@@ -168,70 +168,60 @@ export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
                     // Matching runs on the unfiltered list:
                     // collapse_icons may have dropped exactly the
                     // window that is playing
-                    const playing = createComputed(
-                        [createBinding(workspace, "clients"), allClients, playingPlayers],
-                        (wsClients, all, ps) => {
-                            if (ps.length === 0) return false
-                            // focusHistoryId ranks recency: 0 is the
-                            // most recently focused (hyprctl spells the
-                            // JSON field focusHistoryID; the GObject
-                            // property camelCases to focusHistoryId)
-                            const recent = new Map<string, AstalHyprland.Client>()
-                            for (const c of all) {
-                                const cls = c.class.toLowerCase()
-                                const cur = recent.get(cls)
-                                if (!cur || c.focusHistoryId < cur.focusHistoryId)
-                                    recent.set(cls, c)
-                            }
-                            // classes whose track title landed in SOME
-                            // window title: the title answered, so the
-                            // recency fallback must stay silent for that
-                            // class — after a silent move the window
-                            // that kept focus would otherwise light the
-                            // workspace the playing window just left,
-                            // alongside the new one
-                            const answered = new Set<string>()
-                            for (const c of all) {
-                                const cls = c.class.toLowerCase()
-                                if (
-                                    !answered.has(cls) &&
-                                    ps.some(p => p.wmClass === cls && titlesMatch(p.title, c.title))
-                                )
-                                    answered.add(cls)
-                            }
-                            return wsClients.some(c =>
-                                matchesPlayingWindow(
-                                    ps,
-                                    c.class,
-                                    c.title,
-                                    !answered.has(c.class.toLowerCase()) &&
-                                        recent.get(c.class.toLowerCase()) === c,
-                                ),
+                    const playing = createComputed(() => {
+                        const wsClients = createBinding(workspace, "clients")()
+                        const all = allClients()
+                        const ps = playingPlayers()
+                        if (ps.length === 0) return false
+                        const recent = new Map<string, AstalHyprland.Client>()
+                        for (const c of all) {
+                            const cls = c.class.toLowerCase()
+                            const cur = recent.get(cls)
+                            if (!cur || c.focusHistoryId < cur.focusHistoryId) recent.set(cls, c)
+                        }
+                        const answered = new Set<string>()
+                        for (const c of all) {
+                            const cls = c.class.toLowerCase()
+                            if (
+                                !answered.has(cls) &&
+                                ps.some(p => p.wmClass === cls && titlesMatch(p.title, c.title))
                             )
-                        },
-                    )
+                                answered.add(cls)
+                        }
+                        return wsClients.some(c =>
+                            matchesPlayingWindow(
+                                ps,
+                                c.class,
+                                c.title,
+                                !answered.has(c.class.toLowerCase()) &&
+                                    recent.get(c.class.toLowerCase()) === c,
+                            ),
+                        )
+                    })
                     // highlight the workspace itself: "playing" tints
                     // it, "beat" pulses the tint on the shared
                     // heartbeat (playingPulse in lib/mpris)
-                    const classes = createComputed(
-                        [focused, playing, playingPulse],
-                        (f, p, beat) => [
+                    const classes = createComputed(() => {
+                        const f = focused()
+                        const p = playing()
+                        const beat = playingPulse()
+                        return [
                             ...f,
                             ...(p && Config.workspaces.playingIndicator
                                 ? ["playing", ...(beat ? ["beat"] : [])]
                                 : []),
-                        ],
-                    )
+                        ]
+                    })
                     // a marked client on this workspace paints the
                     // urgency dot (same .urgent style the sway twin
                     // uses). Unfiltered clients: collapse_icons may
                     // have dropped the very window calling for
                     // attention
-                    const urgent = createComputed(
-                        [createBinding(workspace, "clients"), urgentClients],
-                        (wsClients, marked) =>
-                            marked.size > 0 && wsClients.some(c => marked.has(c.address)),
-                    )
+                    const urgent = createComputed(() => {
+                        const wsClients = createBinding(workspace, "clients")()
+                        const marked = urgentClients()
+                        return marked.size > 0 && wsClients.some(c => marked.has(c.address))
+                    })
                     return (
                         <button
                             cssName={"workspace"}

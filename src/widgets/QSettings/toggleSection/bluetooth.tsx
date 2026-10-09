@@ -23,9 +23,7 @@ export function BluetoothButton({ navigate }: { navigate: () => void }) {
 }
 
 function BluetoothButtonBody({ navigate }: { navigate: () => void }) {
-    // derived imperatively, not via array-form createComputed: its dep
-    // cache keys on falsy checks and connectedDevice starts null, which
-    // can leave the computed stale (see AGENTS.md)
+    // derived imperatively from the backend signals below
     const [subtitle, setSubtitle] = createState("Off")
     const [battery, setBattery] = createState("")
     const [icon, setIcon] = createState("bluetooth-symbolic")
@@ -37,9 +35,9 @@ function BluetoothButtonBody({ navigate }: { navigate: () => void }) {
         // the click read as ignored and the obvious response, clicking
         // again, toggled it straight back. Show the target instead; the
         // toggle itself refuses input until bluez has settled
-        const target = powerPending.get()
+        const target = powerPending.peek()
         const powered = target ?? bluetooth.is_powered
-        const info = connectedDevice.get()
+        const info = connectedDevice.peek()
         setActive(powered)
         setIcon(powered && info ? "bluetooth-active-symbolic" : "bluetooth-symbolic")
         // the device battery rides on the title row as a muted suffix:
@@ -50,7 +48,7 @@ function BluetoothButtonBody({ navigate }: { navigate: () => void }) {
         // a refused power change used to be dropped on the floor by
         // astal's fire-and-forget property setter, which is what made
         // the toggle look like it simply did not work sometimes
-        const failure = powerError.get()
+        const failure = powerError.peek()
         if (failure) {
             setSubtitle(failure)
             return

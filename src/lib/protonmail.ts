@@ -783,7 +783,7 @@ function attachActions(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">
     const markRead = () => {
         const uid = Number(data.id.slice("protonmail:".length))
         storeSeen(uid)
-            .then(() => setItems(items.get().filter(i => i.id !== data.id)))
+            .then(() => setItems(items.peek().filter(i => i.id !== data.id)))
             .catch(e => {
                 // the same rejection a poll would have seen: say so, and
                 // stop the provider rather than failing quietly per click
@@ -795,7 +795,7 @@ function attachActions(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">
         ...data,
         hide: () => {
             hiddenIds.add(data.id)
-            setItems(items.get().filter(i => i.id !== data.id))
+            setItems(items.peek().filter(i => i.id !== data.id))
         },
         dismiss: markRead,
         activate: () => {
@@ -813,7 +813,7 @@ function applyEnvelopes(envs: Envelope[]) {
     }
     // newest first, same as the center's desktop list
     mapped.sort((a, b) => b.time - a.time)
-    const prev = items.get()
+    const prev = items.peek()
     setItems(mapped)
     if (!baselineDone) {
         // the first fetch after startup is the baseline: bannering the

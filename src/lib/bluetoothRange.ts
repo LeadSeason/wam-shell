@@ -94,7 +94,7 @@ function addressOf(path: string): string {
 
 function flush() {
     if (!pending.size && !dropped.size) return
-    const next = new Map(sightings.get())
+    const next = new Map(sightings.peek())
     for (const [address, s] of pending) next.set(address, s)
     for (const address of dropped) next.delete(address)
     pending.clear()
@@ -209,7 +209,7 @@ function subscribe(
 function sweep() {
     const now = GLib.get_monotonic_time()
     let stale = false
-    for (const [address, s] of sightings.get()) {
+    for (const [address, s] of sightings.peek()) {
         if (now - s.at <= STALE_US) continue
         dropped.add(address)
         stale = true

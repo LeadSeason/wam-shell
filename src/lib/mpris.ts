@@ -49,18 +49,18 @@ const isEligible = (p: AstalMpris.Player) =>
  *  eligibility also changes with per-player title/status, which the
  *  manager's players list does not notify — the hooks below bump this
  *  version so dependents refresh.
- *  NOTE: imperative readers (pick, cycle) must NOT use this accessor:
- *  createComputed caches dep values with a falsy check, and an empty
- *  [] cached at startup (players load async) is truthy and never
- *  refreshes without a subscriber. use players.get().filter(isEligible) */
+ *  NOTE: imperative readers (pick, cycle) should read the source
+ *  directly — players.peek().filter(isEligible) — not this accessor. */
 // bumped with an explicit value, never bumpElig(): a no-arg call sets
 // the state to undefined, and gnim skips the notification when the value
 // has not changed — so the FIRST bump fired and every one after it was
 // silently dropped, leaving eligiblePlayers stuck on a stale list
 const [eligVersion, bumpElig] = createState(0)
-export const eligiblePlayers = createComputed([players, eligVersion], list =>
-    list.filter(isEligible),
-)
+export const eligiblePlayers = createComputed(() => {
+    const list = players()
+    eligVersion() // eligibility bumps re-run this without touching `players`
+    return list.filter(isEligible)
+})
 
 // the player shown everywhere: sticky — stays on the current player
 // until it goes away or another player starts playing (the most recent
@@ -80,9 +80,9 @@ export function overrideActivePlayer(player: AstalMpris.Player | null) {
 /** cycle the active player through the eligible ones (scroll on the
  *  panel pill); a no-op with fewer than two */
 export function cycleActivePlayer(direction: 1 | -1) {
-    const eligible = players.get().filter(isEligible)
+    const eligible = players.peek().filter(isEligible)
     if (eligible.length < 2) return
-    const current = activePlayer.get()
+    const current = activePlayer.peek()
     const i = current ? eligible.indexOf(current) : -1
     const next = eligible[(i + direction + eligible.length) % eligible.length]
     overrideActivePlayer(next)
@@ -100,7 +100,7 @@ export const scrollActivePlayer = createScrollCycler(cycleActivePlayer)
  *  output would slip through */
 export function playPauseExclusive(player: AstalMpris.Player) {
     if (player.playbackStatus !== AstalMpris.PlaybackStatus.PLAYING) {
-        for (const p of players.get()) {
+        for (const p of players.peek()) {
             if (p !== player && p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING) {
                 p.pause()
             }
@@ -240,7 +240,7 @@ const playerHooks = new Set<PlayerHook>()
 const hookedPlayers = new Map<AstalMpris.Player, { hook: PlayerHook; release: () => void }[]>()
 
 function syncPlayers() {
-    const list = players.get()
+    const list = players.peek()
     for (const [p, entries] of hookedPlayers) {
         if (!list.includes(p)) {
             for (const e of entries) e.release()
@@ -256,7 +256,7 @@ function syncPlayers() {
         }
         hookedPlayers.set(p, entries)
     }
-    bumpElig(eligVersion.get() + 1)
+    bumpElig(eligVersion.peek() + 1)
 }
 const unsubSyncPlayers = players.subscribe(syncPlayers)
 // gnim subscribe does not fire on subscription: hook the players that
@@ -316,14 +316,14 @@ const [playingPulse, setPlayingPulse] = createState(false)
 export { playingPulse }
 let pulseTimer = 0
 const syncPulse = () => {
-    const playing = playingPlayers.get().length > 0
+    const playing = playingPlayers.peek().length > 0
     if (playing && !pulseTimer) {
         pulseTimer = timeoutAdd(
             "mpris:playingPulse",
             GLib.PRIORITY_DEFAULT,
             Config.workspaces.playingPulseMs,
             () => {
-                setPlayingPulse(!playingPulse.get())
+                setPlayingPulse(!playingPulse.peek())
                 return GLib.SOURCE_CONTINUE
             },
         )
@@ -340,7 +340,7 @@ const wmClassCache = new Map<AstalMpris.Player, string | null>()
 
 const refreshPlayingPlayers = () => {
     const out: PlayingPlayer[] = []
-    for (const p of players.get()) {
+    for (const p of players.peek()) {
         // ineligible players (private sessions) must not surface in the
         // UI — a marker on their workspace is still surfacing them
         if (!isEligible(p) || p.playbackStatus !== AstalMpris.PlaybackStatus.PLAYING) continue
@@ -348,7 +348,7 @@ const refreshPlayingPlayers = () => {
         const wm = wmClassCache.get(p)
         if (wm) out.push({ wmClass: wm.toLowerCase(), title: p.title ?? "" })
     }
-    const prev = playingPlayers.get()
+    const prev = playingPlayers.peek()
     if (
         out.length !== prev.length ||
         out.some((p, i) => p.wmClass !== prev[i].wmClass || p.title !== prev[i].title)
@@ -420,8 +420,8 @@ const unsubPlayingList = players.subscribe(refreshPlayingPlayers)
 refreshPlayingPlayers()
 
 function pick() {
-    const override = overridePlayer.get()
-    const eligible = players.get().filter(isEligible)
+    const override = overridePlayer.peek()
+    const eligible = players.peek().filter(isEligible)
     // release pins on players that went away instead of retaining them
     if (override && !eligible.includes(override)) setOverride(null)
     if (lastPlaying && !eligible.includes(lastPlaying)) lastPlaying = null
@@ -434,7 +434,7 @@ function pick() {
         lastPlaying.playbackStatus === AstalMpris.PlaybackStatus.PLAYING
             ? lastPlaying
             : eligible.find(p => p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING)
-    const current = activePlayer.get()
+    const current = activePlayer.peek()
     setActivePlayer(
         override && eligible.includes(override)
             ? override
@@ -461,10 +461,10 @@ function startedPlaying(p: AstalMpris.Player) {
     lastPlaying = p
     // a newly playing player always takes over, even from a
     // scroll-pinned one
-    if (overridePlayer.get() !== p) setOverride(null)
+    if (overridePlayer.peek() !== p) setOverride(null)
     // exclusive playback wherever playback starts from — shell
     // buttons, the player's own UI or playerctl: pause the rest
-    for (const other of players.get()) {
+    for (const other of players.peek()) {
         if (other !== p && other.playbackStatus === AstalMpris.PlaybackStatus.PLAYING) {
             other.pause()
         }
@@ -499,14 +499,14 @@ const adopting = () => GLib.get_monotonic_time() / 1000 - startedAt < ADOPT_GRAC
 const unsubPick = players.subscribe(pick)
 hookPlayers(p => {
     const status = createBinding(p, "playbackStatus").subscribe(() => {
-        bumpElig(eligVersion.get() + 1)
+        bumpElig(eligVersion.peek() + 1)
         if (p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING && isEligible(p)) {
             startedPlaying(p)
         }
         pick()
     })
     const title = createBinding(p, "title").subscribe(() => {
-        bumpElig(eligVersion.get() + 1)
+        bumpElig(eligVersion.peek() + 1)
         pick()
     })
     if (!adopting() && p.playbackStatus === AstalMpris.PlaybackStatus.PLAYING && isEligible(p)) {
@@ -562,7 +562,7 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
     // name (xesam:url), maybeUpgradeFromFile digs the embedded art out
     // of the file itself.
     const fallback = () => {
-        const url = cover.get()
+        const url = cover.peek()
         if (!url) return ""
         // astal gives bare paths (no file:// scheme) for local art, and
         // does not re-check the file is still there. Chromium deletes
@@ -602,12 +602,12 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
         if (!trackUrl) return
         // the pair we resolved for must still be on screen when the
         // parse comes back
-        const artAt = art.get()
-        const titleAt = title.get()
+        const artAt = art.peek()
+        const titleAt = title.peek()
         upgradeSmallCover(local, trackUrl)
             .then(path => {
                 if (!path) return
-                if (art.get() !== artAt || title.get() !== titleAt) return
+                if (art.peek() !== artAt || title.peek() !== titleAt) return
                 embeddedSwap = { from: local, to: `file://${path}` }
                 setLocal(embeddedSwap.to)
             })
@@ -615,7 +615,7 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
     }
 
     const update = () => {
-        if (upgradedFor !== null && upgradedFor === title.get() && cover.get() === upgradedFrom)
+        if (upgradedFor !== null && upgradedFor === title.peek() && cover.peek() === upgradedFrom)
             return
         // past the guard we are about to render whatever the player
         // currently reports, so the recovered art is no longer what is
@@ -624,7 +624,7 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
         // track's cover
         upgradedFor = null
         upgradedFrom = null
-        const url = art.get() || ""
+        const url = art.peek() || ""
         if (!url.startsWith("http")) {
             let local = fallback()
             // a metadata re-emission (some players re-send it on seek)
@@ -647,7 +647,7 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
             .then(path => {
                 // a track change during the download must not let the
                 // older cover overwrite the newer one
-                if (art.get() === url) setLocal(`file://${path}`)
+                if (art.peek() === url) setLocal(`file://${path}`)
             })
             .catch(e => console.warn("cover download failed:", e))
     }
@@ -678,9 +678,9 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
     let retryTimer = 0
 
     const recover = () => {
-        const artUrl = cover.get()
+        const artUrl = cover.peek()
         if (!artUrl || !isBrowserThumb(artUrl)) return
-        const forTitle = title.get()
+        const forTitle = title.peek()
         // a new track gets its own retry budget
         if (forTitle !== attemptedTitle) {
             attemptedTitle = forTitle
@@ -688,7 +688,7 @@ export function coverState(player: AstalMpris.Player): Accessor<string> {
         }
         // the pair we resolved for must still be the pair on screen when
         // the lookup and the download come back
-        const stale = () => cover.get() !== artUrl || title.get() !== forTitle
+        const stale = () => cover.peek() !== artUrl || title.peek() !== forTitle
         // chromium's own 150px copy, for the thumbnail tier of the
         // recovery (isBrowserThumb above guarantees a local path)
         const thumbPath = artUrl.startsWith("file://") ? artUrl.slice(7) : artUrl
@@ -812,12 +812,12 @@ export function positionState(
     active?: Accessor<boolean>,
 ): SmoothedPosition {
     const raw = createBinding(player, "position")
-    const [smooth, setSmooth] = createState(raw.get())
+    const [smooth, setSmooth] = createState(raw.peek())
     // a positive position at creation must have come from the player;
     // 0 tells nothing (true track start or a silent player)
-    const [known, setKnown] = createState(raw.get() > 0)
+    const [known, setKnown] = createState(raw.peek() > 0)
 
-    let anchor = raw.get()
+    let anchor = raw.peek()
     let anchorAt = GLib.get_monotonic_time() / 1e6
     const reanchor = (value: number) => {
         anchor = value
@@ -842,12 +842,12 @@ export function positionState(
 
     const isOn = () =>
         player.playbackStatus === AstalMpris.PlaybackStatus.PLAYING &&
-        (active ? active.get() : true)
+        (active ? active.peek() : true)
     const syncClock = () => {
         if (isOn()) {
             // resume from the frozen position, not from when the clock
             // last ticked — that would count the paused/hidden time
-            anchor = smooth.get()
+            anchor = smooth.peek()
             anchorAt = GLib.get_monotonic_time() / 1e6
             startClock()
         } else {
@@ -861,14 +861,14 @@ export function positionState(
         // unchanged value, and firefox keeps it at 0 forever)
         raw.subscribe(() => {
             setKnown(true)
-            reanchor(raw.get())
+            reanchor(raw.peek())
         }),
         // firefox never moves Position even across tracks; a new title
         // is the only track-change signal it gives. a fresh track
         // genuinely starts at the raw position (usually 0)
         createBinding(player, "title").subscribe(() => {
             setKnown(true)
-            reanchor(raw.get())
+            reanchor(raw.peek())
         }),
         createBinding(player, "playbackStatus").subscribe(syncClock),
     ]
@@ -898,17 +898,17 @@ export function positionState(
 export function lengthState(player: AstalMpris.Player): Accessor<number> {
     const length = createBinding(player, "length")
     const title = createBinding(player, "title")
-    const [effective, setEffective] = createState(length.get())
-    let lastTitle = title.get()
+    const [effective, setEffective] = createState(length.peek())
+    let lastTitle = title.peek()
     const unsubs = [
         title.subscribe(() => {
-            if (title.get() !== lastTitle) {
-                lastTitle = title.get()
-                setEffective(length.get())
+            if (title.peek() !== lastTitle) {
+                lastTitle = title.peek()
+                setEffective(length.peek())
             }
         }),
         length.subscribe(() => {
-            const l = length.get()
+            const l = length.peek()
             if (l > 0) setEffective(l)
         }),
     ]
@@ -931,8 +931,8 @@ export function bindSeekScale(
     // sliding window 2 min past the position: the proportion is a lie,
     // but the bar stays usable (backward seeks are exact)
     const end = () => {
-        const l = length.get()
-        return l > 0 ? l : Math.max(60, position.accessor.get() + 120)
+        const l = length.peek()
+        return l > 0 ? l : Math.max(60, position.accessor.peek() + 120)
     }
 
     // change-value fires only on user input (drag, keys, scroll), never
@@ -944,18 +944,18 @@ export function bindSeekScale(
 
     const syncRange = () => self.set_range(0, end())
     syncRange()
-    self.set_value(position.known.get() ? Math.min(position.accessor.get(), end()) : 0)
+    self.set_value(position.known.peek() ? Math.min(position.accessor.peek(), end()) : 0)
 
     const unsubs = [
         length.subscribe(syncRange),
         // an unknowable position shows an empty bar, not a wrong one
         position.known.subscribe(() => {
-            self.set_value(position.known.get() ? Math.min(position.accessor.get(), end()) : 0)
+            self.set_value(position.known.peek() ? Math.min(position.accessor.peek(), end()) : 0)
         }),
         position.accessor.subscribe(() => {
-            if (interacting() || !position.known.get()) return
+            if (interacting() || !position.known.peek()) return
             syncRange() // keep the fallback window sliding
-            self.set_value(Math.min(position.accessor.get(), end()))
+            self.set_value(Math.min(position.accessor.peek(), end()))
         }),
     ]
     const handler = connect(

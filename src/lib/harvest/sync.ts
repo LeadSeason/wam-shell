@@ -105,7 +105,7 @@ function effectiveInterval(): number {
 }
 
 export function scheduleNext(retryAfter = 0) {
-    if (authDisabled.get() || disposed) return
+    if (authDisabled.peek() || disposed) return
     if (fastTimer) sourceRemove(fastTimer)
     const delay = Math.max(retryAfter, effectiveInterval())
     fastTimer = timeoutAddSeconds("harvest:deltaPoll", GLib.PRIORITY_DEFAULT, delay, () => {
@@ -137,7 +137,7 @@ function settleCycle(authFailed: boolean, failed: boolean, retryAfter = 0) {
 // apply a delta response: upsert today's entries, advance the high-water
 // mark (forward only), adopt running transitions
 function applyDelta(entries: Entry[]) {
-    const cur = running.get()
+    const cur = running.peek()
     const runningEntry = entries.find(e => e.isRunning)
     const today = localDay() // hoisted: one DateTime per delta, not per entry
     let transition = false
@@ -170,7 +170,7 @@ function applyDelta(entries: Entry[]) {
 let deltaInFlight = false
 
 export function deltaPoll() {
-    if (!active || authDisabled.get()) return
+    if (!active || authDisabled.peek()) return
     if (!seeded) {
         scheduleNext()
         return
@@ -241,7 +241,7 @@ function fetchWindow() {
 // the window goes first so the probe carries the newer sequence tag —
 // otherwise a fast window response could discard the probe's adoption
 function baseline() {
-    if (!active || authDisabled.get()) return
+    if (!active || authDisabled.peek()) return
     fetchWindow()
     const seq = ++requestSeq
     request("GET", "/time_entries?is_running=true", null, r => {
@@ -261,7 +261,7 @@ function baseline() {
 }
 
 function slowCycle() {
-    if (!active || authDisabled.get()) return
+    if (!active || authDisabled.peek()) return
     lastSlowFetch = Date.now()
     // near-static: projects + tasks for the picker (cursor-paginated)
     fetchAll("/users/me/project_assignments", "project_assignments", [], (items, _r) => {
@@ -325,7 +325,7 @@ function armRollover() {
 }
 
 function disableAuth() {
-    if (authDisabled.get()) return
+    if (authDisabled.peek()) return
     setAuthDisabled(true)
     if (fastTimer) {
         sourceRemove(fastTimer)

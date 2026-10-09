@@ -100,7 +100,7 @@ export function DropdownButton({
 }: TbButtonProps) {
     const toggleDropdown = () => {
         if (!activeDropdown || !setDropdown) return
-        if (activeDropdown.get() === dropdownIndex) setDropdown(0)
+        if (activeDropdown.peek() === dropdownIndex) setDropdown(0)
         else setDropdown(dropdownIndex)
     }
 

@@ -40,7 +40,7 @@ export const [btPaneOpen, setBtPaneOpen] = createState(false)
  *  not reliably send Cancel when pairing fails, so the initiator calls
  *  this when it learns the attempt failed */
 export function dismissPairingPrompt(address: string) {
-    const current = pairingRequest.get()
+    const current = pairingRequest.peek()
     if (current?.deviceAddress === address) current.respond(false)
     for (let i = queue.length - 1; i >= 0; i--) {
         if (queue[i].deviceAddress === address) queue.splice(i, 1)[0].respond(false)
@@ -96,7 +96,7 @@ function deviceInfo(path: string): { name: string; icon: string; address: string
 
 /** show the request, or queue it behind the current one */
 function present(req: PairingRequest) {
-    if (pairingRequest.get() === null) {
+    if (pairingRequest.peek() === null) {
         setPairingRequest(req)
         // the prompt is visible now — its timeout starts here, not at
         // enqueue time, or queued prompts expire before being shown
@@ -151,7 +151,7 @@ function makeResponder(
         }
         // a queued request answering early (dismissPairingPrompt) must
         // not advance past — and kill — the active prompt
-        if (pairingRequest.get()?.respond === finish) advance()
+        if (pairingRequest.peek()?.respond === finish) advance()
     }
 
     // bluez cancels the pairing if the agent does not answer in time.
@@ -209,7 +209,7 @@ function onMethodCall(
             break
         case "Cancel":
             // bluez aborted the current pairing: drop the open prompt
-            if (pairingRequest.get() !== null) pairingRequest.get()!.respond(false)
+            if (pairingRequest.peek() !== null) pairingRequest.peek()!.respond(false)
             invocation.return_value(null)
             break
         case "RequestConfirmation": {

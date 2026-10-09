@@ -28,9 +28,14 @@ export default function Notify() {
 
     // muted providers still count: muting stops their banners, it does
     // not mean their items stopped waiting in the centre
-    const total = createComputed([count, ...providers.map(p => p.items)], (local, ...lists) =>
-        lists.reduce((n: number, l) => n + ((l as ProviderItem[])?.length ?? 0), local as number),
-    )
+    const total = createComputed(() => {
+        const local = count()
+        const lists = providers.map(p => p.items())
+        return lists.reduce(
+            (n: number, l) => n + ((l as ProviderItem[])?.length ?? 0),
+            local as number,
+        )
+    })
 
     return (
         <box

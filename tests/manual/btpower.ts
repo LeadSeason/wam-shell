@@ -124,35 +124,35 @@ eq(
     sets()[0],
     `Set ('org.bluez.Adapter1', 'Powered', <${target}>)`,
 )
-eq("pending shows the target immediately", powerPending.get(), target)
+eq("pending shows the target immediately", powerPending.peek(), target)
 
 print("clicks 2-4 — impatient, mid-transition")
 setPoweredAsync(target)
 togglePowered()
 setPoweredAsync(!target)
 eq("still one Set", sets().length, 1)
-eq("pending unchanged", powerPending.get(), target)
-eq("no error shown", powerError.get(), "")
+eq("pending unchanged", powerPending.peek(), target)
+eq("no error shown", powerError.peek(), "")
 
 print("bluez never answers — the settle timeout gives up (10s)")
 pump(10_500)
-eq("pending cleared", powerPending.get(), null)
-eq("failure is said out loud", powerError.get(), summary)
+eq("pending cleared", powerPending.peek(), null)
+eq("failure is said out loud", powerError.peek(), summary)
 eq("still one Set", sets().length, 1)
 
 print("the error clears itself (4s)")
 pump(4_500)
-eq("error gone", powerError.get(), "")
+eq("error gone", powerError.peek(), "")
 
 print("click 5 — after the attempt ended, the toggle works again")
 setPoweredAsync(target)
 eq("a second Set is issued", sets().length, 2)
-eq("pending shows the target", powerPending.get(), target)
+eq("pending shows the target", powerPending.peek(), target)
 
 // leave nothing running
 ;(bus as unknown as { call: unknown }).call = realCall
 pump(10_500)
-eq("nothing left pending", powerPending.get(), null)
+eq("nothing left pending", powerPending.peek(), null)
 eq("adapter untouched", bluetooth.is_powered, powered)
 
 print(`\nbus calls: ${calls.join(" | ")}`)

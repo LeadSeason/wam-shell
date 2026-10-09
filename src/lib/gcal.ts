@@ -86,8 +86,8 @@ export const authenticate = auth.authenticate
 // handles the tokens); its events and calendars leave the UI
 // immediately rather than at the next sync
 auth.onAccountRemoved(email => {
-    setEvents(events.get().filter(e => e.account !== email))
-    setCalendars(calendars.get().filter(c => c.account !== email))
+    setEvents(events.peek().filter(e => e.account !== email))
+    setCalendars(calendars.peek().filter(c => c.account !== email))
 })
 
 // thin wrapper adding failure logging to the shared HTTP helper (the
@@ -212,8 +212,8 @@ export const visKey = (cal: CalInfo) => `${cal.account}:${cal.id}`
 
 export function toggleCalendar(cal: CalInfo) {
     const next = {
-        ...visibilityOverrides.get(),
-        [visKey(cal)]: !calendarVisible(cal, visibilityOverrides.get()),
+        ...visibilityOverrides.peek(),
+        [visKey(cal)]: !calendarVisible(cal, visibilityOverrides.peek()),
     }
     setVisibilityOverrides(next)
     writeFileAtomic(visStorePath, JSON.stringify(next)).catch(e =>
@@ -240,16 +240,16 @@ export function calendarVisible(cal: CalInfo, overrides: Record<string, boolean>
 
 // the events of currently-visible calendars: the popover's dots, day
 // list and agenda all read this
-export const visibleEvents = createComputed(
-    [events, calendars, visibilityOverrides],
-    (evts, cals, ovs) => {
-        const byKey = new Map(cals.map(c => [`${c.account}:${c.id}`, c]))
-        return evts.filter(e => {
-            const cal = byKey.get(`${e.account}:${e.calendarId}`)
-            return cal ? calendarVisible(cal, ovs) : true
-        })
-    },
-)
+export const visibleEvents = createComputed(() => {
+    const evts = events()
+    const cals = calendars()
+    const ovs = visibilityOverrides()
+    const byKey = new Map(cals.map(c => [`${c.account}:${c.id}`, c]))
+    return evts.filter(e => {
+        const cal = byKey.get(`${e.account}:${e.calendarId}`)
+        return cal ? calendarVisible(cal, ovs) : true
+    })
+})
 
 // the loaded window: navigation outside it triggers a re-sync
 let loadedFrom = 0 // ms epoch, first covered day
@@ -667,12 +667,12 @@ export function sync(focus?: { y: number; m: number }) {
                 // keep-stale policy as the github/todoist providers
                 merged.push(
                     ...events
-                        .get()
+                        .peek()
                         .filter(
                             e => e.account === account.email && e.endMs >= from && e.startMs <= to,
                         ),
                 )
-                allCals.push(...calendars.get().filter(c => c.account === account.email))
+                allCals.push(...calendars.peek().filter(c => c.account === account.email))
             }
             if (--pending > 0) return
             merged.sort((a, b) => a.startMs - b.startMs)

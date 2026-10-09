@@ -88,35 +88,35 @@ try {
     print("the tracker starts from what bluez actually says")
     const release = acquireDiscoverable()
     pump(1500)
-    eq("initial value read", discoverable.get(), original)
+    eq("initial value read", discoverable.peek(), original)
 
     print("an EXTERNAL change — the case the old binding went stale on")
     busSet(!original)
     pump(1500)
-    eq("followed the change", discoverable.get(), !original)
+    eq("followed the change", discoverable.peek(), !original)
     eq("and bluez agrees", busGet(), !original)
 
     print("and back")
     busSet(original)
     pump(1500)
-    eq("followed the change back", discoverable.get(), original)
+    eq("followed the change back", discoverable.peek(), original)
 
     print("our own write lands, and comes back through the same path")
     toggleDiscoverable()
     pump(2000)
     eq("bluez was actually told", busGet(), !original)
-    eq("and the accessor followed", discoverable.get(), !original)
+    eq("and the accessor followed", discoverable.peek(), !original)
 
     toggleDiscoverable()
     pump(2000)
     eq("toggled back", busGet(), original)
-    eq("accessor back", discoverable.get(), original)
+    eq("accessor back", discoverable.peek(), original)
 
     print("released: the subscription is gone, not merely ignored")
     release()
     busSet(!original)
     pump(1500)
-    eq("stopped following", discoverable.get(), original)
+    eq("stopped following", discoverable.peek(), original)
     eq("though bluez really did change", busGet(), !original)
 } finally {
     // put the adapter back exactly as it was found

@@ -33,7 +33,7 @@ export function PercentEntry({
     // into: rewriting the text under the cursor would fight the user
     // mid-edit (and moves the caret)
     const unsub = text.subscribe(() => {
-        if (field && !field.editing) field.text = text.get()
+        if (field && !field.editing) field.text = text.peek()
     })
     onCleanup(() => unsub())
 
@@ -44,7 +44,7 @@ export function PercentEntry({
         // either way the label goes back to rendering the real volume:
         // a rejected "abc" must not linger looking like it was accepted,
         // and a clamped 900 must show what it actually became
-        self.text = text.get()
+        self.text = text.peek()
     }
 
     return (
@@ -56,7 +56,7 @@ export function PercentEntry({
             tooltipText={"Click to type a value"}
             $={self => {
                 field = self
-                self.text = text.get()
+                self.text = text.peek()
                 // editing ends on Enter, on Escape, and on focus loss.
                 // Escape restores the old text before this fires, so
                 // parsing it back is a no-op rather than a special case.
@@ -72,7 +72,7 @@ export function PercentEntry({
                     // a bare number to type over: the % is decoration
                     // that would otherwise have to be deleted first, and
                     // it comes back on its own once the value is set
-                    self.text = String(Math.round(value.get() * 100))
+                    self.text = String(Math.round(value.peek() * 100))
                     // and select it, so typing replaces rather than
                     // appending to whatever was already there
                     self.select_region(0, -1)

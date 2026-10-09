@@ -62,12 +62,10 @@ function BtSwitchBody() {
     // requests outright: while a change is in flight the switch shows
     // the TARGET and refuses further input, instead of springing back to
     // the old position — which read as a click the shell had ignored.
-    // Imperative rather than a computed: powerPending starts null and an
-    // initially-falsy dep can leave a computed stale (see AGENTS.md)
     // is_powered, never adapter.powered — see the note on why nothing
     // here holds the adapter, in BluetoothWidgetBody below
-    const [shown, setShown] = createState(powerPending.get() ?? bluetooth.is_powered)
-    const sync = () => setShown(powerPending.get() ?? bluetooth.is_powered)
+    const [shown, setShown] = createState(powerPending.peek() ?? bluetooth.is_powered)
+    const sync = () => setShown(powerPending.peek() ?? bluetooth.is_powered)
     const disposers = [
         createBinding(bluetooth, "is_powered").subscribe(sync),
         powerPending.subscribe(sync),
@@ -149,13 +147,13 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
         }
     }
     function armSettle() {
-        if (settleTimer || scanSettled.get()) return
+        if (settleTimer || scanSettled.peek()) return
         settleTimer = timeoutAdd("btPane:scanSettle", GLib.PRIORITY_DEFAULT, SCAN_SETTLE_MS, () => {
             settleTimer = 0
             // only a scan that ran the whole way counts. Clicking a
             // device early pauses discovery, and settling on the back of
             // two seconds of listening would call the whole room absent
-            if (scanning.get()) setScanSettled(true)
+            if (scanning.peek()) setScanSettled(true)
             return GLib.SOURCE_REMOVE
         })
     }
@@ -173,7 +171,7 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
     // scan while this pane is visible (hiding QSettings resets the pane to
     // "main", so discovery always stops on close)
     const maybeScan = () => {
-        if (pane.get() === name && bluetooth.is_powered) {
+        if (pane.peek() === name && bluetooth.is_powered) {
             startDiscoveryAsync()
             setScanning(true)
             armSettle()
@@ -226,7 +224,7 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
     // the pairing prompt renders inline while this pane is on screen;
     // the floating dialog window covers prompts arriving otherwise
     const updatePaneOpen = () => {
-        const open = pane.get() === name
+        const open = pane.peek() === name
         setBtPaneOpen(open)
         if (open && !releaseRange) {
             releaseRange = acquireRange()
@@ -305,8 +303,8 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
     const [paired, setPaired] = createState<AstalBluetooth.Device[]>([])
     const [available, setAvailable] = createState<AstalBluetooth.Device[]>([])
     const resort = () => {
-        const ds = deviceList.get()
-        const heard = sightings.get()
+        const ds = deviceList.peek()
+        const heard = sightings.peek()
         const rssiOf = (d: AstalBluetooth.Device) => heard.get(d.address)?.rssi ?? -Infinity
         // a device we have never heard advertise is not demoted: we have
         // no evidence it is anywhere, so ranking it below one we can see

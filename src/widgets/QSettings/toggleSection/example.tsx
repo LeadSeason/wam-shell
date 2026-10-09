@@ -21,7 +21,7 @@ export function ExampleButton({
     dropdownIndex: dropdownIndex,
 }: exampleProps) {
     const toggle = () => {
-        setActive(!active.get())
+        setActive(!active.peek())
     }
 
     return (

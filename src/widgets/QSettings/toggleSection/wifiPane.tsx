@@ -39,15 +39,18 @@ export function WifiSwitch() {
 /** the connected-network card: ssid, band+channel+security, ips, mac
  *  and negotiated link speed; a status line when off or unassociated */
 function DeviceDetails({ dev }: { dev: NM.DeviceWifi }) {
-    const ipLine = createComputed(
-        [createBinding(dev, "ip4Config"), createBinding(dev, "ip6Config")],
-        () => {
-            const v4 = dev.get_ip4_config()?.get_addresses()?.[0]?.get_address()
-            const v6addrs = dev.get_ip6_config()?.get_addresses()
-            const v6 = v6addrs && v6addrs.length > 0 ? v6addrs[0].get_address() : null
-            return [v4, v6].filter(Boolean).join(" · ")
-        },
-    )
+    // the bindings only invalidate: the values are read off the device
+    // directly below, which sees fresher nested state than the props
+    const ip4Config = createBinding(dev, "ip4Config")
+    const ip6Config = createBinding(dev, "ip6Config")
+    const ipLine = createComputed(() => {
+        ip4Config()
+        ip6Config()
+        const v4 = dev.get_ip4_config()?.get_addresses()?.[0]?.get_address()
+        const v6addrs = dev.get_ip6_config()?.get_addresses()
+        const v6 = v6addrs && v6addrs.length > 0 ? v6addrs[0].get_address() : null
+        return [v4, v6].filter(Boolean).join(" · ")
+    })
     const hwLine = createBinding(dev, "bitrate").as(() => {
         const mac = dev.get_permanent_hw_address() ?? dev.get_hw_address() ?? ""
         const bitrate = dev.get_bitrate()
@@ -77,8 +80,16 @@ function ConnectedSection({ wifi }: { wifi: AstalNetwork.Wifi }) {
     const ssid = createBinding(wifi, "ssid")
     const activeAp = createBinding(wifi, "activeAccessPoint")
 
-    const connected = createComputed([enabled, ssid], (e, s) => e && !!s)
-    const status = createComputed([enabled, ssid], (e, s) => (e && !s ? "On — not connected" : ""))
+    const connected = createComputed(() => {
+        const e = enabled()
+        const s = ssid()
+        return e && !!s
+    })
+    const status = createComputed(() => {
+        const e = enabled()
+        const s = ssid()
+        return e && !s ? "On — not connected" : ""
+    })
 
     return (
         // hidden entirely when wifi is off — the header switch says it
@@ -148,7 +159,7 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
     // subscription or it stacks on the long-lived pane accessor
     const disposers = [
         pane.subscribe(() => {
-            if (pane.get() === name) rescan()
+            if (pane.peek() === name) rescan()
             else setPrompt(null) // drop a stale prompt when leaving the pane
         }),
     ]
@@ -178,7 +189,7 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
         setRescanning(true)
         if (spinSource !== null) sourceRemove(spinSource)
         spinSource = timeoutAdd("wifi:rescan-spin", GLib.PRIORITY_DEFAULT, 100, () => {
-            setSpin((spin.get() + 30) % 360)
+            setSpin((spin.peek() + 30) % 360)
             return GLib.SOURCE_CONTINUE
         })
         const token = ++rescanToken

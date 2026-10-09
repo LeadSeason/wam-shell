@@ -19,17 +19,14 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
     let isFocused
     if (Config.desktopSession === "hyprland") {
         const hyprland = AstalHyprland.get_default()
-        isFocused = createComputed(
-            [createBinding(hyprland, "focusedMonitor"), connector],
-            m => m?.name === connector.get(),
-        )
+        const focusedMonitor = createBinding(hyprland, "focusedMonitor")
+        isFocused = createComputed(() => focusedMonitor()?.name === connector())
     } else if (Config.desktopSession === "sway" || Config.desktopSession === "i3") {
         const sway = Sway.get_default()
+        const swayOutputs = createBinding(sway, "outputs")
         isFocused = sway.ok
             ? createComputed(
-                  [createBinding(sway, "outputs"), connector],
-                  outputs =>
-                      (outputs.find((o: any) => o.focused)?.name ?? null) === connector.get(),
+                  () => (swayOutputs().find((o: any) => o.focused)?.name ?? null) === connector(),
               )
             : app.monitors[0] === gdkMonitor
     } else {
@@ -55,8 +52,8 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
     // change between show and hide, or a visible-stays-true trigger
     // streak on another monitor, must not leave the pill stuck.
     const update = () => {
-        const focused = typeof isFocused === "boolean" ? isFocused : isFocused.get()
-        if (visible.get() && focused) {
+        const focused = typeof isFocused === "boolean" ? isFocused : isFocused.peek()
+        if (visible.peek() && focused) {
             if (hideSource !== null) {
                 sourceRemove(hideSource)
                 hideSource = null

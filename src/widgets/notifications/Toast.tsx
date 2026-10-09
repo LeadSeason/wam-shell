@@ -71,7 +71,7 @@ function TimeoutBar({ countdown, rtl }: { countdown: Accessor<number>; rtl: bool
 
     function draw(self: Gtk.DrawingArea, cr: any, w: number, h: number) {
         const c = self.get_color()
-        const frac = Math.max(0, Math.min(1, countdown.get()))
+        const frac = Math.max(0, Math.min(1, countdown.peek()))
         // the track, so the bar still reads as an edge once it is spent
         cr.setSourceRGBA(c.red, c.green, c.blue, 0.18)
         cr.rectangle(0, 0, w, h)

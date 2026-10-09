@@ -149,7 +149,7 @@ async function forceAlarmVolume() {
     const cur = await readSinkVolume()
     // the alarm may have been stopped while wpctl was out: don't latch
     // a saved level and force the sink for a session that's over
-    if (cur === null || !alarming.get()) return
+    if (cur === null || !alarming.peek()) return
     savedAudio = cur
     if (cur.mute) execAsync(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "0"]).catch(() => {})
     const target = Config.sleepTimer.alarmVolume
@@ -174,7 +174,7 @@ async function restoreAlarmVolume() {
 }
 
 function rearmChime(failed: boolean) {
-    if (!alarming.get()) return
+    if (!alarming.peek()) return
     alarmSource = timeoutAddSeconds(
         "sleepTimer:alarm",
         GLib.PRIORITY_DEFAULT,
@@ -192,7 +192,7 @@ function rearmChime(failed: boolean) {
 let alarmProc: Gio.Subprocess | null = null
 
 function loopChime() {
-    if (!alarming.get() || !alarmPlayer || !alarmSound) return
+    if (!alarming.peek() || !alarmPlayer || !alarmSound) return
     let proc: Gio.Subprocess
     try {
         proc = Gio.Subprocess.new(
@@ -213,7 +213,7 @@ function loopChime() {
             failed = true
             // a stop force_exit lands here too; only a mid-alarm
             // player failure is news
-            if (alarming.get()) console.warn("sleepTimer alarm:", e)
+            if (alarming.peek()) console.warn("sleepTimer alarm:", e)
         }
         if (alarmProc === p) alarmProc = null // natural exit or killed
         rearmChime(failed)
@@ -225,7 +225,7 @@ function startAlarm() {
         console.warn("sleepTimer: alarm enabled but no usable player/sound found")
         return
     }
-    if (alarming.get()) return
+    if (alarming.peek()) return
     setAlarming(true)
     // silence everything else FIRST: the sink is about to be forced to
     // alarm_volume, and an alarm that is not a sleep fire has paused
@@ -244,7 +244,7 @@ export function stopAlarm() {
         sourceRemove(pauseSweepSource)
         pauseSweepSource = 0
     }
-    if (!alarming.get()) return
+    if (!alarming.peek()) return
     setAlarming(false)
     // the note is a per-timer thought: a stopped alarm is the end of
     // that timer, so the next one starts with an empty field. Past the
@@ -303,7 +303,7 @@ const statePath = `${stateDir}/sleep-timer.json`
 function currentState(): SleepTimerState {
     return {
         deadline,
-        paused: paused.get(),
+        paused: paused.peek(),
         pausedSeconds,
         dim:
             preDimLevel !== null && dimmedToLevel !== null
@@ -429,7 +429,7 @@ function loadState() {
             )
             // a missed wakeup is the worst outcome: ring now (the user
             // can stop it in one click), whenever it expired
-            if (alarmEnabled.get()) startAlarm()
+            if (alarmEnabled.peek()) startAlarm()
             // the claim file, not the original path: clearState points
             // at the pre-rename location
             try {
@@ -813,7 +813,7 @@ function onPlayerPlaying() {
     if (mutedStreams.size > 0) unmuteStreams()
     // opt-in: the same wake-up signal can also bring the light back
     // (restoreDim no-ops unless a fire dimmed and nothing restored yet)
-    if (restoreOnPlay.get()) restoreDim()
+    if (restoreOnPlay.peek()) restoreDim()
 }
 
 const playerStatusUnsubs = new Map<AstalMpris.Player, () => void>()
@@ -876,7 +876,7 @@ function fire() {
     // an alarm is a reminder: it rings (and pops the note) without
     // touching playback or the screen, so there is no state worth
     // persisting either. alarm_only = false opts into both
-    if (alarmEnabled.get() && Config.sleepTimer.alarmOnly) {
+    if (alarmEnabled.peek() && Config.sleepTimer.alarmOnly) {
         clearState()
         notifyNote()
         startAlarm()
@@ -908,7 +908,7 @@ function fire() {
     // shell can still restore on extend (dim-only decision)
     writeState()
     notifyNote()
-    if (alarmEnabled.get()) startAlarm()
+    if (alarmEnabled.peek()) startAlarm()
 }
 
 // the user's message as a notification at 0. Critical urgency and no
@@ -916,8 +916,8 @@ function fire() {
 // writing one. Gated on the alarm because the pill hides the field
 // without one: what cannot be seen or edited must not fire
 function notifyNote() {
-    if (!alarmEnabled.get()) return
-    const text = notificationText.get().trim()
+    if (!alarmEnabled.peek()) return
+    const text = notificationText.peek().trim()
     if (text === "") return
     notify("Sleep timer", text, 0)
 }
@@ -967,15 +967,15 @@ export function cancelSleepTimer() {
 }
 
 export function toggleSleepTimerPause() {
-    if (foreignOwned || remaining.get() <= 0) return
-    if (paused.get()) {
+    if (foreignOwned || remaining.peek() <= 0) return
+    if (paused.peek()) {
         // re-apply the frozen remainder as a fresh deadline
         deadline = Date.now() + pausedSeconds * 1000
         setPaused(false)
         arm()
     } else {
         // freeze: stash what's left, stop the tick
-        pausedSeconds = remaining.get()
+        pausedSeconds = remaining.peek()
         disarm()
         setPaused(true)
     }
@@ -1007,13 +1007,13 @@ sleep-timer status
         const arg = args[0] ?? ""
         if (arg === "status")
             return [
-                `remaining=${remaining.get()}`,
-                `paused=${paused.get()}`,
-                `alarming=${alarming.get()}`,
-                `alarm=${alarmEnabled.get()}`,
+                `remaining=${remaining.peek()}`,
+                `paused=${paused.peek()}`,
+                `alarming=${alarming.peek()}`,
+                `alarm=${alarmEnabled.peek()}`,
                 `alarmOnly=${Config.sleepTimer.alarmOnly}`,
                 `muted=${mutedStreams.size}`,
-                `note=${JSON.stringify(notificationText.get())}`,
+                `note=${JSON.stringify(notificationText.peek())}`,
             ].join(" ")
         if (foreignOwned) return "another shell instance owns the timer"
         if (arg === "cancel" || arg === "0") {
