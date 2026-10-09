@@ -811,9 +811,9 @@ function onPlayerPlaying() {
         pauseSweepSource = 0
     }
     if (mutedStreams.size > 0) unmuteStreams()
-    // opt-in: the same wake-up signal can also bring the light back
-    // (restoreDim no-ops unless a fire dimmed and nothing restored yet)
-    if (restoreOnPlay.peek()) restoreDim()
+    // the same wake-up signal can also bring the light back — restoreDim
+    // gates every automatic undim on the pill's checkbox
+    restoreDim()
 }
 
 const playerStatusUnsubs = new Map<AstalMpris.Player, () => void>()
@@ -922,24 +922,31 @@ function notifyNote() {
     notify("Sleep timer", text, 0)
 }
 
-// extending after a fire means the user is back at the machine:
-// restore the pre-dim brightness — unless they adjusted it themselves
-// meanwhile (their explicit change always wins)
+// the sleep session is over — a cancel, a new start, or a play while
+// the fired timer's mutes were live: restore the pre-dim brightness,
+// unless the pill's undim checkbox is off (the screen is theirs; only
+// their slider may raise it) or they adjusted it themselves meanwhile
+// (their explicit change always wins). Either way the memory is
+// dropped: a stale preDimLevel must not arm a later trigger with a
+// level captured at a fire long past
 function restoreDim() {
     if (preDimLevel === null || dimmedToLevel === null) return
-    const brightness = Brightness.get_default()
-    if (brightness.screenIsPresent && Math.abs(brightness.screen - dimmedToLevel) < 0.02) {
-        brightness.screen = preDimLevel
+    if (restoreOnPlay.peek()) {
+        const brightness = Brightness.get_default()
+        if (brightness.screenIsPresent && Math.abs(brightness.screen - dimmedToLevel) < 0.02) {
+            brightness.screen = preDimLevel
+        }
     }
     preDimLevel = null
     dimmedToLevel = null
-    clearState() // dim restored (or superseded): nothing left to persist
+    clearState() // dim restored (or dropped): nothing left to persist
 }
 
 export function startSleepTimer(minutes: number) {
     if (foreignOwned) return // a stale-but-live timer belongs to the other shell instance
-    // cancelSleepTimer restores a fired timer's dim, so extending after a
-    // fire still brings the pre-dim level back
+    // cancelSleepTimer ends a fired timer's session — dropping its dim,
+    // and raising the screen only when the pill's undim checkbox allows
+    // it: starting a timer must never brighten the screen on its own
     cancelSleepTimer()
     stopAlarm()
     if (minutes <= 0) return
@@ -956,12 +963,13 @@ export function cancelSleepTimer() {
     setPaused(false)
     stopAlarm()
     unmuteStreams()
-    // a cancel declares the sleep session over: bring the pre-dim level
-    // back (a user's own adjustments still win — restoreDim's epsilon
-    // guard) and, as importantly, drop the dim state. Left live, a stale
-    // preDimLevel arms restoreDim's other triggers — any media play
-    // (undim-on-play) or the next start — and the screen jumps to a level
-    // captured at a fire long past
+    // a cancel declares the sleep session over: restore the pre-dim
+    // level when the pill's undim checkbox allows it (a user's own
+    // adjustments still win — restoreDim's epsilon guard) and, as
+    // importantly, drop the dim state either way. Left live, a stale
+    // preDimLevel arms restoreDim's other triggers — any media play or
+    // the next start — and the screen jumps to a level captured at a
+    // fire long past
     restoreDim()
     clearState()
 }
