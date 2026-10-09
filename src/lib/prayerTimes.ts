@@ -364,7 +364,7 @@ function playChime() {
 // break through. The chime plays regardless: the prayer time itself
 // doesn't wait for a mood
 function fireNotify(entry: PrayerEntry) {
-    if (!dnd.get())
+    if (!dnd.peek())
         addProviderPopup(
             {
                 id: `prayer:${entry.name}-${dayKey()}`,
@@ -425,7 +425,7 @@ function publish() {
     // day — re-emitting an identical array makes every subscriber
     // rebuild (the popover's For destroys and recreates its rows,
     // visible as a flash), so only publish real changes
-    const prev = timetable.get()
+    const prev = timetable.peek()
     if (
         mapped.length !== prev.length ||
         mapped.some(
@@ -439,7 +439,7 @@ function publish() {
             Config.prayerTimes.pillFormat,
             next,
             now,
-            Config.prayerTimes.minimizeWhenScreenSharing && sharing.get(),
+            Config.prayerTimes.minimizeWhenScreenSharing && sharing.peek(),
         ),
     )
 }

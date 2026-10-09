@@ -49,17 +49,18 @@ export function enrichedMeta(player: AstalMpris.Player): EnrichedMeta {
     const title = createBinding(player, "title")
     const artist = createBinding(player, "artist")
     const art = createBinding(player, "artUrl")
-    const [outTitle, setOutTitle] = createState(title.get() ?? "")
-    const [sub, setSub] = createState(artist.get() ?? "")
-    // imperative states, not computeds: createComputed's dep cache
-    // compares falsy values loosely, and a sub that starts out "" was
-    // observed to never pick up the resolved series while the title
-    // (truthy from the start) did
+    const [outTitle, setOutTitle] = createState(title.peek() ?? "")
+    const [sub, setSub] = createState(artist.peek() ?? "")
+    // imperative states, not computeds: a gnim 1.8 array-form computed
+    // here left the sub (initially "") stuck on its first reading while
+    // the title (truthy from the start) did resolve. 1.9 tracks by call
+    // and fixed that; the explicit states also suit the two-step
+    // enrichment below (cache the series key, dispose the fetch)
     let series = ""
     let lookedUp = ""
 
     const sync = () => {
-        const t = title.get() ?? ""
+        const t = title.peek() ?? ""
         if (series && isGenericTitle(t)) {
             // a bare counter is not a title: the series takes the title
             // line, the counter becomes the subtitle
@@ -70,14 +71,14 @@ export function enrichedMeta(player: AstalMpris.Player): EnrichedMeta {
             setSub(series)
         } else {
             setOutTitle(t)
-            setSub(artist.get() ?? "")
+            setSub(artist.peek() ?? "")
         }
     }
 
     const maybeEnrich = () => {
-        const t = title.get() ?? ""
+        const t = title.peek() ?? ""
         // an artist means the player reported real metadata; leave it be
-        if (!Config.media.enrichTitles || !t || artist.get()) {
+        if (!Config.media.enrichTitles || !t || artist.peek()) {
             lookedUp = ""
             if (series) {
                 series = ""
@@ -85,7 +86,7 @@ export function enrichedMeta(player: AstalMpris.Player): EnrichedMeta {
             sync()
             return
         }
-        const key = `${art.get()}\n${t}`
+        const key = `${art.peek()}\n${t}`
         if (lookedUp !== key) {
             lookedUp = key
             recentPagesForTitle(t).then(rows => {

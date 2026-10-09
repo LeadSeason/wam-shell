@@ -204,73 +204,74 @@ function providerRowKey(item: ProviderItem): string {
 function buildMerged() {
     // sources: the two desktop lists, one items accessor per provider,
     // the two filters. Values arrive in the same order
-    return createComputed(
-        [sorted, archivedSorted, ...providers.map(p => p.items), providerFilter, query],
-        (...vals) => {
-            const pFilter = vals[vals.length - 2] as string | null
-            const q = vals[vals.length - 1] as string
-            const rows: Row[] = []
-            // a filter replaces the view entirely: the archive, a
-            // provider's own items, or just the local daemon's for the
-            // local filter
-            if (!pFilter || pFilter === LOCAL_FILTER || pFilter === ARCHIVE_FILTER) {
-                const desktop =
-                    pFilter === ARCHIVE_FILTER
-                        ? (vals[1] as AstalNotifd.Notification[])
-                        : (vals[0] as AstalNotifd.Notification[])
-                for (const n of desktop) {
-                    // the time is part of the key: replaces_id makes the
-                    // daemon emit a NEW Notification object with the same
-                    // id but a new time, and gnim's For would otherwise
-                    // reuse the stale row (it reads state once at build)
-                    rows.push({
-                        key: `desktop:${n.id}:${n.time}`,
-                        time: n.time,
-                        appName: n.appName || "unknown",
-                        // resolved, not the raw hint: apps often send no
-                        // app_icon at all, and a folded group headed by
-                        // the generic fallback next to rows that resolved
-                        // theirs fine looked like two different apps
-                        iconName: appIconFor(n.appIcon, n.appName),
-                        desktop: n,
-                        item: null,
-                    })
-                }
+    return createComputed(() => {
+        const vals = [
+            sorted(),
+            archivedSorted(),
+            ...providers.map(p => p.items).map(a => a()),
+            providerFilter(),
+            query(),
+        ]
+        const pFilter = vals[vals.length - 2] as string | null
+        const q = vals[vals.length - 1] as string
+        const rows: Row[] = []
+        if (!pFilter || pFilter === LOCAL_FILTER || pFilter === ARCHIVE_FILTER) {
+            const desktop =
+                pFilter === ARCHIVE_FILTER
+                    ? (vals[1] as AstalNotifd.Notification[])
+                    : (vals[0] as AstalNotifd.Notification[])
+            for (const n of desktop) {
+                // the time is part of the key: replaces_id makes the
+                // daemon emit a NEW Notification object with the same
+                // id but a new time, and gnim's For would otherwise
+                // reuse the stale row (it reads state once at build)
+                rows.push({
+                    key: `desktop:${n.id}:${n.time}`,
+                    time: n.time,
+                    appName: n.appName || "unknown",
+                    // resolved, not the raw hint: apps often send no
+                    // app_icon at all, and a folded group headed by
+                    // the generic fallback next to rows that resolved
+                    // theirs fine looked like two different apps
+                    iconName: appIconFor(n.appIcon, n.appName),
+                    desktop: n,
+                    item: null,
+                })
             }
-            providers.forEach((p, i) => {
-                if (pFilter && p.name !== pFilter) return
-                for (const item of vals[2 + i] as ProviderItem[]) {
-                    rows.push({
-                        // The key covers everything the row DRAWS, not
-                        // just the item's identity.
-                        //
-                        // gnim's For reuses a child whose key did not
-                        // change and never re-invokes the factory, and
-                        // CenterRow reads its RowData once at
-                        // construction. The thumbnail was already part of
-                        // this for that reason (art landing after the row
-                        // was built has to force a rebuild) — but so is
-                        // every other mutable field, and they were not: a
-                        // Todoist task whose due time moved kept its old
-                        // "Today · 14:00" body and its stale Postpone
-                        // button, and a GitHub thread whose reason
-                        // changed kept reading "Review requested"
-                        key: providerRowKey(item),
-                        time: item.time,
-                        appName: item.appName,
-                        iconName: item.iconName,
-                        soonestFirst: p.soonestFirst,
-                        desktop: null,
-                        item,
-                    })
-                }
-            })
-            const needle = q.trim().toLowerCase()
-            const filteredRows =
-                needle === "" ? rows : rows.filter(r => r.appName.toLowerCase().includes(needle))
-            return filteredRows.sort(compareRows)
-        },
-    )
+        }
+        providers.forEach((p, i) => {
+            if (pFilter && p.name !== pFilter) return
+            for (const item of vals[2 + i] as ProviderItem[]) {
+                rows.push({
+                    // The key covers everything the row DRAWS, not
+                    // just the item's identity.
+                    //
+                    // gnim's For reuses a child whose key did not
+                    // change and never re-invokes the factory, and
+                    // CenterRow reads its RowData once at
+                    // construction. The thumbnail was already part of
+                    // this for that reason (art landing after the row
+                    // was built has to force a rebuild) — but so is
+                    // every other mutable field, and they were not: a
+                    // Todoist task whose due time moved kept its old
+                    // "Today · 14:00" body and its stale Postpone
+                    // button, and a GitHub thread whose reason
+                    // changed kept reading "Review requested"
+                    key: providerRowKey(item),
+                    time: item.time,
+                    appName: item.appName,
+                    iconName: item.iconName,
+                    soonestFirst: p.soonestFirst,
+                    desktop: null,
+                    item,
+                })
+            }
+        })
+        const needle = q.trim().toLowerCase()
+        const filteredRows =
+            needle === "" ? rows : rows.filter(r => r.appName.toLowerCase().includes(needle))
+        return filteredRows.sort(compareRows)
+    })
 }
 let merged: Accessor<Row[]>
 let needsYou: Accessor<Row[]>
@@ -279,12 +280,14 @@ let feedBlocks: Accessor<FeedBlock<Row>[]>
 function buildFeedBlocks(rows: Accessor<Row[]>): Accessor<FeedBlock<Row>[]> {
     // the day dividers depend on the clock as much as on the rows: a
     // list left open past midnight has to relabel itself
-    return createComputed([rows, nowSec], (list, now) =>
-        buildFeed(
+    return createComputed(() => {
+        const list = rows()
+        const now = nowSec()
+        return buildFeed(
             list.filter(r => !isNeeded(r)),
             now,
-        ),
-    )
+        )
+    })
 }
 
 // providers behind an interactive sign-in (YouTube): when their filter
@@ -294,32 +297,32 @@ function buildFeedBlocks(rows: Accessor<Row[]>): Accessor<FeedBlock<Row>[]> {
 const [FALSE] = createState(false)
 
 function buildSignInTarget() {
-    return createComputed(
-        [providerFilter, ...providers.map(p => p.signInVisible ?? FALSE)],
-        (filter, ...visibles) => {
-            if (!filter) return null
-            const i = providers.findIndex(p => p.name === filter)
-            if (i < 0) return null
-            const p = providers[i]
-            return p.signIn && visibles[i] ? p : null
-        },
-    )
+    return createComputed(() => {
+        const filter = providerFilter()
+        const visibles = [...providers.map(p => p.signInVisible ?? FALSE).map(a => a())]
+        if (!filter) return null
+        const i = providers.findIndex(p => p.name === filter)
+        if (i < 0) return null
+        const p = providers[i]
+        return p.signIn && visibles[i] ? p : null
+    })
 }
 let signInTarget: ReturnType<typeof buildSignInTarget>
 
 // the clear-all button's enabled state: a source must be picked AND
 // hold items. Deps are evaluated at window build (registry final)
 function buildClearable() {
-    return createComputed(
-        [providerFilter, count, archived, ...providers.map(p => p.items)],
-        (f, localCount, archiveCount, ...itemLists) => {
-            if (!f) return false
-            if (f === LOCAL_FILTER) return localCount > 0
-            if (f === ARCHIVE_FILTER) return archiveCount > 0
-            const i = providers.findIndex(p => p.name === f)
-            return i >= 0 && ((itemLists[i] as ProviderItem[] | undefined)?.length ?? 0) > 0
-        },
-    )
+    return createComputed(() => {
+        const f = providerFilter()
+        const localCount = count()
+        const archiveCount = archived()
+        const itemLists = [...providers.map(p => p.items).map(a => a())]
+        if (!f) return false
+        if (f === LOCAL_FILTER) return localCount > 0
+        if (f === ARCHIVE_FILTER) return archiveCount > 0
+        const i = providers.findIndex(p => p.name === f)
+        return i >= 0 && ((itemLists[i] as ProviderItem[] | undefined)?.length ?? 0) > 0
+    })
 }
 let clearable: ReturnType<typeof buildClearable>
 
@@ -329,14 +332,13 @@ let clearable: ReturnType<typeof buildClearable>
 const [NULL_STR] = createState<string | null>(null)
 
 function buildProviderStatus() {
-    return createComputed(
-        [providerFilter, ...providers.map(p => p.status ?? NULL_STR)],
-        (filter, ...statuses) => {
-            if (!filter) return null
-            const i = providers.findIndex(p => p.name === filter)
-            return i >= 0 ? (statuses[i] as string | null) : null
-        },
-    )
+    return createComputed(() => {
+        const filter = providerFilter()
+        const statuses = [...providers.map(p => p.status ?? NULL_STR).map(a => a())]
+        if (!filter) return null
+        const i = providers.findIndex(p => p.name === filter)
+        return i >= 0 ? (statuses[i] as string | null) : null
+    })
 }
 let providerStatus: ReturnType<typeof buildProviderStatus>
 
@@ -417,7 +419,7 @@ function dismissRow(r: Row) {
 function clearArchive() {
     // paced like the other clear gestures: one idle-sliced drain, one
     // list rebuild at the end — see dismissMany
-    dismissMany([...archived.get()])
+    dismissMany([...archived.peek()])
 }
 
 // rows a folded group constructs per idle turn once opened — same
@@ -519,7 +521,7 @@ function FeedGroup({ block }: { block: Extract<FeedBlock<Row>, { kind: "group" }
                 cssClasses={["groupHead"]}
                 tooltipText={`${block.rows.length} from ${block.appName} — middle-click to clear them all`}
                 onClicked={() => {
-                    if (open.get()) closeGroup()
+                    if (open.peek()) closeGroup()
                     else {
                         setOpen(true)
                         startBuild()
@@ -672,7 +674,7 @@ function ensureWindow() {
                                         )}
                                         tooltipText="Filter by app"
                                         onClicked={() => {
-                                            const next = !searchOpen.get()
+                                            const next = !searchOpen.peek()
                                             setSearchOpen(next)
                                             if (!next) {
                                                 // closing it must also drop the
@@ -719,21 +721,21 @@ function ensureWindow() {
                                     the picked source holds items */}
                                     <button
                                         sensitive={clearable}
-                                        tooltipText={createComputed(
-                                            [providerFilter, dismissProgress],
-                                            (f, p) =>
-                                                p
-                                                    ? `Clearing ${p.done} of ${p.total}…`
-                                                    : f === LOCAL_FILTER
-                                                      ? "Clear all local notifications"
-                                                      : f === ARCHIVE_FILTER
-                                                        ? "Clear all archived notifications"
-                                                        : f
-                                                          ? `Clear all ${f} notifications`
-                                                          : "Pick a source to clear",
-                                        )}
+                                        tooltipText={createComputed(() => {
+                                            const f = providerFilter()
+                                            const p = dismissProgress()
+                                            return p
+                                                ? `Clearing ${p.done} of ${p.total}…`
+                                                : f === LOCAL_FILTER
+                                                  ? "Clear all local notifications"
+                                                  : f === ARCHIVE_FILTER
+                                                    ? "Clear all archived notifications"
+                                                    : f
+                                                      ? `Clear all ${f} notifications`
+                                                      : "Pick a source to clear"
+                                        })}
                                         onClicked={() => {
-                                            const f = providerFilter.get()
+                                            const f = providerFilter.peek()
                                             if (f === LOCAL_FILTER) {
                                                 // the history list, not the
                                                 // daemon's: transient
@@ -744,12 +746,12 @@ function ensureWindow() {
                                                 // list rebuild at the end —
                                                 // a per-row rebuild froze
                                                 // the shell at ~1.2k rows
-                                                dismissMany([...active.get()])
+                                                dismissMany([...active.peek()])
                                             } else if (f === ARCHIVE_FILTER) {
                                                 clearArchive()
                                             } else if (f) {
                                                 const p = providers.find(x => x.name === f)
-                                                for (const item of [...(p?.items.get() ?? [])])
+                                                for (const item of [...(p?.items.peek() ?? [])])
                                                     guarded(() => item.dismiss())()
                                             }
                                         }}
@@ -791,14 +793,15 @@ function ensureWindow() {
                                 provider to mute/unmute its banners */}
                                 <box cssClasses={["filtersRow"]} spacing={6}>
                                     <button
-                                        cssClasses={createComputed(
-                                            [providerFilter, mutedProviders],
-                                            (f, m) => [
+                                        cssClasses={createComputed(() => {
+                                            const f = providerFilter()
+                                            const m = mutedProviders()
+                                            return [
                                                 "provider",
                                                 ...(f === LOCAL_FILTER ? ["active"] : []),
                                                 ...(m.includes(LOCAL_FILTER) ? ["muted"] : []),
-                                            ],
-                                        )}
+                                            ]
+                                        })}
                                         tooltipText={mutedProviders.as(m =>
                                             m.includes(LOCAL_FILTER)
                                                 ? "Show only local notifications (right-click to unmute)"
@@ -806,7 +809,7 @@ function ensureWindow() {
                                         )}
                                         onClicked={() =>
                                             setProviderFilter(
-                                                providerFilter.get() === LOCAL_FILTER
+                                                providerFilter.peek() === LOCAL_FILTER
                                                     ? null
                                                     : LOCAL_FILTER,
                                             )
@@ -839,14 +842,15 @@ function ensureWindow() {
                                     </button>
                                     {providers.map(p => (
                                         <button
-                                            cssClasses={createComputed(
-                                                [providerFilter, mutedProviders],
-                                                (f, m) => [
+                                            cssClasses={createComputed(() => {
+                                                const f = providerFilter()
+                                                const m = mutedProviders()
+                                                return [
                                                     "provider",
                                                     ...(f === p.name ? ["active"] : []),
                                                     ...(m.includes(p.name) ? ["muted"] : []),
-                                                ],
-                                            )}
+                                                ]
+                                            })}
                                             tooltipText={mutedProviders.as(m =>
                                                 m.includes(p.name)
                                                     ? `Show only ${p.name} notifications (right-click to unmute)`
@@ -854,7 +858,9 @@ function ensureWindow() {
                                             )}
                                             onClicked={() =>
                                                 setProviderFilter(
-                                                    providerFilter.get() === p.name ? null : p.name,
+                                                    providerFilter.peek() === p.name
+                                                        ? null
+                                                        : p.name,
                                                 )
                                             }
                                         >
@@ -938,12 +944,14 @@ function ensureWindow() {
                                         itself instead of pretending the
                                         inbox is empty */}
                                         <box
-                                            visible={createComputed(
-                                                [providerStatus, providerFilter],
-                                                (s, f) =>
+                                            visible={createComputed(() => {
+                                                const s = providerStatus()
+                                                const f = providerFilter()
+                                                return (
                                                     s !== null &&
-                                                    !providers.find(x => x.name === f)?.setupHint,
-                                            )}
+                                                    !providers.find(x => x.name === f)?.setupHint
+                                                )
+                                            })}
                                             vexpand
                                         >
                                             <PaneEmpty
@@ -957,10 +965,11 @@ function ensureWindow() {
                                         (YouTube) when the picked
                                         provider has no accounts yet */}
                                         <box
-                                            visible={createComputed(
-                                                [providerStatus, signInTarget],
-                                                (s, t) => s === null && t !== null,
-                                            )}
+                                            visible={createComputed(() => {
+                                                const s = providerStatus()
+                                                const t = signInTarget()
+                                                return s === null && t !== null
+                                            })}
                                             vexpand
                                         >
                                             <PaneEmpty
@@ -974,7 +983,7 @@ function ensureWindow() {
                                                         cssClasses={["providerSignin"]}
                                                         halign={Gtk.Align.CENTER}
                                                         onClicked={() =>
-                                                            signInTarget.get()?.signIn?.()
+                                                            signInTarget.peek()?.signIn?.()
                                                         }
                                                     >
                                                         <label
@@ -990,35 +999,36 @@ function ensureWindow() {
                                         {/* plain empty inbox, or no
                                         matches for the search */}
                                         <box
-                                            visible={createComputed(
-                                                [providerStatus, signInTarget, providerFilter],
-                                                (s, t, f) =>
+                                            visible={createComputed(() => {
+                                                const s = providerStatus()
+                                                const t = signInTarget()
+                                                const f = providerFilter()
+                                                return (
                                                     s === null &&
                                                     t === null &&
-                                                    !providers.find(x => x.name === f)?.setupHint,
-                                            )}
+                                                    !providers.find(x => x.name === f)?.setupHint
+                                                )
+                                            })}
                                             vexpand
                                         >
                                             <PaneEmpty
-                                                icon={createComputed(
-                                                    [query, providerFilter],
-                                                    (q, f) => {
-                                                        if (q.trim() !== "")
-                                                            return "system-search-symbolic"
-                                                        return f === ARCHIVE_FILTER
-                                                            ? "folder-symbolic"
-                                                            : "mail-inbox-symbolic"
-                                                    },
-                                                )}
-                                                title={createComputed(
-                                                    [query, providerFilter],
-                                                    (q, f) => {
-                                                        if (q.trim() !== "") return "No matches"
-                                                        return f === ARCHIVE_FILTER
-                                                            ? "No archived notifications"
-                                                            : "No notifications"
-                                                    },
-                                                )}
+                                                icon={createComputed(() => {
+                                                    const q = query()
+                                                    const f = providerFilter()
+                                                    if (q.trim() !== "")
+                                                        return "system-search-symbolic"
+                                                    return f === ARCHIVE_FILTER
+                                                        ? "folder-symbolic"
+                                                        : "mail-inbox-symbolic"
+                                                })}
+                                                title={createComputed(() => {
+                                                    const q = query()
+                                                    const f = providerFilter()
+                                                    if (q.trim() !== "") return "No matches"
+                                                    return f === ARCHIVE_FILTER
+                                                        ? "No archived notifications"
+                                                        : "No notifications"
+                                                })}
                                                 hint=""
                                             />
                                         </box>
@@ -1096,24 +1106,26 @@ function ensureWindow() {
                                     out). Middle-click empties it, the
                                     center's usual clear gesture */}
                                 <button
-                                    cssClasses={createComputed(
-                                        [archived, providerFilter],
-                                        (a, f) => [
+                                    cssClasses={createComputed(() => {
+                                        const a = archived()
+                                        const f = providerFilter()
+                                        return [
                                             "archiveButton",
                                             ...(f === ARCHIVE_FILTER ? ["active"] : []),
                                             ...(a.length === 0 && f !== ARCHIVE_FILTER
                                                 ? ["disabled"]
                                                 : []),
-                                        ],
-                                    )}
-                                    sensitive={createComputed(
-                                        [archived, providerFilter],
-                                        (a, f) => a.length > 0 || f === ARCHIVE_FILTER,
-                                    )}
+                                        ]
+                                    })}
+                                    sensitive={createComputed(() => {
+                                        const a = archived()
+                                        const f = providerFilter()
+                                        return a.length > 0 || f === ARCHIVE_FILTER
+                                    })}
                                     tooltipText="Show the archive (middle-click to clear)"
                                     onClicked={() =>
                                         setProviderFilter(
-                                            providerFilter.get() === ARCHIVE_FILTER
+                                            providerFilter.peek() === ARCHIVE_FILTER
                                                 ? null
                                                 : ARCHIVE_FILTER,
                                         )

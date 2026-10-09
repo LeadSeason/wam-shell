@@ -178,11 +178,11 @@ function BrightnessSlider() {
             <label
                 widthChars={5}
                 maxWidthChars={5}
-                label={createComputed(
-                    [hyprsunset.outdoor, screen],
-                    // show the effective gamma: outdoor boost or slider value
-                    (outdoor, v) => (outdoor ? `${OUTDOOR_GAMMA}%` : `${Math.floor(v * 100)}%`),
-                )}
+                label={createComputed(() => {
+                    const outdoor = hyprsunset.outdoor()
+                    const v = screen()
+                    return outdoor ? `${OUTDOOR_GAMMA}%` : `${Math.floor(v * 100)}%`
+                })}
             />
             {/* undo the last change (any source: slider, scroll, keybinds,
             sleep-timer dim); toggles between the two levels. Always
@@ -199,7 +199,7 @@ function BrightnessSlider() {
                 <Gtk.GestureClick
                     button={1}
                     {...pressable(() => {
-                        if (previous.get() >= 0) brightness.restorePrevious()
+                        if (previous.peek() >= 0) brightness.restorePrevious()
                     })}
                 />
                 <image iconName={"edit-undo-symbolic"} />

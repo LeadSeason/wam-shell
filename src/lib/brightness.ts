@@ -52,7 +52,7 @@ export default class Brightness extends GObject.Object {
         return this.instance
     }
 
-    #screen = hasBacklight ? abScreen.brightness : hyprsunset.dim.get()
+    #screen = hasBacklight ? abScreen.brightness : hyprsunset.dim.peek()
     #useGammaDim = useGammaDim
     #screenIsPresent = screenIsPresent
     // last level before the most recent change, -1 = none yet
@@ -96,7 +96,7 @@ export default class Brightness extends GObject.Object {
             // setDimLevel clamps to 0.05: when our target sat below the
             // clamp, the real gamma wins — show the clamped value, not
             // the unclamped request
-            this.#screen = hyprsunset.dim.get()
+            this.#screen = hyprsunset.dim.peek()
             this.notify("screen")
             return
         }
@@ -136,7 +136,7 @@ export default class Brightness extends GObject.Object {
             // a 100% nobody set, and the restore gesture then took a
             // 60%-gamma laptop to full brightness. Adopt the value and
             // move on — the real pre-change level is whatever it seeds to
-            if (this.#useGammaDim && !hyprsunset.initialReadDone.get()) {
+            if (this.#useGammaDim && !hyprsunset.initialReadDone.peek()) {
                 last = this.#screen
                 return
             }
@@ -161,7 +161,7 @@ export default class Brightness extends GObject.Object {
             // gamma-dim path: keep the slider's value in sync with the
             // shared dim state (quick settings, keybinds, the watcher)
             this.#dimUnsub = hyprsunset.dim.subscribe(() => {
-                this.#screen = hyprsunset.dim.get()
+                this.#screen = hyprsunset.dim.peek()
                 this.notify("screen")
             })
         } else if (hasBacklight) {

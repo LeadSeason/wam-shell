@@ -189,7 +189,7 @@ let nextPumpProgressId = 0
 const [progressTick, bumpProgress] = createState(0)
 export const dismissProgress: Accessor<{ done: number; total: number } | null> = new Accessor(
     () => {
-        progressTick.get()
+        progressTick.peek()
         if (pumpProgress.size === 0) return null
         let done = 0
         let total = 0
@@ -385,7 +385,7 @@ export { mutedProviders }
 export const LOCAL_SOURCE = "local"
 
 export function toggleProviderMute(name: string) {
-    const cur = mutedProviders.get()
+    const cur = mutedProviders.peek()
     setMutedProviders(cur.includes(name) ? cur.filter(n => n !== name) : [...cur, name])
 }
 
@@ -427,12 +427,12 @@ export { mutedApps }
 
 /** compared lowercased everywhere: app names arrive however the sender spelled them */
 export function isAppMuted(appName: string): boolean {
-    return mutedApps.get().includes((appName || "unknown").toLowerCase())
+    return mutedApps.peek().includes((appName || "unknown").toLowerCase())
 }
 
 export function toggleAppMute(appName: string) {
     const key = (appName || "unknown").toLowerCase()
-    const cur = mutedApps.get()
+    const cur = mutedApps.peek()
     const next = cur.includes(key) ? cur.filter(n => n !== key) : [...cur, key]
     setMutedApps(next)
     writeFileAtomic(mutedAppsPath, JSON.stringify(next)).catch(e =>
@@ -478,7 +478,7 @@ export const popups: Accessor<PopupEntry[]> = popupsState
 const timers = new Map<string, PopupTimer>()
 const [timerVersion, setTimerVersion] = createState(0)
 export const popupTimerVersion: Accessor<number> = timerVersion
-const bumpTimerVersion = () => setTimerVersion(timerVersion.get() + 1)
+const bumpTimerVersion = () => setTimerVersion(timerVersion.peek() + 1)
 
 export function popupTimer(key: string): PopupTimer | null {
     return timers.get(key) ?? null
@@ -561,7 +561,7 @@ export function removePopup(key: string) {
     cancelExpire(key)
     cancelDeferred(key)
     if (timers.delete(key)) bumpTimerVersion()
-    setPopups(popupsState.get().filter(p => p.key !== key))
+    setPopups(popupsState.peek().filter(p => p.key !== key))
     forgetFinishedApps()
 }
 
@@ -618,7 +618,7 @@ function unsnooze(held: Snoozed) {
     if (desktop) {
         if (!notifd.get_notification(desktop.id)) return
         // the two gates the `notified` handler applies
-        if (mutedProviders.get().includes(LOCAL_SOURCE)) return
+        if (mutedProviders.peek().includes(LOCAL_SOURCE)) return
         if (isAppMuted(desktop.appName)) return
         addPopup(held.entry, held.urgency, held.expireMs)
         return
@@ -626,7 +626,7 @@ function unsnooze(held: Snoozed) {
     if (!item) return
     const fresh = providers
         .find(p => p.name === item.provider)
-        ?.items.get()
+        ?.items.peek()
         .find(i => i.id === item.id)
     // completed, hidden, or aged out of the provider's list
     if (!fresh) return
@@ -642,7 +642,7 @@ function unsnooze(held: Snoozed) {
  * double click produces: the first one already removed it.
  */
 export function snoozePopup(key: string): boolean {
-    const entry = popupsState.get().find(p => p.key === key)
+    const entry = popupsState.peek().find(p => p.key === key)
     if (!entry || snoozed.has(key)) return false
 
     const timer = timers.get(key)
@@ -736,7 +736,7 @@ function ensurePopupTick() {
         // countdowns, it must not decide whether the tick lives.
         // ensurePopupTick runs on every admission, so a later drainable
         // banner simply starts it again.
-        if (popupsState.get().length === 0 || !(draining() || collapsing())) {
+        if (popupsState.peek().length === 0 || !(draining() || collapsing())) {
             tickSource = null
             return GLib.SOURCE_REMOVE
         }
@@ -759,7 +759,7 @@ const arrivals = new Map<string, number>()
 
 function forgetFinishedApps() {
     const live = popupsState
-        .get()
+        .peek()
         .filter(p => !p.critical)
         .map(popupAppName)
     for (const app of staleArrivalKeys([...arrivals.keys()], live)) arrivals.delete(app)
@@ -782,7 +782,7 @@ function addPopup(
     const critical = urgency === AstalNotifd.Urgency.CRITICAL
     // DND silences popups; critical notifications still break through
     if (notifd.dontDisturb && !critical) return false
-    const current = popupsState.get()
+    const current = popupsState.peek()
     const existing = current.find(p => p.key === entry.key)
     if (existing) {
         // a desktop notification with a replaces_id arrives under the
@@ -824,7 +824,7 @@ function addPopup(
     }
     setPopups(capPopups([...current, admitted], MAX_POPUPS))
     // prune entries of popups the cap just dropped
-    const live = new Set(popupsState.get().map(p => p.key))
+    const live = new Set(popupsState.peek().map(p => p.key))
     for (const key of timers.keys()) if (!live.has(key)) timers.delete(key)
     forgetFinishedApps()
     bumpTimerVersion()
@@ -844,7 +844,7 @@ export function addProviderPopup(
     expireMs: number = -1,
 ) {
     if (!useOurs) return // no popup windows exist in that case
-    if (mutedProviders.get().includes(item.provider)) return
+    if (mutedProviders.peek().includes(item.provider)) return
     addPopup({ key: item.id, desktop: null, item }, urgency, expireMs)
 }
 
@@ -855,7 +855,7 @@ let notifiedId = connect(notifd, "notified", (_s: AstalNotifd.Notifd, id: number
     // muting the local source is a per-source DND: the notification
     // still lands in the center, it just does not interrupt. Absolute,
     // like a muted provider — a mute nobody can rely on is not a mute
-    if (mutedProviders.get().includes(LOCAL_SOURCE)) return
+    if (mutedProviders.peek().includes(LOCAL_SOURCE)) return
     // and the same, for one app rather than all of them. Absolute too,
     // criticals included: unlike DND, which is a mood, this is a
     // standing instruction about a specific sender — an app that is

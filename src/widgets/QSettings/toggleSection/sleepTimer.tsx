@@ -49,20 +49,26 @@ export function SleepTimerButton({
             dropdownIndex={dropdownIndex}
             icon={"alarm-symbolic"}
             label={"Sleep Timer"}
-            subtitle={createComputed([remaining, paused, alarming], (s, p, a) =>
-                // short: long subtitles push the toggle grid to 1 column
-                a
+            subtitle={createComputed(() => {
+                const s = remaining()
+                const p = paused()
+                const a = alarming()
+                return a
                     ? "Stop the alarm"
                     : s > 0
                       ? `${formatRemaining(s)}${p ? " (paused)" : ""}`
-                      : "Off",
-            )}
-            isActive={createComputed([remaining, alarming], (s, a) => s > 0 || a)}
+                      : "Off"
+            })}
+            isActive={createComputed(() => {
+                const s = remaining()
+                const a = alarming()
+                return s > 0 || a
+            })}
             activate={() => {
                 // ringing: stop. running: cancel. otherwise the dropdown
-                if (alarming.get()) stopAlarm()
-                else if (remaining.get() > 0) cancelSleepTimer()
-                else if (activeDropdown.get() === dropdownIndex) setActiveDropdown(0)
+                if (alarming.peek()) stopAlarm()
+                else if (remaining.peek() > 0) cancelSleepTimer()
+                else if (activeDropdown.peek() === dropdownIndex) setActiveDropdown(0)
                 else setActiveDropdown(dropdownIndex)
             }}
         />
@@ -142,7 +148,7 @@ export function SleepTimerWidget({
                                 ? "Ring at 0 as a reminder: playback, volume and brightness are left alone"
                                 : "Play the alarm when the timer reaches 0"
                         }
-                        onClicked={() => setAlarmEnabled(!alarmEnabled.get())}
+                        onClicked={() => setAlarmEnabled(!alarmEnabled.peek())}
                     >
                         <Gtk.CheckButton
                             cssClasses={["paneCheckbox"]}
@@ -164,7 +170,7 @@ export function SleepTimerWidget({
                         tooltipText={
                             "Restore the brightness when media starts playing after the timer fired"
                         }
-                        onClicked={() => setRestoreOnPlay(!restoreOnPlay.get())}
+                        onClicked={() => setRestoreOnPlay(!restoreOnPlay.peek())}
                     >
                         <Gtk.CheckButton
                             cssClasses={["paneCheckbox"]}
@@ -184,11 +190,11 @@ export function SleepTimerWidget({
                 <Gtk.Entry
                     visible={alarmEnabled}
                     $={self => {
-                        self.set_text(notificationText.get())
+                        self.set_text(notificationText.peek())
                         // gnim subscribe callbacks get NO argument —
                         // read the current value instead
                         const unsub = notificationText.subscribe(() => {
-                            const v = notificationText.get()
+                            const v = notificationText.peek()
                             if (self.get_text() !== v) self.set_text(v)
                         })
                         let save: ReturnType<typeof timeout> | null = null

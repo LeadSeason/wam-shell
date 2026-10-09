@@ -48,9 +48,11 @@ function ProfileSelector({ wpDev }: { wpDev: AstalWp.Device }) {
     // this, each unmount leaks a notify handler on the wp Device
     onCleanup(createBinding(wpDev, "activeProfileId").subscribe(() => setPendingProfile(null)))
 
-    const profiles = createComputed(
-        [createBinding(wpDev, "profiles"), createBinding(wpDev, "activeProfileId"), pendingProfile],
-        (list, activeId, pending) =>
+    const profiles = createComputed(() => {
+        const list = createBinding(wpDev, "profiles")()
+        const activeId = createBinding(wpDev, "activeProfileId")()
+        const pending = pendingProfile()
+        return (
             (list ?? [])
                 // pipewire reports UNKNOWN availability for every profile —
                 // only exclude explicit NO
@@ -60,8 +62,9 @@ function ProfileSelector({ wpDev }: { wpDev: AstalWp.Device }) {
                     label: p.description ?? p.name,
                     active: p.index === activeId,
                     pending: p.index === pending,
-                })),
-    )
+                }))
+        )
+    })
 
     return (
         <box orientation={Gtk.Orientation.VERTICAL}>
@@ -76,7 +79,7 @@ function ProfileSelector({ wpDev }: { wpDev: AstalWp.Device }) {
                         <Gtk.GestureClick
                             button={1}
                             onPressed={() => {
-                                if (p.active || pendingProfile.get() !== null) return
+                                if (p.active || pendingProfile.peek() !== null) return
                                 setPendingProfile(p.index)
                                 const token = ++pendingToken
                                 delay(5000, () => {
@@ -171,57 +174,30 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan, scanSettled }: De
     // this re-evaluates whenever a sighting lands or ages out
     const canJudgeRange = sightings.as(() => advertises(device.address))
 
-    const status = createComputed(
-        [
-            pending,
-            error,
-            createBinding(device, "connected"),
-            createBinding(device, "paired"),
-            createBinding(device, "batteryPercentage").as(batteryPercentValue),
-            heard,
-            canJudgeRange,
-            scanSettled,
-        ],
-        (pending, error, connected, paired, battery, heard, judgeable, settled) => {
-            if (error) return error
-            if (pending === "pairing") return "Pairing…"
-            if (pending === "connecting") return "Connecting…"
-            if (pending === "disconnecting") return "Disconnecting…"
-            if (connected) return battery >= 0 ? `Connected · ${battery}%` : "Connected"
-            // Four states, because a paired device has three ways of not
-            // being connected and they call for different actions:
-            //
-            //   Available     the adapter can hear it NOW — tap and it
-            //                 connects. Same word the unpaired rows use,
-            //                 because it is the same promise.
-            //   Not in range  it normally announces itself and has gone
-            //                 quiet: switched off, in its case, or in
-            //                 another room. Tapping would sit on
-            //                 "Connecting…" until bluez gave up.
-            //   Paired        we genuinely cannot tell (it never
-            //                 advertises, or the scan has not had its
-            //                 thirteen seconds yet). Claim nothing.
-            //
-            // Collapsing the first and last was the original complaint
-            // in miniature: a device you could connect to this second
-            // looked identical to one whose whereabouts are unknown.
-            if (!paired || heard) return "Available"
-            if (settled && judgeable) return "Not in range"
-            return "Paired"
-        },
-    )
+    const status = createComputed(() => {
+        const connected = createBinding(device, "connected")()
+        const paired = createBinding(device, "paired")()
+        const battery = createBinding(device, "batteryPercentage").as(batteryPercentValue)()
+        if (error()) return error()
+        if (pending() === "pairing") return "Pairing…"
+        if (pending() === "connecting") return "Connecting…"
+        if (pending() === "disconnecting") return "Disconnecting…"
+        if (connected) return battery >= 0 ? `Connected · ${battery}%` : "Connected"
+        if (!paired || heard()) return "Available"
+        if (scanSettled() && canJudgeRange()) return "Not in range"
+        return "Paired"
+    })
     const statusClass = error.as(e => (e ? ["status", "error"] : ["status"]))
     const isPaired = createBinding(device, "paired")
     // dims the whole row to match the "Not in range" status
-    const rowClasses = createComputed(
-        [createBinding(device, "connected"), isPaired, heard, canJudgeRange, scanSettled],
-        (connected, paired, heard, judgeable, settled) => {
-            const classes = ["btDevice", "paneRow"]
-            if (connected) classes.push("active")
-            else if (paired && !heard && settled && judgeable) classes.push("unavailable")
-            return classes
-        },
-    )
+    const rowClasses = createComputed(() => {
+        const connected = createBinding(device, "connected")()
+        const paired = isPaired()
+        const classes = ["btDevice", "paneRow"]
+        if (connected) classes.push("active")
+        else if (paired && !heard() && scanSettled() && canJudgeRange()) classes.push("unavailable")
+        return classes
+    })
 
     async function connectFlow() {
         setPending("connecting")
@@ -325,7 +301,7 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan, scanSettled }: De
     }
 
     function onClick() {
-        if (pending.get()) return
+        if (pending.peek()) return
         setError("")
         pauseDiscovery()
         // every branch resumes discovery when it settles (see maybeScan)
@@ -354,13 +330,11 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan, scanSettled }: De
                 cssName={"button"}
                 cssClasses={rowClasses}
                 spacing={5}
-                tooltipText={createComputed(
-                    [
-                        createBinding(device, "connected"),
-                        createBinding(device, "batteryPercentage").as(batteryPercentValue),
-                    ],
-                    (c, b) => (c && b >= 0 ? `${device.address} · ${b}%` : device.address),
-                )}
+                tooltipText={createComputed(() => {
+                    const c = createBinding(device, "connected")()
+                    const b = createBinding(device, "batteryPercentage").as(batteryPercentValue)()
+                    return c && b >= 0 ? `${device.address} · ${b}%` : device.address
+                })}
             >
                 {/* gesture only on the info area: nested buttons must not
                 re-trigger the row click (see notification center) */}
@@ -382,7 +356,7 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan, scanSettled }: De
                 <button
                     cssClasses={["details"]}
                     tooltipText={"Device details"}
-                    onClicked={() => setDetailsOpen(!detailsOpen.get())}
+                    onClicked={() => setDetailsOpen(!detailsOpen.peek())}
                 >
                     {/* same expander pair as the wifi row's. Collapsed
                     it showed dialog-information — which in Adwaita is a

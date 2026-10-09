@@ -242,12 +242,17 @@ so does not preserve parameter order.
 ## Resources
 
 - Widget subscriptions pair `subscribe` with `onCleanup`.
-- Prefer imperative `createState` over array-form `createComputed` for
-  derived display values: its dep cache keys on falsy checks, and an
-  initially-falsy dep (`""`, `[]`) can leave the computed stale —
-  observed twice (`eligiblePlayers` in `lib/mpris.ts`, and the enriched
-  media subtitle in `lib/mediaMeta.ts`, where the title label updated
-  on resolution and the sub never did).
+- gnim 1.9 syntax only. Computeds are `createComputed(() => ...)`;
+  deps are tracked by CALL inside the function, `.peek()` reads
+  without tracking. The pre-1.9 forms (deps-array, `get`-style
+  `createComputed(fn => fn(dep))`, and accessor `.get()`) were migrated
+  out — don't reintroduce them. The old array form cached dep values
+  with a falsy check, and an initially-falsy dep (`""`, `[]`) could
+  leave a computed stale — observed twice (`eligiblePlayers` in
+  `lib/mpris.ts`, the enriched media subtitle in `lib/mediaMeta.ts`) —
+  which is why several derived values are still written imperatively;
+  call-tracking fixed that class of bug, so the imperative form at
+  those sites is a leftover workaround, not a rule.
 - Lib modules with long-lived sources expose a `dispose()` and REGISTER
   it: `registerDispose("<module>", dispose)` from `lib/lifecycle.ts`,
   run by `app.tsx` on `shutdown`. Singletons register from inside

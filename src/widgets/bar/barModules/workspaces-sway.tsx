@@ -106,36 +106,35 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
     // connector can be null at construction (monitor still initializing):
     // make it a computed dep so the list recomputes when it arrives
     const displayName = createBinding(monitor, "connector")
+    const swayWss = createBinding(sway, "wss")
+    const swayTree = createBinding(sway, "tree")
+    const swayFocused = createBinding(sway, "focused")
 
-    const swayWorkspacesList = createComputed(
-        [
-            createBinding(sway, "wss"),
-            createBinding(sway, "tree"),
-            createBinding(sway, "focused"),
-            displayName,
-        ],
-        wss => {
-            return wss.filter(ws => {
-                if (ws.output !== displayName.get()) return false
-                if (!Config.workspaces.hideEmpty) return true
-                if (ws.id === sway.focused) return true
+    const swayWorkspacesList = createComputed(() => {
+        const wss = swayWss()
+        swayTree() // any of these invalidate the filtered list
+        swayFocused()
+        displayName()
+        return wss.filter(ws => {
+            if (ws.output !== displayName.peek()) return false
+            if (!Config.workspaces.hideEmpty) return true
+            if (ws.id === sway.focused) return true
 
-                // workspaceList doesn't contain child nodes, look them up in the tree
-                const wsNode = sway.tree
-                    .find(output => output.name === displayName.get())
-                    ?.nodes.find(node => node.id === ws.id)
-                if (!wsNode) return true // can't tell, keep it
+            // workspaceList doesn't contain child nodes, look them up in the tree
+            const wsNode = sway.tree
+                .find(output => output.name === displayName.peek())
+                ?.nodes.find(node => node.id === ws.id)
+            if (!wsNode) return true // can't tell, keep it
 
-                return (wsNode.nodes?.length ?? 0) > 0 || (wsNode.floating_nodes?.length ?? 0) > 0
-            })
-        },
-    )
+            return (wsNode.nodes?.length ?? 0) > 0 || (wsNode.floating_nodes?.length ?? 0) > 0
+        })
+    })
 
     // dead workspaces must not accumulate cache entries over the bar's
     // lifetime: prune whenever the list recomputes, releasing the pruned
     // box's `wss` binding (see the note on wsIconCache)
     const unsubPrune = swayWorkspacesList.subscribe(() => {
-        const current = new Set(swayWorkspacesList.get().map(ws => ws.id))
+        const current = new Set(swayWorkspacesList.peek().map(ws => ws.id))
         for (const id of [...cacheKeys]) {
             if (!current.has(id)) {
                 wsIconCache.get(id)?.dispose()
@@ -150,7 +149,7 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
     // the same list the bar is showing (see the hyprland twin)
     const step = createScrollStepper()
     const scrollToNeighbour = (dir: -1 | 0 | 1) => {
-        const list = swayWorkspacesList.get()
+        const list = swayWorkspacesList.peek()
         const focused = list.find(ws => ws.id === sway.focused)
         const target = stepThrough(list, focused, dir)
         if (target) focus_workspace(sway, target)
@@ -187,7 +186,7 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
                         // 2nt find: find the correct workspace from outputs workspaces
                         // This is needed because workspaceList doesn't contain the child nodes
                         let workspaceNode = sway.tree
-                            .find(i => i.name === displayName.get())
+                            .find(i => i.name === displayName.peek())
                             ?.nodes.find(i => i.id === workspace.id) as Node
                         if (workspaceNode == undefined) return <box /> // Remove workplaces that failed to find
 
@@ -245,44 +244,45 @@ export default function SwayWs({ monitor }: { monitor: Gdk.Monitor }) {
                     // carry the track title. sway's tree has no global
                     // focus recency, so the no-title-match fallback
                     // stays conservative: a lone window of the class
-                    const playing = createComputed(
-                        [createBinding(sway, "tree"), playingPlayers],
-                        (_tree, ps) => {
-                            if (ps.length === 0) return false
-                            const wsNode = sway.tree
-                                .find(o => o.name === displayName.get())
-                                ?.nodes.find(n => n.id === workspace.id)
-                            if (!wsNode) return false
-                            const leaves = [
-                                ...(wsNode.nodes?.length ? getLeafNodes(wsNode.nodes) : []),
-                                ...(wsNode.floating_nodes?.length
-                                    ? getLeafNodes(wsNode.floating_nodes)
-                                    : []),
-                            ]
-                            const all = getLeafNodes(sway.tree)
-                            const wmOf = (n: Node) =>
-                                n.shell === "xwayland" ? n.window_properties?.class : n.app_id
-                            return leaves.some(n => {
-                                const wm = wmOf(n)
-                                if (!wm) return false
-                                const count = all.filter(
-                                    m => wmOf(m)?.toLowerCase() === wm.toLowerCase(),
-                                ).length
-                                return matchesPlayingWindow(ps, wm, n.name ?? "", count === 1)
-                            })
-                        },
-                    )
+                    const playing = createComputed(() => {
+                        const _tree = createBinding(sway, "tree")()
+                        const ps = playingPlayers()
+                        if (ps.length === 0) return false
+                        const wsNode = sway.tree
+                            .find(o => o.name === displayName.peek())
+                            ?.nodes.find(n => n.id === workspace.id)
+                        if (!wsNode) return false
+                        const leaves = [
+                            ...(wsNode.nodes?.length ? getLeafNodes(wsNode.nodes) : []),
+                            ...(wsNode.floating_nodes?.length
+                                ? getLeafNodes(wsNode.floating_nodes)
+                                : []),
+                        ]
+                        const all = getLeafNodes(sway.tree)
+                        const wmOf = (n: Node) =>
+                            n.shell === "xwayland" ? n.window_properties?.class : n.app_id
+                        return leaves.some(n => {
+                            const wm = wmOf(n)
+                            if (!wm) return false
+                            const count = all.filter(
+                                m => wmOf(m)?.toLowerCase() === wm.toLowerCase(),
+                            ).length
+                            return matchesPlayingWindow(ps, wm, n.name ?? "", count === 1)
+                        })
+                    })
                     // highlight the workspace itself (see the hyprland
                     // twin): "playing" tints, "beat" pulses
-                    const classes = createComputed(
-                        [focused, playing, playingPulse],
-                        (f, p, beat) => [
+                    const classes = createComputed(() => {
+                        const f = focused()
+                        const p = playing()
+                        const beat = playingPulse()
+                        return [
                             ...f,
                             ...(p && Config.workspaces.playingIndicator
                                 ? ["playing", ...(beat ? ["beat"] : [])]
                                 : []),
-                        ],
-                    )
+                        ]
+                    })
                     return (
                         <button
                             cssName={"workspace"}

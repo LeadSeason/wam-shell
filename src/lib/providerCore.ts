@@ -180,7 +180,7 @@ export function createRefreshGate(minAgeMs: number, poll: () => void) {
  *        drop a live banner)
  */
 export function createSessionHide<T extends { id: string }>(
-    items: { get(): T[] },
+    items: { peek(): T[] },
     setItems: (next: T[]) => void,
     extra?: (id: string) => void,
 ) {
@@ -191,7 +191,7 @@ export function createSessionHide<T extends { id: string }>(
         hide(id: string) {
             hidden.add(id)
             extra?.(id)
-            setItems(items.get().filter(i => i.id !== id))
+            setItems(items.peek().filter(i => i.id !== id))
         },
     }
 }

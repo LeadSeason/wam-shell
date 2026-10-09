@@ -45,7 +45,7 @@ export function NightLightButton() {
                             label={"Night Light"}
                             subtitle={hyprsunset.nightLight.as(v => (v ? "On" : "Off"))}
                             isActive={hyprsunset.nightLight}
-                            activate={() => setNightLightEnabled(!hyprsunset.nightLight.get())}
+                            activate={() => setNightLightEnabled(!hyprsunset.nightLight.peek())}
                         />
                     )
                 }
@@ -86,7 +86,7 @@ export function DarkStyleButton() {
             subtitle={active.as(v => (v ? "On" : "Off"))}
             isActive={active}
             activate={() => {
-                const next = !active.get()
+                const next = !active.peek()
                 settings.set_string("color-scheme", next ? "prefer-dark" : "default")
                 // the changed signal flips `active`; no manual setActive needed
                 // the shell itself follows (appearance.dark/light_theme)
@@ -164,7 +164,7 @@ export function AirplaneModeRow() {
                             valign={Gtk.Align.CENTER}
                             active={active}
                             onNotifyActive={self => {
-                                if (self.active === active.get()) return
+                                if (self.active === active.peek()) return
                                 const next = self.active
                                 execAsync(["nmcli", "radio", "all", next ? "off" : "on"])
                                     .then(() => setActive(next))

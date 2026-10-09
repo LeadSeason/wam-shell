@@ -9,10 +9,11 @@ import { formatRemaining, paused, remaining, toggleSleepTimerPause } from "../..
 export default function SleepTimer() {
     return (
         <button
-            cssClasses={createComputed([remaining, paused], (s, p) => [
-                "sleepTimer",
-                ...(s > 0 && p ? ["paused"] : []),
-            ])}
+            cssClasses={createComputed(() => {
+                const s = remaining()
+                const p = paused()
+                return ["sleepTimer", ...(s > 0 && p ? ["paused"] : [])]
+            })}
             tooltipText={paused.as(p => (p ? "Resume the sleep timer" : "Pause the sleep timer"))}
             visible={remaining.as(s => s > 0 && Config.sleepTimer.onPanel)}
             onClicked={() => toggleSleepTimerPause()}

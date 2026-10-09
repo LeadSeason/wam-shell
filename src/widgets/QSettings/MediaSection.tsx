@@ -89,7 +89,11 @@ function Player({ player }: { player: AstalMpris.Player }) {
     // of the shell does (see isRtl in lib/utils): the artist follows the
     // title's direction so the two lines share an edge even when the
     // artist name is latin
-    const rtl = createComputed([title, artist], (t, a) => isRtl(t || a || ""))
+    const rtl = createComputed(() => {
+        const t = title()
+        const a = artist()
+        return isRtl(t || a || "")
+    })
 
     // seeker: client-side clock — players that do not track Position
     // (firefox reports 0) still get a moving bar, and a user seek is
@@ -204,7 +208,7 @@ function Player({ player }: { player: AstalMpris.Player }) {
                         // (Telegram's 320px thumb) is a deliberate cap,
                         // not a recoverable miss — show it sharp; when it
                         // is gone the noArt gradient above takes over
-                        ...(c && isSmallCover(c) && !rawArt.get().startsWith("data:")
+                        ...(c && isSmallCover(c) && !rawArt.peek().startsWith("data:")
                             ? ["smallArt"]
                             : []),
                     ])}
@@ -326,19 +330,20 @@ function Player({ player }: { player: AstalMpris.Player }) {
                         drag has been recorded */}
                         <box
                             cssName="button"
-                            cssClasses={createComputed([canSeek, revertTo], (c, r) => [
-                                "mediaSeekRevert",
-                                ...(c && r >= 0 ? [] : ["disabled"]),
-                            ])}
+                            cssClasses={createComputed(() => {
+                                const c = canSeek()
+                                const r = revertTo()
+                                return ["mediaSeekRevert", ...(c && r >= 0 ? [] : ["disabled"])]
+                            })}
                             tooltipText="Restore pre-seek position"
                         >
                             <Gtk.GestureClick
                                 button={1}
                                 {...pressable(() => {
-                                    const r = revertTo.get()
+                                    const r = revertTo.peek()
                                     if (!player.canSeek || r < 0) return
                                     // toggle: a second click seeks forward again
-                                    setRevertTo(position.accessor.get())
+                                    setRevertTo(position.accessor.peek())
                                     position.seekTo(r)
                                     player.position = r
                                 })}
@@ -351,9 +356,11 @@ function Player({ player }: { player: AstalMpris.Player }) {
                             // "101:47" must not resize the popup
                             widthChars={6}
                             maxWidthChars={6}
-                            label={createComputed([position.accessor, position.known], (p, k) =>
-                                k ? formatTime(p) : "--:--",
-                            )}
+                            label={createComputed(() => {
+                                const p = position.accessor()
+                                const k = position.known()
+                                return k ? formatTime(p) : "--:--"
+                            })}
                         />
                         <Gtk.Scale
                             $={self =>
@@ -361,7 +368,8 @@ function Player({ player }: { player: AstalMpris.Player }) {
                                     // first fire of a drag: record the pre-seek
                                     // position for the revert button
                                     const now = GLib.get_monotonic_time() / 1e6
-                                    if (now - lastSeekAt > 1.5) setRevertTo(position.accessor.get())
+                                    if (now - lastSeekAt > 1.5)
+                                        setRevertTo(position.accessor.peek())
                                     lastSeekAt = now
                                 })
                             }
@@ -388,9 +396,11 @@ export function MediaSection() {
 
     // "streaming mode": while screen sharing, hide the player entirely —
     // an open quick settings would leak title/artist/cover to viewers
-    const visiblePlayer = createComputed([activePlayer, sharing], (p, s) =>
-        s && Config.media.hideWhenScreenSharing ? null : p,
-    )
+    const visiblePlayer = createComputed(() => {
+        const p = activePlayer()
+        const s = sharing()
+        return s && Config.media.hideWhenScreenSharing ? null : p
+    })
 
     // stable slot: the With mounts the card late (first player), which
     // would otherwise append it at the end of the pane instead of

@@ -44,7 +44,7 @@ const [status, setStatus] = createState<VpnStatus>({
 
 // both the stream and refreshStatus funnel through here; the stream
 // feeds headers and detail lines separately, so dedupe before notifying
-let last: VpnStatus = status.get()
+let last: VpnStatus = status.peek()
 function applyStatus(word: string, server: string) {
     const next: VpnStatus = { state: mapState(word), stateLabel: word, server }
     if (
@@ -225,23 +225,23 @@ function refreshPane() {
     runCmd(["tunnel", "get"], out => {
         if (!out) return
         const { quantum, daita } = parseTunnelOptions(out)
-        setFeatureStates({ ...featureStates.get(), quantum, daita })
+        setFeatureStates({ ...featureStates.peek(), quantum, daita })
     })
     runCmd(["dns", "get"], out => {
         if (!out) return
-        setFeatureStates({ ...featureStates.get(), dnsBlock: parseDnsBlocking(out) })
+        setFeatureStates({ ...featureStates.peek(), dnsBlock: parseDnsBlocking(out) })
     })
     runCmd(["lan", "get"], out => {
         if (!out) return
-        setFeatureStates({ ...featureStates.get(), lan: parseLan(out) })
+        setFeatureStates({ ...featureStates.peek(), lan: parseLan(out) })
     })
     runCmd(["lockdown-mode", "get"], out => {
         if (!out) return
-        setFeatureStates({ ...featureStates.get(), lockdown: parseLockdown(out) })
+        setFeatureStates({ ...featureStates.peek(), lockdown: parseLockdown(out) })
     })
     runCmd(["auto-connect", "get"], out => {
         if (!out) return
-        setFeatureStates({ ...featureStates.get(), autoConnect: parseAutoConnect(out) })
+        setFeatureStates({ ...featureStates.peek(), autoConnect: parseAutoConnect(out) })
     })
     refreshExpiry()
 }
@@ -256,7 +256,7 @@ function setLocation(countryCode: string, cityCode: string) {
 
 // static per CLI version: parsed lazily once
 function ensureLocations() {
-    if (locationList.get().length > 0) return
+    if (locationList.peek().length > 0) return
     runCmd(["relay", "list"], out => {
         if (!out) return
         setLocationList(

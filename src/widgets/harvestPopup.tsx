@@ -87,7 +87,7 @@ function PopupContent() {
             </box>
             <PausedCard />
             <Timeline />
-            <Footer onNewEntry={() => setFormOpen(!formOpen.get())} />
+            <Footer onNewEntry={() => setFormOpen(!formOpen.peek())} />
             <revealer revealChild={formOpen}>
                 <NewEntryForm onCancel={() => setFormOpen(false)} />
             </revealer>
@@ -118,7 +118,7 @@ function show() {
     Harvest.refreshSlow()
     // and sync anything that changed since the last tick right now
     Harvest.deltaPoll()
-    const anchor = popupAnchor.get()
+    const anchor = popupAnchor.peek()
     // the monitor the anchor was captured on may be gone (hotplug):
     // assigning a removed output maps the window into the void
     if (anchor && monitorAlive(anchor.monitor)) win!.gdkmonitor = anchor.monitor
@@ -128,7 +128,7 @@ function show() {
 
 // pill-centered, but never past the monitor's right edge
 function popupMarginLeft(): number {
-    const anchor = popupAnchor.get()
+    const anchor = popupAnchor.peek()
     if (!anchor) return 12
     // window width: 480 request + horizontal margins
     const POPUP_W = 480 + 24

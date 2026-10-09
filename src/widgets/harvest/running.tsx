@@ -17,9 +17,9 @@ function NotesRow() {
     // Save stays hidden until the text actually differs from the server
     const [dirty, setDirty] = createState(false)
     let focused = false
-    let lastId: number | null = Harvest.running.get()?.id ?? null
+    let lastId: number | null = Harvest.running.peek()?.id ?? null
 
-    const serverNotes = () => Harvest.running.get()?.notes ?? ""
+    const serverNotes = () => Harvest.running.peek()?.notes ?? ""
     const currentText = () => buffer?.text ?? ""
     const save = () => {
         if (!buffer) return
@@ -32,7 +32,7 @@ function NotesRow() {
 
     const unsub = Harvest.running.subscribe(() => {
         if (!buffer) return
-        const id = Harvest.running.get()?.id ?? null
+        const id = Harvest.running.peek()?.id ?? null
         if (id !== lastId) {
             // a different timer now: drop edits belonging to the old one
             lastId = id
@@ -40,7 +40,7 @@ function NotesRow() {
             buffer.set_text(serverNotes(), -1)
             return
         }
-        if (dirty.get() || focused) return
+        if (dirty.peek() || focused) return
         buffer.set_text(serverNotes(), -1)
     })
     onCleanup(unsub)

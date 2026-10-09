@@ -33,34 +33,40 @@ function AssignmentEditor({
 
     const labelOf = (p: Harvest.Project) => `${p.clientName} — ${p.projectName}`
 
-    const projectRows = createComputed([Harvest.projects, query], (ps, q) =>
-        ps.filter(p => !q || labelOf(p).toLowerCase().includes(q.toLowerCase())),
-    )
-    const tasks = createComputed(
-        [Harvest.projects, projectSel],
-        (ps, id) => ps.find(p => p.projectId === id)?.tasks ?? [],
-    )
+    const projectRows = createComputed(() => {
+        const ps = Harvest.projects()
+        const q = query()
+        return ps.filter(p => !q || labelOf(p).toLowerCase().includes(q.toLowerCase()))
+    })
+    const tasks = createComputed(() => {
+        const ps = Harvest.projects()
+        const id = projectSel()
+        return ps.find(p => p.projectId === id)?.tasks ?? []
+    })
 
     // the entry's project may be archived (absent from the assignments
     // list): fall back to the names the entry itself carries
-    const projectLabel = createComputed([Harvest.projects, projectSel], (ps, id) => {
+    const projectLabel = createComputed(() => {
+        const ps = Harvest.projects()
+        const id = projectSel()
         const p = ps.find(p => p.projectId === id)
         return p ? labelOf(p) : `${entry.clientName} — ${entry.projectName}`
     })
-    const taskLabel = createComputed(
-        [tasks, taskSel],
-        (ts, id) => ts.find(t => t.taskId === id)?.taskName ?? entry.taskName,
-    )
+    const taskLabel = createComputed(() => {
+        const ts = tasks()
+        const id = taskSel()
+        return ts.find(t => t.taskId === id)?.taskName ?? entry.taskName
+    })
 
     const toggleProject = () => {
         setTaskOpen(false)
-        const opening = !projectOpen.get()
+        const opening = !projectOpen.peek()
         setProjectOpen(opening)
         if (opening) search.grab_focus()
     }
     const toggleTask = () => {
         setProjectOpen(false)
-        setTaskOpen(!taskOpen.get())
+        setTaskOpen(!taskOpen.peek())
     }
 
     return (
@@ -93,8 +99,8 @@ function AssignmentEditor({
                                                 // has one with the same name
                                                 const curName =
                                                     tasks
-                                                        .get()
-                                                        .find(t => t.taskId === taskSel.get())
+                                                        .peek()
+                                                        .find(t => t.taskId === taskSel.peek())
                                                         ?.taskName ?? entry.taskName
                                                 const t =
                                                     p.tasks.find(t => t.taskName === curName) ??
@@ -133,7 +139,7 @@ function AssignmentEditor({
                                 <button
                                     tooltipText={t.taskName}
                                     onClicked={() => {
-                                        onSelect(projectSel.get(), t.taskId)
+                                        onSelect(projectSel.peek(), t.taskId)
                                         setTaskOpen(false)
                                     }}
                                 >
@@ -183,11 +189,17 @@ function TimelineRow({
     const [hoursDirty, setHoursDirty] = createState(false)
     const [projectSel, setProjectSel] = createState(entry.projectId)
     const [taskSel, setTaskSel] = createState(entry.taskId)
-    const assignDirty = createComputed(
-        [projectSel, taskSel],
-        (p, t) => p !== entry.projectId || t !== entry.taskId,
-    )
-    const dirty = createComputed([notesDirty, hoursDirty, assignDirty], (n, h, a) => n || h || a)
+    const assignDirty = createComputed(() => {
+        const p = projectSel()
+        const t = taskSel()
+        return p !== entry.projectId || t !== entry.taskId
+    })
+    const dirty = createComputed(() => {
+        const n = notesDirty()
+        const h = hoursDirty()
+        const a = assignDirty()
+        return n || h || a
+    })
     // two-step delete: trash swaps into confirm/cancel in place
     const [confirming, setConfirming] = createState(false)
     // row action buttons (resume/delete) hide until the row is hovered —
@@ -222,9 +234,9 @@ function TimelineRow({
         const fields: { notes?: string; projectId?: number; taskId?: number } = {}
         const text = notesBuffer?.text
         if (text !== undefined && text !== entry.notes) fields.notes = text
-        if (assignDirty.get()) {
-            fields.projectId = projectSel.get()
-            fields.taskId = taskSel.get()
+        if (assignDirty.peek()) {
+            fields.projectId = projectSel.peek()
+            fields.taskId = taskSel.peek()
         }
         if (Object.keys(fields).length === 0) return
         // keep dirty when the update couldn't be attempted (busy) or was
@@ -236,10 +248,11 @@ function TimelineRow({
         })
     }
 
-    const actionsShown = createComputed(
-        [hovered, confirming],
-        (h, c) => !entry.isRunning && h && !c,
-    )
+    const actionsShown = createComputed(() => {
+        const h = hovered()
+        const c = confirming()
+        return !entry.isRunning && h && !c
+    })
     // The action strip is an Overlay child, so it is never MEASURED:
     // the row spends its whole width on the entry title instead of
     // reserving ~90px for buttons that are hidden most of the time.
@@ -252,18 +265,26 @@ function TimelineRow({
     // over what looked like empty space. gtk_widget_pick stops at a
     // non-targetable widget without descending, so one binding here
     // covers every button inside.
-    const actionsLive = createComputed([actionsShown, confirming], (a, c) => a || c)
+    const actionsLive = createComputed(() => {
+        const a = actionsShown()
+        const c = confirming()
+        return a || c
+    })
 
-    const cssClasses = createComputed([isPaused, hovered], (p, h) => [
-        "todayRow",
-        ...(entry.isRunning ? ["running"] : []),
-        ...(p ? ["paused"] : []),
-        // hover paint lives on the ROW, not on the body button: the
-        // strip sits on top of the body, so a tint that followed the
-        // body alone left the strip's backdrop mismatched wherever the
-        // pointer happened to be. Running rows are inert and stay flat
-        ...(h && !entry.isRunning ? ["hovered"] : []),
-    ])
+    const cssClasses = createComputed(() => {
+        const p = isPaused()
+        const h = hovered()
+        return [
+            "todayRow",
+            ...(entry.isRunning ? ["running"] : []),
+            ...(p ? ["paused"] : []),
+            // hover paint lives on the ROW, not on the body button: the
+            // strip sits on top of the body, so a tint that followed the
+            // body alone left the strip's backdrop mismatched wherever the
+            // pointer happened to be. Running rows are inert and stay flat
+            ...(h && !entry.isRunning ? ["hovered"] : []),
+        ]
+    })
 
     return (
         <box orientation={Gtk.Orientation.VERTICAL} cssClasses={cssClasses}>
@@ -290,8 +311,8 @@ function TimelineRow({
                                 : `${entryLabel(entry)}\nclick to edit`
                         }
                         onClicked={() => {
-                            if (!expanded.get()) setEditorBuilt(true)
-                            setExpanded(!expanded.get())
+                            if (!expanded.peek()) setEditorBuilt(true)
+                            setExpanded(!expanded.peek())
                         }}
                     >
                         <box>
@@ -482,15 +503,17 @@ export function Timeline() {
     const [dayIdx, setDayIdx] = createState(0)
     // gnim subscribe callbacks receive no value — read the state
     const unsub = dayIdx.subscribe(() => {
-        const i = dayIdx.get()
+        const i = dayIdx.peek()
         if (i !== 0) Harvest.fetchDayOffset(i)
     })
     onCleanup(unsub)
 
-    const entries = createComputed(
-        [Harvest.todayEntries, Harvest.dayEntries, dayIdx],
-        (today, past, i) => (i === 0 ? today : past),
-    )
+    const entries = createComputed(() => {
+        const today = Harvest.todayEntries()
+        const past = Harvest.dayEntries()
+        const i = dayIdx()
+        return i === 0 ? today : past
+    })
 
     const dayLabel = (i: number): string => {
         if (i === 0) return "Today"
@@ -505,7 +528,7 @@ export function Timeline() {
                 <button
                     cssClasses={["dayNav"]}
                     tooltipText={"Previous day"}
-                    onClicked={() => setDayIdx(dayIdx.get() - 1)}
+                    onClicked={() => setDayIdx(dayIdx.peek() - 1)}
                 >
                     <image iconName="go-previous-symbolic" />
                 </button>
@@ -515,7 +538,7 @@ export function Timeline() {
                     tooltipText={"Next day"}
                     // never past today
                     sensitive={dayIdx.as(i => i < 0)}
-                    onClicked={() => setDayIdx(Math.min(0, dayIdx.get() + 1))}
+                    onClicked={() => setDayIdx(Math.min(0, dayIdx.peek() + 1))}
                 >
                     <image iconName="go-next-symbolic" />
                 </button>
@@ -542,7 +565,7 @@ export function Timeline() {
                         {(e: Harvest.Entry) => (
                             <TimelineRow
                                 entry={e}
-                                startToday={dayIdx.get() !== 0}
+                                startToday={dayIdx.peek() !== 0}
                                 onStarted={() => setDayIdx(0)}
                             />
                         )}

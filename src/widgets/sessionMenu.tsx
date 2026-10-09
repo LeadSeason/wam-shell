@@ -129,12 +129,12 @@ function probeCapabilities() {
                 try {
                     const reply = conn!.call_finish(res)
                     const answer = reply.deepUnpack<string[]>()[0] ?? "no"
-                    setAvailable({ ...available.get(), [id]: answer !== "no" && answer !== "na" })
+                    setAvailable({ ...available.peek(), [id]: answer !== "no" && answer !== "na" })
                 } catch (e) {
                     // logind unreachable: leave the tile hidden rather
                     // than offering an action that cannot land
                     console.warn(`sessionMenu: ${method} failed:`, e)
-                    setAvailable({ ...available.get(), [id]: false })
+                    setAvailable({ ...available.peek(), [id]: false })
                 }
             },
         )

@@ -61,7 +61,7 @@ const [status, setStatus] = createState<VpnStatus>({
 })
 
 // both the poll and refresh-after-action funnel through here
-let last: VpnStatus = status.get()
+let last: VpnStatus = status.peek()
 function applyStatus(next: VpnStatus) {
     if (
         next.state === last.state &&
@@ -94,12 +94,10 @@ function applyHealth(next: string[]) {
     setHealthWarnings(next)
 }
 
-// the tracking form, not the deps-array form: both blocking flags start
-// falsy, and the deps-array cache keys on falsy checks (AGENTS.md)
-const warnings = createComputed(track => {
-    const w = track(healthWarnings).slice()
-    if (track(captivePortal)) w.push("Captive portal detected — sign in to the network first")
-    if (track(udpBlocked)) w.push("UDP blocked — traffic flows through a relay")
+const warnings = createComputed(() => {
+    const w = healthWarnings().slice()
+    if (captivePortal()) w.push("Captive portal detected — sign in to the network first")
+    if (udpBlocked()) w.push("UDP blocked — traffic flows through a relay")
     return w
 })
 
@@ -345,12 +343,10 @@ const [runSSH, setRunSSH] = createState<boolean | null>(null)
 const [sshAvailable, setSshAvailable] = createState(true)
 const [sshRuleIn, setSshRuleIn] = createState(false)
 
-// the tracking form, not the deps-array form: sshRuleIn starts falsy,
-// and the deps-array cache keys on falsy checks (AGENTS.md)
-const sshDescription = createComputed(track => {
-    if (!track(sshAvailable))
+const sshDescription = createComputed(() => {
+    if (!sshAvailable())
         return "Tailscale SSH is not enabled on this tailnet. Turn it on in the admin console."
-    if (!track(sshRuleIn))
+    if (!sshRuleIn())
         return "No SSH rule targets this machine yet. Nobody can log in until one is added in the admin console."
     return "Accept SSH over the tailnet. The admin console decides who can log in."
 })
@@ -492,7 +488,7 @@ function login() {
     // print the auth URL — pkexec carries it, and the streamed output
     // still lands the URL in a browser tab. Merely stopped, a non-root
     // re-auth attempt first (no password dialog for a likely no-op)
-    startAuthFlow(["login"], loggedOut.get() && hasPkexec)
+    startAuthFlow(["login"], loggedOut.peek() && hasPkexec)
 }
 
 const backend: VpnBackend = {
@@ -507,11 +503,11 @@ const backend: VpnBackend = {
     // browser flow — stream it (URL opened, denial surfaced) instead of
     // execAsync, where the URL would be swallowed and the chain would
     // hang until the user happened to auth blind
-    connect: () => (loggedOut.get() ? startAuthFlow(["up"]) : runChain(["up"])),
+    connect: () => (loggedOut.peek() ? startAuthFlow(["up"]) : runChain(["up"])),
     // tailscale up blocks until the tunnel is up (or the login prompt
     // fails), so a disconnect here is a plain teardown
     disconnect: () => runChain(["down"]),
-    reconnect: () => (loggedOut.get() ? startAuthFlow(["up"]) : runChain(["down"], ["up"])),
+    reconnect: () => (loggedOut.peek() ? startAuthFlow(["up"]) : runChain(["down"], ["up"])),
 
     locations: {
         list: exitNodes,

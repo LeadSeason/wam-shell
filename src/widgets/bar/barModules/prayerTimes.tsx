@@ -39,9 +39,10 @@ function PrayerPopover() {
     // timetable with its next-prayer highlight)
     const [offset, setOffset] = createState(0)
 
-    const rows = createComputed([offset, timetable], (o, today) =>
-        o === 0 ? today : rowsForDate(dateFor(o)),
-    )
+    const rows = createComputed(() => {
+        const o = offset()
+        return o === 0 ? timetable() : rowsForDate(dateFor(o))
+    })
     const label = offset.as(dayLabel)
 
     return (
@@ -50,7 +51,7 @@ function PrayerPopover() {
                 <button
                     cssClasses={["prayerDayBtn"]}
                     hexpand
-                    onClicked={() => setOffset(offset.get() - 1)}
+                    onClicked={() => setOffset(offset.peek() - 1)}
                 >
                     <image iconName="go-previous-symbolic" />
                 </button>
@@ -64,7 +65,7 @@ function PrayerPopover() {
                 <button
                     cssClasses={["prayerDayBtn"]}
                     hexpand
-                    onClicked={() => setOffset(offset.get() + 1)}
+                    onClicked={() => setOffset(offset.peek() + 1)}
                 >
                     <image iconName="go-next-symbolic" />
                 </button>

@@ -15,11 +15,11 @@ function PausedEditor() {
     let focused = false
 
     const serverText = () => {
-        const p = Harvest.paused.get()
+        const p = Harvest.paused.peek()
         return p ? Harvest.formatElapsed(p.hours * 3600) : ""
     }
     const save = () => {
-        const p = Harvest.paused.get()
+        const p = Harvest.paused.peek()
         if (!entry || !p) return
         const hours = parseDuration(entry.get_text())
         // 0/empty/garbage is not a valid duration here (on the new-entry
@@ -37,7 +37,7 @@ function PausedEditor() {
     }
 
     const unsub = Harvest.paused.subscribe(() => {
-        if (dirty.get() || focused || !entry) return
+        if (dirty.peek() || focused || !entry) return
         entry.set_text(serverText())
     })
     onCleanup(unsub)

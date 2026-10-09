@@ -31,21 +31,23 @@ export function NewEntryForm({ onCancel }: { onCancel: () => void }) {
 
     const labelOf = (p: Harvest.Project) => `${p.clientName} — ${p.projectName}`
 
-    const projectRows = createComputed([Harvest.projects, query], (ps, q) =>
-        ps.filter(p => !q || labelOf(p).toLowerCase().includes(q.toLowerCase())),
-    )
+    const projectRows = createComputed(() => {
+        const q = query()
+        return Harvest.projects().filter(
+            p => !q || labelOf(p).toLowerCase().includes(q.toLowerCase()),
+        )
+    })
 
     const tasks = createComputed(
-        [Harvest.projects, projectSel],
-        (ps, id) => ps.find(p => p.projectId === id)?.tasks ?? [],
+        () => Harvest.projects().find(p => p.projectId === projectSel())?.tasks ?? [],
     )
 
     // keep the selection pointing at something real after refreshes
     function reconcileSelection() {
-        const ps = Harvest.projects.get()
-        const p = ps.find(p => p.projectId === projectSel.get()) ?? ps[0]
+        const ps = Harvest.projects.peek()
+        const p = ps.find(p => p.projectId === projectSel.peek()) ?? ps[0]
         setProjectSel(p?.projectId ?? 0)
-        if (!p?.tasks.some(t => t.taskId === taskSel.get())) {
+        if (!p?.tasks.some(t => t.taskId === taskSel.peek())) {
             setTaskSel(p?.tasks[0]?.taskId ?? 0)
         }
     }
@@ -59,9 +61,9 @@ export function NewEntryForm({ onCancel }: { onCancel: () => void }) {
         // user typed instead of clearing them for an entry that was
         // never created. The Start button is sensitive-gated on the
         // same state; the duration entry's onActivate is not
-        if (Harvest.busy.get() || Harvest.authDisabled.get()) return
-        const p = Harvest.projects.get().find(p => p.projectId === projectSel.get())
-        const t = p?.tasks.find(t => t.taskId === taskSel.get())
+        if (Harvest.busy.peek() || Harvest.authDisabled.peek()) return
+        const p = Harvest.projects.peek().find(p => p.projectId === projectSel.peek())
+        const t = p?.tasks.find(t => t.taskId === taskSel.peek())
         if (!p || !t) return
         const hours = parseDuration(duration.get_text())
         if (hours === null) return
@@ -75,29 +77,28 @@ export function NewEntryForm({ onCancel }: { onCancel: () => void }) {
     }
 
     const canStart = createComputed(
-        [Harvest.projects, Harvest.busy, durationOk],
-        (ps, b, ok) => !b && ok && ps.length > 0,
+        () => !Harvest.busy() && durationOk() && Harvest.projects().length > 0,
     )
 
     // one open selector at a time; opening the project list focuses its
     // search entry so typing works immediately
     const toggleProject = () => {
         setTaskOpen(false)
-        const opening = !projectOpen.get()
+        const opening = !projectOpen.peek()
         setProjectOpen(opening)
         if (opening) search.grab_focus()
     }
     const toggleTask = () => {
         setProjectOpen(false)
-        setTaskOpen(!taskOpen.get())
+        setTaskOpen(!taskOpen.peek())
     }
 
     return (
         <box orientation={Gtk.Orientation.VERTICAL} spacing={8}>
             <box orientation={Gtk.Orientation.VERTICAL}>
                 <SelectorButton
-                    label={createComputed([Harvest.projects, projectSel], (ps, id) => {
-                        const p = ps.find(p => p.projectId === id)
+                    label={createComputed(() => {
+                        const p = Harvest.projects().find(p => p.projectId === projectSel())
                         return p ? labelOf(p) : "Select project"
                     })}
                     open={projectOpen}
@@ -148,10 +149,11 @@ export function NewEntryForm({ onCancel }: { onCancel: () => void }) {
 
             <box orientation={Gtk.Orientation.VERTICAL}>
                 <SelectorButton
-                    label={createComputed(
-                        [tasks, taskSel],
-                        (ts, id) => ts.find(t => t.taskId === id)?.taskName ?? "Select task",
-                    )}
+                    label={createComputed(() => {
+                        const ts = tasks()
+                        const id = taskSel()
+                        return ts.find(t => t.taskId === id)?.taskName ?? "Select task"
+                    })}
                     open={taskOpen}
                     onClick={toggleTask}
                     sensitive={tasks.as(ts => ts.length > 0)}

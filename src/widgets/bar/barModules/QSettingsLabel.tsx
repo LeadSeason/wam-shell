@@ -51,7 +51,7 @@ function audioWidget(driver: AstalWp.Endpoint, kind: "speakers" | "microphones")
         count++
         delay(750, () => {
             count--
-            if (count === 0 && visible.get()) {
+            if (count === 0 && visible.peek()) {
                 setVisible(false)
             }
         })
@@ -79,9 +79,9 @@ function audioWidget(driver: AstalWp.Endpoint, kind: "speakers" | "microphones")
         // the mic doubles as the privacy indicator: while a capture is
         // live, hover names who is on the other end of it (same as the
         // camera dot's tooltip)
-        if (kind === "microphones" && micActive.get())
+        if (kind === "microphones" && micActive.peek())
             lines.push(
-                `<b>Recording:</b> ${GLib.markup_escape_text(describeUsers(micUsers.get()), -1)}`,
+                `<b>Recording:</b> ${GLib.markup_escape_text(describeUsers(micUsers.peek()), -1)}`,
             )
         setTooltip(lines.join("\n"))
     }
@@ -164,7 +164,7 @@ function brightnessWidget() {
         count++
         delay(750, () => {
             count--
-            if (count === 0 && visible.get()) {
+            if (count === 0 && visible.peek()) {
                 setVisible(false)
             }
         })
@@ -199,7 +199,7 @@ function brightnessWidget() {
                 button={3}
                 onPressed={() => {
                     show()
-                    if (previous.get() >= 0) brightness.restorePrevious()
+                    if (previous.peek() >= 0) brightness.restorePrevious()
                     return true
                 }}
             />
@@ -209,7 +209,7 @@ function brightnessWidget() {
                 button={2}
                 onPressed={() => {
                     show()
-                    if (previous.get() >= 0) brightness.restorePrevious()
+                    if (previous.peek() >= 0) brightness.restorePrevious()
                     else brightness.screen = 1
                     return true
                 }}
@@ -289,10 +289,10 @@ function vpnIndicator() {
         <image
             iconName={connected.as(b => b?.iconName ?? "network-vpn-symbolic")}
             visible={connected.as(b => b !== null)}
-            tooltipText={createComputed(track => {
-                const b = track(connected)
+            tooltipText={createComputed(() => {
+                const b = connected()
                 if (!b) return ""
-                const server = track(b.status).server
+                const server = b.status().server
                 return server ? `${b.name} connected: ${server}` : `${b.name} connected`
             })}
         />
@@ -532,10 +532,10 @@ export default function QSettings() {
     const [flashOn, setFlashOn] = createState(false)
     let flashSource = 0
     const unsub = alarming.subscribe(() => {
-        if (alarming.get()) {
+        if (alarming.peek()) {
             if (flashSource === 0)
                 flashSource = timeoutAdd("bar:alarmFlash", GLib.PRIORITY_DEFAULT, 600, () => {
-                    setFlashOn(!flashOn.get())
+                    setFlashOn(!flashOn.peek())
                     return true
                 })
         } else {
@@ -557,10 +557,11 @@ export default function QSettings() {
     })
     return (
         <box
-            cssClasses={createComputed([alarming, flashOn], (a, f) => [
-                "QSettings",
-                ...(a && f ? ["alarmAttention"] : []),
-            ])}
+            cssClasses={createComputed(() => {
+                const a = alarming()
+                const f = flashOn()
+                return ["QSettings", ...(a && f ? ["alarmAttention"] : [])]
+            })}
         >
             <Gtk.GestureClick
                 button={1}

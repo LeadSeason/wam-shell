@@ -156,7 +156,7 @@ function hyprlandSource(): LayoutSource {
         names: layouts.as(ls =>
             ls.map((code, i) => {
                 const base = getXkbNames()[code] ?? code.toUpperCase()
-                const v = variants.get()[i]
+                const v = variants.peek()[i]
                 return v ? `${base} (${v})` : base
             }),
         ),
@@ -227,7 +227,7 @@ function swaySource(msgCmd: string): LayoutSource {
         // unsubscribing stops the poll's timer (its only subscriber)
         swayPollUnsub = poll.subscribe(() => {
             try {
-                const raw = poll.get()
+                const raw = poll.peek()
                 if (raw) applyInputs(JSON.parse(raw))
             } catch (e) {
                 console.error("keyboard layout:", e)

@@ -138,7 +138,11 @@ export default function CenterRow({
     // accessor for both: every `visible` below is asking "is this the row
     // being dealt with", and pointer or keyboard is the same answer
     const [focused, setFocused] = createState(false)
-    const active = createComputed([hovered, focused], (h, f) => h || f)
+    const active = createComputed(() => {
+        const h = hovered()
+        const f = focused()
+        return h || f
+    })
 
     // Delete dismisses. Enter and Space are the button's own activation,
     // which is the entire reason the root below is a button.

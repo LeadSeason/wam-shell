@@ -222,17 +222,17 @@ let pulseTimer = 0
 
 function syncPressurePulse() {
     const critical =
-        cpuLevel.get() === "critical" ||
-        ramLevel.get() === "critical" ||
-        diskLevel.get() === "critical" ||
-        gpuLevel.get() === "critical"
+        cpuLevel.peek() === "critical" ||
+        ramLevel.peek() === "critical" ||
+        diskLevel.peek() === "critical" ||
+        gpuLevel.peek() === "critical"
     if (critical && pulseTimer === 0) {
         pulseTimer = timeoutAdd(
             "sysstats:pressurePulse",
             GLib.PRIORITY_DEFAULT,
             PRESSURE_PULSE_MS,
             () => {
-                setPressurePulse(!pressurePulse.get())
+                setPressurePulse(!pressurePulse.peek())
                 return GLib.SOURCE_CONTINUE
             },
         )
@@ -248,8 +248,8 @@ function syncPressurePulse() {
 // and either one moving can change the verdict — on a psi=0 kernel the
 // utilization step is the only one that ever calls this
 function publishCpuLevel() {
-    const next = cpuPressureLevel(cpuPressure.get(), cpuPinned(cpuHist.get()))
-    if (next === cpuLevel.get()) return
+    const next = cpuPressureLevel(cpuPressure.peek(), cpuPinned(cpuHist.peek()))
+    if (next === cpuLevel.peek()) return
     setCpuLevel(next)
     syncPressurePulse()
 }
@@ -257,15 +257,15 @@ function publishCpuLevel() {
 // called from both memory steps: PSI and used% land in different steps
 // of the same tick, and either one moving can change the verdict
 function publishRamLevel() {
-    const next = ramPressureLevel(memPressure.get(), ram.get())
-    if (next === ramLevel.get()) return
+    const next = ramPressureLevel(memPressure.peek(), ram.peek())
+    if (next === ramLevel.peek()) return
     setRamLevel(next)
     syncPressurePulse()
 }
 
 function publishDiskLevel() {
-    const next = diskPressureLevel(disk.get())
-    if (next === diskLevel.get()) return
+    const next = diskPressureLevel(disk.peek())
+    if (next === diskLevel.peek()) return
     setDiskLevel(next)
     syncPressurePulse()
 }
@@ -276,7 +276,7 @@ function publishGpuLevel(pages: GpuPressure[]) {
         : pages.length > 0
           ? "warn"
           : ""
-    if (next === gpuLevel.get()) return
+    if (next === gpuLevel.peek()) return
     setGpuLevel(next)
     syncPressurePulse()
 }
@@ -317,9 +317,7 @@ export const [gpus, setGpus] = createState<Gpu[]>([])
 // rebuild the selector strip once a second
 export const [gpuIds, setGpuIds] = createState<{ id: string; name: string }[]>([])
 // the card the pane is showing, as its own state rather than something
-// the widget derives: gnim's array-form createComputed caches on falsy
-// checks, and both inputs here start falsy ([] and "") — the exact
-// shape that has gone stale twice before (see AGENTS.md)
+// the widget derives (it moves with selection clicks, not data ticks)
 export const [activeGpu, setActiveGpu] = createState<Gpu | null>(null)
 
 // There is no PSI for GPU memory, so "pressure" is a plain used/total
@@ -856,7 +854,7 @@ function updatePressure(list: Gpu[]) {
     // the aggregate so a bar that is watching both sees them agree
     for (const { g, level } of levelled) {
         const s = series(g.id)
-        if (s.level.get() !== level) s.setLevel(level)
+        if (s.level.peek() !== level) s.setLevel(level)
     }
     const pages: GpuPressure[] = levelled
         .filter((x): x is { g: Gpu; level: "warn" | "critical" } => x.level !== "")
@@ -884,7 +882,7 @@ let lastPressureKey = ""
 let pressureOverride: string | null = null
 
 function pickPressure() {
-    const pages = gpuPressures.get()
+    const pages = gpuPressures.peek()
     const show = (id: string) => {
         setActivePressureId(id)
         setActivePressure(pages.find(p => p.id === id) ?? null)
@@ -906,9 +904,9 @@ export function selectPressure(id: string) {
 
 /** page through the saturated cards; a no-op with fewer than two */
 export function cycleActivePressure(direction: 1 | -1) {
-    const pages = gpuPressures.get()
+    const pages = gpuPressures.peek()
     if (pages.length < 2) return
-    const i = pages.findIndex(p => p.id === activePressureId.get())
+    const i = pages.findIndex(p => p.id === activePressureId.peek())
     selectPressure(pages[(i + direction + pages.length) % pages.length].id)
 }
 
@@ -958,7 +956,7 @@ let gpuOverride: string | null = null
 export const [activeGpuId, setActiveGpuId] = createState("")
 
 function pickGpu() {
-    const list = gpus.get()
+    const list = gpus.peek()
     const show = (id: string) => {
         setActiveGpuId(id)
         setActiveGpu(list.find(g => g.id === id) ?? null)
@@ -984,9 +982,9 @@ export function selectGpu(id: string) {
 
 /** page through the cards; a no-op with fewer than two */
 export function cycleActiveGpu(direction: 1 | -1) {
-    const list = gpus.get()
+    const list = gpus.peek()
     if (list.length < 2) return
-    const i = list.findIndex(g => g.id === activeGpuId.get())
+    const i = list.findIndex(g => g.id === activeGpuId.peek())
     selectGpu(list[(i + direction + list.length) % list.length].id)
 }
 
@@ -1058,7 +1056,7 @@ function series(id: string): GpuSeries {
     if (!s) {
         const [hist, setHist] = createState<{ v: number }[]>([])
         const [level, setLevel] = createState<PressureLevel>("")
-        s = { hist, pushSample: v => push(hist.get(), setHist, v), level, setLevel }
+        s = { hist, pushSample: v => push(hist.peek(), setHist, v), level, setLevel }
         gpuSeries.set(id, s)
     }
     return s
@@ -1250,13 +1248,13 @@ const poll = createPoll("", INTERVAL, () => {
     step("cpu", async () => {
         const c = await readCpu()
         setCpu(c)
-        push(cpuHist.get(), setCpuHist, c)
+        push(cpuHist.peek(), setCpuHist, c)
         publishCpuLevel()
     })
     step("ram", async () => {
         const r = await readRam()
         setRam(r)
-        push(ramHist.get(), setRamHist, r)
+        push(ramHist.peek(), setRamHist, r)
         publishRamLevel()
     })
     step("diskSpace", () => {
@@ -1336,7 +1334,7 @@ const poll = createPoll("", INTERVAL, () => {
             // siblings, not awaited, which only ever costs these lines
             // a second to catch up. The warning's own numbers come
             // straight from the states and are current
-            const pages = gpuPressures.get()
+            const pages = gpuPressures.peek()
             if (pages.length === 0) {
                 if (hogsById.size > 0) {
                     hogsById.clear()
@@ -1344,7 +1342,7 @@ const poll = createPoll("", INTERVAL, () => {
                 }
                 return
             }
-            const list = gpus.get()
+            const list = gpus.peek()
             const targets = pages
                 .map(p => list.find(g => g.id === p.id))
                 .filter((g): g is Gpu => g !== undefined)

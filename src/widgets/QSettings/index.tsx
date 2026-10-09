@@ -117,7 +117,7 @@ export default function QSettings() {
             if (settleSource !== null) return
             settleSource = idleAdd("qs:pane-settled", GLib.PRIORITY_DEFAULT_IDLE, () => {
                 settleSource = null
-                setPaneSettled(pane.get())
+                setPaneSettled(pane.peek())
                 return GLib.SOURCE_REMOVE
             })
         }),
@@ -142,7 +142,7 @@ export default function QSettings() {
     // still scrolls, and the popup never grows.
     onCleanup(
         paneSettled.subscribe(() => {
-            if (paneSettled.get() === "main" || !win?.is_visible() || !paneStack) return
+            if (paneSettled.peek() === "main" || !win?.is_visible() || !paneStack) return
             const paneBox = paneStack.get_visible_child()
             if (!(paneBox instanceof Gtk.Box)) return
             let scroller: Gtk.ScrolledWindow | null = null
@@ -402,7 +402,7 @@ export default function QSettings() {
                                 // to point at.
                                 // subscribe callbacks receive no value, read it
                                 pane.subscribe(() => {
-                                    const target = pane.get()
+                                    const target = pane.peek()
                                     // measure BEFORE the switch, while main
                                     // is still the current child
                                     const floor = target === "main" ? -1 : paneFloor()

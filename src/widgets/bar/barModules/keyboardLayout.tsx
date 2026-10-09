@@ -14,7 +14,9 @@ function LayoutDropdown({ source }: { source: LayoutSource }) {
 
     // computed over both: layouts arrive async after startup, a binding
     // on activeIndex alone stays empty until the first switch
-    const labelText = createComputed([activeIndex, layouts], (i, ls) => {
+    const labelText = createComputed(() => {
+        const i = activeIndex()
+        const ls = layouts()
         const code = ls[i] ?? ""
         return flag(code) || code.toUpperCase() || "⌨"
     })
@@ -26,18 +28,19 @@ function LayoutDropdown({ source }: { source: LayoutSource }) {
     const step = createScrollStepper()
     const cycle = (dir: -1 | 0 | 1) => {
         if (dir === 0) return
-        const count = layouts.get().length
+        const count = layouts.peek().length
         if (count < 2) return
-        source.switchTo((activeIndex.get() + dir + count) % count)
+        source.switchTo((activeIndex.peek() + dir + count) % count)
     }
 
     return (
         <menubutton
             cssClasses={["keyboardLayout"]}
-            tooltipText={createComputed(
-                [activeIndex, names],
-                (i, ns) => ns[i] ?? "Keyboard layout",
-            )}
+            tooltipText={createComputed(() => {
+                const i = activeIndex()
+                const ns = names()
+                return ns[i] ?? "Keyboard layout"
+            })}
         >
             <Gtk.EventControllerScroll
                 flags={Gtk.EventControllerScrollFlags.VERTICAL}
@@ -62,26 +65,30 @@ function LayoutDropdown({ source }: { source: LayoutSource }) {
                     <For each={names.as(ns => ns.map((_, i) => i))}>
                         {(k, i) => (
                             <button
-                                cssClasses={createComputed([activeIndex, i], (a, idx) =>
-                                    a === idx ? ["active"] : [],
-                                )}
+                                cssClasses={createComputed(() => {
+                                    const a = activeIndex()
+                                    const idx = i()
+                                    return a === idx ? ["active"] : []
+                                })}
                                 onClicked={() => {
-                                    source.switchTo(i.get())
+                                    source.switchTo(i.peek())
                                     pop?.popdown()
                                 }}
                             >
                                 <box spacing={8}>
                                     <label
-                                        label={createComputed(
-                                            [layouts, i],
-                                            (ls, idx) => flag(ls[idx] ?? "") || "  ",
-                                        )}
+                                        label={createComputed(() => {
+                                            const ls = layouts()
+                                            const idx = i()
+                                            return flag(ls[idx] ?? "") || "  "
+                                        })}
                                     />
                                     <label
-                                        label={createComputed(
-                                            [names, i],
-                                            (ns, idx) => ns[idx] ?? "",
-                                        )}
+                                        label={createComputed(() => {
+                                            const ns = names()
+                                            const idx = i()
+                                            return ns[idx] ?? ""
+                                        })}
                                         xalign={0}
                                     />
                                 </box>

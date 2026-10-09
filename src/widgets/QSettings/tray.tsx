@@ -83,13 +83,13 @@ export default function Tray({
         return Date.now() - (registeredAt.get(itemId) ?? 0) < HOLLOW_GRACE_MS
     }
 
-    const displayableItems = () => applyFilter(trayItems.get()).filter(isDisplayable)
+    const displayableItems = () => applyFilter(trayItems.peek()).filter(isDisplayable)
 
     const [visibleItems, setVisibleItems] = createState(displayableItems())
 
     function syncVisible() {
         const next = displayableItems()
-        const prev = visibleItems.get()
+        const prev = visibleItems.peek()
         if (next.length !== prev.length || next.some((item, i) => item !== prev[i])) {
             setVisibleItems(next)
         }

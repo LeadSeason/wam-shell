@@ -40,10 +40,11 @@ export default function NotificationPopups({ gdkMonitor }: { gdkMonitor: Gdk.Mon
 
     // hidden window => no layer surface: an always-mapped empty window
     // still claims a 200x200 input region at the anchor point
-    const visible = createComputed(
-        [popups, isFocused],
-        (list, focused) => list.length > 0 && focused,
-    )
+    const visible = createComputed(() => {
+        const list = popups()
+        const focused = isFocused()
+        return list.length > 0 && focused
+    })
 
     // rows exist only on the focused window: every window builds rows
     // from the same shared list. The rows are pure views (countdown and
@@ -54,9 +55,11 @@ export default function NotificationPopups({ gdkMonitor }: { gdkMonitor: Gdk.Mon
     // Newest first, then folded per app so a chatty app costs one card
     // rather than one card per message, with criticals leading. Both the
     // ordering and the folding belong to lib/notifd — see displayGroups
-    const groups = createComputed([popups, isFocused], (list, focused) =>
-        focused ? displayGroups(list) : [],
-    )
+    const groups = createComputed(() => {
+        const list = popups()
+        const focused = isFocused()
+        return focused ? displayGroups(list) : []
+    })
 
     return (
         <window

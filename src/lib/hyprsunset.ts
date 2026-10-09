@@ -66,8 +66,8 @@ const [initialReadDone, setInitialReadDone] = createState(false)
 export { initialReadDone }
 
 function currentTemp(): number {
-    if (nightLight.get()) return Config.hyprsunset.nightTemp
-    if (outdoor.get() && Config.hyprsunset.temperatureOutdoor !== null)
+    if (nightLight.peek()) return Config.hyprsunset.nightTemp
+    if (outdoor.peek() && Config.hyprsunset.temperatureOutdoor !== null)
         return Config.hyprsunset.temperatureOutdoor
     return Config.hyprsunset.temperatureDefault
 }
@@ -75,8 +75,8 @@ function currentTemp(): number {
 let lastTempApply = 0
 function applyTemp() {
     lastTempApply = Date.now()
-    const nl = nightLight.get()
-    switch (tempBackend.get()) {
+    const nl = nightLight.peek()
+    switch (tempBackend.peek()) {
         case "hyprctl":
             execAsync(["hyprctl", "hyprsunset", "temperature", String(currentTemp())]).catch(
                 () => {},
@@ -114,7 +114,7 @@ let gammaSource: number | null = null
 let pendingGamma: number | null = null
 let lastApply = 0
 function applyGamma() {
-    pendingGamma = outdoor.get() ? OUTDOOR_GAMMA : Math.round(dim.get() * 100)
+    pendingGamma = outdoor.peek() ? OUTDOOR_GAMMA : Math.round(dim.peek() * 100)
     // stamped at SCHEDULE time, not when the debounced exec fires: a
     // watcher read that resolves in between still sees the pre-apply
     // daemon value, and with lastApply unset by the pending write its
@@ -165,7 +165,7 @@ export function refreshHyprsunset(initial = false) {
         .then(([gammaOut, tempOut]) => {
             const gamma = Number(gammaOut.trim())
             if (!isNaN(gamma) && gamma > 0 && (initial || Date.now() - lastApply >= 1500)) {
-                const expected = outdoor.get() ? OUTDOOR_GAMMA : Math.round(dim.get() * 100)
+                const expected = outdoor.peek() ? OUTDOOR_GAMMA : Math.round(dim.peek() * 100)
                 if (initial || Math.abs(gamma - expected) > 1) {
                     if (gamma > 100) {
                         setOutdoor(true)
@@ -180,7 +180,7 @@ export function refreshHyprsunset(initial = false) {
             if (!isNaN(temp) && temp > 0 && (initial || Date.now() - lastTempApply >= 1500)) {
                 // matches the init heuristic: warm means night light is on
                 const nl = temp <= 5000
-                if (nl !== nightLight.get()) setNightLight(nl)
+                if (nl !== nightLight.peek()) setNightLight(nl)
             }
         })
         .catch(() => {})
@@ -299,7 +299,7 @@ export function setOutdoorEnabled(v: boolean) {
 
 export function setDimLevel(v: number) {
     // manual brightness adjustment takes back control
-    if (outdoor.get()) setOutdoorEnabled(false)
+    if (outdoor.peek()) setOutdoorEnabled(false)
     setDim(Math.min(1, Math.max(0.05, v)))
     applyGamma()
 }

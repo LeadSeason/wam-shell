@@ -119,7 +119,7 @@ function VolumeRow({
                             onScroll={(controller, _dx, dy) => {
                                 // 1% a notch: the whole point of this row is
                                 // setting a value, not sweeping through one
-                                onChange(clamp(value.get() + scrollDelta(controller, dy, 0.01)))
+                                onChange(clamp(value.peek() + scrollDelta(controller, dy, 0.01)))
                                 return true
                             }}
                         />
@@ -285,7 +285,9 @@ function AppRow({
     const target = createBinding(stream, "targetEndpoint")
     // "auto" is not a failure to choose: it means the stream follows
     // whatever the default device is, which is what most apps want
-    const targetLabel = createComputed([target, speakers], (t, list) => {
+    const targetLabel = createComputed(() => {
+        const t = target()
+        const list = speakers()
         if (t) return t.description || t.name
         const fallback = list.find(s => s.isDefault)
         return fallback
@@ -432,7 +434,9 @@ function DeviceRow({
     const portInfo = audioPorts.as(m => m.get(endpoint.serial) ?? null)
     const routes = portInfo.as(i => i?.ports ?? [])
     const activePort = portInfo.as(i => i?.active ?? null)
-    const portLabel = createComputed([portInfo, activePort], (info, active) => {
+    const portLabel = createComputed(() => {
+        const info = portInfo()
+        const active = activePort()
         const port = info?.ports.find(x => x.name === active)
         return port?.description ?? (role === "input" ? "Microphone" : "Output")
     })
@@ -569,7 +573,9 @@ function CardRow({
 }) {
     const profiles = createBinding(device, "profiles").as(p => p ?? [])
     const activeId = createBinding(device, "activeProfileId")
-    const activeLabel = createComputed([profiles, activeId], (list, id) => {
+    const activeLabel = createComputed(() => {
+        const list = profiles()
+        const id = activeId()
         const match = list.find(p => p.index === id)
         return match ? match.description : "—"
     })
@@ -669,7 +675,7 @@ export function AudioPane({
     const [openRow, setOpenRow] = createState<string | null>(null)
     const rowState = (key: string) => ({
         open: openRow.as(o => o === key),
-        toggle: () => setOpenRow(openRow.get() === key ? null : key),
+        toggle: () => setOpenRow(openRow.peek() === key ? null : key),
     })
 
     const isOutput = direction === "output"
@@ -685,7 +691,7 @@ export function AudioPane({
         (isOutput ? Config.quicksettings.audioMeter : Config.quicksettings.micMeter)
     let release: (() => void) | null = null
     const sync = () => {
-        const onScreen = qsVisible.get() && pane.get() === name
+        const onScreen = qsVisible.peek() && pane.peek() === name
         if (onScreen) {
             // ports change with the hardware, not on a timer: a jack
             // gains a port when something is plugged into it, so re-read
@@ -731,9 +737,9 @@ export function AudioPane({
         let streamDisposers: (() => void)[] = []
         const rescan = () => {
             for (const d of streamDisposers) d()
-            const streams = appStreams.get()
+            const streams = appStreams.peek()
             streamDisposers = streams.map(s => createBinding(s, "targetEndpoint").subscribe(rescan))
-            const fallback = defaultEndpoint.get()
+            const fallback = defaultEndpoint.peek()
             setPlayingIds(
                 new Set(
                     streams

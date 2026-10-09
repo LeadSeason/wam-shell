@@ -320,24 +320,24 @@ function PowerDetails() {
     const watts = createBinding(bat, "energyRate")
     const charging = createBinding(bat, "charging")
     const batState = createBinding(bat, "state")
-    const freqPct = createComputed([Power.freqAvgMhz, Power.freqCapMhz], (avg, cap) =>
-        cap > 0 ? avg / cap : 1,
-    )
+    const freqPct = createComputed(() => {
+        const avg = Power.freqAvgMhz()
+        const cap = Power.freqCapMhz()
+        return cap > 0 ? avg / cap : 1
+    })
 
     // The RAM tile's sub: used/total GB at rest, and the PSI stall
     // figure while elevated — the 2-4% band that used to be invisible
     // everywhere, above idle but below the warning card's 5%. The GB
     // figures step aside (20-char budget; they live in the panel
-    // tooltip). Imperative, NOT createComputed([ramSize, memPressure],
-    // …): memPressure starts null and gnim's array-form dep cache keys
-    // on falsy checks (AGENTS.md), which would freeze the sub at its
-    // first reading
+    // tooltip). Imperative on purpose: the sub only changes when the
+    // pressure band changes, and the subscribe form keeps that obvious
     const [ramSub, setRamSub] = createState("")
     const syncRamSub = () => {
-        const stalled = Sys.ramStalledText(Sys.memPressure.get())
+        const stalled = Sys.ramStalledText(Sys.memPressure.peek())
         if (stalled !== "") setRamSub(stalled)
         else {
-            const [used, total] = Sys.ramSize.get()
+            const [used, total] = Sys.ramSize.peek()
             setRamSub(`${used}/${total} GB`)
         }
     }
@@ -348,15 +348,13 @@ function PowerDetails() {
     // The swap tile's sub line: used/total GB at rest — and a rate
     // while swapping is actually happening, the GB figures stepping
     // aside (the sub's 20-char budget cannot hold both; both
-    // directions live in the panel tooltip's SWAP line). Imperative,
-    // NOT createComputed([swapSize, swapIn, swapOut, …]): the rates
-    // start 0 and gnim's array-form dep cache keys on falsy checks
-    // (AGENTS.md), which would freeze the sub at its first swap-free
-    // reading
+    // directions live in the panel tooltip's SWAP line). Imperative
+    // like the RAM tile above: the sub only moves when the rate
+    // crosses the noise floor
     const [swapSub, setSwapSub] = createState("")
     const syncSwapSub = () => {
-        const [used, total] = Sys.swapSize.get()
-        const rate = Sys.swapIn.get() + Sys.swapOut.get()
+        const [used, total] = Sys.swapSize.peek()
+        const rate = Sys.swapIn.peek() + Sys.swapOut.peek()
         if (rate > Sys.SWAP_NOISE_BPS) setSwapSub(`swapping · ${Sys.formatRate(rate)}`)
         else setSwapSub(total > 0 ? `${used}/${total} GB` : "")
     }
@@ -374,71 +372,47 @@ function PowerDetails() {
                 <StatTile
                     icon="battery-symbolic"
                     big={watts.as(r => `${Math.abs(r).toFixed(1)} W`)}
-                    sub={createComputed(
-                        [
-                            watts,
-                            charging,
-                            createBinding(bat, "percentage"),
-                            Power.battAvgWatts,
-                            batState,
-                        ],
-                        (r, c, pct, avg, s) => {
-                            // at the limit and HELD there by the adapter
-                            // the battery holds its charge — say so.
-                            // atChargeLimit, not the percentage alone: a
-                            // battery discharging at the cap is NOT on AC
-                            if (atChargeLimit(pct, s))
-                                return avg > 0 ? `on AC · ${avg.toFixed(1)} W` : "on AC"
-                            // state from the battery, not the rate's sign:
-                            // plenty of firmware reports a POSITIVE
-                            // energyRate while charging. DISCHARGING wins
-                            // over the charging flag, which flickers at
-                            // the cap — the very case that falls through
-                            const state =
-                                s === AstalBattery.State.DISCHARGING || !c
-                                    ? "discharging"
-                                    : "charging"
-                            // trailing 5-minute average once the ring fills
-                            return avg > 0 ? `${state} · ${avg.toFixed(1)} W` : state
-                        },
-                    )}
+                    sub={createComputed(() => {
+                        const r = watts()
+                        const c = charging()
+                        const pct = createBinding(bat, "percentage")()
+                        const avg = Power.battAvgWatts()
+                        const s = batState()
+                        if (atChargeLimit(pct, s))
+                            return avg > 0 ? `on AC · ${avg.toFixed(1)} W` : "on AC"
+                        const state =
+                            s === AstalBattery.State.DISCHARGING || !c ? "discharging" : "charging"
+                        return avg > 0 ? `${state} · ${avg.toFixed(1)} W` : state
+                    })}
                     visible={bat.isPresent}
                 />
                 <StatTile
                     icon="hourglass-symbolic"
-                    bigClasses={createComputed(
-                        [createBinding(bat, "percentage"), batState],
-                        (p, s) => (atChargeLimit(p, s) ? ["statTileSub"] : ["statTileValue"]),
-                    )}
-                    center={createComputed([createBinding(bat, "percentage"), batState], (p, s) =>
-                        atChargeLimit(p, s),
-                    )}
-                    big={createComputed(
-                        [
-                            createBinding(bat, "timeToEmpty"),
-                            createBinding(bat, "timeToFull"),
-                            createBinding(bat, "charging"),
-                            createBinding(bat, "percentage"),
-                            batState,
-                        ],
-                        (toEmpty, toFull, charging, pct, s) => {
-                            // held at the charge limit UPower's times are
-                            // junk (0 min) — same check as the header; a
-                            // battery discharging at the cap has a valid
-                            // timeToEmpty and falls through
-                            if (atChargeLimit(pct, s)) return "Charge limit"
-                            return span(Number(charging ? toFull : toEmpty))
-                        },
-                    )}
-                    sub={createComputed(
-                        [
-                            createBinding(bat, "charging"),
-                            createBinding(bat, "percentage"),
-                            batState,
-                        ],
-                        (c, pct, s) =>
-                            atChargeLimit(pct, s) ? "" : c ? "until full" : "at current draw",
-                    )}
+                    bigClasses={createComputed(() => {
+                        const p = createBinding(bat, "percentage")()
+                        const s = batState()
+                        return atChargeLimit(p, s) ? ["statTileSub"] : ["statTileValue"]
+                    })}
+                    center={createComputed(() => {
+                        const p = createBinding(bat, "percentage")()
+                        const s = batState()
+                        return atChargeLimit(p, s)
+                    })}
+                    big={createComputed(() => {
+                        const toEmpty = createBinding(bat, "timeToEmpty")()
+                        const toFull = createBinding(bat, "timeToFull")()
+                        const charging = createBinding(bat, "charging")()
+                        const pct = createBinding(bat, "percentage")()
+                        const s = batState()
+                        if (atChargeLimit(pct, s)) return "Charge limit"
+                        return span(Number(charging ? toFull : toEmpty))
+                    })}
+                    sub={createComputed(() => {
+                        const c = createBinding(bat, "charging")()
+                        const pct = createBinding(bat, "percentage")()
+                        const s = batState()
+                        return atChargeLimit(pct, s) ? "" : c ? "until full" : "at current draw"
+                    })}
                     visible={bat.isPresent}
                 />
                 {/* health is full vs design capacity, read once at
@@ -474,7 +448,10 @@ function PowerDetails() {
                     icon="drive-harddisk-solidstate-symbolic"
                     big={Sys.disk.as(d => `${d}%`)}
                     bigClasses={Sys.diskLevel.as(l => ["statTileValue", ...(l !== "" ? [l] : [])])}
-                    sub={createComputed([Sys.diskSize], ([used, total]) => `${used}/${total} GB`)}
+                    sub={createComputed(() => {
+                        const [used, total] = Sys.diskSize()
+                        return `${used}/${total} GB`
+                    })}
                     visible={Config.quicksettings.showStats}
                 />
                 <StatTile
@@ -550,7 +527,9 @@ function PowerDetails() {
                 <StatTile
                     icon="cpu-symbolic"
                     big={Power.freqAvgMhz.as(m => `${(m / 1000).toFixed(1)} GHz`)}
-                    sub={createComputed([freqPct, Power.freqCapMhz], (pct, cap) => {
+                    sub={createComputed(() => {
+                        const pct = freqPct()
+                        const cap = Power.freqCapMhz()
                         const of =
                             cap > 0 ? `${Math.round(pct * 100)}% of ${(cap / 1000).toFixed(1)}` : ""
                         return pct < 0.95 && of ? `${of} capped` : of
@@ -644,9 +623,9 @@ function MemPressureWarning() {
               ? "critical"
               : "warn",
     )
-    const desc = createComputed([Sys.memPressure, Sys.swapSize], (p, [sw, swTotal]) => {
-        // short on purpose: the line ellipsizes at the pane's width,
-        // and a cut-off middle loses the numbers that matter
+    const desc = createComputed(() => {
+        const p = Sys.memPressure()
+        const [sw, swTotal] = Sys.swapSize()
         const stalls = `stalled ${Math.round(p ?? 0)}% of last min`
         return swTotal > 0 ? `${stalls} · swap ${sw}/${swTotal} GB` : stalls
     })
@@ -790,7 +769,9 @@ function VramPressureWarning() {
                 <label
                     cssClasses={["paneRowName"]}
                     xalign={0}
-                    label={createComputed([page, Sys.gpuPressureIds], (p, l) => {
+                    label={createComputed(() => {
+                        const p = page()
+                        const l = Sys.gpuPressureIds()
                         const head =
                             p?.level === "critical"
                                 ? "Severe GPU memory pressure"
@@ -833,7 +814,7 @@ export function PowerProfilesWidget({ pane, name }: { pane: Accessor<string>; na
     // the details poll and the stats poll run only while this pane is
     // on screen
     const unsub = pane.subscribe(() => {
-        const on = pane.get() === name
+        const on = pane.peek() === name
         Power.setActive(on)
         Sys.setActive(on)
     })

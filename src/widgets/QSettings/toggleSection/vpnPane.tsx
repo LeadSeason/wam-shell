@@ -63,15 +63,12 @@ function FeatureRow({ feature, busy }: { feature: VpnFeature; busy: Accessor<boo
     const attention = feature.attention ?? NEVER_ATTENTION
     return (
         <box
-            // the tracking form, not the deps-array form: NEVER_ATTENTION
-            // is a constant-false dep, and the deps-array cache keys on
-            // falsy checks (AGENTS.md)
-            cssClasses={createComputed(track => [
+            cssClasses={createComputed(() => [
                 "vpnFeature",
                 // locked (not offered) and attention (offered but
                 // ineffective until the user acts) are different
                 // statements and wear different colors
-                ...(track(available) ? (track(attention) ? ["attention"] : []) : ["unavailable"]),
+                ...(available() ? (attention() ? ["attention"] : []) : ["unavailable"]),
             ])}
             spacing={6}
         >
@@ -99,7 +96,7 @@ function FeatureRow({ feature, busy }: { feature: VpnFeature; busy: Accessor<boo
                     <label
                         cssClasses={["vpnFeatureFlag"]}
                         valign={Gtk.Align.CENTER}
-                        visible={createComputed(track => track(available) && track(attention))}
+                        visible={createComputed(() => available() && attention())}
                         label={"blocked by policy"}
                     />
                 </box>
@@ -117,10 +114,12 @@ function FeatureRow({ feature, busy }: { feature: VpnFeature; busy: Accessor<boo
             <Gtk.Switch
                 valign={Gtk.Align.CENTER}
                 active={feature.value.as(v => v === true)}
-                sensitive={createComputed(
-                    [busy, feature.value, available],
-                    (b, v, a) => !b && v !== null && a,
-                )}
+                sensitive={createComputed(() => {
+                    const b = busy()
+                    const v = feature.value()
+                    const a = available()
+                    return !b && v !== null && a
+                })}
                 onStateSet={(_s, state) => {
                     // the switch follows the accessor (read-back after the
                     // command), so the gesture only issues it
@@ -143,14 +142,14 @@ export function VpnSwitch({ backend }: { backend: VpnBackend }) {
             active={status.as(s => isConnected(s))}
             onNotifyActive={self => {
                 // idempotent: binding syncs must not toggle
-                if (self.active === isConnected(status.get())) return
+                if (self.active === isConnected(status.peek())) return
                 // same semantics as the quick settings toggle: "blocked"
                 // (the Failed hold) is down in every way that matters —
                 // offer connect so a retry is not swallowed; anything
                 // else but fully disconnected → disconnect (also the
                 // only way to abort a connecting attempt); a flip while
                 // already disconnecting is ignored
-                const s = status.get().state
+                const s = status.peek().state
                 if (s === "disconnected" || s === "blocked") backend.connect()
                 else if (s !== "disconnecting") backend.disconnect()
             }}
@@ -177,7 +176,7 @@ export function VpnPane({
     // refresh on pane open; never on a timer
     onCleanup(
         pane.subscribe(() => {
-            if (pane.get() !== name) return
+            if (pane.peek() !== name) return
             backend.refreshPane?.()
             locations?.ensure()
         }),
@@ -190,16 +189,18 @@ export function VpnPane({
     // section's reset on hide
     onCleanup(
         qsVisible.subscribe(() => {
-            if (!qsVisible.get()) {
+            if (!qsVisible.peek()) {
                 setPickerOpen(false)
                 setQuery("")
             }
         }),
     )
-    const filtered = createComputed(
-        [locations?.list ?? new Accessor<VpnLocation[]>(() => []), query],
-        (locs, q) => locs.filter(l => !q || l.label.toLowerCase().includes(q.toLowerCase())),
-    )
+    const noLocations = new Accessor<VpnLocation[]>(() => [])
+    const filtered = createComputed(() => {
+        const locs = (locations?.list ?? noLocations)()
+        const q = query()
+        return locs.filter(l => !q || l.label.toLowerCase().includes(q.toLowerCase()))
+    })
 
     // "my-laptop · key expires in 228d", amber <30d, red when overdue. No
     // expiry date is not "nothing to say" — backends where it is
@@ -246,7 +247,11 @@ export function VpnPane({
                     ellipsize={Pango.EllipsizeMode.END}
                     label={
                         details
-                            ? createComputed([details, status], (d, s) => d?.location ?? s.server)
+                            ? createComputed(() => {
+                                  const d = details()
+                                  const s = status()
+                                  return d?.location ?? s.server
+                              })
                             : status.as(s => s.server)
                     }
                     visible={status.as(s => isConnected(s))}
@@ -374,10 +379,11 @@ export function VpnPane({
                 nothing to disconnect: Login alone applies */}
                 <button
                     cssClasses={["vpnAction"]}
-                    visible={createComputed(
-                        [status, loggedOut],
-                        (s, lo) => s.state !== "disconnected" && !lo,
-                    )}
+                    visible={createComputed(() => {
+                        const s = status()
+                        const lo = loggedOut()
+                        return s.state !== "disconnected" && !lo
+                    })}
                     sensitive={busy.as(b => !b)}
                     onClicked={() => backend.disconnect()}
                 >
@@ -397,7 +403,7 @@ export function VpnPane({
                     <button
                         cssClasses={["vpnAction"]}
                         visible={loggedOut.as(lo => !lo)}
-                        onClicked={() => setPickerOpen(!pickerOpen.get())}
+                        onClicked={() => setPickerOpen(!pickerOpen.peek())}
                     >
                         <box spacing={4}>
                             <label label={"Change location"} />
@@ -421,7 +427,7 @@ export function VpnPane({
                             n?.command ? `Run “${n.command}” (asks for the admin password)` : "",
                         )}
                         visible={backend.notice.as(n => n?.fix !== undefined)}
-                        onClicked={() => backend.notice?.get().fix?.run()}
+                        onClicked={() => backend.notice?.peek().fix?.run()}
                     >
                         <label label={backend.notice.as(n => n?.fix?.label ?? "")} />
                     </button>
@@ -437,7 +443,7 @@ export function VpnPane({
                             n => n?.command !== undefined && n?.fix === undefined,
                         )}
                         onClicked={() => {
-                            const cmd = backend.notice?.get().command
+                            const cmd = backend.notice?.peek().command
                             if (cmd) copyText(cmd)
                         }}
                     >
@@ -491,13 +497,15 @@ export function VpnPane({
                                             // either. "blocked" (the Failed
                                             // hold) is NOT flux — a notice
                                             // must not lock the picker
-                                            sensitive={createComputed(
-                                                [busy, status],
-                                                (b, s) =>
+                                            sensitive={createComputed(() => {
+                                                const b = busy()
+                                                const s = status()
+                                                return (
                                                     !b &&
                                                     s.state !== "connecting" &&
-                                                    s.state !== "disconnecting",
-                                            )}
+                                                    s.state !== "disconnecting"
+                                                )
+                                            })}
                                             onClicked={() => loc.select()}
                                         >
                                             <label

@@ -12,7 +12,7 @@ test("hold: publishes propagate while unheld", () => {
     let calls = 0
     const dispose = h.accessor.subscribe(() => {
         calls++
-        seen = h.accessor.get()
+        seen = h.accessor.peek()
     })
     h.publish([1, 2])
     eq(calls, 1)
@@ -29,7 +29,7 @@ test("hold: publishes are swallowed while held, catch-up once on release", () =>
     let seen = ""
     const dispose = h.accessor.subscribe(() => {
         calls++
-        seen = h.accessor.get()
+        seen = h.accessor.peek()
     })
     eq(h.held(), false)
     const release = h.acquire(() => "live-again")
@@ -60,7 +60,7 @@ test("hold: nested holds catch up once, on the outermost release", () => {
     let seen = 0
     const dispose = h.accessor.subscribe(() => {
         calls++
-        seen = h.accessor.get()
+        seen = h.accessor.peek()
     })
     const outer = h.acquire(() => 3)
     const inner = h.acquire(() => 3)
@@ -96,7 +96,7 @@ test("hold: markMissed records a miss without producing the value", () => {
     let seen = ""
     const dispose = h.accessor.subscribe(() => {
         calls++
-        seen = h.accessor.get()
+        seen = h.accessor.peek()
     })
     const release = h.acquire(() => "fresh-read")
     h.markMissed()
@@ -134,6 +134,6 @@ test("hold: publishes flow again between two holds", () => {
     h.publish(3)
     release()
     eq(calls, 3)
-    eq(h.accessor.get(), 4)
+    eq(h.accessor.peek(), 4)
     dispose()
 })

@@ -354,7 +354,7 @@ function applyUsers(
     set: (u: CaptureUser[]) => void,
     next: CaptureUser[],
 ): boolean {
-    const prev = current.get()
+    const prev = current.peek()
     if (sameUsers(prev, next)) return false
     set(next)
     return true
@@ -375,8 +375,8 @@ export function mergeCameraUsers(graph: CaptureUser[], direct: CaptureUser[]): C
 }
 
 function syncCameraUsers() {
-    const next = mergeCameraUsers(graphCameraUsers.get(), directCameraUsers.get())
-    const prev = cameraUsers.get()
+    const next = mergeCameraUsers(graphCameraUsers.peek(), directCameraUsers.peek())
+    const prev = cameraUsers.peek()
     if (sameUsers(prev, next)) return
     console.warn(
         next.length > 0
@@ -434,7 +434,7 @@ const V4L2_EAGER_MS = 6_000
 // the slow cadence unless a call is live: mic in use with no camera
 // seen yet is when the eager sweep earns its keep
 function nextSweepMs(): number {
-    return micUsers.get().length > 0 && cameraUsers.get().length === 0
+    return micUsers.peek().length > 0 && cameraUsers.peek().length === 0
         ? V4L2_EAGER_MS
         : V4L2_SWEEP_MS
 }
@@ -582,7 +582,7 @@ function scheduleSweep(ms: number) {
 // cadence alive through nextSweepMs, covering a camera toggled on a
 // moment later.
 micActive.subscribe(() => {
-    if (!micActive.get() || disposed || cameraUsers.get().length > 0) return
+    if (!micActive.peek() || disposed || cameraUsers.peek().length > 0) return
     if (sweepIdle !== 0) return // a sweep is already walking /proc
     if (cameraPoll !== 0) {
         sourceRemove(cameraPoll)
@@ -614,7 +614,7 @@ async function evaluate() {
         // matched — a transient grab (camera probe, portal screencast)
         // is gone before anyone can inspect the graph, so the journal
         // is the only record
-        if (next !== sharing.get())
+        if (next !== sharing.peek())
             console.warn(
                 next
                     ? `screenShare: masking — video input from: ${active ? active.map(describe).join(", ") : "unparseable dump"}`

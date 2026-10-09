@@ -30,7 +30,7 @@ export { connectedDevice }
 function refreshConnected() {
     const device = bluetooth.devices.find(d => d.connected) ?? null
     const battery = device ? batteryPercent(device) : -1
-    const prev = connectedDevice.get()
+    const prev = connectedDevice.peek()
     if (prev?.device === device && prev?.battery === battery) return
     setConnectedDevice(device ? { device, battery } : null)
 }

@@ -201,7 +201,7 @@ function clipboardRows(query: string): Row[] {
             },
         ]
     }
-    if (clips.length === 0 && clipsLoaded.get()) {
+    if (clips.length === 0 && clipsLoaded.peek()) {
         return [
             {
                 key: "clip:empty",
@@ -275,7 +275,7 @@ registerPopup("launcher", () => {
 
 function refresh(text: string) {
     // entering clipboard mode: fetch once, then filter in memory
-    if (text.startsWith(CLIPBOARD_PREFIX) && !clipsLoaded.get()) loadClips()
+    if (text.startsWith(CLIPBOARD_PREFIX) && !clipsLoaded.peek()) loadClips()
     const next = rowsFor(text)
     setRows(next)
     // Always back to the top on a new query. Keeping the index would
@@ -285,15 +285,15 @@ function refresh(text: string) {
 }
 
 function move(delta: number) {
-    const count = rows.get().length
+    const count = rows.peek().length
     if (count === 0) return
     // wraps: with at most eight rows, running off the end and stopping
     // is more annoying than looping
-    setSelected((selected.get() + delta + count) % count)
+    setSelected((selected.peek() + delta + count) % count)
 }
 
 function activateSelected() {
-    const row = rows.get()[selected.get()]
+    const row = rows.peek()[selected.peek()]
     if (!row) return
     // hide FIRST: launching an app hands focus to it, and a launcher
     // still on screen when the window appears is a launcher that
@@ -371,16 +371,16 @@ function onClick(_e: Gtk.GestureClick, _: number, x: number, y: number) {
 function ResultRow({ row, index }: { row: Row; index: Accessor<number> }) {
     return (
         <box
-            cssClasses={createComputed([selected, index], (s, i) => [
+            cssClasses={createComputed(() => [
                 "launcherRow",
-                ...(s === i ? ["selected"] : []),
+                ...(selected() === index() ? ["selected"] : []),
             ])}
             spacing={10}
         >
             <Gtk.GestureClick
                 button={1}
                 onPressed={() => {
-                    setSelected(index.get())
+                    setSelected(index.peek())
                     activateSelected()
                 }}
             />

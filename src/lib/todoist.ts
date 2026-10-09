@@ -271,12 +271,12 @@ function reRaiseSnoozed(item: ProviderItem) {
         if (r.status === 404) {
             // completed or deleted elsewhere: drop it like a poll would
             cancelReminder(item.id)
-            setItems(items.get().filter(i => i.id !== item.id))
+            setItems(items.peek().filter(i => i.id !== item.id))
             return
         }
         // re-raise with the CURRENT item: a poll may have replaced
         // the object — and a locally hidden task gets no banner
-        const fresh = items.get().find(i => i.id === item.id)
+        const fresh = items.peek().find(i => i.id === item.id)
         if (fresh) addProviderPopup(fresh, AstalNotifd.Urgency.CRITICAL)
     })
 }
@@ -380,7 +380,7 @@ function complete(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">) {
         if (r.ok) {
             cancelReminder(data.id)
             removePopup(data.id)
-            setItems(items.get().filter(i => i.id !== data.id))
+            setItems(items.peek().filter(i => i.id !== data.id))
         } else console.warn(`Todoist: task close failed (status ${r.status})`)
     })
 }
@@ -394,7 +394,7 @@ function applyTasks(rawList: any[], reminderMap: Map<string, number[]>) {
     }
     // soonest due first
     mapped.sort((a, b) => a.time - b.time)
-    const prev = items.get()
+    const prev = items.peek()
     setItems(mapped)
     scheduleReminders(mapped, reminderMap)
     if (!baselineDone) {

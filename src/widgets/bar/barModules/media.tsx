@@ -38,9 +38,11 @@ function MediaWidget({
     // enriched labels (lib/mediaMeta): a generic browser title like
     // "Episode 1" shows the series name instead, episode label as sub
     const meta = enrichedMeta(player)
-    const label = createComputed([meta.title, meta.sub], (title, sub) =>
-        sub ? `${title || "Unknown title"} - ${sub}` : title || player.identity || "",
-    )
+    const label = createComputed(() => {
+        const title = meta.title()
+        const sub = meta.sub()
+        return sub ? `${title || "Unknown title"} - ${sub}` : title || player.identity || ""
+    })
 
     let mediaBox: Gtk.Box
 
@@ -133,9 +135,9 @@ function MediaWidget({
                         cr.setSourceRGBA(c.red, c.green, c.blue, 0.25)
                         cr.rectangle(0, 0, w, h)
                         cr.fill()
-                        const len = trackLength.get()
+                        const len = trackLength.peek()
                         if (len > 0) {
-                            const frac = Math.min(1, Math.max(0, position.accessor.get() / len))
+                            const frac = Math.min(1, Math.max(0, position.accessor.peek() / len))
                             cr.setSourceRGBA(c.red, c.green, c.blue, 0.95)
                             cr.rectangle(0, 0, w * frac, h)
                             cr.fill()

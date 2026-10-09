@@ -94,7 +94,7 @@ function startCommand(argv: string[]): boolean {
             // a newer child may have replaced this one already
             if (child !== proc) return
             child = null
-            if (inhibited.get()) {
+            if (inhibited.peek()) {
                 console.warn(`idleInhibit: ${argv[0]} exited; keep awake is off`)
                 setInhibited(false)
             }
@@ -128,7 +128,7 @@ function release() {
  * machine suspends underneath it.
  */
 export function setIdleInhibit(on: boolean): void {
-    if (on === inhibited.get()) return
+    if (on === inhibited.peek()) return
     if (!on) {
         release()
         setInhibited(false)
@@ -140,7 +140,7 @@ export function setIdleInhibit(on: boolean): void {
 }
 
 export function toggleIdleInhibit(): void {
-    setIdleInhibit(!inhibited.get())
+    setIdleInhibit(!inhibited.peek())
 }
 
 function dispose() {
@@ -163,14 +163,14 @@ keep-awake status
     main: args => {
         const arg = args[0] ?? ""
         const backend = Config.idleInhibit.command.length > 0 ? "command" : "logind"
-        if (arg === "status") return `inhibited=${inhibited.get()} backend=${backend}`
+        if (arg === "status") return `inhibited=${inhibited.peek()} backend=${backend}`
         if (arg === "on" || arg === "off") setIdleInhibit(arg === "on")
         else if (arg === "") toggleIdleInhibit()
         else return `unknown argument "${arg}" (expected on, off or status)`
         // report what it ACTUALLY is: taking the lock can fail, and a
         // keybind that says "on" when nothing is held is worse than one
         // that says it could not
-        return inhibited.get() ? "keep awake is on" : "keep awake is off"
+        return inhibited.peek() ? "keep awake is on" : "keep awake is off"
     },
 })
 
