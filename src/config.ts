@@ -738,6 +738,16 @@ function getNotificationsConfig() {
         // deleted from the daemon, measured from arrival; 0 keeps the
         // archive forever. should be larger than history_retention_days
         archiveRetentionDays: r.num("archive_retention_days", 7, { min: 0 }),
+        // minutes offered by the DND menu's "Snooze notifications" items
+        snoozePresets: numberList(
+            "notifications.snooze_presets",
+            r.raw("snooze_presets"),
+            [15, 30, 45, 60, 120],
+        ),
+        // factory default for the DND menu's "snooze while screen
+        // sharing" checkbox — the checkbox itself persists in the cache
+        // dir once toggled, and wins
+        snoozeWhenSharing: r.bool("snooze_when_sharing", false),
     }
 }
 
