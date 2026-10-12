@@ -29,7 +29,7 @@ import { providers } from "../../lib/notificationProviders"
 import type { ProviderItem } from "../../lib/notificationProviders"
 import CenterRow from "./CenterRow"
 import DndMenu from "./DndMenu"
-import { formatRemaining } from "../../lib/dndSnooze"
+import { formatRemaining, formatRemainingCompact } from "../../lib/dndSnooze"
 import { appIconFor, fromDesktop, fromItem } from "./rowData"
 import { buildFeed, compareRows, FeedBlock } from "./feed"
 import { PaneEmpty } from "../PaneEmpty"
@@ -755,13 +755,44 @@ function ensureWindow() {
                                             button={3}
                                             onReleased={() => openDndMenu()}
                                         />
-                                        <image
-                                            iconName={dnd.as(v =>
-                                                v
-                                                    ? "notifications-disabled-symbolic"
-                                                    : "preferences-system-notifications-symbolic",
-                                            )}
-                                        />
+                                        {/* the icon swaps for the
+                                        remaining time while a timed
+                                        snooze runs — a hold you can
+                                        see counting down, not one you
+                                        have to hover for (the
+                                        clear-all trash/spinner swap:
+                                        an invisible child takes no
+                                        box space). Without a deadline
+                                        — plain DND, or the share
+                                        hold — the icon stays. The box
+                                        centers itself in the button:
+                                        a box packs children at the
+                                        start, and the header's
+                                        min-width gives it a little
+                                        more room than a 16px icon —
+                                        without this the icon sits
+                                        left of center */}
+                                        <box cssClasses={["dndState"]} halign={Gtk.Align.CENTER}>
+                                            <image
+                                                iconName={dnd.as(v =>
+                                                    v
+                                                        ? "notifications-disabled-symbolic"
+                                                        : "preferences-system-notifications-symbolic",
+                                                )}
+                                                visible={dndSnoozeEndsAt.as(e => e === null)}
+                                            />
+                                            <label
+                                                cssClasses={["dndCountdown"]}
+                                                visible={dndSnoozeEndsAt.as(e => e !== null)}
+                                                label={createComputed(() => {
+                                                    const ends = dndSnoozeEndsAt()
+                                                    if (ends === null) return ""
+                                                    return formatRemainingCompact(
+                                                        ends - nowSec() * 1000,
+                                                    )
+                                                })}
+                                            />
+                                        </box>
                                     </button>
                                     {/* clears only the active filter's
                                     items (local: the daemon's; a
