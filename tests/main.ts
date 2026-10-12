@@ -55,6 +55,7 @@ import "./prayerTimes.test"
 // without so much as a warning
 import "./bluetooth.test"
 import "./captureWatch.test"
+import "./dndSnooze.test"
 import { summary } from "./framework"
 
 summary()

@@ -836,6 +836,16 @@
 #                  notifications live in the center only. banners
 #                  respect do-not-disturb; the first sync after startup
 #                  is a silent baseline
+# snooze_presets - minutes offered by the notification center's DND
+#                  menu ("Snooze notifications"). picking one turns
+#                  do-not-disturb on for that long and restores its
+#                  previous state afterwards; right-click the DND
+#                  button to reach them. default [15, 30, 45, 60, 120]
+# snooze_when_sharing - factory default for the DND menu's "while
+#                  screen sharing" checkbox: keep notifications
+#                  silenced whenever a screen share or camera is
+#                  active. the checkbox is remembered once toggled,
+#                  and overrides this default. default false
 # [notifications]
 # daemon = "auto"
 # popups = true
@@ -846,6 +856,8 @@
 # history_retention_days = 1
 # archive_retention_days = 7
 # popup_providers = []
+# snooze_presets = [15, 30, 45, 60, 120]
+# snooze_when_sharing = false
 
 # ════════════════════════════════════════════════════════════════════
 # Keep awake (idle inhibitor)

@@ -28,6 +28,8 @@
 // .dismissMark, .count,
 // .critical/.low (urgency),
 // .rtl.
+// DND menu (popover, parented to the window): .dndMenu, .dndMenuTitle,
+// .dndMenuItem, .dndMenuCheck, .dndMenuCancel.
 
 // ---------------------------------------------------------------- type
 //
@@ -489,5 +491,49 @@ window.Notifications {
     .groupRows.rtl {
         border-left: none;
         border-right: solid s.$hairline u.$rule-color;
+    }
+}
+
+// ---------------------------------------------------------------- dndMenu
+//
+// The DND button's right-click menu (DndMenu.tsx). It is a popover on
+// its own surface, parented to the window — not inside the
+// .notifications card — so none of the card's rules reach it. The
+// silhouette comes free from `popover contents` in bar/popover.scss
+// (same card, same quiet buttons as every popover); this is only what
+// the menu itself is: an eyebrow title, preset rows, the share-snooze
+// check slot and the cancel row.
+//
+// Widget classes — .dndMenu, .dndMenuTitle, .dndMenuItem,
+// .dndMenuCheck, .dndMenuCancel.
+.dndMenu {
+    // preset rows want to read as a menu, not as loose buttons
+    min-width: 170px;
+
+    .dndMenuTitle {
+        @include u.eyebrow;
+        // above the first row, level with their inset
+        margin: s.$padding-small s.$padding s.$padding-small;
+    }
+
+    .dndMenuItem {
+        // the popover's quiet-button margin is for standalone buttons;
+        // a menu row spans the menu edge to edge
+        margin: 0;
+    }
+
+    // fixed slot holding the tick: checked and unchecked rows keep the
+    // same label position
+    .dndMenuCheck {
+        min-width: s.$icon;
+
+        image {
+            color: t.$accent;
+        }
+    }
+
+    // state, not a verb — it names a hold that is currently on
+    .dndMenuCancel label {
+        color: t.$subtext0;
     }
 }

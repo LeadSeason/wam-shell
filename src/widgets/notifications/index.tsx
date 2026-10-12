@@ -13,6 +13,7 @@ import {
     dismissMany,
     dismissProgress,
     dnd,
+    dndSnoozeEndsAt,
     mutedApps,
     mutedProviders,
     toggleAppMute,
@@ -27,6 +28,8 @@ import { acquireClock, nowSec, relTime } from "../../lib/relTime"
 import { providers } from "../../lib/notificationProviders"
 import type { ProviderItem } from "../../lib/notificationProviders"
 import CenterRow from "./CenterRow"
+import DndMenu from "./DndMenu"
+import { formatRemaining, formatRemainingCompact } from "../../lib/dndSnooze"
 import { appIconFor, fromDesktop, fromItem } from "./rowData"
 import { buildFeed, compareRows, FeedBlock } from "./feed"
 import { PaneEmpty } from "../PaneEmpty"
@@ -40,6 +43,10 @@ let win: Astal.Window | null = null
 let rev: Gtk.Revealer | null = null
 let card: Gtk.Box | null = null
 let searchEntry: Gtk.Entry | null = null
+// the DND button and its right-click menu. The popover is parented to
+// the WINDOW (see openDndMenu) and points at the button's bounds
+let dndButton: Gtk.Button | null = null
+let dndMenuPopover: Gtk.Popover | null = null
 let hideSource: number | null = null
 // the idle that focuses the search entry once its revealer has expanded.
 // Tracked like hideSource: an untracked deferred source runs against a
@@ -61,6 +68,35 @@ let releaseClock: (() => void) | null = null
 registerPopup("notifications", () => {
     if (win?.is_visible()) hide()
 })
+
+// the DND button's tooltip: it names the snooze while one is armed —
+// the button itself only shows that DND is on, not that it will turn
+// itself back off. Ticks with the center's clock (held while open)
+const dndTooltip = createComputed(() => {
+    const ends = dndSnoozeEndsAt()
+    if (ends === null) return "Do not disturb"
+    return `Do not disturb — snoozed, ${formatRemaining(ends - nowSec() * 1000)} left`
+})
+
+/** Pop up the DND menu, pointing at the DND button. The popover is
+ *  parented to the window on first use — never to the card's column, or
+ *  a presented popover would take a slot in the box layout (a
+ *  presented popover must be a coordinate anchor only, the way
+ *  GtkTextView anchors its emoji chooser). */
+function openDndMenu() {
+    if (!dndMenuPopover || !dndButton || !win) return
+    if (dndMenuPopover.get_parent() === null) dndMenuPopover.set_parent(win)
+    const [, bounds] = dndButton.compute_bounds(win)
+    dndMenuPopover.set_pointing_to(
+        new Gdk.Rectangle({
+            x: Math.round(bounds.get_x()),
+            y: Math.round(bounds.get_y()),
+            width: Math.round(bounds.get_width()),
+            height: Math.round(bounds.get_height()),
+        }),
+    )
+    dndMenuPopover.popup()
+}
 
 function show() {
     // the other corner-owning popups: only one of them can usefully be
@@ -96,6 +132,9 @@ function hide() {
     // running against a closed window until the next full close
     releaseClock?.()
     releaseClock = null
+    // an open DND menu must not survive its window: the popover is a
+    // child surface of this window's
+    dndMenuPopover?.popdown()
     if (hideSource !== null) sourceRemove(hideSource)
     hideSource = timeoutAdd("notifCenter:hide", GLib.PRIORITY_DEFAULT, 200, () => {
         hideSource = null
@@ -702,17 +741,58 @@ function ensureWindow() {
                                         <image iconName="system-search-symbolic" />
                                     </button>
                                     <button
-                                        tooltipText="Do not disturb"
+                                        $={self => {
+                                            dndButton = self
+                                        }}
+                                        tooltipText={dndTooltip}
                                         cssClasses={dnd.as(v => (v ? ["active"] : []))}
                                         onClicked={() => toggleDnd()}
                                     >
-                                        <image
-                                            iconName={dnd.as(v =>
-                                                v
-                                                    ? "notifications-disabled-symbolic"
-                                                    : "preferences-system-notifications-symbolic",
-                                            )}
+                                        {/* right-click: the snooze menu
+                                        (presets from snooze_presets, the
+                                        share-snooze checkbox, cancel) */}
+                                        <Gtk.GestureClick
+                                            button={3}
+                                            onReleased={() => openDndMenu()}
                                         />
+                                        {/* the icon swaps for the
+                                        remaining time while a timed
+                                        snooze runs — a hold you can
+                                        see counting down, not one you
+                                        have to hover for (the
+                                        clear-all trash/spinner swap:
+                                        an invisible child takes no
+                                        box space). Without a deadline
+                                        — plain DND, or the share
+                                        hold — the icon stays. The box
+                                        centers itself in the button:
+                                        a box packs children at the
+                                        start, and the header's
+                                        min-width gives it a little
+                                        more room than a 16px icon —
+                                        without this the icon sits
+                                        left of center */}
+                                        <box cssClasses={["dndState"]} halign={Gtk.Align.CENTER}>
+                                            <image
+                                                iconName={dnd.as(v =>
+                                                    v
+                                                        ? "notifications-disabled-symbolic"
+                                                        : "preferences-system-notifications-symbolic",
+                                                )}
+                                                visible={dndSnoozeEndsAt.as(e => e === null)}
+                                            />
+                                            <label
+                                                cssClasses={["dndCountdown"]}
+                                                visible={dndSnoozeEndsAt.as(e => e !== null)}
+                                                label={createComputed(() => {
+                                                    const ends = dndSnoozeEndsAt()
+                                                    if (ends === null) return ""
+                                                    return formatRemainingCompact(
+                                                        ends - nowSec() * 1000,
+                                                    )
+                                                })}
+                                            />
+                                        </box>
                                     </button>
                                     {/* clears only the active filter's
                                     items (local: the daemon's; a
@@ -1152,5 +1232,10 @@ function ensureWindow() {
                 </window>
             ) as Gtk.Window,
         )
+        // the DND menu. Parented to the window here — the popover is a
+        // coordinate anchor child only (see openDndMenu); pointing and
+        // presentation happen per right-click
+        dndMenuPopover = DndMenu()
+        dndMenuPopover.set_parent(win)
     })
 }

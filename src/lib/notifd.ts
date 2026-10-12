@@ -11,6 +11,7 @@ import {
     sourceRemove,
 } from "./metrics"
 import Config from "../config"
+import CommandRegistry from "./commandRegistry"
 import { providers } from "./notificationProviders"
 import type { ProviderItem } from "./notificationProviders"
 import {
@@ -25,6 +26,8 @@ import {
 import type { PopupEntry, PopupGroup, PopupTimer } from "./popupStack"
 import { booleanHint } from "./utils"
 import { historyZone } from "./relTime"
+import * as dndSnooze from "./dndSnooze"
+import { sharing as screenSharing, enable as enableShareWatch } from "./captureWatch"
 // The stack's RULES live in lib/popupStack, which has no import-time
 // side effects so the unit suite can pin them without this module's
 // D-Bus probe and AstalNotifd.get_default() coming along. Re-exported
@@ -308,9 +311,142 @@ export const archived: Accessor<AstalNotifd.Notification[]> = notifications.as(l
 export const count = active.as(n => n.length)
 export const dnd = createBinding(notifd, "dontDisturb")
 
-export function toggleDnd() {
-    notifd.dontDisturb = !notifd.dontDisturb
+// --- DND snooze -------------------------------------------------------
+//
+// "Snooze notifications": turn DND on for a while — from the center's
+// DND menu — and get the silence back afterwards without having to
+// remember to undo it. lib/dndSnooze owns the decision table (what the
+// user meant vs. the one boolean the daemon persists); this is the
+// wiring: state, the deadline timer, the gsettings write, and the
+// capture watcher behind the share hold.
+//
+// The share-snooze preference is the user's toggle from the same menu,
+// persisted in the cache dir — the config key is only its factory
+// default (the sleep-timer pill precedent: a standing instruction
+// survives restarts, crashes and reboots; the timed snooze itself
+// deliberately does not — its timer dies with the shell, and DND then
+// simply stays on, which is the safe side: no banner burst on relogin).
+
+const shareSnoozePrefPath = `${Config.instanceCacheDir}/dnd-share-snooze.json`
+
+/** the persisted checkbox, null when never set (hand-edited or
+ *  truncated: the config default is the safe reading) */
+function loadShareSnoozePref(): boolean | null {
+    try {
+        if (!GLib.file_test(shareSnoozePrefPath, GLib.FileTest.EXISTS)) return null
+        const [ok, bytes] = GLib.file_get_contents(shareSnoozePrefPath)
+        if (!ok) return null
+        const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes))
+        return typeof parsed === "boolean" ? parsed : null
+    } catch {
+        return null
+    }
 }
+
+const [snoozeState, setSnoozeState] = createState<dndSnooze.DndSnoozeState>(
+    dndSnooze.initialDndSnoozeState(
+        notifd.dontDisturb,
+        loadShareSnoozePref() ?? Config.notifications.snoozeWhenSharing,
+    ),
+)
+
+/** deadline of the timed snooze, null when none is armed */
+export const dndSnoozeEndsAt: Accessor<number | null> = snoozeState.as(s => s.until)
+/** the standing "snooze while screen sharing" checkbox */
+export const shareSnooze: Accessor<boolean> = snoozeState.as(s => s.auto)
+
+let snoozeSource: number | null = null
+
+function applySnooze(applied: dndSnooze.Applied) {
+    setSnoozeState(applied.next)
+    if (notifd.dontDisturb !== applied.set) notifd.dontDisturb = applied.set
+    // one reconcile per apply, however the state moved: armed → (re)arm,
+    // cleared → stop. Cheap, and no event can forget its timer
+    const until = snoozeState.peek().until
+    if (snoozeSource !== null) {
+        sourceRemove(snoozeSource)
+        snoozeSource = null
+    }
+    if (until !== null) {
+        snoozeSource = timeoutAdd(
+            "notifd:dndSnooze",
+            GLib.PRIORITY_DEFAULT,
+            Math.max(0, until - Date.now()),
+            () => {
+                snoozeSource = null
+                applySnooze(dndSnooze.expireSnooze(snoozeState.peek()))
+                return GLib.SOURCE_REMOVE
+            },
+        )
+    }
+}
+
+/** Snooze notifications for `minutes`: DND on, restored afterwards. */
+export function snoozeDnd(minutes: number) {
+    applySnooze(dndSnooze.armSnooze(snoozeState.peek(), minutes, Date.now()))
+}
+
+export function cancelDndSnooze() {
+    applySnooze(dndSnooze.clearSnooze(snoozeState.peek()))
+}
+
+export function setShareSnooze(on: boolean) {
+    if (on) enableShareWatch()
+    applySnooze(dndSnooze.setShareSnooze(snoozeState.peek(), on))
+    writeFileAtomic(shareSnoozePrefPath, JSON.stringify(on)).catch(e =>
+        console.warn("notifd: could not persist the share-snooze preference:", e),
+    )
+}
+
+export function toggleDnd() {
+    applySnooze(dndSnooze.manualToggle(snoozeState.peek()))
+}
+
+// the share hold rides captureWatch.sharing. The subscription is free
+// without the feature (sharing stays false when no watcher runs); the
+// pw-dump monitor itself starts only when the preference can ever be
+// true — here at startup, or when the checkbox is ticked
+// gnim subscriptions carry no value: read the state back through peek
+const shareSnoozeUnsub = screenSharing.subscribe(() =>
+    applySnooze(dndSnooze.setSharing(snoozeState.peek(), screenSharing.peek())),
+)
+if (snoozeState.peek().auto) enableShareWatch()
+
+// request command: the center's DND menu is the everyday entry point,
+// but a scriptable one is needed for compositor keybinds and for
+// exercising the snooze path without clicking through the UI (the
+// sleep-timer precedent)
+CommandRegistry.get_default().register({
+    name: ["dnd"],
+    description: "Do-not-disturb: snooze <minutes>, cancel, status",
+    help: `dnd snooze <minutes>   (a bare number works too: dnd 45)
+  Snoozes notifications: DND on for that long, restored after.
+dnd cancel
+  Cancels a running snooze; DND returns to its pre-snooze state.
+dnd status
+  One line: dnd=<bool> snoozed=<bool> ends=<unix s|0> sharing_snooze=<bool>`,
+    main: args => {
+        const s = snoozeState.peek()
+        const arg = args[0] ?? "status"
+        if (arg === "status")
+            return [
+                `dnd=${notifd.dontDisturb}`,
+                `snoozed=${s.until !== null}`,
+                `ends=${s.until !== null ? Math.round(s.until / 1000) : 0}`,
+                `sharing_snooze=${s.auto}`,
+            ].join(" ")
+        if (arg === "cancel") {
+            cancelDndSnooze()
+            return "cancelled"
+        }
+        const raw = arg === "snooze" ? args[1] : arg
+        const minutes = Number(raw)
+        if (!Number.isFinite(minutes) || minutes <= 0)
+            return "usage: dnd snooze <minutes> | cancel | status"
+        snoozeDnd(minutes)
+        return `snoozed for ${raw}m`
+    },
+})
 
 // --- history retention ------------------------------------------------
 //
@@ -900,6 +1036,14 @@ export function dispose() {
     // popup stack nothing is ticking any more
     for (const held of snoozed.values()) sourceRemove(held.source)
     snoozed.clear()
+    // the DND snooze deadline firing against a torn-down module would
+    // flip dontDisturb with no one watching; the capture subscription
+    // would do the same on the next share flip
+    if (snoozeSource !== null) {
+        sourceRemove(snoozeSource)
+        snoozeSource = null
+    }
+    shareSnoozeUnsub()
     // zeroed as they go, like every other handle above: runDisposers()
     // can be reached twice (a shutdown signal after an explicit quit),
     // and disconnecting a dead handler id is a GLib-CRITICAL
