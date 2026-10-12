@@ -29,7 +29,8 @@
 // .critical/.low (urgency),
 // .rtl.
 // DND menu (popover, parented to the window): .dndMenu, .dndMenuTitle,
-// .dndMenuItem, .dndMenuCheck, .dndMenuCancel.
+// .dndMenuItem, .dndMenuCheck, .dndMenuCancel. Header: .dndState
+// (DND icon / snooze countdown swap), .dndCountdown.
 
 // ---------------------------------------------------------------- type
 //
@@ -272,6 +273,16 @@ window.Notifications {
             &.active {
                 background-color: t.$accent40;
                 border-color: t.$accent40;
+            }
+
+            // snooze countdown: while a timed snooze runs the DND icon
+            // swaps for the remaining time (the clear-all
+            // trash/spinner swap — one box, opposite `visible`
+            // bindings, no layout hole). A hold you can watch count
+            // down, not one you have to hover for
+            .dndState .dndCountdown {
+                font-size: s.$font-small;
+                font-weight: s.$weight-medium;
             }
         }
     }
