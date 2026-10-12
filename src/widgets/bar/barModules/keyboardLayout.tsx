@@ -104,5 +104,14 @@ function LayoutDropdown({ source }: { source: LayoutSource }) {
 export default function KeyboardLayout() {
     const source = ensureLayoutSource()
     if (!source) return <></>
-    return <LayoutDropdown source={source} />
+    // layouts arrive async after startup (and never arrive on a session
+    // with no keyboard): hide the module until the list is non-empty,
+    // rather than rendering a dropdown that opens with zero rows. The
+    // wrapper box holds the slot — a `With` here would re-append the
+    // rebuilt widget at the end of the bar row once the list lands.
+    return (
+        <box visible={source.layouts.as(ls => ls.length > 0)}>
+            <LayoutDropdown source={source} />
+        </box>
+    )
 }
