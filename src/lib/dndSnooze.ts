@@ -103,9 +103,24 @@ export function formatMinutes(minutes: number): string {
     return m === 0 ? `${h}h` : `${h}h ${m}m`
 }
 
-/** Time left on the timed hold, rounded UP (a countdown that says
- *  "1m" while time is still left; never "0m" before the deadline). */
+/** Time left on the timed hold, in whole minutes actually left
+ *  (floored — at 44:30 the label reads "44m", not "45m"), with "<1m"
+ *  for the final stretch. */
 export function formatRemaining(msLeft: number): string {
     if (msLeft <= 0) return formatMinutes(0)
-    return formatMinutes(Math.ceil(msLeft / 60_000))
+    const mins = Math.floor(msLeft / 60_000)
+    if (mins === 0) return "<1m"
+    return formatMinutes(mins)
+}
+
+/** The same countdown, tight enough to sit in the DND button in place
+ *  of its icon ("1h30m", no space) without reshaping the header row. */
+export function formatRemainingCompact(msLeft: number): string {
+    if (msLeft <= 0) return formatMinutes(0)
+    const mins = Math.floor(msLeft / 60_000)
+    if (mins === 0) return "<1m"
+    const h = Math.floor(mins / 60)
+    const m = Math.round(mins % 60)
+    if (h === 0) return `${m}m`
+    return m === 0 ? `${h}h` : `${h}h${m}m`
 }
