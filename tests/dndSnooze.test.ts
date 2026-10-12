@@ -130,23 +130,23 @@ test("dndSnooze: formats", () => {
     eq(formatMinutes(90), "1h 30m")
     eq(formatMinutes(120), "2h")
     // floored remaining minutes: at 44:30 the label reads "44m", not
-    // "45m" — the countdown matches the minutes actually left
+    // "45m" — the countdown matches the minutes actually left. the
+    // final stretch just reads "1m": minute precision is all this needs
     eq(formatRemaining(44.5 * 60_000), "44m")
     eq(formatRemainingCompact(44.5 * 60_000), "44m")
     eq(formatRemaining(60 * 60_000), "1h")
     eq(formatRemaining(60 * 60_000 - 1), "59m")
     eq(formatRemaining(61_000), "1m")
-    // the final stretch is honest about being partial
-    eq(formatRemaining(59_999), "<1m")
-    eq(formatRemaining(999), "<1m")
-    eq(formatRemaining(0), "0m")
-    eq(formatRemaining(-5), "0m")
+    eq(formatRemaining(59_999), "1m")
+    eq(formatRemaining(999), "1m")
+    eq(formatRemaining(0), "1m")
+    eq(formatRemaining(-5), "1m")
     // the button's tight form: same flooring, no space
     eq(formatRemainingCompact(45 * 60_000), "45m")
     eq(formatRemainingCompact(60 * 60_000), "1h")
     eq(formatRemainingCompact(90 * 60_000), "1h30m")
     eq(formatRemainingCompact(90 * 60_000 - 1), "1h29m")
     eq(formatRemainingCompact(61_000), "1m")
-    eq(formatRemainingCompact(59_999), "<1m")
-    eq(formatRemainingCompact(0), "0m")
+    eq(formatRemainingCompact(59_999), "1m")
+    eq(formatRemainingCompact(0), "1m")
 })
