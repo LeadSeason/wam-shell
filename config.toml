@@ -160,11 +160,16 @@
 # collapse_icons - show each app icon only once per workspace, no matter
 #                  how many windows of that app are open. default false
 # playing_indicator - highlight workspaces holding a currently playing
-#                     media player (a gently pulsing accent tint).
-#                     default true
+#                     media player: an accent tint that pulses briefly
+#                     when playback starts or moves track, then rests
+#                     lit while it keeps playing. default true
 # playing_pulse_ms - pulse tempo: half a breath in milliseconds (the
 #                    fade and the beat both run on it). min 200, below
-#                    that it strobes. default 650
+#                    that it strobes. default 650. The pulse beats for
+#                    ~2s around a change and then rests — a tint that
+#                    breathed forever would keep the bar's frame clock
+#                    awake for nothing (that bug burned ~7% cpu and kept
+#                    the compositor recompositing at idle, #338)
 # [workspaces]
 # enabled = true
 # position = "left"
