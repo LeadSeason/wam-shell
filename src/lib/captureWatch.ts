@@ -3,7 +3,7 @@ import Gio from "gi://Gio?version=2.0"
 import { createState } from "gnim"
 import type { Accessor } from "gnim"
 import Config from "../config"
-import { execAsync, timeoutAdd, sourceRemove } from "./metrics"
+import { execAsync, timeoutAdd, sourceRemove, idleAdd } from "./metrics"
 import { streamLines } from "./streamLines"
 import { registerDispose } from "./lifecycle"
 
@@ -563,7 +563,11 @@ function sweepDirectHolders() {
         scheduleSweep(holders.size > 0 ? V4L2_CONFIRM_MS : nextSweepMs())
         return GLib.SOURCE_REMOVE
     }
-    sweepIdle = GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, step)
+    // through the metrics wrapper, not raw GLib: the sweep re-arms
+    // forever by design (it is the only witness a direct V4L2 grab
+    // has), and an unmeasured forever-source is invisible to the perf
+    // gate that bounds forever-sources to exactly one
+    sweepIdle = idleAdd("captureWatch:v4l2Sweep", GLib.PRIORITY_DEFAULT_IDLE, step)
 }
 
 function scheduleSweep(ms: number) {

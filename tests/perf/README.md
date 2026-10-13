@@ -28,14 +28,16 @@ Output protocol: the first stdout line is always the verdict.
 
 ## Scenarios
 
-| scenario  | what it does                                                            |
-| --------- | ----------------------------------------------------------------------- |
-| idle-1mon | no interaction, 20s window (the 1s and 3s intervals dominate)           |
-| churn     | 100 open/close cycles over the five toggleable popups, then a forced GC |
-| startup   | time to first metrics response + blocking exec totals before it         |
+| scenario  | what it does                                                                             |
+| --------- | ---------------------------------------------------------------------------------------- |
+| idle-1mon | no interaction, 20s window (the 1s and 3s intervals dominate)                            |
+| churn     | 100 open/close cycles over the five toggleable popups, then a forced GC                  |
+| startup   | time to first metrics response + blocking exec totals before it                          |
+| soak      | opt-in; two 20s idle windows 120s apart in one leg — the gap is where accumulation shows |
 
 Each scenario is one single-line JSON blob from `run.sh`; `compare.sh`
-diffs the blobs of two legs.
+diffs the blobs of two legs. soak is never run by default (`pnpm perf`
+runs idle-1mon, churn, startup; `pnpm perf --scenario soak` adds it).
 
 ## The gate
 
@@ -71,10 +73,67 @@ instance: it is the direct-V4L2 camera sweep, which must poll /proc
 on a slow cadence forever while nothing holds the camera (a direct
 grab produces no PipeWire stream to watch), and its guard refuses a
 second timer, so the bound still catches a respawn bug.
+`mpris:playingPulse`, the `AstalMpris_Player:*` buckets and the
+frame-clock `after-paint` bucket are excluded for the same
+live-session reason (see below — idle and soak run with MPRIS
+deliberately unpinned, so the player count is whatever the session
+is doing; the sweep slicer `captureWatch:v4l2Sweep` reads 0 or 1
+alive by luck of where its walk is; and the probe's own handler is
+absent in a base leg that predates it).
+
+## The idle frame-clock and cpu gates (#338)
+
+Two ABSOLUTE rules on the candidate leg — they fire regardless of
+what the base did, and they fail the unfixed tree itself (run
+`pnpm perf` on pre-fix master and the candidate _is_ master, reading
+~60 fps at idle). A pre-fix BASE shows the same numbers; those are
+reported with a `(base)` prefix, never gated — the verdict is about
+the tree you are about to push.
+
+- **Frame clock ≤ 10 fps on every idle window** (idle-1mon, soak A
+  and B). `metrics.frames` counts rendered frames on the first bar's
+  frame clock (`installFrameProbe` in the bar widget; a no-op without
+  `WAM_SHELL_METRICS=1`). An idle shell's clock sleeps — ~1-2 fps:
+  the clock label flip and the odd tray refresh. ~60 fps means a
+  never-settling animation on an always-mapped surface, which is
+  exactly what #338 was: the workspace playing indicator pulsed a CSS
+  transition for as long as ANY player reported Playing (including a
+  muted background tab), measured at ~7% kernel CPU (GL submit
+  ioctls, zero user time) on a two-minute-old shell, Hyprland
+  recompositing both bars at full refresh, and growing with uptime
+  as each frame's heap walk collected zram refaults. A counter A/B
+  could not have caught it — nothing accumulated; the base and the
+  candidate merely both rendered.
+- **Idle cpu, relative, ≤ 500 ticks above base per 20s window**
+  (`process.cpuTicks` = utime+stime; i.e. 5 cpu-s = 25% of one core
+  above the base leg, idle-1mon only). Coarse and relative on
+  purpose: zram refault storms bill whole seconds of kernel time to
+  whichever leg happens to run (measured ~1 cpu-s inside a single
+  second under memory pressure, and a healthy FIXED tree reading 350
+  ticks in a stormy window), so a tight or absolute bound is weather.
+  Relative cancels it — both legs run through the same weather — and
+  the coarse tolerance catches busy-loop class burns the frame clock
+  cannot see.
+- **soak, within-leg growth:** alive timers and live signals may
+  grow by at most 2 across the 120s rest (flap headroom for
+  one-shot sources). More growth inside a single leg is the
+  re-armed-per-event leak class — #16's shape. Minute horizon: it
+  catches per-event accumulation, not 21-hour drift, which no
+  harness of this shape can watch for.
+
+The soak/idle scenarios run **without** `WAM_SHELL_NO_MPRIS` on
+purpose: the frame gate must see real session media to catch a pulse
+that only animates while something plays. Their gates are absolute
+or rate-based precisely so a player coming and going between legs
+cannot flip them; churn and startup keep the pin for their exact
+counters (#58).
 
 Report-only (never gated): time to first frame, RSS, context switches,
-blocking-ms, HTTP counts. Local runs have real desktop noise — an
-incoming notification, a track change triggering a cover download.
+blocking-ms, HTTP counts. `frames` and `cpuSeconds` are reported in
+every scenario; `frames` is gated by the absolute idle rule above and
+`cpuTicks` by the relative idle gate. Local runs have real desktop
+noise — an incoming notification, a track change triggering a cover
+download.
 
 **RSS includes the instrumentation's own retention, and cannot not.**
 The signal-handler leak detector in `src/lib/metrics.ts` keys its
@@ -98,11 +157,14 @@ are the gated signals for that, and they are the ones that mean it.
   per-leg tmp `XDG_CONFIG_HOME` — the developer's real config can't
   leak in.
 - `XDG_CACHE_HOME` is a fresh per-leg tmp dir (style.css et al.).
-- `WAM_SHELL_NO_MPRIS=1` pins MPRIS players absent in the measured
-  instance (`lib/mpris.ts` returns an empty list): the seek-scale
+- `WAM_SHELL_NO_MPRIS=1` pins MPRIS players absent for **churn and
+  startup** (`lib/mpris.ts` returns an empty list): the seek-scale
   connection count and the `mpris:position` timer otherwise flap with
   whatever is playing on the developer's session (#58), which produced
-  false REGRESSION verdicts on media-free diffs.
+  false REGRESSION verdicts on media-free diffs. **idle and soak run
+  unpinned** — the frame gate must see session media to catch a
+  #338-shaped pulse (see above), and their absolute/rate gates are
+  immune to a player appearing between legs.
 - `WAM_SHELL_NO_FOCUS_WATCH=1` disables the focus-loss popup watcher
   (`lib/popupFocus.ts`) in the measured instance: focus bounces from
   the live session would otherwise churn popup hide timers wildly past

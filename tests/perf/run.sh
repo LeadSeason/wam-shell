@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Perf harness: measures one checkout on an isolated instance.
 #
-#   tests/perf/run.sh [idle-1mon|churn|startup ...]   (default: all)
+#   tests/perf/run.sh [idle-1mon|churn|startup|soak ...]   (default: all but soak)
 #
 # One single-line JSON blob per scenario on stdout; progress and
 # diagnostics on stderr.
@@ -13,9 +13,13 @@
 #   - notifications.daemon = "system" in the fixture, plus a preflight
 #     that refuses to run when org.freedesktop.Notifications has no
 #     owner (the measured instance must never become the daemon)
-#   - WAM_SHELL_NO_MPRIS=1 pins MPRIS players absent: the seek-scale
-#     connection count and the position timer otherwise flap with
-#     whatever is playing on the developer's session (#58)
+#   - WAM_SHELL_NO_MPRIS=1 pins MPRIS players absent for churn and
+#     startup, where exact counters would flap with the session's
+#     playback (#58). idle and soak run UNPINNED on purpose: the frame
+#     gate must see real session media to catch a pulse that only
+#     animates while something plays (#338) — their gates are absolute
+#     or rate-based, not exact counts, so a player coming and going
+#     between legs cannot flip them
 #   - WAM_SHELL_NO_FOCUS_WATCH=1 disables the focus-loss popup watcher:
 #     focus bounces from the live session otherwise churn hide timers
 #     in the measured instance (#25)
@@ -26,6 +30,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 INSTANCE="wam-shell-perf"
 WINDOW=20
+SOAK_WAIT=120
 CHURN_CYCLES=100
 CHURN_COMMANDS=(notifications media harvest qSettings)
 
@@ -81,13 +86,18 @@ prepare_leg() {
 }
 
 start_shell() {
-    XDG_CONFIG_HOME="$LEG/config" \
-    XDG_CACHE_HOME="$LEG/cache" \
-    WAM_SHELL_METRICS=1 \
-    WAM_SHELL_NO_MPRIS=1 \
-    WAM_SHELL_NO_FOCUS_WATCH=1 \
-    WAM_SHELL_DIR="$ROOT" \
-    timeout 300 ags run app.tsx > "$LEG/shell.log" 2>&1 &
+    # $1: 1 = pin MPRIS players absent (exact-count scenarios), 0 = run
+    # unpinned so session media reaches the frame gate
+    local no_mpris="$1"
+    local -a envs=(
+        "XDG_CONFIG_HOME=$LEG/config"
+        "XDG_CACHE_HOME=$LEG/cache"
+        "WAM_SHELL_METRICS=1"
+        "WAM_SHELL_NO_FOCUS_WATCH=1"
+        "WAM_SHELL_DIR=$ROOT"
+    )
+    [[ "$no_mpris" == "1" ]] && envs+=("WAM_SHELL_NO_MPRIS=1")
+    env "${envs[@]}" timeout 300 ags run app.tsx > "$LEG/shell.log" 2>&1 &
     SHELL_PID=$!
 }
 
@@ -126,7 +136,7 @@ metrics_json() {
 
 scenario_idle() {
     prepare_leg idle-1mon
-    start_shell
+    start_shell 0
     wait_ready
     request "metrics reset" > /dev/null
     log "idle-1mon: measuring ${WINDOW}s"
@@ -137,9 +147,34 @@ scenario_idle() {
     printf '{"scenario":"idle-1mon","windowSec":%d,"metrics":%s}\n' "$WINDOW" "$m"
 }
 
+# two idle windows with a gap between them, in ONE leg: the gap is
+# where accumulation shows. Gates live in compare.sh (within-leg growth
+# of timers/signals/cpu-rate, absolute frame bound on both windows);
+# the horizon is minutes — this catches per-event accumulation (a
+# timer re-armed per state change), not 21-hour-scale drift, which no
+# harness of this shape can watch for.
+scenario_soak() {
+    prepare_leg soak
+    start_shell 0
+    wait_ready
+    request "metrics reset" > /dev/null
+    local a b
+    log "soak: window A (${WINDOW}s)"
+    sleep "$WINDOW"
+    a="$(metrics_json)"
+    log "soak: resting ${SOAK_WAIT}s"
+    sleep "$SOAK_WAIT"
+    log "soak: window B (${WINDOW}s)"
+    sleep "$WINDOW"
+    b="$(metrics_json)"
+    stop_shell
+    printf '{"scenario":"soak","windowSec":%d,"waitSec":%d,"metricsA":%s,"metricsB":%s}\n' \
+        "$WINDOW" "$SOAK_WAIT" "$a" "$b"
+}
+
 scenario_churn() {
     prepare_leg churn
-    start_shell
+    start_shell 1
     wait_ready
     request "metrics reset" > /dev/null
     log "churn: ${CHURN_CYCLES} cycles over ${#CHURN_COMMANDS[@]} popups"
@@ -163,7 +198,7 @@ scenario_startup() {
     prepare_leg startup
     local t0 t1 ms
     t0=$(date +%s%3N)
-    start_shell
+    start_shell 1
     # no sleep in the poll loop: the request duration is the quantum
     while true; do
         if [[ "$(request metrics)" == *'"enabled":true'* ]]; then break; fi
@@ -194,6 +229,7 @@ for s in "${SCENARIOS[@]}"; do
         idle-1mon) scenario_idle ;;
         churn) scenario_churn ;;
         startup) scenario_startup ;;
+        soak) scenario_soak ;;
         *) die "unknown scenario: $s" ;;
     esac
 done

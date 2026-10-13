@@ -25,11 +25,42 @@
 #     coalescing makes churn spawn counts load-dominated (measured
 #     196→66, 140→64 on identical trees). churn gates on leaks only
 #     (alive timers/signals/fds); idle measures rates.
+#   - idle cpu (process.cpuTicks = utime+stime): gated idle-1mon only,
+#     RELATIVE with tolerance 500 ticks (5 cpu-s per 20s window = 25%
+#     of one core above base). Both legs face the same zram-refault
+#     weather — this machine bills whole seconds of kernel time to
+#     whichever leg happens to run (measured spikes of ~1 cpu-s inside
+#     a single second, and a healthy FIXED tree reading 350 ticks in a
+#     stormy window) — so relative cancels the weather and the coarse
+#     tolerance catches only busy-loop class burns. The FRAME gate
+#     below is the sensitive idle-animation detector (#338), and it is
+#     absolute because refaults do not render frames.
+#   - ABSOLUTE frame bound, candidate leg only, on every idle window
+#     (idle-1mon and both soak windows): rendered frames (metrics
+#     .frames, one probed bar) over the window must stay ≤ 10/s. An
+#     idle shell's frame clock sleeps (~1-2/s: the clock label flip and
+#     the odd tray refresh); ~60/s means a never-settling animation on
+#     an always-mapped surface — the exact shape of #338, which no
+#     A/B counter would have caught because it regressed the BASE and
+#     the candidate equally once merged. The base leg's fps is
+#     reported, never gated: a pre-fix base reads ~60/s and that is
+#     information, not a verdict about the working tree.
+#   - soak (opt-in scenario): within-leg growth gates on the candidate
+#     between window A and window B (120s apart) — alive timers and
+#     live signals may grow by at most 2 (flap headroom for one-shots
+#     like battery debounces), plus the same absolute frame and cpu
+#     bounds on both windows. Minute-scale horizon: catches per-event
+#     accumulation (a timer re-armed per state change), not
+#     21-hour-scale drift — no harness of this shape can watch that.
 #   - fd count: only fdsOwned is gated (±1; ±8 on churn — the measured
 #     instance shares the live session's PipeWire and session bus, so
 #     its socket/pipe count shifts with the session's audio streams
 #     between legs: measured 44→51 against a feature branch and then
-#     51→44 comparing that SAME branch against itself, PR #279). The
+#     51→44 comparing that SAME branch against itself, PR #279; ±12 on
+#     idle, which runs with MPRIS unpinned — hooking the session's
+#     real player costs its connection fds, measured +9 on the first
+#     unpinned leg, and the count follows the session's players after
+#     that). The
 #     raw total is report-only everywhere: most of a gtk process's fds
 #     are gpu buffers (dmabuf, drm syncobj) held for whatever the
 #     session is drawing, and comparing the SAME commit against itself
@@ -54,10 +85,22 @@
 #     go between legs — measured 4→0, 0→6 and 2→0 across runs of
 #     identical trees, PR #279), the
 #     AstalTray_TrayItem:*/Gtk_GestureClick:* signal buckets (they
-#     scale with the live session's real tray items) and the
+#     scale with the live session's real tray items) the
 #     AstalBluetooth_Device:* buckets (they scale with whatever
 #     Bluetooth devices are in range during a leg — measured 10→4
-#     connected on identical trees), and captureWatch:cameraPoll —
+#     connected on identical trees), the AstalMpris_Player:* buckets
+#     (they scale with the session's real players — idle and soak run
+#     with MPRIS deliberately UNPINNED so the frame gate sees session
+#     media, #338), the mpris:playingPulse timer (bounded by design
+#     since #338 — it rests unless the playing set changes mid-window,
+#     and animation is the frame gate's business, not this counter's),
+#     the captureWatch:v4l2Sweep idle source (the V4L2 sweep's walk
+#     slicer, measured through the metrics wrapper since #338: alive
+#     0 or 1 at sample time by luck of where the walk is), the FrameClock
+#     after-paint bucket (the frame probe's own one handler; gjs names
+#     the clock unknown_GdkFrameClockIdle and the name has changed
+#     across gjs versions; absent entirely in a base leg that predates
+#     the probe) — and captureWatch:cameraPoll —
 #     but only up to ONE instance. That timer is the direct-V4L2
 #     sweep: a Chromium-family browser opens /dev/video* directly, no
 #     PipeWire stream exists, and polling /proc is the only way to see
@@ -89,7 +132,8 @@ usage() {
     cat >&2 <<'EOF'
 usage: pnpm perf [--base <ref>] [--scenario <name>] [--json]
   --base       ref to compare against (default: merge-base HEAD origin/master)
-  --scenario   run only this scenario (idle-1mon|churn|startup)
+  --scenario   run only this scenario (idle-1mon|churn|startup|soak; soak is
+               opt-in and never runs by default)
   --json       emit full per-scenario data instead of the human summary
 EOF
 }
@@ -192,7 +236,10 @@ fi
 # reported, never gated
 REPORT="$(
 jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
-    def per_scenario(a): [a[] | { (.scenario): . }] | add;
+    # soak is not an A/B scenario: its gates are absolute, on the
+    # candidate leg only (see the soak pass below the report). Both
+    # legs run it so one command measures everything asked for.
+    def per_scenario(a): [a[] | select(.scenario != "soak") | { (.scenario): . }] | add;
 
     # churn gates on leaks (alive timers/signals/fds), not spawn
     # counts: hyprsunset refreshes coalesce in-flight, so churn spawn
@@ -205,13 +252,20 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
                 and .key != "osd:layerRuleWait"
                 and .key != "bar:brightnessReveal"
                 and .key != "tray.hollowGrace"
+                and .key != "mpris:playingPulse"
+                and .key != "captureWatch:v4l2Sweep"
                 and (.key != "captureWatch:cameraPoll" or .value.alive > 1)))
             | with_entries(.value = .value.alive)),
         signalsByName: (.signals.byName
             | with_entries(select(.key
                 | (startswith("AstalTray_TrayItem:") or startswith("Gtk_GestureClick:")
                     or startswith("AstalBluetooth_Device:")
-                    or startswith("Gtk_EditableLabel:"))
+                    or startswith("Gtk_EditableLabel:")
+                    or startswith("AstalMpris_Player:")
+                    # the frame probe handler — gjs names the clock
+                    # type unknown_GdkFrameClockIdle, and the name has
+                    # changed across gjs versions before
+                    or (contains("FrameClock") and endswith(":after-paint")))
                 | not))),
         fds: .process.fds,
         fdsOwned: .process.fdsOwned,
@@ -221,11 +275,15 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
         if scenario == "churn" then $m | gatedCounters
         else ($m | gatedCounters) + {
             subprocesses: ($m.subprocesses | with_entries(.value = .value.count)),
-        } end;
+        } + (if scenario == "idle-1mon" then
+            { cpuTicks: $m.process.cpuTicks }
+          else {} end) end;
 
     def reported: {
         rssKb: .metrics.process.rssKb,
         voluntaryCtxtSwitches: .metrics.process.voluntaryCtxtSwitches,
+        cpuSeconds: ((.metrics.process.cpuTicks // 0) / 100),
+        frames: (.metrics.frames // 0),
         blockingMs: (.metrics.subprocesses
             | with_entries(.value = .value.blockingMs)),
         http: .metrics.http,
@@ -284,9 +342,26 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
         # churn
         # NOTE: no apostrophes in this jq program — it is single-quoted
         if ($path | test("^churn\\.fdsOwned$")) then 8
+        # idle runs with MPRIS unpinned now (#338: the frame gate must
+        # see session media): hooking the session real player costs
+        # its connection fds — measured +9 owned fds on the first
+        # unpinned idle leg (soup/socket/pidfd set for the player) —
+        # and the count follows the players the session has after
+        # that. ±12 absorbs the unpin and player churn; churn stays
+        # the strict leak gate at ±8, and it stays pinned
+        elif ($path | test("^idle-1mon\\.fdsOwned$")) then 12
         elif ($path | test("\\.fdsOwned$")) then 2
         elif ($path | test("\\.fds$")) then 999
         elif ($path | test("\\.subprocesses\\.")) then 2
+        # idle cpu, relative and coarse (500 ticks = 5 cpu-s per 20s
+        # window = 25% of one core above base): both legs face the
+        # same zram-refault weather, which bills whole random seconds
+        # of kernel time to whichever leg runs (a healthy fixed tree
+        # measured 350 ticks in a stormy window), so this gate only
+        # means to catch busy-loop class burns. The sensitive idle-
+        # animation detector is the frame-clock gate, which is
+        # absolute because refaults do not render frames
+        elif ($path | test("\\.cpuTicks$")) then 500
         else 0 end;
 
     def verdict:
@@ -316,10 +391,70 @@ jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
 [[ -n "$REPORT" ]] || inconclusive "report generation failed"
 echo "$REPORT" | jq empty 2>/dev/null || inconclusive "report is not valid JSON"
 
+# --- absolute idle rules (#338 gates) -------------------------------------
+# These fire on the WORKING TREE regardless of what the base did: the
+# gate exists to catch the tree you are about to push animating at
+# idle — and to fail the unfixed tree itself (run against itself,
+# pre-fix master measures ~60 fps at idle and fails here). A pre-fix
+# BASE reads the same ~60 fps; that is reported, not gated.
+#   - frames ≤ 10/s on every idle window (idle-1mon, soak A and B):
+#     an idle frame clock sleeps (~1-2/s); ~60/s is a never-settling
+#     animation on an always-mapped surface
+#   - soak only: alive timers and live signals may grow by at most 2
+#     across the 120s rest (flap headroom for one-shot sources); more
+#     growth inside one leg is the per-event-accumulation leak class
+# Idle cpu is NOT here: refault weather makes an absolute bound false-
+# positive (a healthy fixed tree measured 350 ticks in a stormy 20s
+# window), so it is a relative A/B gate instead — see gatedCounters.
+ABS="$(jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.json" '
+    def windows($files):
+        [$files[]
+            | if .scenario == "soak" then
+                ({scenario: .scenario, win: "A", windowSec: .windowSec,
+                  frames: (.metricsA.frames // 0),
+                  cpuTicks: (.metricsA.process.cpuTicks // 0)},
+                 {scenario: .scenario, win: "B", windowSec: .windowSec,
+                  frames: (.metricsB.frames // 0),
+                  cpuTicks: (.metricsB.process.cpuTicks // 0)})
+              else
+                ({scenario: .scenario, win: "-", windowSec: (.windowSec // 20),
+                  frames: (.metrics.frames // 0),
+                  cpuTicks: (.metrics.process.cpuTicks // 0)})
+              end];
+    def idleish: .scenario == "idle-1mon" or .scenario == "soak";
+    def fps: ((.frames * 10 / .windowSec | round) / 10);
+    (windows($base)) as $b | (windows($cur)) as $c |
+    [
+      # candidate violations — these fail the gate
+      [$c[] | select(idleish) |
+        (if .frames / .windowSec > 10 then
+           "frame clock does not settle at idle: \(.frames) frames in \(.windowSec)s = \((.frames * 10 / .windowSec | round) / 10) fps > 10  (\(.scenario) window \(.win))"
+         else empty end)],
+      [$cur[] | select(.scenario == "soak") |
+        (if ((.metricsB.timers.alive // 0) - (.metricsA.timers.alive // 0)) > 2 then
+           "alive timers grow within the soak leg: A \(.metricsA.timers.alive // 0) → B \(.metricsB.timers.alive // 0) (>2 in 120s — a source re-armed per event)"
+         else empty end),
+        (if ((.metricsB.signals.live // 0) - (.metricsA.signals.live // 0)) > 2 then
+           "live signals grow within the soak leg: A \(.metricsA.signals.live // 0) → B \(.metricsB.signals.live // 0) (>2 in 120s)"
+         else empty end)],
+      # base readings — reported, never gated (a pre-fix base animates)
+      [$b[] | select(idleish) |
+        (if .frames / .windowSec > 10 then
+           "(base) frame clock does not settle at idle: \(.frames) frames in \(.windowSec)s = \((.frames * 10 / .windowSec | round) / 10) fps  (\(.scenario) window \(.win))"
+         else empty end)]
+    ] | flatten[]'
+)"
+ABS_CANDIDATE="$(printf '%s\n' "$ABS" | grep -v '^(base)' || true)"
+CAND_IDLE_FPS="$(jq -rs '[.[] | select(.scenario == "idle-1mon" or .scenario == "soak") | ((.metrics.frames // 0) * 10 / .windowSec | round) / 10] | if length > 0 then .[0] else empty end' "$OUT/current.json" 2>/dev/null || echo "")"
+
 GIT_STATUS="$(git -C "$ROOT" status --short)"
 CANDIDATE_SHA="$(git -C "$ROOT" rev-parse HEAD)"
 
 if [[ -n "$(echo "$REPORT" | jq -r '.[] | .gated[]?')" ]]; then
+    VERDICT=REGRESSION
+fi
+
+if [[ -n "$ABS_CANDIDATE" ]]; then
     VERDICT=REGRESSION
 fi
 
@@ -334,9 +469,11 @@ if [[ "$AS_JSON" -eq 1 ]]; then
         --arg candidate "$CANDIDATE_SHA" \
         --arg compositor "$S_CUR" \
         --arg gitStatus "$GIT_STATUS" \
+        --argjson absViolations "$(printf '%s\n' "$ABS_CANDIDATE" | jq -R . 2>/dev/null | jq -sc 'map(select(length > 0))' 2>/dev/null || echo '[]')" \
         --argjson scenarios "$REPORT" \
         '{ verdict: $verdict, base: $base, candidate: $candidate,
            compositor: $compositor, gitStatus: $gitStatus,
+           absViolations: $absViolations,
            scenarios: $scenarios }'
 else
     echo "$REPORT" | jq -r '
@@ -352,6 +489,10 @@ else
         ($s.improved[] | "  - \(difflabel(.path))  \(.base) → \(.cur)  (\($s.scenario), improvement)"),
         ($s.tolerated[] | "  ~ \(difflabel(.path))  \(.base) → \(.cur)  (\($s.scenario), within environment tolerance)")
     '
+    if [[ -n "$ABS" ]]; then
+        printf '%s\n' "$ABS" | sed 's/^/  /'
+    fi
+    [[ -n "$CAND_IDLE_FPS" ]] && echo "  idle frames/s (candidate): $CAND_IDLE_FPS"
     echo ""
     echo "  base:       $BASE_SHA"
     echo "  candidate:  $CANDIDATE_SHA (working tree)"

@@ -57,6 +57,11 @@ test("metrics: wrappers feed the counters when enabled", () => {
     eq(snap.process.rssKb > 0, true, "rssKb")
     eq(snap.process.fds > 0, true, "fds")
     eq(typeof snap.process.voluntaryCtxtSwitches, "number", "voluntaryCtxtSwitches")
+    eq(typeof snap.process.cpuTicks, "number", "cpuTicks")
+    eq(snap.process.cpuTicks >= 0, true, "cpuTicks non-negative")
+    // no frame probe is installed in this probe process: the counter
+    // exists and reads zero
+    eq(snap.frames, 0, "frames without a probe")
 })
 
 test("metrics: reset zeroes all counters", () => {
@@ -79,4 +84,5 @@ test("metrics: inert without WAM_SHELL_METRICS", () => {
     eq(snap.http, {}, "no http counters")
     // process facts are read at query time regardless
     eq(snap.process.pid > 0, true, "pid still present")
+    eq(snap.frames, 0, "frames inert without metrics")
 })
