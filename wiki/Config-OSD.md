@@ -27,6 +27,10 @@ Section: `[osd]`
 Muting shows the crossed icon and a "Muted" label with no level bar;
 unmuting brings the bar back at the real level.
 
+- `brightness` is section-only — no flat top-level spelling. The bare
+  name is a `[brightness]` table's name, and handing that table to the
+  toggle's check reported a config error on every startup.
+
 The feedback click plays through the default sink at the stream's own
 volume, so it scales with the level being set — raising the volume
 audibly ramps. `feedback_volume` multiplies the decoded audio itself

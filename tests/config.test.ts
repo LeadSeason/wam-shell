@@ -38,6 +38,9 @@ function loadConfig(env: Record<string, string | null>, configToml?: string): an
     // config.ts logs to stdout; the dump is the last line
     const dump = JSON.parse(stdout.trim().split("\n").pop()!)
     dump.__dir = dir
+    // stderr carries the Gjs-Console-CRITICAL lines: a validation report
+    // is a bug in the reader even when the fallback happens to be right
+    dump.__stderr = stderr
     return dump
 }
 
@@ -140,6 +143,22 @@ ignore_apps = ["HueNicorn", "OBS"]
     // a flat top-level spelling must not leak into the section-only reader
     const flat = loadConfig({ DESKTOP_SESSION: "hyprland" }, `ignore_apps = ["nope"]`)
     eq(flat.screenShare.ignoreApps, [])
+})
+
+test("config: a [brightness] table does not trip the osd.brightness bool (#339)", () => {
+    // osd.brightness is a bool whose bare name is also a section name.
+    // The flat fallback found the section TABLE and failed the bool check
+    // — a Gjs-Console-CRITICAL on every startup. The key is section-only
+    // now, so the table is simply not looked at
+    const c = loadConfig(
+        { DESKTOP_SESSION: "hyprland" },
+        `
+[brightness]
+icon = "animated"
+`,
+    )
+    eq(c.osd.brightness, true, "osd.brightness default")
+    eq(c.__stderr.includes("osd.brightness"), false, "no validation critical")
 })
 
 // --- invalid values are corrected, not trusted ---
