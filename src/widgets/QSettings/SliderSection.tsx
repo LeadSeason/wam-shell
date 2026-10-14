@@ -157,6 +157,12 @@ function BrightnessSlider() {
                 max={1}
                 widthRequest={260}
                 onChangeValue={({ value }) => {
+                    // GTK can emit change-value when the value binding is
+                    // first applied or when the watcher adopts an external
+                    // change. Ignore writes that would just re-apply the
+                    // level we already believe in, otherwise an unadopted
+                    // external gamma gets clobbered with the stale value.
+                    if (Math.abs(value - brightness.screen) < 0.0001) return
                     brightness.screen = value
                 }}
                 value={screen}
