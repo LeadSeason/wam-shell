@@ -141,7 +141,11 @@ function imageWidth(uri: string): number {
     if (!uri.startsWith("file://")) return 0
     try {
         const [format, width] = GdkPixbuf.Pixbuf.get_file_info(uri.slice(7))
-        return format !== null && width > 0 ? width : 0
+        if (format !== null && width <= 0) {
+            console.warn("embeddedArt: skipping degenerate image (width <= 0):", uri)
+            return 0
+        }
+        return format !== null ? width : 0
     } catch {
         return 0
     }

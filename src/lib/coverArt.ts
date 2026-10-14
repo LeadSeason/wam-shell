@@ -149,7 +149,11 @@ export function isSmallCover(uri: string): boolean {
     if (!uri.startsWith("file://")) return false
     try {
         const [format, width] = GdkPixbuf.Pixbuf.get_file_info(uri.slice(7))
-        return format !== null && width > 0 && width < SHARP_MIN_WIDTH
+        if (format !== null && width <= 0) {
+            console.warn("coverArt: skipping degenerate cover (width <= 0):", uri)
+            return false
+        }
+        return format !== null && width < SHARP_MIN_WIDTH
     } catch {
         return false
     }

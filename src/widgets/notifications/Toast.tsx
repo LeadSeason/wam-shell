@@ -34,7 +34,11 @@ const BAR = 3
 function loadThumb(path: string): Gdk.Texture | null {
     try {
         const [, srcW, srcH] = GdkPixbuf.Pixbuf.get_file_info(path)
-        if (!srcW || !srcH) return null
+        if (!srcW || !srcH) {
+            if (srcW === 0 || srcH === 0)
+                console.warn("Toast: skipping degenerate thumbnail (zero size):", path)
+            return null
+        }
         // fit inside the box, never crop, never enlarge. Gtk.Picture asks
         // for its texture's natural size wherever the container has room,
         // so the texture has to BE the final size — sizing the widget
