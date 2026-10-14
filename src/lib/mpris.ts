@@ -306,32 +306,64 @@ export interface PlayingPlayer {
 const [playingPlayers, setPlayingPlayers] = createState<PlayingPlayer[]>([])
 export { playingPlayers }
 
-// heartbeat for the workspace playing highlight: toggles while at
-// least one player is playing, and CSS transitions round the flips
-// into a pulse. Shared so N bars (one per monitor) do not run N
-// timers; stops outright when the music does. The interval is user
-// tempo (`playing_pulse_ms`) — the CSS fade runs on the same value,
-// generated into the stylesheet via active-tuning.scss
+// pulse for the workspace playing highlight: a CSS transition rounds
+// each flip of the `beat` class into a fade, so the tint breathes at
+// the user tempo (`playing_pulse_ms`) — shared so N bars (one per
+// monitor) do not run N timers. BOUNDED, and this is not an
+// optimization nicety: a heartbeat that toggles for as long as any
+// player reports Playing is a never-settling frame clock. The fade
+// back-to-back with the next flip animates background-color every
+// single frame, on an always-mapped bar, indefinitely — measured at
+// ~7% kernel CPU (GL submit ioctls, zero user time) on a two-minute
+// old shell with a background tab playing, plus the compositor
+// recompositing both bars at full refresh (issue #338); it GROWS with
+// uptime because every frame walks a heap whose cold pages collect
+// refaults. So the beat runs only when attention is needed — playback
+// started, moved tracks, or switched players — then rests: the steady
+// .playing tint alone says "sound comes from there".
+const PULSE_MS = 2000 // how long the change-pulse beats before resting
+
 const [playingPulse, setPlayingPulse] = createState(false)
 export { playingPulse }
 let pulseTimer = 0
-const syncPulse = () => {
-    const playing = playingPlayers.peek().length > 0
-    if (playing && !pulseTimer) {
-        pulseTimer = timeoutAdd(
-            "mpris:playingPulse",
-            GLib.PRIORITY_DEFAULT,
-            Config.workspaces.playingPulseMs,
-            () => {
-                setPlayingPulse(!playingPulse.peek())
-                return GLib.SOURCE_CONTINUE
-            },
-        )
-    } else if (!playing && pulseTimer) {
+let pulseTicks = 0
+
+function stopPulse() {
+    if (pulseTimer) {
         sourceRemove(pulseTimer)
         pulseTimer = 0
-        setPlayingPulse(false)
     }
+    setPlayingPulse(false)
+}
+
+// changed = the playing set actually changed (playback started or
+// resumed, track change, player switch). Re-fires with the same set
+// must not extend the beat — a timer that re-arms itself on every
+// status event is the leak this replace exists to stop.
+const syncPulse = (changed: boolean) => {
+    if (playingPlayers.peek().length === 0) {
+        stopPulse()
+        return
+    }
+    if (!changed) return
+    pulseTicks = Math.max(2, Math.round(PULSE_MS / Config.workspaces.playingPulseMs))
+    if (pulseTimer) return // mid-beat: extending the ticks is enough
+    setPlayingPulse(true)
+    pulseTicks -= 1
+    pulseTimer = timeoutAdd(
+        "mpris:playingPulse",
+        GLib.PRIORITY_DEFAULT,
+        Config.workspaces.playingPulseMs,
+        () => {
+            if (--pulseTicks <= 0) {
+                pulseTimer = 0
+                setPlayingPulse(false)
+                return GLib.SOURCE_REMOVE
+            }
+            setPlayingPulse(!playingPulse.peek())
+            return GLib.SOURCE_CONTINUE
+        },
+    )
 }
 
 // resolved once per player: a player's class does not change, and the
@@ -349,12 +381,11 @@ const refreshPlayingPlayers = () => {
         if (wm) out.push({ wmClass: wm.toLowerCase(), title: p.title ?? "" })
     }
     const prev = playingPlayers.peek()
-    if (
+    const changed =
         out.length !== prev.length ||
         out.some((p, i) => p.wmClass !== prev[i].wmClass || p.title !== prev[i].title)
-    )
-        setPlayingPlayers(out)
-    syncPulse()
+    if (changed) setPlayingPlayers(out)
+    syncPulse(changed)
 }
 
 // window/tab titles decorate the track title ("Video - YouTube",
@@ -526,10 +557,7 @@ export function dispose() {
     unsubSyncPlayers()
     unsubPick()
     unsubPlayingList()
-    if (pulseTimer) {
-        sourceRemove(pulseTimer)
-        pulseTimer = 0
-    }
+    stopPulse()
     for (const [p, entries] of hookedPlayers) {
         for (const e of entries) e.release()
         hookedPlayers.delete(p)

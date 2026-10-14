@@ -2,6 +2,9 @@ import { Astal, Gtk, Gdk } from "ags/gtk4"
 
 import Config, { PanelConfig } from "../../config"
 import hyprsunset from "../../lib/hyprsunset"
+// counts rendered frames on the first bar's frame clock (metrics only;
+// a no-op unless WAM_SHELL_METRICS=1) — the idle frame-clock gate's data
+import { installFrameProbe } from "../../lib/metrics"
 
 import OSIcon from "./barModules/osIcon"
 import Tray from "../QSettings/tray"
@@ -134,6 +137,7 @@ export default function Bar({
         <window
             visible
             name="bar"
+            $={self => installFrameProbe(self as Gtk.Window)}
             class={hyprsunset.outdoor.as(v =>
                 ["Bar", extraClass, floating ? "floating" : "", v ? "outdoor" : ""]
                     .filter(Boolean)

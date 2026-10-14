@@ -1,5 +1,7 @@
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
+import Gdk from "gi://Gdk?version=4.0"
+import Gtk from "gi://Gtk?version=4.0"
 import System from "system"
 import { exec as agsExec, execAsync as agsExecAsync } from "ags/process"
 import { readFile } from "ags/file"
@@ -201,6 +203,50 @@ export const trackHttp = ENABLED
       }
     : noop
 
+// --- frame clock and cpu time ----------------------------------------------
+
+// Rendered-frame counter on the probed surface — the idle frame-clock
+// gate's raw data (snapshot().frames; reset zeroes it). The point: an
+// idle shell's frame clock SLEEPS. A clock that ticks ~60/s while
+// nothing is happening is a never-settling animation on an always-
+// mapped surface, which is exactly what issue #338 was — the workspace
+// playing pulse, ~7% kernel CPU (GL submit ioctls, zero user time) with
+// the compositor recompositing both bars at full refresh, growing with
+// uptime as each frame's heap walk collected refaults. Only the FIRST
+// window handed here installs, so the counter always means "frames on
+// one bar". The handler lives on the clock for the shell's lifetime —
+// the surface it watches is that long-lived too.
+let frameTicks = 0
+let probeInstalled = false
+const probedClocks = new Set<Gdk.FrameClock>()
+
+function probeSurface(win: Gtk.Window): boolean {
+    const clock = win.get_surface()?.get_frame_clock() ?? null
+    if (!clock || probedClocks.has(clock)) return probedClocks.size > 0
+    probedClocks.add(clock)
+    connect(clock, "after-paint", () => {
+        frameTicks++
+    })
+    return true
+}
+
+// A layer surface often has no Gdk.Surface until it is mapped, so the
+// first call falls back to probing on map. Called from the bar window's
+// ref callback — one call per bar, first wins.
+export const installFrameProbe = ENABLED
+    ? (win: Gtk.Window) => {
+          if (probeInstalled) return
+          if (probeSurface(win)) {
+              probeInstalled = true
+              return
+          }
+          const mapId = connect(win, "map", () => {
+              disconnect(win, mapId)
+              if (probeSurface(win)) probeInstalled = true
+          })
+      }
+    : (_win: Gtk.Window) => {}
+
 // --- snapshot -------------------------------------------------------------
 
 function processFacts() {
@@ -252,6 +298,19 @@ function processFacts() {
         voluntaryCtxtSwitches: num(/^voluntary_ctxt_switches:\t(\d+)/m),
         fds,
         fdsOwned,
+        // utime + stime from /proc/self/stat, in clock ticks (usually
+        // 100/s). The idle cpu gate's raw data: the field after the
+        // comm paren — comm can contain anything, so split AFTER the
+        // last ")" and index from state (utime 11, stime 12).
+        cpuTicks: (() => {
+            try {
+                const stat = readFile("/proc/self/stat")
+                const f = stat.slice(stat.lastIndexOf(")") + 2).split(" ")
+                return Number(f[11]) + Number(f[12])
+            } catch {
+                return 0 // same deal as the status read above
+            }
+        })(),
     }
 }
 
@@ -278,6 +337,7 @@ export function snapshot() {
         instance: Config.instanceName,
         desktopSession: Config.desktopSession,
         process: processFacts(),
+        frames: ENABLED ? frameTicks : 0,
         subprocesses: Object.fromEntries(procs),
         timers: {
             totalCreated: timersCreated,
@@ -296,6 +356,7 @@ function reset() {
     signalLive.clear()
     signalBuckets.clear()
     http.clear()
+    frameTicks = 0
 }
 
 CommandRegistry.get_default().register({
@@ -304,10 +365,12 @@ CommandRegistry.get_default().register({
     subCommands: ["reset", "gc"],
     help: `metrics
   Returns a single line of JSON with counters (subprocesses, timers,
-  signal handlers, http) and process facts (pid, RSS, fds, context
-  switches). Counters are collected only when the shell was started
-  with WAM_SHELL_METRICS=1. Note: the response is prefixed with
-  "<instance>: " by the request handler; JSON starts at the first "{".
+  signal handlers, http), process facts (pid, RSS, fds, context
+  switches, cpuTicks) and frames (rendered frames on the probed bar
+  since the last reset — the frame-clock sleep check). Counters are
+  collected only when the shell was started with WAM_SHELL_METRICS=1.
+  Note: the response is prefixed with "<instance>: "; JSON starts at
+  the first "{".
 metrics reset
   Zeroes all counters, for measuring a clean window.
 metrics gc
