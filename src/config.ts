@@ -803,7 +803,10 @@ function getOsdConfig() {
         // per-trigger toggles
         volume: r.bool("volume", true),
         microphone: r.bool("microphone", true),
-        brightness: r.bool("brightness", true),
+        // sectionOnly — `[brightness]` is a table at the top level, and
+        // the flat fallback would hand that table to the bool check and
+        // CRITICAL at every startup (#339)
+        brightness: r.bool("brightness", true, { sectionOnly: true }),
         layout: r.bool("layout", true),
         lockKeys: r.bool("lock_keys", true),
         // audible feedback: the sound theme's short "volume changed"
