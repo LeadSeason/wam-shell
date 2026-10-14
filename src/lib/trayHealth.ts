@@ -29,7 +29,8 @@ export const HOLLOW_GRACE_MS = 30_000
 // The name is everything before the first '/'; both well-known
 // ("org.kde.StatusNotifierItem-4265-1") and unique (":1.22") names
 // appear.
-export function itemBusName(itemId: string): string | null {
+export function itemBusName(itemId: string | null | undefined): string | null {
+    if (!itemId) return null
     const slash = itemId.indexOf("/")
     if (slash <= 0) return null
     return itemId.slice(0, slash)

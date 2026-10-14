@@ -30,7 +30,11 @@ function update() {
 
 const registryHandlers = [
     connect(registry, "item-added", (_: AstalTray.Tray, itemId: string) => {
-        const item = registry.get_item(itemId)
+        const item = itemId ? registry.get_item(itemId) : null
+        if (!item || !itemId) {
+            console.warn("trayAttention: ignoring item with missing id or object:", itemId)
+            return
+        }
         console.log(
             "Tray item added:",
             `${item.tooltip_markup || item.get_title() || "?"} (id: ${item.get_id()})`,
