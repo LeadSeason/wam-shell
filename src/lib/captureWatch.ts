@@ -50,8 +50,12 @@ import { registerDispose } from "./lifecycle"
 // names and the ignore list. A grab lights the state only after two
 // consecutive sweeps agree, which is what filters the sub-second
 // device-enumeration probes apps do on page load; clearing is
-// immediate. Sweeps run every 20s while nothing holds the camera —
-// unless the mic is live with no camera seen yet: a call is where a
+// immediate. Sweeps run every 20s while nothing holds the camera,
+// backing off — doubling per empty pass, to a two-minute ceiling — as
+// passes keep coming up empty, because on a busy machine a full pass
+// can cost more than the cadence and a fallback must not burn cpu for
+// the happy case (issue #340). Unless the mic is live with no camera
+// seen yet: a call is where a
 // direct grab appears next, so the mic going live triggers a sweep
 // right away and keeps the cadence eager until the camera shows up
 // (or the call ends). An open fd alone does not make a capture — the
@@ -416,13 +420,28 @@ function setUsers(
 // attributed twice
 const V4L2_EXCLUDED_COMM = new Set(["pipewire", "wireplumber"])
 
-// pids per idle slice: each slice stays a few ms, so the bar never
-// stalls on the sweep
+// pids per idle slice — AND at most V4L2_SLICE_US of wall time, so on
+// a machine where a pid costs more than usual the slice gives up early
+// instead of stretching into a bar stall
 const V4L2_SLICE = 15
+const V4L2_SLICE_US = 3_000
 // full pass over /proc this often while nothing holds the camera —
 // direct grabs are the exception, and a fallback must not burn cpu for
 // the happy case
 const V4L2_SWEEP_MS = 20_000
+// consecutive empty passes double the wait, up to this ceiling — same
+// cap as the respawn backoff below. This is what makes the sweep
+// actually REST on a busy machine: there a full pass can cost more
+// than the 20s cadence itself, so an unbacked-off sweep walks every
+// process' fd list near-continuously forever (issue #340 measured a
+// ~2.7k syscalls/s baseline on an idle shell, camera off for days).
+// The price is first-sighting latency for a direct grab at TRUE idle —
+// no call live, so no eager cadence — and that worst case is the
+// ceiling: the confirm path still lights 2s after the sweep that
+// spots one. A comm denylist was considered instead of all this and
+// rejected: skipping "processes that cannot hold a camera" by name is
+// how a privacy witness goes blind silently, one new grabber at a time.
+const V4L2_MAX_MS = 120_000
 // a sweep that found holders re-checks this soon: the state lights only
 // when two consecutive sweeps agree (header note — why)
 const V4L2_CONFIRM_MS = 2_000
@@ -431,12 +450,24 @@ const V4L2_CONFIRM_MS = 2_000
 // cadence instead of the slow one
 const V4L2_EAGER_MS = 6_000
 
-// the slow cadence unless a call is live: mic in use with no camera
-// seen yet is when the eager sweep earns its keep
+// passes since the last one that found a holder. Grown by every empty
+// pass — a call's eager passes count too, the machine is being walked
+// either way — and reset the moment a pass sees one
+let emptyStreak = 0
+
+// the slow interval after `streak` empty passes. Pure so the suite can
+// pin the progression
+export function backedOffSweepMs(streak: number): number {
+    return Math.min(V4L2_SWEEP_MS * 2 ** Math.max(0, Math.min(streak, 10)), V4L2_MAX_MS)
+}
+
+// the backed-off slow cadence unless a call is live: mic in use with no
+// camera seen yet is when the eager sweep earns its keep, and it must
+// not inherit the idle backoff
 function nextSweepMs(): number {
     return micUsers.peek().length > 0 && cameraUsers.peek().length === 0
         ? V4L2_EAGER_MS
-        : V4L2_SWEEP_MS
+        : backedOffSweepMs(emptyStreak)
 }
 
 // comm of `pid` when it holds a /dev/video* fd open, else null.
@@ -552,14 +583,27 @@ function sweepDirectHolders() {
     const holders = new Set<string>()
     let i = 0
     const step = () => {
-        const until = Math.min(i + V4L2_SLICE, pids.length)
-        for (; i < until; i++) {
+        const sliceStart = GLib.get_monotonic_time()
+        let n = 0
+        // the clock test cannot fire before the first pid — elapsed is
+        // zero at entry — so every slice makes progress
+        while (
+            i < pids.length &&
+            n < V4L2_SLICE &&
+            GLib.get_monotonic_time() - sliceStart < V4L2_SLICE_US
+        ) {
             const comm = pidHoldsVideo("/proc", pids[i])
+            i++
+            n++
             if (comm !== null) holders.add(comm)
         }
         if (i < pids.length) return GLib.SOURCE_CONTINUE
         sweepIdle = 0
         directTracker.sweep([...holders].sort())
+        // empty passes stretch the rest (backedOffSweepMs), a pass that
+        // saw holders snaps back to the confirm cadence and a fresh
+        // streak
+        emptyStreak = holders.size > 0 ? 0 : emptyStreak + 1
         scheduleSweep(holders.size > 0 ? V4L2_CONFIRM_MS : nextSweepMs())
         return GLib.SOURCE_REMOVE
     }
@@ -727,6 +771,7 @@ export function enable() {
     started = true
     disposed = false
     respawnDelay = 5_000
+    emptyStreak = 0
     spawnMonitor()
     // first direct-holder sweep shortly after start: a shell restarted
     // in the middle of a call (the interesting case) lights within a
