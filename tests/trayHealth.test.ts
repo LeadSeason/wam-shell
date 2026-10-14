@@ -18,6 +18,12 @@ test("itemBusName: id without a path is not a name", () => {
     eq(itemBusName("orphan"), null)
 })
 
+test("itemBusName: null or empty id returns null", () => {
+    eq(itemBusName(null as any), null)
+    eq(itemBusName(undefined as any), null)
+    eq(itemBusName(""), null)
+})
+
 const item = (over: Record<string, unknown>) =>
     ({
         gicon: null,

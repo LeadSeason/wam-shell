@@ -106,7 +106,17 @@ export default function Tray({
     // disconnected when this instance is destroyed (the bar mount dies
     // with its monitor on hotplug): gnim only auto-disposes JSX-prop
     // bindings, not manual connects
-    function addItem(t: AstalTray.TrayItem, item_id: string) {
+    function addItem(t: AstalTray.TrayItem | null, item_id: string | null) {
+        // Hollow registrations can surface with a null id or no object
+        // (observed in the wild as a "? (id: null)" tray item). Ignore
+        // them: they have nothing renderable and would otherwise crash
+        // the bar during construction, taking every module to their right
+        // with them.
+        if (!t || !item_id) {
+            console.warn("tray: ignoring item with missing id or object:", item_id)
+            return
+        }
+
         watched.set(item_id, {
             item: t,
             handlerIds: [
@@ -157,12 +167,16 @@ export default function Tray({
     // backfill items that registered before this instance connected —
     // the bar's Tray is recreated on monitor hotplug and would
     // otherwise come up empty until each app re-registers (never)
-    for (const t of registry.get_items() ?? []) addItem(t, t.get_item_id())
+    for (const t of registry.get_items() ?? []) {
+        const item_id = t.get_item_id()
+        addItem(t, item_id)
+    }
 
     const registryHandlers = [
-        connect(registry, "item-added", (_: AstalTray.Tray, item_id: string) =>
-            addItem(registry.get_item(item_id), item_id),
-        ),
+        connect(registry, "item-added", (_: AstalTray.Tray, item_id: string) => {
+            const item = item_id ? registry.get_item(item_id) : null
+            addItem(item, item_id)
+        }),
 
         connect(registry, "item-removed", (_: AstalTray.Tray, item_id: string) => {
             // drop this item's claim on any path it owned; entries whose
