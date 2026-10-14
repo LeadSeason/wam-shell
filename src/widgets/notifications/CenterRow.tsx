@@ -57,7 +57,11 @@ function loadArt(path: string): Accessor<Gdk.Texture | null> {
     onCleanup(() => cancellable.cancel())
     try {
         const [, srcW, srcH] = GdkPixbuf.Pixbuf.get_file_info(path)
-        if (!srcW || !srcH) return texture
+        if (!srcW || !srcH) {
+            if (srcW === 0 || srcH === 0)
+                console.warn("CenterRow: skipping degenerate art (zero size):", path)
+            return texture
+        }
         const scale = Math.max(ART_W / srcW, ART_H / srcH)
         const stream = Gio.File.new_for_path(path).read(null)
         GdkPixbuf.Pixbuf.new_from_stream_at_scale_async(

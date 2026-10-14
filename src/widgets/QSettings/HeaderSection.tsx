@@ -1,4 +1,5 @@
 import { Gtk } from "ags/gtk4"
+import GdkPixbuf from "gi://GdkPixbuf?version=2.0"
 import Pango from "gi://Pango?version=1.0"
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
@@ -19,7 +20,15 @@ const registry = CommandRegistry.get_default()
 // from AccountsService, the OS icon (same as the panel's osIcon)
 function resolveAvatar(): { file: string | null; icon: string } {
     const configured = Config.quicksettings.avatar
-    if (configured && isFile(configured)) return { file: configured, icon: "" }
+    if (configured) {
+        if (!isFile(configured)) {
+            console.warn("avatar: configured path does not exist:", configured)
+        } else if (!imageHasPixels(configured)) {
+            console.warn("avatar: configured image is degenerate, using fallback:", configured)
+        } else {
+            return { file: configured, icon: "" }
+        }
+    }
     try {
         const kf = new GLib.KeyFile()
         kf.load_from_file(
@@ -27,9 +36,29 @@ function resolveAvatar(): { file: string | null; icon: string } {
             GLib.KeyFileFlags.NONE,
         )
         const icon = kf.get_string("User", "Icon")
-        if (icon && isFile(icon)) return { file: icon, icon: "" }
+        if (icon) {
+            if (!isFile(icon)) {
+                console.warn("avatar: AccountsService icon does not exist:", icon)
+            } else if (!imageHasPixels(icon)) {
+                console.warn("avatar: AccountsService icon is degenerate, using fallback:", icon)
+            } else {
+                return { file: icon, icon: "" }
+            }
+        }
     } catch {}
     return { file: null, icon: Config.osIcon }
+}
+
+/** true when the image file has a non-zero width and height. Avoids
+ *  handing GTK a degenerate buffer that GdkPixbuf rejects with a
+ *  GdkPixbuf-CRITICAL. */
+function imageHasPixels(path: string): boolean {
+    try {
+        const [format, width, height] = GdkPixbuf.Pixbuf.get_file_info(path)
+        return format !== null && width > 0 && height > 0
+    } catch {
+        return false
+    }
 }
 
 // battery level as a static ring around the avatar

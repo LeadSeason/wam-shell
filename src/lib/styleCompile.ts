@@ -40,6 +40,24 @@ function writeCssSrcMarker() {
     } catch {}
 }
 
+// GTK resolves CSS url(...) paths against the process cwd, not the css
+// file, so a relative url that works when running from the source tree
+// breaks when the shell is launched from anywhere else. Rewrite the bar's
+// grain texture to an absolute file:// url so it resolves correctly no
+// matter where ags was started from. This also prevents GTK from handing
+// a missing file to GdkPixbuf, which logs a GdkPixbuf-CRITICAL about a
+// zero-width decode.
+function fixCssAssetUrls() {
+    try {
+        const css = readFile(Config.cssPath)
+        const grainUrl = `file://${Config.instanceSrcDir}/assets/grain.webp`
+        const fixed = css.replace(/url\(["']?\.\/assets\/grain\.webp["']?\)/g, `url("${grainUrl}")`)
+        if (fixed !== css) GLib.file_set_contents(Config.cssPath, fixed)
+    } catch (e) {
+        console.warn("style: could not rewrite asset urls:", e)
+    }
+}
+
 // array form: no shell, so a repo path with spaces can't break the
 // command. Load paths keep bare-name imports resolving no matter where
 // the importing file lives: the cache dir for the generated
@@ -221,6 +239,7 @@ export function compileSync(): boolean {
         proc.wait(null)
         if (!proc.get_successful()) return false
         writeCssSrcMarker()
+        fixCssAssetUrls()
         return true
     } catch (e) {
         console.error("Failed to compile styles:", e)
@@ -232,6 +251,7 @@ export function compileSync(): boolean {
 export async function compileAsync(): Promise<void> {
     await execAsync(sassArgs())
     writeCssSrcMarker()
+    fixCssAssetUrls()
 }
 
 /**

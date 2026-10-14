@@ -1,4 +1,4 @@
-import { createBinding, createState, For, With, onCleanup } from "gnim"
+import { createBinding, createState, For, onCleanup } from "gnim"
 import { Gdk, Gtk } from "ags/gtk4"
 import app from "ags/gtk4/app"
 import AstalTray from "gi://AstalTray"

@@ -65,7 +65,8 @@ function decode(bytes: Uint8Array): GdkPixbuf.Pixbuf {
     loader.write(bytes)
     loader.close()
     const pixbuf = loader.get_pixbuf()
-    if (!pixbuf) throw new Error("candidate thumb did not decode")
+    if (!pixbuf || pixbuf.get_width() <= 0 || pixbuf.get_height() <= 0)
+        throw new Error("candidate thumb did not decode")
     return pixbuf
 }
 
@@ -77,7 +78,8 @@ export function matchThumbId(thumbPath: string, ids: string[]): Promise<string> 
     let thumb: GdkPixbuf.Pixbuf
     try {
         thumb = GdkPixbuf.Pixbuf.new_from_file(thumbPath)!
-    } catch {
+    } catch (e) {
+        console.warn("thumbMatch: could not decode browser thumb:", thumbPath, e)
         return Promise.resolve("")
     }
     return Promise.all(
