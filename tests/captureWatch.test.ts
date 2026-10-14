@@ -8,6 +8,7 @@ import {
     holderTracker,
     mergeCameraUsers,
     pidHoldsVideo,
+    backedOffSweepMs,
 } from "../src/lib/captureWatch"
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
@@ -312,6 +313,16 @@ test("captureWatch: an unreadable burst schedules once and does not wedge the ro
 })
 
 // ---- direct V4L2 holders -------------------------------------------------
+
+test("captureWatch: empty passes back off, doubling to a ceiling", () => {
+    // an unbacked-off sweep never rests on a busy machine: a full pass
+    // over /proc there costs more than the 20s cadence itself (issue #340)
+    eq(backedOffSweepMs(0), 20_000)
+    eq(backedOffSweepMs(1), 40_000)
+    eq(backedOffSweepMs(2), 80_000)
+    eq(backedOffSweepMs(3), 120_000) // 160 would exceed the ceiling
+    eq(backedOffSweepMs(50), 120_000)
+})
 
 test("captureWatch: pidHoldsVideo reads a fake proc tree", () => {
     // layout mirrors /proc: numeric pid dirs with comm + an fd dir of
