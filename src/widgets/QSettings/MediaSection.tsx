@@ -31,6 +31,18 @@ import Config from "../../config"
 import { isRtl } from "../../lib/utils"
 import { pressable } from "../pressable"
 
+// middle-click anywhere on the card (or on one of its strip segments)
+// removes that player from the switchers outright; if it is the player
+// the card is showing, the card advances to another one so the removal
+// is visible (with no other player there is nothing to advance to —
+// the card keeps showing it, the strip just loses its segment)
+function forgetAndAdvance(p: AstalMpris.Player) {
+    forgetRecentPlayer(p)
+    if (activePlayer.peek() === p) {
+        overrideActivePlayer(eligiblePlayers.peek().find(q => q !== p) ?? null)
+    }
+}
+
 function MediaButton({
     iconName,
     onPressed,
@@ -131,6 +143,18 @@ function Player({ player }: { player: AstalMpris.Player }) {
                 card = self
             }}
         >
+            {/* middle-click anywhere on the card removes the player it
+            is showing (forgetAndAdvance). Capture phase, so the claim
+            wins over every child widget — the card is one big click
+            target for this */}
+            <Gtk.GestureClick
+                button={2}
+                propagationPhase={Gtk.PropagationPhase.CAPTURE}
+                onPressed={g => {
+                    g.set_state(Gtk.EventSequenceState.CLAIMED)
+                    forgetAndAdvance(player)
+                }}
+            />
             <Gtk.EventControllerMotion
                 onEnter={() => {
                     const root = card.get_root() as Gtk.Window | null
@@ -220,7 +244,7 @@ function Player({ player }: { player: AstalMpris.Player }) {
                                 button={2}
                                 onPressed={g => {
                                     g.set_state(Gtk.EventSequenceState.CLAIMED)
-                                    forgetRecentPlayer(p)
+                                    forgetAndAdvance(p)
                                 }}
                             />
                         </box>
@@ -255,7 +279,11 @@ function Player({ player }: { player: AstalMpris.Player }) {
                         // in it breaks out of the url()
                         c ? `background-image: url("${c.replace(/["'\\]/g, "\\$&")}");` : "",
                     )}
-                    tooltipText={"Focus player window"}
+                    tooltipText={
+                        Config.media.rememberPlayers
+                            ? "Focus player window — middle-click removes this player"
+                            : "Focus player window"
+                    }
                 >
                     <Gtk.GestureClick button={1} onPressed={() => raisePlayer(player)} />
                 </box>
