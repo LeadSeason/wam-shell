@@ -23,7 +23,7 @@ import {
 } from "../../../lib/captureWatch"
 import Brightness from "../../../lib/brightness"
 import { alarming } from "../../../lib/sleepTimer"
-import { execAsync, timeoutAdd, sourceRemove } from "../../../lib/metrics"
+import { execAsync, timeoutAdd, timeoutAddSeconds, sourceRemove } from "../../../lib/metrics"
 import { scrollDelta } from "../../../lib/scrollStep"
 import { watchDefaultEndpoint } from "../../../lib/defaultEndpoint"
 import Config, { pendingUpdates } from "../../../config"
@@ -383,15 +383,50 @@ function Battery() {
     // plugging in while low must clear the styling even if the
     // percentage has not moved yet
     disposers.push(createBinding(bat, "charging").subscribe(updateLow))
+
+    // blink while discharging — but with a 1s class toggle, not the CSS
+    // keyframe this replaced: an infinite animation runs the frame
+    // clock at display rate the whole time its class is on. Measured
+    // with the battery draining at 36%: ~50 idle fps and ~36% of one
+    // core, compositor recompositing with it (#338's class — a
+    // never-settling clock). A toggle costs two repaints a second and
+    // the clock sleeps in between.
+    const [draining, setDraining] = createState(false)
+    const [blinkOff, setBlinkOff] = createState(false)
+    let blinkSource = 0
+    let blinkPhase = false
+    const updateDraining = () => {
+        const on = Config.quicksettings.batteryBlink && bat.state === AstalBattery.State.DISCHARGING
+        setDraining(on)
+        if (on && !blinkSource) {
+            blinkSource = timeoutAddSeconds("bar:batteryBlink", GLib.PRIORITY_DEFAULT, 1, () => {
+                blinkPhase = !blinkPhase
+                setBlinkOff(blinkPhase)
+                return GLib.SOURCE_CONTINUE
+            })
+        } else if (!on && blinkSource) {
+            sourceRemove(blinkSource)
+            blinkSource = 0
+            blinkPhase = false
+            setBlinkOff(false)
+        }
+    }
+    disposers.push(() => {
+        if (blinkSource) {
+            sourceRemove(blinkSource)
+            blinkSource = 0
+        }
+    })
+    disposers.push(createBinding(bat, "state").subscribe(updateDraining))
+    updateDraining() // the state binding only fires on change; seed it
     return (
         <box tooltipText={batTime} cssClasses={showPrec.as(v => (v ? ["batLow"] : []))}>
             <image
                 iconName={batIcon}
-                cssClasses={createBinding(bat, "state").as(s =>
-                    Config.quicksettings.batteryBlink && s === AstalBattery.State.DISCHARGING
-                        ? ["draining"]
-                        : [],
-                )}
+                cssClasses={createComputed(() => {
+                    if (!draining()) return []
+                    return blinkOff() ? ["draining", "blink-off"] : ["draining"]
+                })}
             />
             {Config.quicksettings.showBatteryPercentage && (
                 <label

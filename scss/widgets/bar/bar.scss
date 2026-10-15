@@ -604,14 +604,15 @@ window.Bar {
     }
 
     // blink while discharging — an unplugged adapter should not go
-    // unnoticed
-    .draining {
-        animation: batDrainBlink 2s ease-in-out infinite;
-    }
-}
-
-@keyframes batDrainBlink {
-    50% {
+    // unnoticed. The toggle is a 1s JS timer (bar:batteryBlink), NOT a
+    // CSS keyframe: an infinite animation runs the frame clock at
+    // display rate the whole time the class is on — measured ~50 idle
+    // fps and ~36% of one core with the battery draining (#338's
+    // class). Even a CSS *transition* on the toggle keeps the clock
+    // awake for its duration (measured 12 fps with a 0.15s fade), so
+    // the toggle is a hard opacity flip: two repaints a second, clock
+    // asleep in between.
+    .draining.blink-off {
         opacity: 0.2;
     }
 }
