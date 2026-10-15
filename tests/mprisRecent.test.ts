@@ -161,6 +161,49 @@ test("recent: exclusion is applied at derive time", () => {
     )
 })
 
+test("recent: forget drops a player from the memory", () => {
+    const a = player("a")
+    const b = player("b")
+    const store = createRecentStore<typeof a>()
+    store.bump(a, 300)
+    store.bump(b, 100)
+    store.forget(a)
+    // a is un-remembered: a blank player (keep=false) leaves outright
+    eq(
+        names(
+            store.ordered(
+                [a, b],
+                () => true,
+                () => false,
+            ),
+        ),
+        ["b"],
+    )
+    // an eligible forgotten player falls back to bus order at the tail
+    eq(
+        names(
+            store.ordered(
+                [a, b],
+                () => true,
+                () => true,
+            ),
+        ),
+        ["b", "a"],
+    )
+    // forgetting is not exclusion: the next play remembers it afresh
+    store.bump(a, 400)
+    eq(
+        names(
+            store.ordered(
+                [a, b],
+                () => true,
+                () => false,
+            ),
+        ),
+        ["a", "b"],
+    )
+})
+
 test("scrubbed titles: the browsers' anonymized placeholders", () => {
     eq(isScrubbedTitle("A site is playing media"), true) // chromium
     eq(isScrubbedTitle("Firefox is playing media"), true)

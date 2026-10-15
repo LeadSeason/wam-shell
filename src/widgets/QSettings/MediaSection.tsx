@@ -12,6 +12,7 @@ import {
     cycleActivePlayer,
     cycleLoop,
     eligiblePlayers,
+    forgetRecentPlayer,
     formatTime,
     lengthState,
     loopActive,
@@ -194,8 +195,8 @@ function Player({ player }: { player: AstalMpris.Player }) {
                             })}
                             tooltipText={createComputed(() =>
                                 eligiblePlayers().includes(p)
-                                    ? p.identity
-                                    : `${p.identity} — no track loaded, click to focus`,
+                                    ? `${p.identity} — middle-click to remove`
+                                    : `${p.identity} — no track loaded, click to focus, middle-click to remove`,
                             )}
                         >
                             <Gtk.GestureClick
@@ -209,6 +210,17 @@ function Player({ player }: { player: AstalMpris.Player }) {
                                         return
                                     }
                                     overrideActivePlayer(p)
+                                }}
+                            />
+                            {/* middle-click: drop the player from the
+                            recency memory (a blank segment leaves the
+                            strip outright, an eligible one falls back to
+                            bus order) */}
+                            <Gtk.GestureClick
+                                button={2}
+                                onPressed={g => {
+                                    g.set_state(Gtk.EventSequenceState.CLAIMED)
+                                    forgetRecentPlayer(p)
                                 }}
                             />
                         </box>

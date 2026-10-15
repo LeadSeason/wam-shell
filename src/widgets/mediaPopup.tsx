@@ -17,6 +17,7 @@ import {
     coverState,
     cycleLoop,
     eligiblePlayers,
+    forgetRecentPlayer,
     formatTime,
     lengthState,
     loopActive,
@@ -81,7 +82,9 @@ function SwitcherButton({ p }: { p: AstalMpris.Player }) {
                 ...(stale() ? ["stale"] : []),
             ])}
             tooltipText={stale.as(s =>
-                s ? `${p.identity} — no track loaded, click to focus` : p.identity,
+                s
+                    ? `${p.identity} — no track loaded, click to focus, middle-click to remove`
+                    : `${p.identity} — middle-click to remove`,
             )}
             onClicked={() => {
                 if (stale.peek()) {
@@ -92,6 +95,18 @@ function SwitcherButton({ p }: { p: AstalMpris.Player }) {
                 overrideActivePlayer(p)
             }}
         >
+            {/* middle-click: drop the player from the recency memory.
+            Capture phase + claimed, or the button's own gesture fires
+            the click action too (a button nested in a button gets no
+            click — the OUTER one fires; same rule, one level up) */}
+            <Gtk.GestureClick
+                button={2}
+                propagationPhase={Gtk.PropagationPhase.CAPTURE}
+                onPressed={g => {
+                    g.set_state(Gtk.EventSequenceState.CLAIMED)
+                    forgetRecentPlayer(p)
+                }}
+            />
             <label label={p.identity} maxWidthChars={12} ellipsize={Pango.EllipsizeMode.END} />
         </button>
     )

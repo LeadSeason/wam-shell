@@ -15,7 +15,7 @@ Section: `[media]`.
 | `recover_browser_art`      | bool     | `true`  | Chromium downscales cover art to 150px; with this on, the track title is looked up in the browser's history to find the full-size thumbnail                                                                                                                                               |
 | `recover_site_art`         | bool     | `true`  | Non-YouTube half of the above: find the playing page in history by the track title slugged into its URL, fetch it, use its `og:image`. Only runs when `recover_browser_art` is on                                                                                                         |
 | `enrich_titles`            | bool     | `true`  | A browser track with no artist metadata gets the series name from the playing page's tab title. A bare "Episode 1" title is replaced by the series name (episode label becomes the subtitle); a real title keeps the title line and the series replaces the app name on the subtitle line |
-| `remember_players`         | bool     | `true`  | Keep players that have played this session listed in the switchers (media popup, quick-settings strip) even after their metadata goes blank, most recently played first. Entries leave when the player quits; private windows are never remembered                                        |
+| `remember_players`         | bool     | `true`  | Keep players that have played this session listed in the switchers (media popup, quick-settings strip) even after their metadata goes blank, most recently played first. Entries leave when the player quits or on middle-click in a switcher; private windows are never remembered       |
 | `remember_excluded`        | str list | `[]`    | Players never remembered: case-insensitive substrings matched against the player identity and desktop entry, e.g. `["chromium"]`. Excluded players still show while eligible, as always                                                                                                   |
 
 - `recover_browser_art` reads the browser's history database read-only,
@@ -35,4 +35,6 @@ Section: `[media]`.
   stops being eligible and would otherwise vanish from the switchers
   while still one play away. A player that has actually quit is gone —
   there is nothing left to control. Remembered-but-blank entries are
-  shown dimmed; clicking one raises its window.
+  shown dimmed; clicking one raises its window. Middle-click a
+  switcher row to remove the player from the memory; it is remembered
+  again the next time it plays.

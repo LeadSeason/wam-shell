@@ -64,6 +64,11 @@ export interface RecentStore<P> {
      * dead GObject behind in the map.
      */
     ordered(live: P[], remembered: (p: P) => boolean, keep: (p: P) => boolean): P[]
+    /** drop a player from the memory (middle-click on a switcher row):
+     *  a blank one leaves the switchers outright, an eligible one falls
+     *  back to bus-order listing. If it plays again it is remembered
+     *  afresh — forgetting is not exclusion */
+    forget(p: P): void
     /** forget everything (shutdown) */
     clear(): void
 }
@@ -93,6 +98,10 @@ export function createRecentStore<P>(): RecentStore<P> {
             // keep bus order among themselves
             known.sort((a, b) => b.at - a.at)
             return [...known.map(e => e.p), ...rest]
+        },
+
+        forget(p) {
+            playedAt.delete(p)
         },
 
         clear() {

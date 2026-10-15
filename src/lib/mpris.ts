@@ -82,6 +82,30 @@ export const rememberedPlayers = createComputed(() => {
     return recentStore.ordered(list, notExcluded, p => isEligible(p) && notExcluded(p))
 })
 
+// forget sources armed from click handlers. The update tears the
+// clicked row down under the pointer, so it must not run mid-dispatch —
+// the same crossing-event hazard that got the banner removals deferred
+// one idle turn (lib/notifd). Tracked and cleared in dispose, like
+// every deferred source.
+const forgetSources = new Set<number>()
+
+/** drop a player from the recency memory (middle-click on a switcher
+ *  row): a blank one leaves the switchers outright, an eligible one
+ *  falls back to bus-order listing, and the next PLAYING transition
+ *  remembers it afresh — forgetting is not exclusion. Deferred one
+ *  idle turn; callers are click handlers. */
+export function forgetRecentPlayer(p: AstalMpris.Player) {
+    const src = idleAdd("mpris:recentForget", GLib.PRIORITY_DEFAULT_IDLE, () => {
+        forgetSources.delete(src)
+        recentStore.forget(p)
+        // the recency map is not tracked; the bump re-runs the
+        // rememberedPlayers computed and the row goes away
+        bumpElig(eligVersion.peek() + 1)
+        return GLib.SOURCE_REMOVE
+    })
+    if (src) forgetSources.add(src)
+}
+
 // the player shown everywhere: sticky — stays on the current player
 // until it goes away or another player starts playing (the most recent
 // one wins). A manual pick via the popup switcher or scroll cycling
@@ -589,6 +613,8 @@ export function dispose() {
     unsubPlayingList()
     stopPulse()
     recentStore.clear()
+    for (const src of forgetSources) sourceRemove(src)
+    forgetSources.clear()
     for (const [p, entries] of hookedPlayers) {
         for (const e of entries) e.release()
         hookedPlayers.delete(p)
