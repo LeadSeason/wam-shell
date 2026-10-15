@@ -82,7 +82,7 @@ function SwitcherButton({ p }: { p: AstalMpris.Player }) {
                 ...(stale() ? ["stale"] : []),
             ])}
             tooltipText={createComputed(() => {
-                const hint = Config.media.rememberPlayers ? " — middle-click to remove" : ""
+                const hint = Config.media.rememberPlayers ? " — middle-click pauses & removes" : ""
                 return stale()
                     ? `${p.identity} — no track loaded, click to focus${hint}`
                     : `${p.identity}${hint}`

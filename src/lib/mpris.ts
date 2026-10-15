@@ -89,12 +89,17 @@ export const rememberedPlayers = createComputed(() => {
 // every deferred source.
 const forgetSources = new Set<number>()
 
-/** drop a player from the switchers outright (middle-click on a
- *  switcher row): remembered or merely eligible, it is not listed
- *  again until its next PLAYING transition — forgetting is not
- *  exclusion (remember_excluded is). Deferred one idle turn; callers
- *  are click handlers. */
+/** drop a player from the media UI outright (middle-click on the card
+ *  or a switcher row): strip, popup and the card itself stop listing
+ *  or showing it, and it is PAUSED — a removed player must not keep
+ *  playing with no card left to stop it. The next PLAYING transition
+ *  (in the app itself) un-hides and re-remembers it. The pause is a
+ *  dbus call, not a widget mutation, so it happens right here in the
+ *  click handler; the UI teardown is deferred one idle turn below —
+ *  the same crossing-event hazard that got the banner removals
+ *  deferred applies to it. */
 export function forgetRecentPlayer(p: AstalMpris.Player) {
+    p.pause()
     const src = idleAdd("mpris:recentForget", GLib.PRIORITY_DEFAULT_IDLE, () => {
         forgetSources.delete(src)
         recentStore.forget(p)

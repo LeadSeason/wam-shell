@@ -264,9 +264,9 @@
 #           the player is still alive on the bus. Ordered most recently
 #           played first. Private windows are never remembered, and an
 #           entry leaves the memory when its player quits; middle-click
-#           on the card or a switcher row removes a player from the
-#           media UI outright — the card included — until it plays
-#           again. default true
+#           on the card or a switcher row PAUSES a player and removes
+#           it from the media UI outright — the card included — until
+#           it plays again. default true
 # remember_excluded - players never remembered (only read when
 #           remember_players is on): case-insensitive substrings
 #           matched against the player identity and desktop entry, e.g.

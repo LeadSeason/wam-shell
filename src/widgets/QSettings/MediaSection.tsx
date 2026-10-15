@@ -215,7 +215,7 @@ function Player({ player }: { player: AstalMpris.Player }) {
                             })}
                             tooltipText={createComputed(() =>
                                 eligiblePlayers().includes(p)
-                                    ? `${p.identity}${Config.media.rememberPlayers ? " — middle-click to remove" : ""}`
+                                    ? `${p.identity}${Config.media.rememberPlayers ? " — middle-click pauses & removes" : ""}`
                                     : `${p.identity} — no track loaded, click to focus`,
                             )}
                         >
@@ -277,7 +277,7 @@ function Player({ player }: { player: AstalMpris.Player }) {
                     )}
                     tooltipText={
                         Config.media.rememberPlayers
-                            ? "Focus player window — middle-click removes this player"
+                            ? "Focus player window — middle-click pauses & removes this player"
                             : "Focus player window"
                     }
                 >
