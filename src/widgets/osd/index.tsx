@@ -2,9 +2,9 @@ import { Astal, Gtk, Gdk } from "ags/gtk4"
 import GLib from "gi://GLib?version=2.0"
 import app from "ags/gtk4/app"
 import { createBinding, createComputed, With, onCleanup } from "gnim"
-import AstalHyprland from "gi://AstalHyprland"
 import Config from "../../config"
 import Sway from "../../lib/sway"
+import { getHyprland } from "../../lib/hyprlandGuard"
 import { content, visible } from "../../lib/osd"
 import { timeoutAdd, sourceRemove } from "../../lib/metrics"
 
@@ -18,9 +18,14 @@ export default function OSD({ gdkMonitor }: { gdkMonitor: Gdk.Monitor }) {
     const connector = createBinding(gdkMonitor, "connector")
     let isFocused
     if (Config.desktopSession === "hyprland") {
-        const hyprland = AstalHyprland.get_default()
-        const focusedMonitor = createBinding(hyprland, "focusedMonitor")
-        isFocused = createComputed(() => focusedMonitor()?.name === connector())
+        // getHyprland, not get_default: a missing socket segfaults
+        // inside the library (#225). No IPC: the plain "first monitor"
+        // boolean, as in the branches below.
+        const hyprland = getHyprland()
+        const focusedMonitor = hyprland ? createBinding(hyprland, "focusedMonitor") : null
+        isFocused = focusedMonitor
+            ? createComputed(() => focusedMonitor()?.name === connector())
+            : app.monitors[0] === gdkMonitor
     } else if (Config.desktopSession === "sway" || Config.desktopSession === "i3") {
         const sway = Sway.get_default()
         const swayOutputs = createBinding(sway, "outputs")
