@@ -1,9 +1,9 @@
 import { Gtk, Gdk } from "ags/gtk4"
-import AstalHyprland from "gi://AstalHyprland"
 import Pango from "gi://Pango?version=1.0"
 import { With, createBinding } from "gnim"
 import Config from "../../../config"
 import Sway, { Node } from "../../../lib/sway"
+import { getHyprland } from "../../../lib/hyprlandGuard"
 import { createIconResolver } from "../../../lib/appIcon"
 
 // Active window title: app icon + the focused window's title,
@@ -11,7 +11,11 @@ import { createIconResolver } from "../../../lib/appIcon"
 // for the focused leaf.
 
 function hyprlandTitle(resolveAppIcon: (name: string | null | undefined) => string | null) {
-    const hyprland = AstalHyprland.get_default()
+    // getHyprland, not get_default: a missing socket segfaults inside
+    // the library (#225). No IPC, no title — same shape as swayTitle
+    // below; the next bar rebuild (monitor hotplug) re-probes.
+    const hyprland = getHyprland()
+    if (!hyprland) return (<></>) as Gtk.Widget
     const client = createBinding(hyprland, "focusedClient")
     const iconName = client.as(c => (c ? (resolveAppIcon(c.class) ?? "missing-icon") : ""))
     return (

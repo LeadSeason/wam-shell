@@ -2,6 +2,7 @@ import Gdk from "gi://Gdk?version=4.0"
 import AstalHyprland from "gi://AstalHyprland?version=0.1"
 import { hyprDispatch } from "../../../lib/hyprDispatch"
 import Config from "../../../config"
+import { getHyprland } from "../../../lib/hyprlandGuard"
 import { createIconResolver } from "../../../lib/appIcon"
 import { createScrollStepper, stepThrough } from "../../../lib/scrollStep"
 import { matchesPlayingWindow, playingPlayers, playingPulse, titlesMatch } from "../../../lib/mpris"
@@ -10,7 +11,11 @@ import { For, createBinding, createComputed, createState, onCleanup } from "gnim
 import { Gtk } from "ags/gtk4"
 
 export default function HyprlandWs({ monitor }: { monitor: Gdk.Monitor }) {
-    const hyprland = AstalHyprland.get_default()
+    // getHyprland, not get_default: a missing socket segfaults inside
+    // the library (#225). No IPC, no workspaces — a later rebuild
+    // (monitor hotplug) re-probes and recovers.
+    const hyprland = getHyprland()
+    if (!hyprland) return <></>
     const resolveAppIcon = createIconResolver(Gtk.IconTheme.get_for_display(monitor.display))
 
     function clientToIcon(client: AstalHyprland.Client) {

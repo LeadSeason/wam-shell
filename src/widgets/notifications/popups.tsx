@@ -1,9 +1,9 @@
 import { Astal, Gtk, Gdk } from "ags/gtk4"
 import app from "ags/gtk4/app"
 import { createBinding, createComputed, For } from "gnim"
-import AstalHyprland from "gi://AstalHyprland"
 import Config from "../../config"
 import Sway from "../../lib/sway"
+import { getHyprland } from "../../lib/hyprlandGuard"
 import { displayGroups, popups } from "../../lib/notifd"
 import PopupRow from "./PopupRow"
 
@@ -21,10 +21,15 @@ export default function NotificationPopups({ gdkMonitor }: { gdkMonitor: Gdk.Mon
 
     let isFocused
     if (Config.desktopSession === "hyprland") {
-        const hyprland = AstalHyprland.get_default()
-        isFocused = createBinding(hyprland, "focusedMonitor").as(
-            m => m?.name === gdkMonitor.get_connector(),
-        )
+        // getHyprland, not get_default: a missing socket segfaults
+        // inside the library (#225). No IPC: fall back to the
+        // compositor-agnostic "first monitor" rule, as below.
+        const hyprland = getHyprland()
+        isFocused = hyprland
+            ? createBinding(hyprland, "focusedMonitor").as(
+                  m => m?.name === gdkMonitor.get_connector(),
+              )
+            : createBinding(app, "monitors").as(ms => ms[0] === gdkMonitor)
     } else if (Config.desktopSession === "sway" || Config.desktopSession === "i3") {
         const sway = Sway.get_default()
         isFocused = sway.ok

@@ -3,6 +3,7 @@ import GLib from "gi://GLib?version=2.0"
 import AstalHyprland from "gi://AstalHyprland"
 import { connect, disconnect, timeoutAdd, sourceRemove } from "./metrics"
 import Config from "../config"
+import { getHyprland } from "./hyprlandGuard"
 import type { Gtk } from "ags/gtk4"
 import { registerDispose } from "./lifecycle"
 
@@ -88,7 +89,7 @@ const PICKER_NAMESPACES = new Set(["selection", "hyprpicker", "wayshot", "screen
 // the picker by a beat or the popups hide mid-capture
 const GRACE_MS = 1500
 
-let hyprHooked = false
+let hyprlandObj: AstalHyprland.Hyprland | null = null
 let hyprHandler = 0
 let pickerLayers = 0
 let graceUntil = 0
@@ -101,10 +102,15 @@ function screenshotInProgress(): boolean {
 // which must stay out of import (tests import lib modules; i3 sessions
 // have no hyprland socket)
 function hookHyprland() {
-    if (hyprHooked) return
-    hyprHooked = true
+    if (hyprHandler) return
     if (Config.desktopSession !== "hyprland") return
-    const hyprland = AstalHyprland.get_default()
+    // getHyprland, not get_default: a missing socket segfaults inside
+    // the library (#225). No socket, no layer events — picker
+    // suppression stays inert, and the next focus gain re-probes
+    // (getHyprland retries until its first successful construction)
+    const hyprland = getHyprland()
+    if (!hyprland) return
+    hyprlandObj = hyprland
     hyprHandler = connect(hyprland, "event", (_h, name: string, data: string) => {
         if (!PICKER_NAMESPACES.has(data)) return
         if (name === "openlayer") {
@@ -121,17 +127,17 @@ function hookHyprland() {
 // shell never calls it today: one place that tears everything down.
 // Per-window handlers are not tracked here — they die with their window
 export function dispose() {
-    if (hyprHandler) {
-        disconnect(AstalHyprland.get_default(), hyprHandler)
-        hyprHandler = 0
+    if (hyprHandler && hyprlandObj) {
+        disconnect(hyprlandObj, hyprHandler)
     }
+    hyprlandObj = null
+    hyprHandler = 0
     if (checkTimer) {
         sourceRemove(checkTimer)
         checkTimer = 0
     }
     pending.clear()
     hideByWindow.clear()
-    hyprHooked = false
     pickerLayers = 0
     graceUntil = 0
 }
