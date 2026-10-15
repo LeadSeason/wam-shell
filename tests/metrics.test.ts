@@ -86,3 +86,36 @@ test("metrics: inert without WAM_SHELL_METRICS", () => {
     eq(snap.process.pid > 0, true, "pid still present")
     eq(snap.frames, 0, "frames inert without metrics")
 })
+
+// --- the tick guard: correctness, so it holds with metrics OFF too ---
+
+function runThrowProbe(budget: number, enabled: boolean): number {
+    const launcher = new Gio.SubprocessLauncher({
+        flags: Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
+    })
+    if (enabled) launcher.setenv("WAM_SHELL_METRICS", "1", true)
+    launcher.setenv("WAM_PROBE_THROW_TIMER", String(budget), true)
+    const proc = launcher.spawnv([PROBE])
+    const [, stdout] = proc.communicate_utf8(null, null)
+    if (proc.get_exit_status() !== 0) throw new Error("throw probe failed")
+    const line = stdout.split("\n").find(l => l.startsWith("THROWS "))
+    if (!line) throw new Error(`no THROWS line in probe output:\n${stdout}`)
+    return JSON.parse(line.slice(line.indexOf("{"))).calls as number
+}
+
+for (const enabled of [false, true]) {
+    const mode = enabled ? "metrics on" : "metrics off"
+
+    test(`metrics: a throwing tick does not kill its timer (${mode})`, () => {
+        // three failures, then success: the module-freeze class of bug —
+        // the old wrapper let the first throw remove the source for good
+        eq(runThrowProbe(3, enabled), 4, "callback survived to its successful call")
+    })
+
+    test(`metrics: five consecutive throws retire the timer (${mode})`, () => {
+        // never succeeds: the guard must stop it at the strike budget —
+        // not on the first throw, and not never (a runaway would show up
+        // as the watchdog's ~66 calls)
+        eq(runThrowProbe(0, enabled), 5, "stopped exactly at the strike budget")
+    })
+}
