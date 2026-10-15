@@ -225,6 +225,8 @@ function dispose() {
     loginProc = null
     fixProc?.force_exit()
     fixProc = null
+    runChainProcs.forEach(p => p.force_exit())
+    runChainProcs.clear()
 }
 
 if (hasTailscale) startPolling()
@@ -293,6 +295,45 @@ function fixOperatorRights() {
 }
 const [notice, setNotice] = createState<VpnNotice | null>(null)
 
+// runChain used to call execAsync, whose Gio.Subprocess is unreachable:
+// a blocking `tailscale up` could hold `busy` forever and outlive the
+// shell (issue #322). Stream every action instead, so each child is
+// tracked and force-exited on shutdown.
+const runChainProcs = new Set<Gio.Subprocess>()
+
+function runStreamed(args: string[]): Promise<{ ok: boolean; denied: boolean }> {
+    return new Promise(resolve => {
+        let denied = false
+        let proc: Gio.Subprocess | null = null
+        proc = streamLines(
+            ["tailscale", ...args],
+            line => {
+                if (isAccessDenied(line)) denied = true
+                // a stale logged-out flag can send an ordinary `up`
+                // through this path; if the CLI prints an auth URL,
+                // open it rather than leaving the user staring at a
+                // hung button
+                const m = line.match(/https:\/\/\S+/)
+                if (m) {
+                    try {
+                        Gio.AppInfo.launch_default_for_uri(m[0], null)
+                    } catch (e) {
+                        console.warn("vpn:tailscale: could not open the login URL:", e)
+                    }
+                }
+            },
+            ok => {
+                if (proc) runChainProcs.delete(proc)
+                resolve({ ok, denied })
+            },
+            false,
+            true,
+        )
+        if (proc) runChainProcs.add(proc)
+        else resolve({ ok: false, denied: false })
+    })
+}
+
 function runChain(...cmds: string[][]) {
     if (!hasTailscale || disposed) return Promise.resolve()
     inFlight++
@@ -308,12 +349,13 @@ function runChain(...cmds: string[][]) {
     // up even when the down errored
     for (const args of cmds)
         chain = chain
-            .then(() => execAsync(["tailscale", ...args]))
-            .then(() => {
-                succeeded = true
+            .then(() => runStreamed(args))
+            .then(({ ok, denied: d }) => {
+                if (ok) succeeded = true
+                if (d) denied = true
             })
             .catch(err => {
-                if (isAccessDenied(String(err))) denied = true
+                console.warn("vpn:tailscale: unexpected runChain error:", err)
             })
     return chain.finally(() => {
         inFlight--
