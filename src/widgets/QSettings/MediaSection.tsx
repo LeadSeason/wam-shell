@@ -21,6 +21,7 @@ import {
     playPauseExclusive,
     positionState,
     raisePlayer,
+    rememberedPlayers,
     scrollActivePlayer,
 } from "../../lib/mpris"
 import { isSmallCover } from "../../lib/coverArt"
@@ -173,18 +174,42 @@ function Player({ player }: { player: AstalMpris.Player }) {
                 cssClasses={["mediaSegments"]}
                 orientation={Gtk.Orientation.VERTICAL}
                 spacing={2}
-                visible={eligiblePlayers.as(l => l.length > 1)}
+                visible={rememberedPlayers.as(l => l.length > 1)}
             >
-                <For each={eligiblePlayers}>
+                <For each={rememberedPlayers}>
                     {p => (
                         <box
                             vexpand
-                            cssClasses={["mediaSegment", ...(p === player ? ["active"] : [])]}
-                            tooltipText={p.identity}
+                            cssClasses={createComputed(() => {
+                                // same list and order as the popup
+                                // switcher (lib/mpris rememberedPlayers);
+                                // .stale = kept by the recency memory but
+                                // currently no track
+                                const stale = !eligiblePlayers().includes(p)
+                                return [
+                                    "mediaSegment",
+                                    ...(p === player ? ["active"] : []),
+                                    ...(stale ? ["stale"] : []),
+                                ]
+                            })}
+                            tooltipText={createComputed(() =>
+                                eligiblePlayers().includes(p)
+                                    ? p.identity
+                                    : `${p.identity} — no track loaded, click to focus`,
+                            )}
                         >
                             <Gtk.GestureClick
                                 button={1}
-                                onPressed={() => overrideActivePlayer(p)}
+                                onPressed={() => {
+                                    // stale segments raise the app rather
+                                    // than pin it — see SwitcherButton in
+                                    // mediaPopup for why
+                                    if (!eligiblePlayers.peek().includes(p)) {
+                                        raisePlayer(p)
+                                        return
+                                    }
+                                    overrideActivePlayer(p)
+                                }}
                             />
                         </box>
                     )}

@@ -25,6 +25,8 @@ import {
     overrideActivePlayer,
     playPauseExclusive,
     positionState,
+    raisePlayer,
+    rememberedPlayers,
 } from "../lib/mpris"
 import { createIconResolver } from "../lib/appIcon"
 import Config from "../config"
@@ -64,27 +66,46 @@ function mediaAnchor(): number {
 // never one made from the quick settings card or the panel pill
 let popupPin: AstalMpris.Player | null = null
 
+function SwitcherButton({ p }: { p: AstalMpris.Player }) {
+    // remembered-but-quiet: alive on the bus, kept listed by the
+    // recency memory, no track right now (fails eligibility). Dimmed
+    // (.stale) so history reads as history. Clicking one RAISES the app
+    // rather than pinning it: a blank session has nothing to show or
+    // control, and pinning it would steal the panel card from whatever
+    // actually plays — pick() releases such pins the moment they land
+    const stale = createComputed(() => !eligiblePlayers().includes(p))
+    return (
+        <button
+            cssClasses={createComputed(() => [
+                ...(activePlayer() === p ? ["active"] : []),
+                ...(stale() ? ["stale"] : []),
+            ])}
+            tooltipText={stale.as(s =>
+                s ? `${p.identity} — no track loaded, click to focus` : p.identity,
+            )}
+            onClicked={() => {
+                if (stale.peek()) {
+                    raisePlayer(p)
+                    return
+                }
+                popupPin = p
+                overrideActivePlayer(p)
+            }}
+        >
+            <label label={p.identity} maxWidthChars={12} ellipsize={Pango.EllipsizeMode.END} />
+        </button>
+    )
+}
+
 function PlayerSwitcher() {
     return (
-        <box cssClasses={["switcher"]} spacing={6} visible={eligiblePlayers.as(l => l.length > 1)}>
+        <box
+            cssClasses={["switcher"]}
+            spacing={6}
+            visible={rememberedPlayers.as(l => l.length > 1)}
+        >
             <label label={"Player"} cssClasses={["section"]} xalign={0} hexpand />
-            <For each={eligiblePlayers}>
-                {p => (
-                    <button
-                        cssClasses={activePlayer.as(a => (a === p ? ["active"] : [""]))}
-                        onClicked={() => {
-                            popupPin = p
-                            overrideActivePlayer(p)
-                        }}
-                    >
-                        <label
-                            label={p.identity}
-                            maxWidthChars={12}
-                            ellipsize={Pango.EllipsizeMode.END}
-                        />
-                    </button>
-                )}
-            </For>
+            <For each={rememberedPlayers}>{p => <SwitcherButton p={p} />}</For>
         </box>
     )
 }

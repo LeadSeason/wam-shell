@@ -404,6 +404,18 @@ function getMediaConfig() {
         // Look the playing page up in history (same read-only query as
         // recover_site_art) and show the series name instead
         enrichTitles: r.bool("enrich_titles", true),
+        // keep players that have played this session listed in the
+        // switchers even after their metadata goes blank (a browser tab
+        // paused long enough for the browser to clear it reports no
+        // title and would otherwise drop out while still alive on the
+        // bus). Most recently played first; private windows are never
+        // remembered. Entries leave the memory when the player quits
+        rememberPlayers: r.bool("remember_players", true),
+        // players never remembered: case-insensitive substrings matched
+        // against the player identity and desktop entry, e.g.
+        // ["chromium"]. Excluded players still show while eligible, as
+        // they always did — they just drop out again once ineligible
+        rememberExcluded: r.strList("remember_excluded", []),
     }
 }
 
