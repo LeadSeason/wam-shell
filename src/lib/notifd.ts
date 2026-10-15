@@ -118,6 +118,80 @@ if (useOurs) sanitizePersistedTransientHints()
 
 const notifd = AstalNotifd.get_default()
 
+// ------------------------------------------------- daemon-name watchdog
+//
+// A shell that owns neither its bus names nor anything else is the worst
+// failure mode this codebase has: the process runs, the windows draw,
+// and banners silently die — observed once live (an instance came up
+// owning NO name, logged nothing, and notify-send failed for the whole
+// session; a restart claimed both names and worked). Astal acquires
+// org.freedesktop.Notifications inside the library and offers no
+// re-claim, so this cannot heal from here — but a dead session must be
+// a DIAGNOSED session, not a silent one. Watch the owner every minute,
+// log every transition once: "ours" is health; "foreign" (mode forced
+// ours yet someone else holds the name — astal does not steal) and
+// "unowned" (the claim never landed, or the bus was restarted under
+// us) both mean notifications are not arriving.
+type NameOwnership = "pending" | "ours" | "foreign" | "unowned"
+let nameOwnership: NameOwnership = "pending"
+
+function readNameOwnership(): NameOwnership {
+    try {
+        const reply = Gio.DBus.session.call_sync(
+            "org.freedesktop.DBus",
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "GetNameOwner",
+            new GLib.Variant("(s)", ["org.freedesktop.Notifications"]),
+            new GLib.VariantType("(s)"),
+            Gio.DBusCallFlags.NONE,
+            500,
+            null,
+        )
+        const owner = reply.get_child_value(0).get_string()[0]
+        return owner === Gio.DBus.session.get_unique_name() ? "ours" : "foreign"
+    } catch {
+        return "unowned" // no owner at all
+    }
+}
+
+function describeOwnership(state: NameOwnership): string {
+    switch (state) {
+        case "ours":
+            return "ours"
+        case "foreign":
+            return "held by another bus client — nothing we display will receive notifications (astal does not steal the name; restart the shell after any daemon change)"
+        case "unowned":
+            return "UNOWNED — the daemon name was never claimed (or the bus restarted under us): banners cannot arrive. Restart the shell; if a restart comes up like this again, that is the half-dead-startup bug — alive, drawing, owning no bus name"
+        case "pending":
+            return "pending"
+    }
+}
+
+let nameWatchSource = 0
+
+if (useOurs) {
+    const check = () => {
+        const next = readNameOwnership()
+        if (next !== nameOwnership) {
+            nameOwnership = next
+            const line = `Notifications: org.freedesktop.Notifications is ${describeOwnership(next)}`
+            if (next === "ours") console.log(line)
+            else console.error(line)
+        }
+    }
+    // astal acquires the name asynchronously off get_default(); give it
+    // the startup settle before the first verdict
+    timeoutAdd("notifd:nameWatch", GLib.PRIORITY_DEFAULT, 5000, () => {
+        check()
+        nameWatchSource = timeoutAddSeconds("notifd:nameWatch", GLib.PRIORITY_DEFAULT, 60, () => {
+            check()
+            return GLib.SOURCE_CONTINUE
+        })
+        return GLib.SOURCE_REMOVE
+    })
+}
+
 // The daemon emits notify::notifications for EVERY resolve and EVERY
 // arrival, and each emit re-runs everything derived from the list (the
 // center's active / sorted / merged / feed chain). Dismissing a long
@@ -1019,6 +1093,11 @@ export function dispose() {
     if (tickSource !== null) {
         sourceRemove(tickSource)
         tickSource = null
+    }
+    // the daemon-name watchdog (see the block at get_default above)
+    if (nameWatchSource) {
+        sourceRemove(nameWatchSource)
+        nameWatchSource = 0
     }
     // the hourly retention sweep must not fire against a torn-down module
     if (sweepSource !== null) {
