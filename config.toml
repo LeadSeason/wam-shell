@@ -255,6 +255,21 @@
 #           is replaced by the series name with the episode label as
 #           subtitle; a real title keeps the title line and the series
 #           replaces the app name on the subtitle line. default true
+# remember_players - keep players that have played this session listed
+#           in the player switchers (media popup, quick-settings
+#           segment strip) even after their metadata goes blank: a
+#           browser tab paused long enough for the browser to clear it
+#           reports no title, fails the private-session/eligibility
+#           checks and would otherwise drop out of the switchers while
+#           the player is still alive on the bus. Ordered most recently
+#           played first. Private windows are never remembered, and an
+#           entry leaves the memory when its player quits. default true
+# remember_excluded - players never remembered (only read when
+#           remember_players is on): case-insensitive substrings
+#           matched against the player identity and desktop entry, e.g.
+#           ["chromium"]. Excluded players still show while eligible,
+#           as they always did — they just drop out again once
+#           ineligible. default []
 # [media]
 # enabled = false
 # show_controls = true
@@ -264,6 +279,8 @@
 # recover_browser_art = true
 # recover_site_art = true
 # enrich_titles = true
+# remember_players = true
+# remember_excluded = []
 
 # [harvest] - Harvest time tracking (getharvest.com): running timer on
 #             the panel + a picker popup (start/stop/resume/notes/new

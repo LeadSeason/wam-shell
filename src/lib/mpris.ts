@@ -14,6 +14,7 @@ import { isFile } from "./utils"
 import { registerDispose } from "./lifecycle"
 import { createScrollCycler } from "./scrollCycle"
 import { dedupePlayers } from "./mprisDedup"
+import { createRecentStore, isExcludedPlayer, isScrubbedTitle } from "./mprisRecent"
 
 // Shared MPRIS state + helpers, used by the QS media section and the
 // panel media widget/popup.
@@ -60,6 +61,25 @@ export const eligiblePlayers = createComputed(() => {
     const list = players()
     eligVersion() // eligibility bumps re-run this without touching `players`
     return list.filter(isEligible)
+})
+
+// switcher order (popup PlayerSwitcher, QS segment strip): players that
+// have played this session first, most recently played first —
+// currently ineligible ones INCLUDED, which is the point (a browser tab
+// paused long enough for chromium to clear its metadata fails
+// isEligible and would drop out of the switchers while still one play
+// away on the bus) — then eligible never-played players in bus order.
+// With remember_players off this is exactly the eligible list.
+// Private/scrubbed sessions never enter the memory (startedPlaying
+// below), so they can only ever surface here by being eligible today.
+const recentStore = createRecentStore<AstalMpris.Player>()
+export const rememberedPlayers = createComputed(() => {
+    const list = players()
+    eligVersion() // eligibility flips re-run this (isEligible reads live title/status)
+    if (!Config.media.rememberPlayers) return list.filter(isEligible)
+    const notExcluded = (p: AstalMpris.Player) =>
+        !isExcludedPlayer(p, Config.media.rememberExcluded)
+    return recentStore.ordered(list, notExcluded, p => isEligible(p) && notExcluded(p))
 })
 
 // the player shown everywhere: sticky — stays on the current player
@@ -490,6 +510,16 @@ let lastPlaying: AstalMpris.Player | null = null
  *  phantom tab */
 function startedPlaying(p: AstalMpris.Player) {
     lastPlaying = p
+    // remember for the switchers (lib/mprisRecent). Callers gate on
+    // isEligible; the scrub check here is the one exclusion eligibility
+    // does NOT imply — with hide_private_sessions off a private session
+    // is eligible, and it must still never enter the memory. The bump
+    // re-sorts rememberedPlayers: the recency map is not tracked, so
+    // nothing else would re-run that computed.
+    if (Config.media.rememberPlayers && !isScrubbedTitle(p.title)) {
+        recentStore.bump(p)
+        bumpElig(eligVersion.peek() + 1)
+    }
     // a newly playing player always takes over, even from a
     // scroll-pinned one
     if (overridePlayer.peek() !== p) setOverride(null)
@@ -558,6 +588,7 @@ export function dispose() {
     unsubPick()
     unsubPlayingList()
     stopPulse()
+    recentStore.clear()
     for (const [p, entries] of hookedPlayers) {
         for (const e of entries) e.release()
         hookedPlayers.delete(p)
