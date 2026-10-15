@@ -5,7 +5,7 @@ import { readFile } from "ags/file"
 import Config from "../../config"
 import { timeoutAdd, timeoutAddSeconds, sourceRemove, connect, disconnect } from "../metrics"
 import { active, request, fetchAll } from "./api"
-import { Entry, Project, mapEntry, localDay, dayTimeline } from "./timeline"
+import { Entry, Project, mapEntry, mapEntries, localDay, dayTimeline } from "./timeline"
 import { accountMode } from "./account"
 import { armNotifications } from "./notify"
 import {
@@ -68,7 +68,7 @@ export function fetchDayOffset(offsetDays: number) {
     const seq = ++dayFetchSeq
     const day = localDay(offsetDays)
     fetchAll(`/time_entries?from=${day}&to=${day}`, "time_entries", [], (items, _r) => {
-        if (items && seq === dayFetchSeq) setDayEntries(dayTimeline(items.map(mapEntry)))
+        if (items && seq === dayFetchSeq) setDayEntries(dayTimeline(mapEntries(items)))
     })
 }
 
@@ -184,13 +184,15 @@ export function deltaPoll() {
     const uid = userId ? `&user_id=${userId}` : ""
     request("GET", `/time_entries?updated_since=${encodeURIComponent(since)}${uid}`, null, r => {
         deltaInFlight = false
-        // a throw while applying must not stall the loop: settle runs
-        // either way
+        // a throw while applying must not stall the loop (settle runs
+        // either way) nor escape into the Soup dispatch
         try {
             if (r.ok && r.json && seq > lastApplied.delta) {
                 lastApplied.delta = seq
-                applyDelta((r.json.time_entries ?? []).map(mapEntry))
+                applyDelta(mapEntries(r.json.time_entries))
             }
+        } catch (e) {
+            console.warn("Harvest: delta apply failed:", e)
         } finally {
             settleCycle(r.authFailed, !r.ok, r.retryAfter)
         }
@@ -209,6 +211,7 @@ function fetchWindow() {
             let maxUpdated = 0
             for (const raw of r.json.time_entries ?? []) {
                 const e = mapEntry(raw)
+                if (!e) continue
                 if (e.spentDate === today) fresh.set(e.id, e)
                 const t = Date.parse(e.updatedAt)
                 if (!Number.isNaN(t)) maxUpdated = Math.max(maxUpdated, t)
@@ -248,7 +251,9 @@ function baseline() {
         if (r.ok && r.json && seq > lastApplied.running) {
             lastApplied.running = seq
             const raw = (r.json.time_entries ?? [])[0]
-            adoptRunning(raw ? mapEntry(raw) : null)
+            const e = raw ? mapEntry(raw) : null
+            if (raw && !e) console.warn("Harvest: running probe: unparseable entry")
+            adoptRunning(e)
             // this probe IS the baseline the banner latch waits for:
             // whatever it just adopted is state, and anything after it
             // is a real transition. Armed after the adoption, so the
@@ -288,7 +293,7 @@ function slowCycle() {
         [],
         (items, _r) => {
             if (items) {
-                const entries: Entry[] = items.map(mapEntry)
+                const entries: Entry[] = mapEntries(items)
                 const seen = new Set<string>()
                 const pairs: Entry[] = []
                 // API returns ascending spent_date; walk newest first

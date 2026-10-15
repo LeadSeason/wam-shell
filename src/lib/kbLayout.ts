@@ -126,8 +126,17 @@ function hyprlandSource(hyprland: AstalHyprland.Hyprland): LayoutSource {
             .then(out => {
                 if (seq !== refreshSeq) return
                 const devices = JSON.parse(out)
-                const kb = devices.keyboards.find((k: any) => k.main) ?? devices.keyboards[0]
-                if (!kb) return
+                // hyprctl's shape is trusted elsewhere, but a session
+                // without keyboards (or an old binary) must not leave
+                // the layout stale for the whole session with only a
+                // parse-error line — the stale-state failure mode is
+                // silent, so say what happened
+                const keyboards = Array.isArray(devices?.keyboards) ? devices.keyboards : []
+                const kb = keyboards.find((k: any) => k.main) ?? keyboards[0]
+                if (!kb) {
+                    console.error("keyboard layout: no keyboards in hyprctl devices output")
+                    return
+                }
                 mainKb = kb.name
                 const codes = kb.layout.split(",").map((s: string) => s.trim())
                 setLayouts(codes)

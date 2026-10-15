@@ -43,15 +43,24 @@ export function stopRunning() {
     if (!cur) return
     mutate(done => {
         request("PATCH", `/time_entries/${cur.id}/stop`, null, r => {
+            // catch, not just finally: a malformed body must not skip
+            // done() (busy stuck until the next poll) or escape into
+            // the Soup dispatch
             try {
                 if (r.ok && r.json) {
                     // the response is authoritative: day total and resume
                     // targets update immediately, not at the next tick
                     const e = mapEntry(r.json)
+                    if (!e) {
+                        console.warn(`Harvest: stop: unparseable entry (status ${r.status})`)
+                        return
+                    }
                     todayMap.set(e.id, e)
                     refreshStoppedFromMap()
                     adoptRunning(null)
                 } else console.warn(`Harvest: stop failed (status ${r.status})`)
+            } catch (err) {
+                console.warn("Harvest: stop: bad response:", err)
             } finally {
                 done()
             }
@@ -69,11 +78,17 @@ export function pauseTimer() {
             try {
                 if (r.ok && r.json) {
                     const e = mapEntry(r.json)
+                    if (!e) {
+                        console.warn(`Harvest: pause: unparseable entry (status ${r.status})`)
+                        return
+                    }
                     setPaused(e)
                     todayMap.set(e.id, e)
                     refreshStoppedFromMap()
                     adoptRunning(null)
                 } else console.warn(`Harvest: pause failed (status ${r.status})`)
+            } catch (err) {
+                console.warn("Harvest: pause: bad response:", err)
             } finally {
                 done()
             }
@@ -101,10 +116,21 @@ function createEntry(
         body.started_time = GLib.DateTime.new_now_local().format(clockFmt())!.toLowerCase()
     }
     request("POST", "/time_entries", body, r => {
+        let ok = r.ok
         try {
-            if (r.ok && r.json) adoptRunning(mapEntry(r.json))
+            if (r.ok && r.json) {
+                const e = mapEntry(r.json)
+                if (e) adoptRunning(e)
+                else {
+                    ok = false
+                    console.warn(`Harvest: create: unparseable entry (status ${r.status})`)
+                }
+            }
+        } catch (err) {
+            ok = false
+            console.warn("Harvest: create: bad response:", err)
         } finally {
-            done(r.ok)
+            done(ok)
         }
     })
 }
@@ -131,6 +157,8 @@ export function addEntry(projectId: number, taskId: number, hours: number, notes
         request("POST", "/time_entries", body, r => {
             try {
                 if (!r.ok) console.warn(`Harvest: add entry failed (status ${r.status})`)
+            } catch (err) {
+                console.warn("Harvest: add entry: bad response:", err)
             } finally {
                 done()
             }
@@ -154,8 +182,13 @@ export function resumeEntry(entry: Entry) {
     mutate(done => {
         request("PATCH", `/time_entries/${entry.id}/restart`, null, r => {
             try {
-                if (r.ok && r.json) adoptRunning(mapEntry(r.json))
-                else console.warn(`Harvest: restart failed (status ${r.status})`)
+                if (r.ok && r.json) {
+                    const e = mapEntry(r.json)
+                    if (e) adoptRunning(e)
+                    else console.warn(`Harvest: restart: unparseable entry (status ${r.status})`)
+                } else console.warn(`Harvest: restart failed (status ${r.status})`)
+            } catch (err) {
+                console.warn("Harvest: restart: bad response:", err)
             } finally {
                 // a restart auto-stops any previously running entry
                 // server-side; resync to catch its final state
@@ -219,10 +252,18 @@ export function updateEntry(
     if (mutInFlight || authDisabled.peek()) return false
     mutate(done => {
         request("PATCH", `/time_entries/${entry.id}`, body, r => {
+            // onDone fires in the finally: a malformed body must not
+            // leave the caller's Save spinner (or dirty field) wedged
+            let ok = r.ok
             try {
                 if (r.ok && r.json) {
                     const e = mapEntry(r.json)
-                    if (e.isRunning) {
+                    if (!e) {
+                        ok = false
+                        console.warn(
+                            `Harvest: entry update: unparseable entry (status ${r.status})`,
+                        )
+                    } else if (e.isRunning) {
                         adoptRunning(e)
                         // keep the timeline's running row in sync too
                         if (e.spentDate === localDay()) {
@@ -235,8 +276,11 @@ export function updateEntry(
                         if (paused.peek()?.id === e.id) setPaused(e)
                     }
                 } else console.warn(`Harvest: entry update failed (status ${r.status})`)
-                onDone?.(r.ok)
+            } catch (err) {
+                ok = false
+                console.warn("Harvest: entry update: bad response:", err)
             } finally {
+                onDone?.(ok)
                 done()
             }
         })
@@ -272,15 +316,26 @@ export function setHours(entry: Entry, hours: number, onDone?: (ok: boolean) => 
             body.hours = hours
         }
         request("PATCH", `/time_entries/${entry.id}`, body, r => {
+            let ok = r.ok
             try {
                 if (r.ok && r.json) {
                     const e = mapEntry(r.json)
-                    if (e.spentDate === localDay()) todayMap.set(e.id, e)
-                    refreshStoppedFromMap()
-                    if (paused.peek()?.id === e.id) setPaused(e)
+                    if (!e) {
+                        ok = false
+                        console.warn(
+                            `Harvest: hours update: unparseable entry (status ${r.status})`,
+                        )
+                    } else {
+                        if (e.spentDate === localDay()) todayMap.set(e.id, e)
+                        refreshStoppedFromMap()
+                        if (paused.peek()?.id === e.id) setPaused(e)
+                    }
                 } else console.warn(`Harvest: hours update failed (status ${r.status})`)
-                onDone?.(r.ok)
+            } catch (err) {
+                ok = false
+                console.warn("Harvest: hours update: bad response:", err)
             } finally {
+                onDone?.(ok)
                 done()
             }
         })
@@ -304,6 +359,8 @@ export function deleteEntry(entry: Entry): boolean {
                     if (paused.peek()?.id === entry.id) setPaused(null)
                     if (running.peek()?.id === entry.id) adoptRunning(null)
                 } else console.warn(`Harvest: delete failed (status ${r.status})`)
+            } catch (err) {
+                console.warn("Harvest: delete: bad response:", err)
             } finally {
                 done()
             }
