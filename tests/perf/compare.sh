@@ -436,6 +436,9 @@ ABS="$(jq -rn --slurpfile base "$OUT/base.json" --slurpfile cur "$OUT/current.js
          else empty end),
         (if ((.metricsB.signals.live // 0) - (.metricsA.signals.live // 0)) > 2 then
            "live signals grow within the soak leg: A \(.metricsA.signals.live // 0) → B \(.metricsB.signals.live // 0) (>2 in 120s)"
+         else empty end),
+        (if ((.metricsB.process.rssKb // 0) - (.metricsA.process.rssKb // 0)) > 15000 then
+           "RSS grows within the soak leg: A \(.metricsA.process.rssKb // 0) kB → B \(.metricsB.process.rssKb // 0) kB (>15MB across the 120s rest — accumulation at idle)"
          else empty end)],
       # base readings — reported, never gated (a pre-fix base animates)
       [$b[] | select(idleish) |
@@ -493,6 +496,26 @@ else
         printf '%s\n' "$ABS" | sed 's/^/  /'
     fi
     [[ -n "$CAND_IDLE_FPS" ]] && echo "  idle frames/s (candidate): $CAND_IDLE_FPS"
+
+    # report-only: per-timer tick counts since the leg's reset, the
+    # runaway-poll detector (#340's class). Ticks are counted only in
+    # metrics mode; the deltas below span the rest plus window B, where
+    # the only legitimate ticks are the idle pollers (the 1s stats
+    # engines and friends) — anything ticking many times per second at
+    # idle is a loop that never rests
+    if grep -q '"scenario":"soak"' "$OUT/current.json" 2>/dev/null; then
+        jq -r '
+            .[] | select(.scenario == "soak") as $s |
+            (($s.waitSec // 0) + ($s.windowSec // 0)) as $span |
+            ([ ($s.metricsB.timers.byLabel // {}) | to_entries[]
+               | { label: .key,
+                   delta: ((.value.ticks // 0)
+                           - (($s.metricsA.timers.byLabel[.key].ticks // 0))) } ]
+             | sort_by(-.delta) | .[0:6][] | select(.delta > 0)
+             | "  tick \(.label)  +\(.delta) in \($span)s rest+window (report-only)")[]
+        ' "$OUT/current.json" 2>/dev/null || true
+    fi
+
     echo ""
     echo "  base:       $BASE_SHA"
     echo "  candidate:  $CANDIDATE_SHA (working tree)"
