@@ -44,7 +44,11 @@
   `exec`/`execAsync`/`timeoutAdd`/`timeoutAddSeconds`/`sourceRemove`/
   `connect`/`disconnect` wrappers instead of the ags/GLib originals.
   When the env var is unset the wrappers ARE the original functions —
-  zero added work on hot paths.
+  zero added work on hot paths — except the timer wrappers, whose
+  callbacks always run through the tick guard: GJS removes a source
+  whose callback throws, so without it one bad tick froze that poll
+  loop for the rest of the session (five consecutive failures retire
+  it loudly instead).
 
 ## Notifications: two surfaces, one shape
 

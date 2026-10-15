@@ -1,6 +1,13 @@
 // Exercises the metrics wrappers, then queries the "metrics" command
 // through the real CommandRegistry and prints the responses, so
 // metrics.test.ts can assert them per scenario (env-controlled).
+//
+// WAM_PROBE_THROW_TIMER=<n> switches to the tick-guard scenarios
+// instead: a 30ms timer whose callback throws n times before
+// succeeding (n=0: never succeeds). Prints
+//   THROWS {"calls": <n>}
+// once from the timer (survived) or from a 2s watchdog (the only way
+// the never-succeeds case terminates, if the guard retired it).
 import GLib from "gi://GLib?version=2.0"
 import GObject from "gi://GObject?version=2.0"
 import CommandRegistry from "../src/lib/commandRegistry"
@@ -15,42 +22,72 @@ import {
     trackHttp,
 } from "../src/lib/metrics"
 
-exec("true")
-execAsync("true")
+const throwBudget = GLib.getenv("WAM_PROBE_THROW_TIMER")
 
-timeoutAdd("probe:oneshot", GLib.PRIORITY_DEFAULT, 60000, () => GLib.SOURCE_REMOVE)
-const removed = timeoutAdd("probe:oneshot", GLib.PRIORITY_DEFAULT, 60000, () => GLib.SOURCE_REMOVE)
-timeoutAddSeconds("probe:seconds", GLib.PRIORITY_DEFAULT, 60, () => GLib.SOURCE_REMOVE)
-sourceRemove(removed)
-
-const obj = new GObject.Object()
-connect(obj, "notify", () => {})
-const gone = connect(obj, "notify", () => {})
-disconnect(obj, gone)
-
-trackHttp("https://api.example.com/v1/x", 512)
-trackHttp("https://api.example.com/v1/y", 256)
-
-const registry = CommandRegistry.get_default()
-const loop = new GLib.MainLoop(null, false)
-
-registry
-    .execute(["metrics"])
-    .then(snap => {
-        print("SNAP " + snap)
-        return registry.execute(["metrics", "reset"])
-    })
-    .then(reset => {
-        print("RESET " + reset)
-        return registry.execute(["metrics"])
-    })
-    .then(snap2 => {
-        print("SNAP2 " + snap2)
+if (throwBudget !== null) {
+    const budget = Number(throwBudget)
+    let calls = 0
+    const loop = new GLib.MainLoop(null, false)
+    timeoutAdd("probe:throw", GLib.PRIORITY_DEFAULT, 30, () => {
+        calls++
+        if (budget === 0 || calls <= budget) throw new Error(`probe throw ${calls}`)
+        print(`THROWS {"calls": ${calls}}`) // survived the strikes
         loop.quit()
+        return false
     })
-    .catch(e => {
-        printerr("probe failed:", e)
+    timeoutAddSeconds("probe:watchdog", GLib.PRIORITY_DEFAULT, 2, () => {
+        print(`THROWS {"calls": ${calls}}`) // the guard retired it (or it ran away)
         loop.quit()
+        return false
     })
+    loop.run()
+} else {
+    scenario()
+}
 
-loop.run()
+function scenario() {
+    exec("true")
+    execAsync("true")
+
+    timeoutAdd("probe:oneshot", GLib.PRIORITY_DEFAULT, 60000, () => GLib.SOURCE_REMOVE)
+    const removed = timeoutAdd(
+        "probe:oneshot",
+        GLib.PRIORITY_DEFAULT,
+        60000,
+        () => GLib.SOURCE_REMOVE,
+    )
+    timeoutAddSeconds("probe:seconds", GLib.PRIORITY_DEFAULT, 60, () => GLib.SOURCE_REMOVE)
+    sourceRemove(removed)
+
+    const obj = new GObject.Object()
+    connect(obj, "notify", () => {})
+    const gone = connect(obj, "notify", () => {})
+    disconnect(obj, gone)
+
+    trackHttp("https://api.example.com/v1/x", 512)
+    trackHttp("https://api.example.com/v1/y", 256)
+
+    const registry = CommandRegistry.get_default()
+    const loop = new GLib.MainLoop(null, false)
+
+    registry
+        .execute(["metrics"])
+        .then(snap => {
+            print("SNAP " + snap)
+            return registry.execute(["metrics", "reset"])
+        })
+        .then(reset => {
+            print("RESET " + reset)
+            return registry.execute(["metrics"])
+        })
+        .then(snap2 => {
+            print("SNAP2 " + snap2)
+            loop.quit()
+        })
+        .catch(e => {
+            printerr("probe failed:", e)
+            loop.quit()
+        })
+
+    loop.run()
+}
