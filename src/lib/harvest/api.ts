@@ -139,7 +139,15 @@ export function request(method: string, path: string, body: any, cb: (r: Reply) 
         if (!reply.ok && !reply.authFailed) {
             console.warn(`Harvest: ${method} ${path} -> ${reply.status || "network error"}`)
         }
-        cb(reply)
+        // a consumer callback that throws must not escape into the Soup
+        // completion (logged far from the request, the consumer's own
+        // remaining logic skipped): same containment as the reply
+        // builders above
+        try {
+            cb(reply)
+        } catch (e) {
+            console.warn(`Harvest: ${method} ${path}: reply handler failed:`, e)
+        }
     })
 }
 
