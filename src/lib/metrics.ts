@@ -85,6 +85,14 @@ function bucketFor(label: string): TimerBucket {
     return b
 }
 
+// per-tick increment looks the bucket up in the map: a closure over
+// the object would keep writing into a bucket `metrics reset` already
+// replaced, and the fresh bucket would read zero ticks forever
+function ticked(label: string) {
+    const b = timers.get(label)
+    if (b) b.ticks++
+}
+
 function timerCreated(label: string, id: number) {
     const b = bucketFor(label)
     b.created++
@@ -145,7 +153,6 @@ function guardTicks(
 
 export const timeoutAdd = ENABLED
     ? (label: string, priority: number, interval: number, fn: () => boolean): number => {
-          const bucket = bucketFor(label)
           let id = 0
           id = GLib.timeout_add(
               priority,
@@ -154,9 +161,7 @@ export const timeoutAdd = ENABLED
                   label,
                   fn,
                   () => timerGone(id),
-                  () => {
-                      bucket.ticks++
-                  },
+                  () => ticked(label),
               ),
           )
           timerCreated(label, id)
@@ -171,7 +176,6 @@ export const timeoutAdd = ENABLED
 
 export const timeoutAddSeconds = ENABLED
     ? (label: string, priority: number, interval: number, fn: () => boolean): number => {
-          const bucket = bucketFor(label)
           let id = 0
           id = GLib.timeout_add_seconds(
               priority,
@@ -180,9 +184,7 @@ export const timeoutAddSeconds = ENABLED
                   label,
                   fn,
                   () => timerGone(id),
-                  () => {
-                      bucket.ticks++
-                  },
+                  () => ticked(label),
               ),
           )
           timerCreated(label, id)
@@ -197,7 +199,6 @@ export const timeoutAddSeconds = ENABLED
 
 export const idleAdd = ENABLED
     ? (label: string, priority: number, fn: () => boolean): number => {
-          const bucket = bucketFor(label)
           let id = 0
           id = GLib.idle_add(
               priority,
@@ -205,9 +206,7 @@ export const idleAdd = ENABLED
                   label,
                   fn,
                   () => timerGone(id),
-                  () => {
-                      bucket.ticks++
-                  },
+                  () => ticked(label),
               ),
           )
           timerCreated(label, id)
