@@ -89,11 +89,11 @@ export const rememberedPlayers = createComputed(() => {
 // every deferred source.
 const forgetSources = new Set<number>()
 
-/** drop a player from the recency memory (middle-click on a switcher
- *  row): a blank one leaves the switchers outright, an eligible one
- *  falls back to bus-order listing, and the next PLAYING transition
- *  remembers it afresh — forgetting is not exclusion. Deferred one
- *  idle turn; callers are click handlers. */
+/** drop a player from the switchers outright (middle-click on a
+ *  switcher row): remembered or merely eligible, it is not listed
+ *  again until its next PLAYING transition — forgetting is not
+ *  exclusion (remember_excluded is). Deferred one idle turn; callers
+ *  are click handlers. */
 export function forgetRecentPlayer(p: AstalMpris.Player) {
     const src = idleAdd("mpris:recentForget", GLib.PRIORITY_DEFAULT_IDLE, () => {
         forgetSources.delete(src)

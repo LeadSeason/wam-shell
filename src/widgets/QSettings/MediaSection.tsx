@@ -195,8 +195,8 @@ function Player({ player }: { player: AstalMpris.Player }) {
                             })}
                             tooltipText={createComputed(() =>
                                 eligiblePlayers().includes(p)
-                                    ? `${p.identity} — middle-click to remove`
-                                    : `${p.identity} — no track loaded, click to focus, middle-click to remove`,
+                                    ? `${p.identity}${Config.media.rememberPlayers ? " — middle-click to remove" : ""}`
+                                    : `${p.identity} — no track loaded, click to focus`,
                             )}
                         >
                             <Gtk.GestureClick

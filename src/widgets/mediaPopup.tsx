@@ -81,11 +81,12 @@ function SwitcherButton({ p }: { p: AstalMpris.Player }) {
                 ...(activePlayer() === p ? ["active"] : []),
                 ...(stale() ? ["stale"] : []),
             ])}
-            tooltipText={stale.as(s =>
-                s
-                    ? `${p.identity} — no track loaded, click to focus, middle-click to remove`
-                    : `${p.identity} — middle-click to remove`,
-            )}
+            tooltipText={createComputed(() => {
+                const hint = Config.media.rememberPlayers ? " — middle-click to remove" : ""
+                return stale()
+                    ? `${p.identity} — no track loaded, click to focus${hint}`
+                    : `${p.identity}${hint}`
+            })}
             onClicked={() => {
                 if (stale.peek()) {
                     raisePlayer(p)

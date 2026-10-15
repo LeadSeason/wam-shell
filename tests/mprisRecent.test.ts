@@ -161,14 +161,15 @@ test("recent: exclusion is applied at derive time", () => {
     )
 })
 
-test("recent: forget drops a player from the memory", () => {
+test("recent: forget removes a player from the switchers outright", () => {
     const a = player("a")
     const b = player("b")
     const store = createRecentStore<typeof a>()
     store.bump(a, 300)
     store.bump(b, 100)
     store.forget(a)
-    // a is un-remembered: a blank player (keep=false) leaves outright
+    // gone whether it would list as remembered or merely eligible —
+    // removal is outright, not a fall back to the tail
     eq(
         names(
             store.ordered(
@@ -179,7 +180,6 @@ test("recent: forget drops a player from the memory", () => {
         ),
         ["b"],
     )
-    // an eligible forgotten player falls back to bus order at the tail
     eq(
         names(
             store.ordered(
@@ -188,9 +188,10 @@ test("recent: forget drops a player from the memory", () => {
                 () => true,
             ),
         ),
-        ["b", "a"],
+        ["b"],
     )
-    // forgetting is not exclusion: the next play remembers it afresh
+    // playing again undoes the forget: back, remembered afresh, even
+    // though its keep() state has not changed
     store.bump(a, 400)
     eq(
         names(
@@ -198,6 +199,16 @@ test("recent: forget drops a player from the memory", () => {
                 [a, b],
                 () => true,
                 () => false,
+            ),
+        ),
+        ["a", "b"],
+    )
+    eq(
+        names(
+            store.ordered(
+                [a, b],
+                () => true,
+                () => true,
             ),
         ),
         ["a", "b"],

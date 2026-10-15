@@ -263,9 +263,9 @@
 #           checks and would otherwise drop out of the switchers while
 #           the player is still alive on the bus. Ordered most recently
 #           played first. Private windows are never remembered, and an
-#           entry leaves the memory when its player quits, or on
-#           middle-click in a switcher (playing again remembers it
-#           afresh). default true
+#           entry leaves the memory when its player quits; middle-click
+#           in a switcher removes a player from the switchers outright
+#           until it plays again. default true
 # remember_excluded - players never remembered (only read when
 #           remember_players is on): case-insensitive substrings
 #           matched against the player identity and desktop entry, e.g.
