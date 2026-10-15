@@ -99,6 +99,12 @@ const forgetSources = new Set<number>()
  *  the same crossing-event hazard that got the banner removals
  *  deferred applies to it. */
 export function forgetRecentPlayer(p: AstalMpris.Player) {
+    // remember_players off: the media UI is eligibility-only and the
+    // tooltips do not offer removal — and it must not be available
+    // anyway, because the un-hide path is startedPlaying's bump, which
+    // is gated on the same flag: a hide here would outlive the session
+    // with no way back
+    if (!Config.media.rememberPlayers) return
     p.pause()
     const src = idleAdd("mpris:recentForget", GLib.PRIORITY_DEFAULT_IDLE, () => {
         forgetSources.delete(src)

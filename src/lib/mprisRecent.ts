@@ -65,9 +65,10 @@ export interface RecentStore<P> {
      * dead GObject behind in the map.
      */
     ordered(live: P[], remembered: (p: P) => boolean, keep: (p: P) => boolean): P[]
-    /** drop a player from the switchers outright (middle-click on a
-     *  switcher row): remembered or merely eligible, it is not listed
-     *  again until it plays (bump) or — never, if it quits first */
+    /** drop a player from the listing outright: remembered or merely
+     *  eligible, it is not listed again until it plays (bump) — or
+     *  never, if it quits first. Policy (pausing on removal) lives
+     *  with the callers; the store is pure memory */
     forget(p: P): void
     /** is this player currently forgotten (see forget)? */
     isHidden(p: P): boolean

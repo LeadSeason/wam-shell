@@ -32,9 +32,10 @@ import { isRtl } from "../../lib/utils"
 import { pressable } from "../pressable"
 
 // middle-click anywhere on the card (or on one of its strip segments)
-// removes that player from the media UI outright — strip, popup and
-// the card itself (pick() skips forgotten players; see forgetRecentPlayer
-// in lib/mpris). The next PLAYING transition brings it back
+// pauses and removes that player from the media UI outright — strip,
+// popup and the card itself (pick() skips forgotten players; see
+// forgetRecentPlayer in lib/mpris). The next PLAYING transition, in
+// the app itself, brings it back
 function forgetAndAdvance(p: AstalMpris.Player) {
     forgetRecentPlayer(p)
 }
@@ -232,10 +233,9 @@ function Player({ player }: { player: AstalMpris.Player }) {
                                     overrideActivePlayer(p)
                                 }}
                             />
-                            {/* middle-click: drop the player from the
-                            recency memory (a blank segment leaves the
-                            strip outright, an eligible one falls back to
-                            bus order) */}
+                            {/* middle-click: pause and remove this
+                            player from the media UI (see
+                            forgetRecentPlayer in lib/mpris) */}
                             <Gtk.GestureClick
                                 button={2}
                                 onPressed={g => {
