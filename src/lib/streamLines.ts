@@ -10,7 +10,19 @@ import Gio from "gi://Gio?version=2.0"
 const streamedChildren = new Set<Gio.Subprocess>()
 
 export function forceExitStreamedChildren() {
-    streamedChildren.forEach(p => p.force_exit())
+    // per child, not one guard around the loop: a child whose force_exit
+    // already errored (double shutdown, dead pid) must not strand the
+    // rest of the pipe holders — and app.tsx runs this before
+    // runDisposers, so one throw here would skip EVERY module's dispose
+    // (the exact failure lib/lifecycle's per-disposer guard exists for)
+    streamedChildren.forEach(proc => {
+        try {
+            proc.force_exit()
+        } catch (e) {
+            console.warn("streamLines: force_exit failed during shutdown:", e)
+        }
+    })
+    streamedChildren.clear()
 }
 
 /**
