@@ -44,8 +44,8 @@ test("metrics: wrappers feed the counters when enabled", () => {
     eq(snap.subprocesses.true.count, 2, "exec + execAsync of true")
     eq(typeof snap.subprocesses.true.blockingMs, "number", "blockingMs recorded")
 
-    eq(snap.timers.byLabel["probe:oneshot"], { created: 2, alive: 1 }, "oneshot timers")
-    eq(snap.timers.byLabel["probe:seconds"], { created: 1, alive: 1 }, "seconds timer")
+    eq(snap.timers.byLabel["probe:oneshot"], { created: 2, alive: 1, ticks: 0 }, "oneshot timers")
+    eq(snap.timers.byLabel["probe:seconds"], { created: 1, alive: 1, ticks: 0 }, "seconds timer")
     eq(snap.timers.totalCreated, 3, "timers.totalCreated")
     eq(snap.timers.alive, 2, "timers.alive")
 

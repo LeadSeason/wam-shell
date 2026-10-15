@@ -74,17 +74,22 @@ export const execAsync: typeof agsExecAsync = ENABLED
 interface TimerBucket {
     created: number
     alive: number
+    ticks: number // total callback invocations (enabled mode only)
 }
 const timers = new Map<string, TimerBucket>()
 const timerLabels = new Map<number, string>() // source id -> label
 
-function timerCreated(label: string, id: number): number {
+function bucketFor(label: string): TimerBucket {
     let b = timers.get(label)
-    if (!b) timers.set(label, (b = { created: 0, alive: 0 }))
+    if (!b) timers.set(label, (b = { created: 0, alive: 0, ticks: 0 }))
+    return b
+}
+
+function timerCreated(label: string, id: number) {
+    const b = bucketFor(label)
     b.created++
     b.alive++
     timerLabels.set(id, label)
-    return id
 }
 
 function timerGone(id: number) {
@@ -107,7 +112,12 @@ function timerGone(id: number) {
 // GLib functions (only the timer ones — exec/connect stay zero-cost).
 const TICK_STRIKES = 5
 
-function guardTicks(label: string, fn: () => boolean, onEnd: () => void): () => boolean {
+function guardTicks(
+    label: string,
+    fn: () => boolean,
+    onEnd: () => void,
+    onTick?: () => void,
+): () => boolean {
     let strikes = 0
     return () => {
         let again: boolean
@@ -127,6 +137,7 @@ function guardTicks(label: string, fn: () => boolean, onEnd: () => void): () => 
             console.error(`timer ${label}: tick failed (${strikes}/${TICK_STRIKES}):`, e)
             again = true // a transient failure is not a reason to die
         }
+        onTick?.()
         if (!again) onEnd()
         return again
     }
@@ -134,13 +145,22 @@ function guardTicks(label: string, fn: () => boolean, onEnd: () => void): () => 
 
 export const timeoutAdd = ENABLED
     ? (label: string, priority: number, interval: number, fn: () => boolean): number => {
+          const bucket = bucketFor(label)
           let id = 0
           id = GLib.timeout_add(
               priority,
               interval,
-              guardTicks(label, fn, () => timerGone(id)),
+              guardTicks(
+                  label,
+                  fn,
+                  () => timerGone(id),
+                  () => {
+                      bucket.ticks++
+                  },
+              ),
           )
-          return timerCreated(label, id)
+          timerCreated(label, id)
+          return id
       }
     : (label: string, priority: number, interval: number, fn: () => boolean): number =>
           GLib.timeout_add(
@@ -151,13 +171,22 @@ export const timeoutAdd = ENABLED
 
 export const timeoutAddSeconds = ENABLED
     ? (label: string, priority: number, interval: number, fn: () => boolean): number => {
+          const bucket = bucketFor(label)
           let id = 0
           id = GLib.timeout_add_seconds(
               priority,
               interval,
-              guardTicks(label, fn, () => timerGone(id)),
+              guardTicks(
+                  label,
+                  fn,
+                  () => timerGone(id),
+                  () => {
+                      bucket.ticks++
+                  },
+              ),
           )
-          return timerCreated(label, id)
+          timerCreated(label, id)
+          return id
       }
     : (label: string, priority: number, interval: number, fn: () => boolean): number =>
           GLib.timeout_add_seconds(
@@ -168,12 +197,21 @@ export const timeoutAddSeconds = ENABLED
 
 export const idleAdd = ENABLED
     ? (label: string, priority: number, fn: () => boolean): number => {
+          const bucket = bucketFor(label)
           let id = 0
           id = GLib.idle_add(
               priority,
-              guardTicks(label, fn, () => timerGone(id)),
+              guardTicks(
+                  label,
+                  fn,
+                  () => timerGone(id),
+                  () => {
+                      bucket.ticks++
+                  },
+              ),
           )
-          return timerCreated(label, id)
+          timerCreated(label, id)
+          return id
       }
     : (label: string, priority: number, fn: () => boolean): number =>
           GLib.idle_add(
@@ -417,8 +455,10 @@ CommandRegistry.get_default().register({
   Returns a single line of JSON with counters (subprocesses, timers,
   signal handlers, http), process facts (pid, RSS, fds, context
   switches, cpuTicks) and frames (rendered frames on the probed bar
-  since the last reset — the frame-clock sleep check). Counters are
-  collected only when the shell was started with WAM_SHELL_METRICS=1.
+  since the last reset — the frame-clock sleep check). Timer buckets
+  carry a per-label ticks count (callback invocations since the last
+  reset; the runaway-poll detector). Counters are collected only when
+  the shell was started with WAM_SHELL_METRICS=1.
   Note: the response is prefixed with "<instance>: "; JSON starts at
   the first "{".
 metrics reset
