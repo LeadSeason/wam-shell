@@ -53,6 +53,23 @@ connect(app, "shutdown", () => {
     runDisposers()
 })
 
+// Signals must reach the GTK shutdown path, or the streamed children
+// never get reaped: every death that bypasses the shutdown hook
+// orphans obscura status --follow, nmcli monitor and mullvad status
+// listen — three generations of exactly those orphans were sitting on
+// this machine (ppid 1, one per restart), each holding its daemon
+// connection open. ags quit does not deliver the shutdown signal on
+// its own (verified: a fresh instance quit via `ags quit` left its
+// follow child alive), so the POSIX signals are wired here explicitly.
+// SIGHUP: the dev shell runs in a terminal — closing it must count as
+// a clean death too.
+for (const signal of [GLib.SIGTERM, GLib.SIGINT, GLib.SIGHUP]) {
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal, () => {
+        app.quit()
+        return GLib.SOURCE_REMOVE
+    })
+}
+
 function matchMonitor(wanted: string[], m: Gdk.Monitor): boolean {
     if (wanted.length === 0) return true
     const conn = m.get_connector() ?? ""
