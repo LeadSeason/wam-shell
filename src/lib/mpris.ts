@@ -98,8 +98,11 @@ export function forgetRecentPlayer(p: AstalMpris.Player) {
     const src = idleAdd("mpris:recentForget", GLib.PRIORITY_DEFAULT_IDLE, () => {
         forgetSources.delete(src)
         recentStore.forget(p)
-        // the recency map is not tracked; the bump re-runs the
-        // rememberedPlayers computed and the row goes away
+        // pick() must re-run now that the player is hidden: if it owned
+        // the card, the card moves to the next player — or disappears
+        // when none is left. Removal is from the card as much as from
+        // the switchers
+        pick()
         bumpElig(eligVersion.peek() + 1)
         return GLib.SOURCE_REMOVE
     })
@@ -122,9 +125,10 @@ export function overrideActivePlayer(player: AstalMpris.Player | null) {
 }
 
 /** cycle the active player through the eligible ones (scroll on the
- *  panel pill); a no-op with fewer than two */
+ *  panel pill); a no-op with fewer than two. Forgotten players
+ *  (recentStore) are not cycled to — removal is removal */
 export function cycleActivePlayer(direction: 1 | -1) {
-    const eligible = players.peek().filter(isEligible)
+    const eligible = players.peek().filter(p => isEligible(p) && !recentStore.isHidden(p))
     if (eligible.length < 2) return
     const current = activePlayer.peek()
     const i = current ? eligible.indexOf(current) : -1
@@ -496,7 +500,12 @@ refreshPlayingPlayers()
 
 function pick() {
     const override = overridePlayer.peek()
-    const eligible = players.peek().filter(isEligible)
+    // forgotten players (middle-click removal) are not picked either:
+    // removal is from the card as much as from the switchers — a
+    // removed player that stays eligible would otherwise keep owning
+    // the card. It returns via startedPlaying (bump clears the hidden
+    // set) the next time it actually plays
+    const eligible = players.peek().filter(p => isEligible(p) && !recentStore.isHidden(p))
     // release pins on players that went away instead of retaining them
     if (override && !eligible.includes(override)) setOverride(null)
     if (lastPlaying && !eligible.includes(lastPlaying)) lastPlaying = null

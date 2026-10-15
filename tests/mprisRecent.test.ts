@@ -168,6 +168,8 @@ test("recent: forget removes a player from the switchers outright", () => {
     store.bump(a, 300)
     store.bump(b, 100)
     store.forget(a)
+    eq(store.isHidden(a), true)
+    eq(store.isHidden(b), false)
     // gone whether it would list as remembered or merely eligible —
     // removal is outright, not a fall back to the tail
     eq(
@@ -193,6 +195,7 @@ test("recent: forget removes a player from the switchers outright", () => {
     // playing again undoes the forget: back, remembered afresh, even
     // though its keep() state has not changed
     store.bump(a, 400)
+    eq(store.isHidden(a), false)
     eq(
         names(
             store.ordered(

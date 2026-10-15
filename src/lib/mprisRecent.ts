@@ -69,6 +69,8 @@ export interface RecentStore<P> {
      *  switcher row): remembered or merely eligible, it is not listed
      *  again until it plays (bump) or — never, if it quits first */
     forget(p: P): void
+    /** is this player currently forgotten (see forget)? */
+    isHidden(p: P): boolean
     /** forget everything (shutdown) */
     clear(): void
 }
@@ -109,6 +111,10 @@ export function createRecentStore<P>(): RecentStore<P> {
         forget(p) {
             playedAt.delete(p)
             hidden.add(p)
+        },
+
+        isHidden(p) {
+            return hidden.has(p)
         },
 
         clear() {

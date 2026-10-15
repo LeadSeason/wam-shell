@@ -32,15 +32,11 @@ import { isRtl } from "../../lib/utils"
 import { pressable } from "../pressable"
 
 // middle-click anywhere on the card (or on one of its strip segments)
-// removes that player from the switchers outright; if it is the player
-// the card is showing, the card advances to another one so the removal
-// is visible (with no other player there is nothing to advance to —
-// the card keeps showing it, the strip just loses its segment)
+// removes that player from the media UI outright — strip, popup and
+// the card itself (pick() skips forgotten players; see forgetRecentPlayer
+// in lib/mpris). The next PLAYING transition brings it back
 function forgetAndAdvance(p: AstalMpris.Player) {
     forgetRecentPlayer(p)
-    if (activePlayer.peek() === p) {
-        overrideActivePlayer(eligiblePlayers.peek().find(q => q !== p) ?? null)
-    }
 }
 
 function MediaButton({
