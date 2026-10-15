@@ -8,6 +8,7 @@ import CommandRegistry from "../lib/requestHandler"
 import { hideOnFocusLoss } from "../lib/popupFocus"
 import { registerPopup, closeOtherPopups } from "../lib/exclusivePopups"
 import { execAsync, timeoutAdd, sourceRemove } from "../lib/metrics"
+import { notify } from "../lib/notify"
 import { confirmDialog } from "./dialog"
 
 // The session menu: everything that ends the session, in one place.
@@ -202,7 +203,19 @@ async function activate(action: Action) {
         })
         if (!ok) return
     }
-    action.run()
+    // a failed action is user-visible, not a silent unhandled rejection:
+    // the menu is gone by now (hide() above), a banner is the only
+    // surface left to say why nothing happened
+    try {
+        action.run()
+    } catch (e) {
+        console.error(`session menu: ${action.id} failed:`, e)
+        notify({
+            summary: `${action.label} failed`,
+            body: String(e),
+            icon: "dialog-error-symbolic",
+        })
+    }
 }
 
 function onKey(_e: Gtk.EventControllerKey, keyValue: number) {

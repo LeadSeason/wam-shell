@@ -32,6 +32,48 @@ let writeCounter = 0
 // path -> tail of that path's write chain
 const writeChains = new Map<string, Promise<unknown>>()
 
+// A crashed process leaves its tmp behind (killed between create and
+// rename/unlink — the failed-write path never runs). Sweep those on a
+// once-per-hour budget: a sibling tmp older than an hour cannot belong
+// to a live write (write → rename is sub-second), so it is a corpse.
+let lastSweep = 0
+
+/** test hook: the sweep runs at most once per hour per process */
+export function resetTmpSweepForTest() {
+    lastSweep = 0
+}
+
+function sweepStaleTmp(path: string) {
+    const now = Date.now()
+    if (now - lastSweep < 3_600_000) return
+    lastSweep = now
+    try {
+        const dir = GLib.path_get_dirname(path)
+        const prefix = `${GLib.path_get_basename(path)}.tmp-`
+        const e = Gio.File.new_for_path(dir).enumerate_children(
+            "standard::name,time::modified",
+            Gio.FileQueryInfoFlags.NONE,
+            null,
+        )
+        for (let info = e.next_file(null); info !== null; info = e.next_file(null)) {
+            const name = info.get_name()
+            if (!name.startsWith(prefix)) continue
+            // unreadable mtime (0): leave the file, next sweep retries
+            const mtimeMs = info.get_attribute_uint64("time::modified") * 1000
+            if (mtimeMs !== 0 && now - mtimeMs < 3_600_000) continue
+            const child = Gio.File.new_for_path(`${dir}/${name}`)
+            try {
+                child.delete(null)
+            } catch {
+                /* another instance swept it first */
+            }
+        }
+        e.close(null)
+    } catch {
+        /* no dir yet, unreadable: nothing to sweep */
+    }
+}
+
 function replaceContentsAsync(
     file: Gio.File,
     bytes: Uint8Array,
@@ -78,6 +120,7 @@ export function writeFileAtomic(
             // g_rename fails silently (target is a directory, ...) —
             // treat that as a failed write, don't report success
             if (GLib.rename(tmp, path) !== 0) throw new Error(`rename failed: ${tmp} -> ${path}`)
+            sweepStaleTmp(path)
         } catch (e) {
             GLib.unlink(tmp) // don't leak the tmp of a failed write
             throw e

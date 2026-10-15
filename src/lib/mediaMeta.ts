@@ -89,18 +89,23 @@ export function enrichedMeta(player: AstalMpris.Player): EnrichedMeta {
         const key = `${art.peek()}\n${t}`
         if (lookedUp !== key) {
             lookedUp = key
-            recentPagesForTitle(t).then(rows => {
-                const found = rows
-                    .map(r => seriesFromTabTitle(r.title))
-                    // a derived name that still carries the track title
-                    // isolated nothing ("Video Title - YouTube" is not a
-                    // series), so reject it
-                    .find(s => s && !s.toLowerCase().includes(t.toLowerCase()))
-                if (lookedUp === key) {
-                    series = found ?? ""
-                    sync()
-                }
-            })
+            recentPagesForTitle(t)
+                .then(rows => {
+                    const found = rows
+                        .map(r => seriesFromTabTitle(r.title))
+                        // a derived name that still carries the track title
+                        // isolated nothing ("Video Title - YouTube" is not a
+                        // series), so reject it
+                        .find(s => s && !s.toLowerCase().includes(t.toLowerCase()))
+                    if (lookedUp === key) {
+                        series = found ?? ""
+                        sync()
+                    }
+                })
+                // recentPagesForTitle's execs each swallow their own
+                // errors today; the catch is the contract, not the
+                // implementation — a rejection keeps the old series
+                .catch(e => console.warn("mediaMeta: recent pages lookup failed:", e))
         }
         sync()
     }

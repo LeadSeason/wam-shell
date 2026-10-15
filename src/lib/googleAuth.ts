@@ -299,7 +299,13 @@ export function googleRequest(
         } catch (e) {
             reply = { ok: false, status: 0, json: null }
         }
-        cb(reply)
+        // containment as in httpJson/harvest api: a consumer callback
+        // that throws must not escape into the Soup completion
+        try {
+            cb(reply)
+        } catch (e) {
+            console.warn("googleAuth: reply handler failed:", e)
+        }
     })
 }
 
@@ -727,7 +733,13 @@ export function createGoogleAuth(opts: {
         // wait for it instead of refreshing with an empty token
         const fill = fillWaiters.get(account.email)
         if (fill) {
-            void fill.then(() => ensureAccessToken(account, cb))
+            // the fill is not expected to reject (secretLookup swallows
+            // its own errors), but leaving this chain unhandled would
+            // strand the caller's callback with no word either way
+            void fill.then(
+                () => ensureAccessToken(account, cb),
+                () => cb(null),
+            )
             return
         }
         const waiters = refreshInFlight.get(account.email)

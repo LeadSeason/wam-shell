@@ -157,7 +157,14 @@ export function createJsonClient(opts: JsonClientOptions) {
                     `${opts.logTag}: ${method} ${path.split("?")[0]} -> ${reply.status || "network error"}`,
                 )
             }
-            cb(reply)
+            // a consumer callback that throws must not escape into the
+            // Soup completion: logged far from the request, and the
+            // consumer's own remaining logic skipped
+            try {
+                cb(reply)
+            } catch (e) {
+                console.warn(`${opts.logTag}: ${method} ${path}: reply handler failed:`, e)
+            }
         })
     }
 }
