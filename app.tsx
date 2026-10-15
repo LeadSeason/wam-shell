@@ -56,15 +56,18 @@ connect(app, "shutdown", () => {
 // Signals must reach the GTK shutdown path, or the streamed children
 // never get reaped: every death that bypasses the shutdown hook
 // orphans obscura status --follow, nmcli monitor and mullvad status
-// listen — three generations of exactly those orphans were sitting on
-// this machine (ppid 1, one per restart), each holding its daemon
-// connection open. ags quit does not deliver the shutdown signal on
-// its own (verified: a fresh instance quit via `ags quit` left its
-// follow child alive), so the POSIX signals are wired here explicitly.
-// SIGHUP: the dev shell runs in a terminal — closing it must count as
-// a clean death too.
-for (const signal of [GLib.SIGTERM, GLib.SIGINT, GLib.SIGHUP]) {
-    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal, () => {
+// listen — ~340 such orphans (one mullvad/nmcli pair per dead shell,
+// spanning days) were sitting on this machine. ags quit does not
+// deliver the GTK shutdown signal on its own, so the POSIX signals are
+// wired here explicitly. SIGHUP: the dev shell runs in a terminal —
+// closing it must count as a clean death too.
+// The signal numbers are literal: GLib's introspection does not export
+// SIGTERM/SIGINT/SIGHUP as namespace constants, and passing undefined
+// fails g_unix_signal_source_new's assertion — the source silently
+// never attaches (verified: this exact bug shipped once).
+// SIGTERM=15, SIGINT=2, SIGHUP=1.
+for (const signum of [15, 2, 1]) {
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signum, () => {
         app.quit()
         return GLib.SOURCE_REMOVE
     })
