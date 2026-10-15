@@ -82,6 +82,44 @@ export const rememberedPlayers = createComputed(() => {
     return recentStore.ordered(list, notExcluded, p => isEligible(p) && notExcluded(p))
 })
 
+// forget sources armed from click handlers. The update tears the
+// clicked row down under the pointer, so it must not run mid-dispatch —
+// the same crossing-event hazard that got the banner removals deferred
+// one idle turn (lib/notifd). Tracked and cleared in dispose, like
+// every deferred source.
+const forgetSources = new Set<number>()
+
+/** drop a player from the media UI outright (middle-click on the card
+ *  or a switcher row): strip, popup and the card itself stop listing
+ *  or showing it, and it is PAUSED — a removed player must not keep
+ *  playing with no card left to stop it. The next PLAYING transition
+ *  (in the app itself) un-hides and re-remembers it. The pause is a
+ *  dbus call, not a widget mutation, so it happens right here in the
+ *  click handler; the UI teardown is deferred one idle turn below —
+ *  the same crossing-event hazard that got the banner removals
+ *  deferred applies to it. */
+export function forgetRecentPlayer(p: AstalMpris.Player) {
+    // remember_players off: the media UI is eligibility-only and the
+    // tooltips do not offer removal — and it must not be available
+    // anyway, because the un-hide path is startedPlaying's bump, which
+    // is gated on the same flag: a hide here would outlive the session
+    // with no way back
+    if (!Config.media.rememberPlayers) return
+    p.pause()
+    const src = idleAdd("mpris:recentForget", GLib.PRIORITY_DEFAULT_IDLE, () => {
+        forgetSources.delete(src)
+        recentStore.forget(p)
+        // pick() must re-run now that the player is hidden: if it owned
+        // the card, the card moves to the next player — or disappears
+        // when none is left. Removal is from the card as much as from
+        // the switchers
+        pick()
+        bumpElig(eligVersion.peek() + 1)
+        return GLib.SOURCE_REMOVE
+    })
+    if (src) forgetSources.add(src)
+}
+
 // the player shown everywhere: sticky — stays on the current player
 // until it goes away or another player starts playing (the most recent
 // one wins). A manual pick via the popup switcher or scroll cycling
@@ -98,9 +136,10 @@ export function overrideActivePlayer(player: AstalMpris.Player | null) {
 }
 
 /** cycle the active player through the eligible ones (scroll on the
- *  panel pill); a no-op with fewer than two */
+ *  panel pill); a no-op with fewer than two. Forgotten players
+ *  (recentStore) are not cycled to — removal is removal */
 export function cycleActivePlayer(direction: 1 | -1) {
-    const eligible = players.peek().filter(isEligible)
+    const eligible = players.peek().filter(p => isEligible(p) && !recentStore.isHidden(p))
     if (eligible.length < 2) return
     const current = activePlayer.peek()
     const i = current ? eligible.indexOf(current) : -1
@@ -472,7 +511,12 @@ refreshPlayingPlayers()
 
 function pick() {
     const override = overridePlayer.peek()
-    const eligible = players.peek().filter(isEligible)
+    // forgotten players (middle-click removal) are not picked either:
+    // removal is from the card as much as from the switchers — a
+    // removed player that stays eligible would otherwise keep owning
+    // the card. It returns via startedPlaying (bump clears the hidden
+    // set) the next time it actually plays
+    const eligible = players.peek().filter(p => isEligible(p) && !recentStore.isHidden(p))
     // release pins on players that went away instead of retaining them
     if (override && !eligible.includes(override)) setOverride(null)
     if (lastPlaying && !eligible.includes(lastPlaying)) lastPlaying = null
@@ -589,6 +633,8 @@ export function dispose() {
     unsubPlayingList()
     stopPulse()
     recentStore.clear()
+    for (const src of forgetSources) sourceRemove(src)
+    forgetSources.clear()
     for (const [p, entries] of hookedPlayers) {
         for (const e of entries) e.release()
         hookedPlayers.delete(p)

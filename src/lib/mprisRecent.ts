@@ -46,8 +46,8 @@ export function isExcludedPlayer(p: RecentPlayerInfo, patterns: string[]): boole
 }
 
 export interface RecentStore<P> {
-    /** record that `p` just played: it becomes remembered and moves to
-     *  the front of the ordering */
+    /** record that `p` just played: it becomes remembered, moves to the
+     *  front of the ordering, and any earlier forget is undone */
     bump(p: P, now?: number): void
     /**
      * the switcher order for the live player list: remembered players
@@ -57,22 +57,32 @@ export interface RecentStore<P> {
      * remembered AND `remembered(p)` holds (config exclusions, applied
      * here rather than at record time so editing the list takes effect
      * without a restart), or when it was never recorded and `keep(p)`
-     * holds.
+     * holds. Forgotten players are listed in NEITHER branch — removal
+     * is outright until the next bump.
      *
      * Entries for players not in `live` are pruned: this runs on every
      * players-list change, so a bus name that quits cannot leave a
      * dead GObject behind in the map.
      */
     ordered(live: P[], remembered: (p: P) => boolean, keep: (p: P) => boolean): P[]
+    /** drop a player from the listing outright: remembered or merely
+     *  eligible, it is not listed again until it plays (bump) — or
+     *  never, if it quits first. Policy (pausing on removal) lives
+     *  with the callers; the store is pure memory */
+    forget(p: P): void
+    /** is this player currently forgotten (see forget)? */
+    isHidden(p: P): boolean
     /** forget everything (shutdown) */
     clear(): void
 }
 
 export function createRecentStore<P>(): RecentStore<P> {
     const playedAt = new Map<P, number>()
+    const hidden = new Set<P>()
 
     return {
         bump(p, now = Date.now()) {
+            hidden.delete(p)
             playedAt.set(p, now)
         },
 
@@ -81,10 +91,14 @@ export function createRecentStore<P>(): RecentStore<P> {
             for (const p of playedAt.keys()) {
                 if (!liveSet.has(p)) playedAt.delete(p)
             }
+            for (const p of hidden) {
+                if (!liveSet.has(p)) hidden.delete(p)
+            }
 
             const known: { p: P; at: number }[] = []
             const rest: P[] = []
             for (const p of live) {
+                if (hidden.has(p)) continue
                 const at = playedAt.get(p)
                 if (at !== undefined && remembered(p)) known.push({ p, at })
                 else if (keep(p)) rest.push(p)
@@ -95,8 +109,18 @@ export function createRecentStore<P>(): RecentStore<P> {
             return [...known.map(e => e.p), ...rest]
         },
 
+        forget(p) {
+            playedAt.delete(p)
+            hidden.add(p)
+        },
+
+        isHidden(p) {
+            return hidden.has(p)
+        },
+
         clear() {
             playedAt.clear()
+            hidden.clear()
         },
     }
 }
