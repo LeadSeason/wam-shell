@@ -17,6 +17,19 @@ const now = createPoll(["", ""] as [string, string], 1000, () => {
     return [dt.format("%H:%M:%S")!, dt.format("%d.%m.%Y")!] as [string, string]
 })
 
+// Today's day-key: its own slow poll, NOT .as() over `now`. gnim's
+// computed accessors do NOT compare values — a re-emitted equal string
+// still notifies dependents — so deriving this from the 1s clock
+// re-emitted it every second, recomputed the month grid and agenda
+// (fresh arrays, fresh cell objects) and made the popover's <For>s
+// rebuild the whole tree every second while closed: ~800 widgets/s
+// (one CssProvider per css-prop widget each), a 500 MB JS heap, and a
+// ~1s main-thread freeze every ~10s to major-GC it. createPoll dedupes
+// at the source (value !== currentValue), so this fires only when the
+// day actually changes — the today ring may lag midnight by one
+// interval, which is invisible in practice.
+const todayKey = createPoll(Gcal.dayKey(Date.now()), 30_000, () => Gcal.dayKey(Date.now()))
+
 // Weekday initials, Monday first. From relTime's list rather than %a,
 // which follows the LOCALE — this grid sits directly above an agenda
 // whose "Today"/"Tomorrow" never can, so a locale-formatted header put
@@ -37,10 +50,6 @@ interface GridCell extends Gcal.GridDay {
 // the theme. Without Google Calendar the month pane stands alone.
 function CalendarPopover() {
     const now0 = new Date()
-    // recomputed off the shared 1s poll (gnim dedupes the equal strings,
-    // so deps fire only on an actual day change): the today ring and the
-    // agenda labels must not stay frozen at bar-construction time
-    const todayKey = now.as(() => Gcal.dayKey(Date.now()))
     const [viewY, setViewY] = createState(now0.getFullYear())
     const [viewM, setViewM] = createState(now0.getMonth()) // 0-based
     // the agenda starts here; clicking a day in the grid moves it
