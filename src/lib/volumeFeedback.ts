@@ -71,8 +71,14 @@ function ensurePipeline(): boolean {
     if (pipeline !== null) return true
     if (nativeFailed || nativeFile === null) return false
     try {
-        // GJS's gi typings want `undefined` here; null works at runtime
-        Gst.init(undefined)
+        // gjs insists on the argv argument at runtime even though the
+        // gir marks it optional — `undefined` is rejected outright
+        // ("Expected type utf8 for Argument 'argv'"), which killed the
+        // native path on every click; null would fail the typecheck
+        // (the typings type it `string[] | undefined`, not nullable).
+        // An empty array satisfies both — embeddedArt's ensureGst
+        // already does this
+        Gst.init([])
         const p = Gst.ElementFactory.make("pipeline", "wamVolumeFeedback") as Gst.Bin
         const s = Gst.ElementFactory.make("appsrc", "src")
         const c = Gst.ElementFactory.make("audioconvert", "conv")
