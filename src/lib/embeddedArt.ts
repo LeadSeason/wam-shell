@@ -4,6 +4,7 @@ import Gst from "gi://Gst?version=1.0"
 import GdkPixbuf from "gi://GdkPixbuf?version=2.0"
 import Config from "../config"
 import { isFile } from "./utils"
+import { ensureGst } from "./gstreamer"
 import { writeFileAtomic } from "./atomicWrite"
 import { sourceRemove, timeoutAdd } from "./metrics"
 
@@ -28,19 +29,10 @@ import { sourceRemove, timeoutAdd } from "./metrics"
 const GRACE_MS = 400
 const HARD_TIMEOUT_MS = 5000
 
-let gstReady = false
-function ensureGst() {
-    if (gstReady) return
-    // gjs insists on the argv argument at runtime even though the gir
-    // marks it optional
-    Gst.init_check([])
-    gstReady = true
-}
-
 /** decode the embedded image tag of the file at uri. Rejects when the
  *  file cannot be typefound/parsed or holds no image tag. */
 function extractEmbeddedArt(uri: string): Promise<Uint8Array> {
-    ensureGst()
+    if (!ensureGst()) return Promise.reject(new Error("gstreamer init failed"))
     return new Promise((resolve, reject) => {
         const pipeline = Gst.ElementFactory.make("playbin", null)
         const audioSink = Gst.ElementFactory.make("fakesink", null)
