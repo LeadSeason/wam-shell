@@ -226,9 +226,22 @@ export default function Tray({
         )
         const tooltip = createBinding(item, "tooltip_markup")
 
-        /* Isn't reactive */
-        const menuModel = Gtk.PopoverMenu.new_from_model(item.get_menu_model())
-        menuModel.set_has_arrow(false)
+        /* The menu is built per popup and dropped on close, NOT attached
+        for the item's lifetime. The model is the item's live DBusMenu:
+        nm-applet rewrites its menus on every network event, and each
+        rewrite sent GTK repopulating this popover's internal GtkStack,
+        re-adding its named pages — which collide, logging "duplicate
+        child name in GtkStack: _VPN Connections" once per event for
+        every idle tray popover in the session (#365). A popover that
+        exists only while the menu is on screen sees a rewrite only if
+        one lands mid-open. */
+        const showMenu = (btn: Gtk.MenuButton) => {
+            const popover = Gtk.PopoverMenu.new_from_model(item.get_menu_model())
+            popover.set_has_arrow(false)
+            connect(popover, "closed", () => btn.set_popover(null))
+            btn.set_popover(popover)
+            popover.popup()
+        }
 
         return (
             <menubutton
@@ -247,7 +260,7 @@ export default function Tray({
                                 item.activate(0, 0)
                                 break
                             case Gdk.BUTTON_SECONDARY:
-                                self.get_popover()?.popup()
+                                showMenu(self)
                                 break
                             default:
                         }
@@ -270,7 +283,6 @@ export default function Tray({
                 }
             >
                 <image gicon={gicon} pixelSize={iconSize} />
-                {menuModel}
             </menubutton>
         )
     }
