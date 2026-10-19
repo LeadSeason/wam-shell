@@ -5,6 +5,7 @@ import { createState } from "gnim"
 import { execAsync } from "ags/process"
 import { readFile } from "ags/file"
 import { isFile } from "./lib/utils"
+import { hyprlandIpcProblem } from "./lib/hyprlandIpc"
 import { createReader, numberList } from "./lib/configSchema"
 import type { TimeFormat } from "./lib/timerInput"
 
@@ -108,25 +109,16 @@ function getDesktopSession(): string {
     // socket, so its absence is the same class of answer as a missing
     // I3SOCK — fall back to the compositor-agnostic paths instead.
     if (desktop === "hyprland") {
-        const his = GLib.getenv("HYPRLAND_INSTANCE_SIGNATURE")
-        if (typeof his !== "string") {
-            console.error("hyprland ipc HYPRLAND_INSTANCE_SIGNATURE env missing")
+        // stat the socket pair, not just the env var: a stale signature
+        // would otherwise send every AstalHyprland lookup into a socket
+        // that is not there — and get_default() segfaults inside the
+        // library on a failed connect, where try/catch cannot help
+        // (#225). The probe lives in lib/hyprlandIpc so the runtime
+        // guards in lib/hyprlandGuard ask the same question.
+        const problem = hyprlandIpcProblem()
+        if (problem !== null) {
+            console.error(problem)
             return "" // Fallback
-        }
-        // The env var being SET is not enough: it survives the compositor
-        // it names, so a stale signature (compositor restarting, an old
-        // instance) points at a socket that is not there — and astal's
-        // get_default() reads from the connection without checking the
-        // connect succeeded, which segfaults the whole process inside
-        // the library. try/catch cannot help a segfault; a stat can
-        // (#225). Both sockets: hyprland.vala opens .socket.sock for
-        // requests and .socket2.sock for events.
-        const sockDir = `${GLib.get_user_runtime_dir()}/hypr/${his}`
-        for (const sock of [".socket.sock", ".socket2.sock"]) {
-            if (!GLib.file_test(`${sockDir}/${sock}`, GLib.FileTest.EXISTS)) {
-                console.error(`hyprland ipc socket missing: ${sockDir}/${sock}`)
-                return "" // Fallback
-            }
         }
         return "hyprland"
     }
@@ -412,6 +404,18 @@ function getMediaConfig() {
         // Look the playing page up in history (same read-only query as
         // recover_site_art) and show the series name instead
         enrichTitles: r.bool("enrich_titles", true),
+        // keep players that have played this session listed in the
+        // switchers even after their metadata goes blank (a browser tab
+        // paused long enough for the browser to clear it reports no
+        // title and would otherwise drop out while still alive on the
+        // bus). Most recently played first; private windows are never
+        // remembered. Entries leave the memory when the player quits
+        rememberPlayers: r.bool("remember_players", true),
+        // players never remembered: case-insensitive substrings matched
+        // against the player identity and desktop entry, e.g.
+        // ["chromium"]. Excluded players still show while eligible, as
+        // they always did — they just drop out again once ineligible
+        rememberExcluded: r.strList("remember_excluded", []),
     }
 }
 

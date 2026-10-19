@@ -297,7 +297,12 @@ function WifiPane({ wifi, pane, name }: { wifi: AstalNetwork.Wifi } & wifiPanePr
                         cssClasses={["paneCard"]}
                         spacing={2}
                     >
-                        <For each={sortedAps}>
+                        {/* keyed by bssid: gnim's For diffs object items by
+                        reference, so an AP object re-created by a re-scan
+                        would rebuild its row from scratch; the bssid
+                        survives re-scans (null falls back to the
+                        reference, the pre-key behaviour) */}
+                        <For each={sortedAps} id={ap => ap.bssid ?? ap}>
                             {ap => (
                                 <ApRow
                                     ap={ap}

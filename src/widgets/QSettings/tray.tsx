@@ -106,7 +106,17 @@ export default function Tray({
     // disconnected when this instance is destroyed (the bar mount dies
     // with its monitor on hotplug): gnim only auto-disposes JSX-prop
     // bindings, not manual connects
-    function addItem(t: AstalTray.TrayItem, item_id: string) {
+    function addItem(t: AstalTray.TrayItem | null, item_id: string | null) {
+        // Hollow registrations can surface with a null id or no object
+        // (observed in the wild as a "? (id: null)" tray item). Ignore
+        // them: they have nothing renderable and would otherwise crash
+        // the bar during construction, taking every module to their right
+        // with them.
+        if (!t || !item_id) {
+            console.warn("tray: ignoring item with missing id or object:", item_id)
+            return
+        }
+
         watched.set(item_id, {
             item: t,
             handlerIds: [
@@ -157,12 +167,16 @@ export default function Tray({
     // backfill items that registered before this instance connected —
     // the bar's Tray is recreated on monitor hotplug and would
     // otherwise come up empty until each app re-registers (never)
-    for (const t of registry.get_items() ?? []) addItem(t, t.get_item_id())
+    for (const t of registry.get_items() ?? []) {
+        const item_id = t.get_item_id()
+        addItem(t, item_id)
+    }
 
     const registryHandlers = [
-        connect(registry, "item-added", (_: AstalTray.Tray, item_id: string) =>
-            addItem(registry.get_item(item_id), item_id),
-        ),
+        connect(registry, "item-added", (_: AstalTray.Tray, item_id: string) => {
+            const item = item_id ? registry.get_item(item_id) : null
+            addItem(item, item_id)
+        }),
 
         connect(registry, "item-removed", (_: AstalTray.Tray, item_id: string) => {
             // drop this item's claim on any path it owned; entries whose
@@ -212,9 +226,22 @@ export default function Tray({
         )
         const tooltip = createBinding(item, "tooltip_markup")
 
-        /* Isn't reactive */
-        const menuModel = Gtk.PopoverMenu.new_from_model(item.get_menu_model())
-        menuModel.set_has_arrow(false)
+        /* The menu is built per popup and dropped on close, NOT attached
+        for the item's lifetime. The model is the item's live DBusMenu:
+        nm-applet rewrites its menus on every network event, and each
+        rewrite sent GTK repopulating this popover's internal GtkStack,
+        re-adding its named pages — which collide, logging "duplicate
+        child name in GtkStack: _VPN Connections" once per event for
+        every idle tray popover in the session (#365). A popover that
+        exists only while the menu is on screen sees a rewrite only if
+        one lands mid-open. */
+        const showMenu = (btn: Gtk.MenuButton) => {
+            const popover = Gtk.PopoverMenu.new_from_model(item.get_menu_model())
+            popover.set_has_arrow(false)
+            connect(popover, "closed", () => btn.set_popover(null))
+            btn.set_popover(popover)
+            popover.popup()
+        }
 
         return (
             <menubutton
@@ -233,7 +260,7 @@ export default function Tray({
                                 item.activate(0, 0)
                                 break
                             case Gdk.BUTTON_SECONDARY:
-                                self.get_popover()?.popup()
+                                showMenu(self)
                                 break
                             default:
                         }
@@ -256,7 +283,6 @@ export default function Tray({
                 }
             >
                 <image gicon={gicon} pixelSize={iconSize} />
-                {menuModel}
             </menubutton>
         )
     }

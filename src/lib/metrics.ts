@@ -13,8 +13,11 @@ import CommandRegistry from "./commandRegistry"
 // (single-line JSON; "metrics reset" zeroes the counters).
 //
 // Everything is inert unless WAM_SHELL_METRICS=1 is set at startup: the
-// exported wrappers then ARE the original functions (no wrapper call, no
-// allocation, no branch on any per-tick path). Read once here.
+// exported wrappers then ARE the original functions (no wrapper call,
+// no allocation, no branch on any per-tick path) — with one exception:
+// the timer callbacks always run through guardTicks below, because
+// keeping a poll loop alive across a bad tick is correctness, not
+// measurement. Read once here.
 const ENABLED = GLib.getenv("WAM_SHELL_METRICS") === "1"
 
 // Known holes by design:
@@ -71,17 +74,30 @@ export const execAsync: typeof agsExecAsync = ENABLED
 interface TimerBucket {
     created: number
     alive: number
+    ticks: number // total callback invocations (enabled mode only)
 }
 const timers = new Map<string, TimerBucket>()
 const timerLabels = new Map<number, string>() // source id -> label
 
-function timerCreated(label: string, id: number): number {
+function bucketFor(label: string): TimerBucket {
     let b = timers.get(label)
-    if (!b) timers.set(label, (b = { created: 0, alive: 0 }))
+    if (!b) timers.set(label, (b = { created: 0, alive: 0, ticks: 0 }))
+    return b
+}
+
+// per-tick increment looks the bucket up in the map: a closure over
+// the object would keep writing into a bucket `metrics reset` already
+// replaced, and the fresh bucket would read zero ticks forever
+function ticked(label: string) {
+    const b = timers.get(label)
+    if (b) b.ticks++
+}
+
+function timerCreated(label: string, id: number) {
+    const b = bucketFor(label)
     b.created++
     b.alive++
     timerLabels.set(id, label)
-    return id
 }
 
 function timerGone(id: number) {
@@ -91,45 +107,116 @@ function timerGone(id: number) {
     timers.get(label)!.alive--
 }
 
+// One bad tick used to kill a source for good: GJS removes a timer
+// whose callback throws, so a single transient failure (a spawn that
+// errored once, a shape change in external JSON) froze that poll loop
+// for the rest of the session — the "module stopped updating until
+// restart" class of bug. The tick guard logs the throw and keeps the
+// source alive; a broken callback (five CONSECUTIVE failures) is
+// retired loudly instead of logging forever.
+//
+// This is correctness, not instrumentation: it runs with metrics off
+// too, which is why the disabled wrappers below are no longer the bare
+// GLib functions (only the timer ones — exec/connect stay zero-cost).
+const TICK_STRIKES = 5
+
+function guardTicks(
+    label: string,
+    fn: () => boolean,
+    onEnd: () => void,
+    onTick?: () => void,
+): () => boolean {
+    let strikes = 0
+    return () => {
+        let again: boolean
+        try {
+            again = fn()
+            strikes = 0
+        } catch (e) {
+            strikes++
+            if (strikes >= TICK_STRIKES) {
+                console.error(
+                    `timer ${label}: failed ${TICK_STRIKES} ticks in a row, stopping it:`,
+                    e,
+                )
+                onEnd()
+                return false
+            }
+            console.error(`timer ${label}: tick failed (${strikes}/${TICK_STRIKES}):`, e)
+            again = true // a transient failure is not a reason to die
+        }
+        onTick?.()
+        if (!again) onEnd()
+        return again
+    }
+}
+
 export const timeoutAdd = ENABLED
     ? (label: string, priority: number, interval: number, fn: () => boolean): number => {
-          // assigned before the callback can ever fire (main loop is not
-          // re-entered from here)
           let id = 0
-          id = GLib.timeout_add(priority, interval, () => {
-              const again = fn()
-              if (!again) timerGone(id)
-              return again
-          })
-          return timerCreated(label, id)
+          id = GLib.timeout_add(
+              priority,
+              interval,
+              guardTicks(
+                  label,
+                  fn,
+                  () => timerGone(id),
+                  () => ticked(label),
+              ),
+          )
+          timerCreated(label, id)
+          return id
       }
-    : (_label: string, priority: number, interval: number, fn: () => boolean): number =>
-          GLib.timeout_add(priority, interval, fn)
+    : (label: string, priority: number, interval: number, fn: () => boolean): number =>
+          GLib.timeout_add(
+              priority,
+              interval,
+              guardTicks(label, fn, () => {}),
+          )
 
 export const timeoutAddSeconds = ENABLED
     ? (label: string, priority: number, interval: number, fn: () => boolean): number => {
           let id = 0
-          id = GLib.timeout_add_seconds(priority, interval, () => {
-              const again = fn()
-              if (!again) timerGone(id)
-              return again
-          })
-          return timerCreated(label, id)
+          id = GLib.timeout_add_seconds(
+              priority,
+              interval,
+              guardTicks(
+                  label,
+                  fn,
+                  () => timerGone(id),
+                  () => ticked(label),
+              ),
+          )
+          timerCreated(label, id)
+          return id
       }
-    : (_label: string, priority: number, interval: number, fn: () => boolean): number =>
-          GLib.timeout_add_seconds(priority, interval, fn)
+    : (label: string, priority: number, interval: number, fn: () => boolean): number =>
+          GLib.timeout_add_seconds(
+              priority,
+              interval,
+              guardTicks(label, fn, () => {}),
+          )
 
 export const idleAdd = ENABLED
     ? (label: string, priority: number, fn: () => boolean): number => {
           let id = 0
-          id = GLib.idle_add(priority, () => {
-              const again = fn()
-              if (!again) timerGone(id)
-              return again
-          })
-          return timerCreated(label, id)
+          id = GLib.idle_add(
+              priority,
+              guardTicks(
+                  label,
+                  fn,
+                  () => timerGone(id),
+                  () => ticked(label),
+              ),
+          )
+          timerCreated(label, id)
+          return id
       }
-    : (_label: string, priority: number, fn: () => boolean): number => GLib.idle_add(priority, fn)
+    : (label: string, priority: number, fn: () => boolean): number =>
+          GLib.idle_add(
+              priority,
+              guardTicks(label, fn, () => {}),
+          )
 
 export const sourceRemove: typeof GLib.source_remove = ENABLED
     ? id => {
@@ -367,8 +454,10 @@ CommandRegistry.get_default().register({
   Returns a single line of JSON with counters (subprocesses, timers,
   signal handlers, http), process facts (pid, RSS, fds, context
   switches, cpuTicks) and frames (rendered frames on the probed bar
-  since the last reset — the frame-clock sleep check). Counters are
-  collected only when the shell was started with WAM_SHELL_METRICS=1.
+  since the last reset — the frame-clock sleep check). Timer buckets
+  carry a per-label ticks count (callback invocations since the last
+  reset; the runaway-poll detector). Counters are collected only when
+  the shell was started with WAM_SHELL_METRICS=1.
   Note: the response is prefixed with "<instance>: "; JSON starts at
   the first "{".
 metrics reset

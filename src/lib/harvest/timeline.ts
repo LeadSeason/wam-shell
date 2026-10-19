@@ -82,7 +82,11 @@ export function formatElapsed(seconds: number): string {
     return `${h}:${m.toString().padStart(2, "0")}`
 }
 
-export function mapEntry(e: any): Entry {
+// null for a body that is not an entry object: call sites DROP it (the
+// tray registry's malformed-item precedent, #321) instead of adopting a
+// zero-id ghost into the day map
+export function mapEntry(e: any): Entry | null {
+    if (e === null || typeof e !== "object" || typeof e.id !== "number") return null
     return {
         id: e.id ?? 0,
         spentDate: e.spent_date ?? "",
@@ -100,6 +104,12 @@ export function mapEntry(e: any): Entry {
         taskName: e.task?.name ?? "",
         clientName: e.client?.name ?? "",
     }
+}
+
+/** mapEntry over a response array, dropping bodies that are not entries */
+export function mapEntries(list: any): Entry[] {
+    if (!Array.isArray(list)) return []
+    return list.map(mapEntry).filter((e): e is Entry => e !== null)
 }
 
 // timeline order for the popup: by entry creation, oldest first —

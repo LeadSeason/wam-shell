@@ -142,6 +142,29 @@ function applyGamma() {
 // shows stale values where the user actually looks at them.
 let watchRunning = false
 
+// hyprctl sometimes returns 0 or an empty line while the daemon is still
+// settling; retry a few times with a short delay before giving up.
+async function readDaemonValue(cmd: string, retries = 2): Promise<number | null> {
+    for (let i = 0; i <= retries; i++) {
+        try {
+            const out = await execAsync(cmd)
+            const v = Number(out.trim())
+            if (!isNaN(v) && v > 0) return v
+        } catch {
+            // hyprctl not running or command failed; retry or fall through
+        }
+        if (i < retries) {
+            await new Promise<void>(resolve => {
+                timeoutAdd("hyprsunset:retry", GLib.PRIORITY_DEFAULT, 100, () => {
+                    resolve()
+                    return GLib.SOURCE_REMOVE
+                })
+            })
+        }
+    }
+    return null
+}
+
 /**
  * @param initial the COLD-START read, not a drift check.
  *
@@ -159,12 +182,11 @@ export function refreshHyprsunset(initial = false) {
     if (watchRunning) return
     watchRunning = true
     Promise.all([
-        execAsync("hyprctl hyprsunset gamma"),
-        execAsync("hyprctl hyprsunset temperature"),
+        readDaemonValue("hyprctl hyprsunset gamma"),
+        readDaemonValue("hyprctl hyprsunset temperature"),
     ])
-        .then(([gammaOut, tempOut]) => {
-            const gamma = Number(gammaOut.trim())
-            if (!isNaN(gamma) && gamma > 0 && (initial || Date.now() - lastApply >= 1500)) {
+        .then(([gamma, temp]) => {
+            if (gamma !== null && (initial || Date.now() - lastApply >= 1500)) {
                 const expected = outdoor.peek() ? OUTDOOR_GAMMA : Math.round(dim.peek() * 100)
                 if (initial || Math.abs(gamma - expected) > 1) {
                     if (gamma > 100) {
@@ -176,8 +198,7 @@ export function refreshHyprsunset(initial = false) {
                 }
             }
 
-            const temp = Number(tempOut.trim())
-            if (!isNaN(temp) && temp > 0 && (initial || Date.now() - lastTempApply >= 1500)) {
+            if (temp !== null && (initial || Date.now() - lastTempApply >= 1500)) {
                 // matches the init heuristic: warm means night light is on
                 const nl = temp <= 5000
                 if (nl !== nightLight.peek()) setNightLight(nl)

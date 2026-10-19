@@ -44,7 +44,11 @@
   `exec`/`execAsync`/`timeoutAdd`/`timeoutAddSeconds`/`sourceRemove`/
   `connect`/`disconnect` wrappers instead of the ags/GLib originals.
   When the env var is unset the wrappers ARE the original functions —
-  zero added work on hot paths.
+  zero added work on hot paths — except the timer wrappers, whose
+  callbacks always run through the tick guard: GJS removes a source
+  whose callback throws, so without it one bad tick froze that poll
+  loop for the rest of the session (five consecutive failures retire
+  it loudly instead).
 
 ## Notifications: two surfaces, one shape
 
@@ -242,6 +246,19 @@ so does not preserve parameter order.
 ## Resources
 
 - Widget subscriptions pair `subscribe` with `onCleanup`.
+- gnim compares values ONLY in `createPoll`'s and `createState`'s
+  setters (`Object.is`). `.as()`/`createComputed` outputs are NOT
+  compared: a recomputed equal value still notifies dependents, and a
+  fresh array/object always does. A computed that feeds a `For`/`With`
+  must return primitives, a memoized stable reference (see
+  `wsIconCache` in `workspaces-sway.tsx`), or derive from a source
+  that dedupes. This shipped a real bug: `todayKey = now.as(...)` off
+  the 1s clock rebuilt the whole clock popover every second while
+  closed (~800 widgets/s, a 500 MB heap, ~1s GC freezes every ~10s);
+  the fix lives at the top of `clock.tsx`. Related: gnim's `For`
+  removes and re-appends EVERY row on each emission (diffing by
+  reference for objects, value for primitives) — key object rows by a
+  stable `id` (`sortedAps` in `wifiPane.tsx`).
 - gnim 1.9 syntax only. Computeds are `createComputed(() => ...)`;
   deps are tracked by CALL inside the function, `.peek()` reads
   without tracking. The pre-1.9 forms (deps-array, `get`-style

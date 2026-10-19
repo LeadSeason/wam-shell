@@ -53,6 +53,14 @@ window.MediaPopup {
             &.play {
                 @include u.button-accent(s.$gap 18px);
             }
+            // a player kept listed by the recency memory
+            // (remember_players) but with no track right now: history,
+            // not a live control. Before .active above is irrelevant
+            // here — different properties, and a pinned stale player
+            // should read as both
+            &.stale {
+                opacity: 0.55;
+            }
         }
 
         scale {

@@ -4,6 +4,7 @@ import Gst from "gi://Gst?version=1.0"
 import Config from "../config"
 import { execAsync, timeoutAdd, sourceRemove } from "./metrics"
 import { registerDispose } from "./lifecycle"
+import { ensureGst } from "./gstreamer"
 
 // Audible feedback for volume changes: each time the volume pill
 // presents with a real level, play the sound theme's short
@@ -71,8 +72,11 @@ function ensurePipeline(): boolean {
     if (pipeline !== null) return true
     if (nativeFailed || nativeFile === null) return false
     try {
-        // GJS's gi typings want `undefined` here; null works at runtime
-        Gst.init(undefined)
+        // the init trap (undefined argv rejected at runtime, null
+        // rejected by the typings) lives in gstreamer.ts now; a false
+        // return lands in the catch below, which is this module's
+        // whole fallback story
+        if (!ensureGst()) throw new Error("gstreamer init failed")
         const p = Gst.ElementFactory.make("pipeline", "wamVolumeFeedback") as Gst.Bin
         const s = Gst.ElementFactory.make("appsrc", "src")
         const c = Gst.ElementFactory.make("audioconvert", "conv")

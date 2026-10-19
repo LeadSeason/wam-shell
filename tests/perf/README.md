@@ -53,6 +53,17 @@ legs (44→51 against a branch, then 51→44 comparing that same branch
 against itself), which is what the churn tolerance absorbs — a real
 leak over 100 cycles grows by hundreds, so it costs no detection.
 
+Soak adds two within-leg gates on the candidate (window A vs window B,
+120s apart, both reads after a forced GC): alive timers / live signals
+may grow by at most 2 (one-shot flap headroom), and RSS may grow by at
+most 15MB — accumulation at idle is the leak class the A/B counters
+cannot see. Timer buckets also carry a per-label `ticks` count
+(callback invocations since the reset); the soak output reports the
+top movers across the rest window (report-only: a healthy 1s poller
+legitimately accrues ~120 ticks over 120s, so there is no absolute
+bound — but a runaway loop shows up immediately as hundreds per
+second).
+
 Tolerances and exclusions exist because the session is live, and each
 one is measured, not guessed (see the comment block in compare.sh):
 poll-phase jitter on spawn counts (±2 on idle; churn spawn counts are

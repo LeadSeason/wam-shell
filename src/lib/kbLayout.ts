@@ -5,6 +5,7 @@ import { createPoll } from "ags/time"
 import { readFile } from "ags/file"
 import AstalHyprland from "gi://AstalHyprland"
 import Config from "../config"
+import { getHyprland } from "./hyprlandGuard"
 import { watchSwayInputs, unwatchSwayInputs } from "./swayInput"
 import { registerDispose } from "./lifecycle"
 
@@ -110,8 +111,7 @@ export function ensureLockSource(): void {
     ]
 }
 
-function hyprlandSource(): LayoutSource {
-    const hyprland = AstalHyprland.get_default()
+function hyprlandSource(hyprland: AstalHyprland.Hyprland): LayoutSource {
     const [layouts, setLayouts] = createState<string[]>([])
     const [variants, setVariants] = createState<string[]>([])
     const [activeIndex, setActiveIndex] = createState(0)
@@ -126,8 +126,17 @@ function hyprlandSource(): LayoutSource {
             .then(out => {
                 if (seq !== refreshSeq) return
                 const devices = JSON.parse(out)
-                const kb = devices.keyboards.find((k: any) => k.main) ?? devices.keyboards[0]
-                if (!kb) return
+                // hyprctl's shape is trusted elsewhere, but a session
+                // without keyboards (or an old binary) must not leave
+                // the layout stale for the whole session with only a
+                // parse-error line — the stale-state failure mode is
+                // silent, so say what happened
+                const keyboards = Array.isArray(devices?.keyboards) ? devices.keyboards : []
+                const kb = keyboards.find((k: any) => k.main) ?? keyboards[0]
+                if (!kb) {
+                    console.error("keyboard layout: no keyboards in hyprctl devices output")
+                    return
+                }
                 mainKb = kb.name
                 const codes = kb.layout.split(",").map((s: string) => s.trim())
                 setLayouts(codes)
@@ -276,8 +285,18 @@ let swayPollUnsub: (() => void) | null = null
 export function ensureLayoutSource(): LayoutSource | null {
     if (source) return source
     const ds = Config.desktopSession
-    if (ds === "hyprland") source = hyprlandSource()
-    else if (ds === "sway" || ds === "i3") source = swaySource(ds === "i3" ? "i3-msg" : "swaymsg")
+    if (ds === "hyprland") {
+        // getHyprland, not get_default: a missing socket segfaults
+        // inside the library (#225). No socket, no source — and NOT
+        // latched: the next ensure (bar rebuild, OSD trigger) re-probes
+        // and recovers once the compositor is back.
+        const hyprland = getHyprland()
+        if (!hyprland) {
+            console.error("keyboard layout: hyprland ipc unavailable")
+            return null
+        }
+        source = hyprlandSource(hyprland)
+    } else if (ds === "sway" || ds === "i3") source = swaySource(ds === "i3" ? "i3-msg" : "swaymsg")
     return source
 }
 

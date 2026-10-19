@@ -161,11 +161,15 @@ scenario_soak() {
     local a b
     log "soak: window A (${WINDOW}s)"
     sleep "$WINDOW"
+    # gc before the read: RSS is the accumulation signal here, and
+    # uncollected garbage from window A would inflate it
+    request "metrics gc" > /dev/null
     a="$(metrics_json)"
     log "soak: resting ${SOAK_WAIT}s"
     sleep "$SOAK_WAIT"
     log "soak: window B (${WINDOW}s)"
     sleep "$WINDOW"
+    request "metrics gc" > /dev/null
     b="$(metrics_json)"
     stop_shell
     printf '{"scenario":"soak","windowSec":%d,"waitSec":%d,"metricsA":%s,"metricsB":%s}\n' \

@@ -66,7 +66,15 @@ export default class Sway extends GObject.Object {
     // for one IPC round-trip. Fine for one-shot commands; the event-driven
     // reads in the constructor are coalesced (50ms) to avoid burst stalls.
     message(message: string): Commands {
-        return JSON.parse(this.#i3conn.message(i3ipc.MessageType.COMMAND, message))
+        // the socket can be gone mid-session (compositor restart): the
+        // throw would land in whatever widget sent the command — fail
+        // as "no reply" instead
+        try {
+            return JSON.parse(this.#i3conn.message(i3ipc.MessageType.COMMAND, message))
+        } catch (e) {
+            console.error("Sway: command failed:", e)
+            return []
+        }
     }
 
     constructor() {

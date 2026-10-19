@@ -215,6 +215,13 @@ window#QSettings {
             min-width: s.$gap;
             border-radius: s.$radius-pill;
             background-color: t.$surface1;
+            // a player kept listed by the recency memory
+            // (remember_players) but with no track right now: dimmer
+            // than a live segment, so history reads as history. Before
+            // .active — pinning a stale player still lights it
+            &.stale {
+                background-color: t.$surface0;
+            }
             &.active {
                 background-color: t.$accent;
             }

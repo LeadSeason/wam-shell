@@ -95,12 +95,21 @@ export function syncActiveTheme(): boolean {
     } catch {
         /* missing or unreadable copy → (re)generate it */
     }
-    Gio.File.new_for_path(srcPath).copy(
-        Gio.File.new_for_path(activeThemePath),
-        Gio.FileCopyFlags.OVERWRITE,
-        null,
-        null,
-    )
+    try {
+        Gio.File.new_for_path(srcPath).copy(
+            Gio.File.new_for_path(activeThemePath),
+            Gio.FileCopyFlags.OVERWRITE,
+            null,
+            null,
+        )
+    } catch (e) {
+        // a missing/mispelled theme name must not break the boolean
+        // contract: callers without a guard of their own
+        // (scripts/precompile-style.ts) count on false meaning "nothing
+        // changed", and the compile falls back to the staged theme
+        console.error(`style: could not stage theme "${Config.theme}":`, e)
+        return false
+    }
     return true
 }
 

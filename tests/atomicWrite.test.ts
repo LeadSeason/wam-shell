@@ -2,7 +2,7 @@ import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
 import { readFile } from "ags/file"
 import { test, eq, runAsync as run } from "./framework"
-import { writeFileAtomic } from "../src/lib/atomicWrite"
+import { writeFileAtomic, resetTmpSweepForTest } from "../src/lib/atomicWrite"
 
 const TMP = GLib.getenv("WAM_TEST_TMP")!
 
@@ -107,4 +107,28 @@ test("atomicWrite: a rejected write doesn't break the chain", () => {
     run(bad, good)
     eq(order, ["bad-failed", "good-ok"])
     eq(readFile(path), "recovered")
+})
+
+test("atomicWrite: a crashed write's stale tmp is swept on the next write", () => {
+    const path = `${TMP}/atomic-sweep`
+    // a corpse: same prefix, mtime ninety minutes back — nothing this
+    // old can belong to a live write (write → rename is sub-second)
+    const corpse = `${path}.tmp-deadpid-7`
+    GLib.file_set_contents(corpse, "half-written")
+    Gio.File.new_for_path(corpse).set_attribute_uint64(
+        "time::modified",
+        Math.floor(Date.now() / 1000) - 5400,
+        Gio.FileQueryInfoFlags.NONE,
+        null,
+    )
+    // a live write's tmp (seconds old) must survive the sweep
+    const fresh = `${path}.tmp-livepid-9`
+    GLib.file_set_contents(fresh, "in flight")
+
+    resetTmpSweepForTest()
+    run(writeFileAtomic(path, "swept"))
+    eq(readFile(path), "swept")
+    eq(Gio.File.new_for_path(corpse).query_exists(null), false, "stale tmp removed")
+    eq(Gio.File.new_for_path(fresh).query_exists(null), true, "fresh tmp survives")
+    Gio.File.new_for_path(fresh).delete(null)
 })

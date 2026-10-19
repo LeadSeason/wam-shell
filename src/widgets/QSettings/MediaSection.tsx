@@ -12,6 +12,7 @@ import {
     cycleActivePlayer,
     cycleLoop,
     eligiblePlayers,
+    forgetRecentPlayer,
     formatTime,
     lengthState,
     loopActive,
@@ -21,6 +22,7 @@ import {
     playPauseExclusive,
     positionState,
     raisePlayer,
+    rememberedPlayers,
     scrollActivePlayer,
 } from "../../lib/mpris"
 import { isSmallCover } from "../../lib/coverArt"
@@ -28,6 +30,15 @@ import { sharing, enable as enableShareWatch } from "../../lib/captureWatch"
 import Config from "../../config"
 import { isRtl } from "../../lib/utils"
 import { pressable } from "../pressable"
+
+// middle-click anywhere on the card (or on one of its strip segments)
+// pauses and removes that player from the media UI outright — strip,
+// popup and the card itself (pick() skips forgotten players; see
+// forgetRecentPlayer in lib/mpris). The next PLAYING transition, in
+// the app itself, brings it back
+function forgetAndAdvance(p: AstalMpris.Player) {
+    forgetRecentPlayer(p)
+}
 
 function MediaButton({
     iconName,
@@ -129,6 +140,18 @@ function Player({ player }: { player: AstalMpris.Player }) {
                 card = self
             }}
         >
+            {/* middle-click anywhere on the card removes the player it
+            is showing (forgetAndAdvance). Capture phase, so the claim
+            wins over every child widget — the card is one big click
+            target for this */}
+            <Gtk.GestureClick
+                button={2}
+                propagationPhase={Gtk.PropagationPhase.CAPTURE}
+                onPressed={g => {
+                    g.set_state(Gtk.EventSequenceState.CLAIMED)
+                    forgetAndAdvance(player)
+                }}
+            />
             <Gtk.EventControllerMotion
                 onEnter={() => {
                     const root = card.get_root() as Gtk.Window | null
@@ -173,18 +196,52 @@ function Player({ player }: { player: AstalMpris.Player }) {
                 cssClasses={["mediaSegments"]}
                 orientation={Gtk.Orientation.VERTICAL}
                 spacing={2}
-                visible={eligiblePlayers.as(l => l.length > 1)}
+                visible={rememberedPlayers.as(l => l.length > 1)}
             >
-                <For each={eligiblePlayers}>
+                <For each={rememberedPlayers}>
                     {p => (
                         <box
                             vexpand
-                            cssClasses={["mediaSegment", ...(p === player ? ["active"] : [])]}
-                            tooltipText={p.identity}
+                            cssClasses={createComputed(() => {
+                                // same list and order as the popup
+                                // switcher (lib/mpris rememberedPlayers);
+                                // .stale = kept by the recency memory but
+                                // currently no track
+                                const stale = !eligiblePlayers().includes(p)
+                                return [
+                                    "mediaSegment",
+                                    ...(p === player ? ["active"] : []),
+                                    ...(stale ? ["stale"] : []),
+                                ]
+                            })}
+                            tooltipText={createComputed(() =>
+                                eligiblePlayers().includes(p)
+                                    ? `${p.identity}${Config.media.rememberPlayers ? " — middle-click pauses & removes" : ""}`
+                                    : `${p.identity} — no track loaded, click to focus`,
+                            )}
                         >
                             <Gtk.GestureClick
                                 button={1}
-                                onPressed={() => overrideActivePlayer(p)}
+                                onPressed={() => {
+                                    // stale segments raise the app rather
+                                    // than pin it — see SwitcherButton in
+                                    // mediaPopup for why
+                                    if (!eligiblePlayers.peek().includes(p)) {
+                                        raisePlayer(p)
+                                        return
+                                    }
+                                    overrideActivePlayer(p)
+                                }}
+                            />
+                            {/* middle-click: pause and remove this
+                            player from the media UI (see
+                            forgetRecentPlayer in lib/mpris) */}
+                            <Gtk.GestureClick
+                                button={2}
+                                onPressed={g => {
+                                    g.set_state(Gtk.EventSequenceState.CLAIMED)
+                                    forgetAndAdvance(p)
+                                }}
                             />
                         </box>
                     )}
@@ -218,7 +275,11 @@ function Player({ player }: { player: AstalMpris.Player }) {
                         // in it breaks out of the url()
                         c ? `background-image: url("${c.replace(/["'\\]/g, "\\$&")}");` : "",
                     )}
-                    tooltipText={"Focus player window"}
+                    tooltipText={
+                        Config.media.rememberPlayers
+                            ? "Focus player window — middle-click pauses & removes this player"
+                            : "Focus player window"
+                    }
                 >
                     <Gtk.GestureClick button={1} onPressed={() => raisePlayer(player)} />
                 </box>
