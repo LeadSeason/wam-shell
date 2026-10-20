@@ -49,6 +49,7 @@ import "./tailscale.test"
 import "./hyprDispatch.test"
 import "./wifiQr.test"
 import "./volumeFeedback.test"
+import "./daemonWatch.test"
 import "./prayerTimes.test"
 // summary() must come after every suite has registered. This one used to
 // sit BELOW the call, which worked only because ES imports hoist — a

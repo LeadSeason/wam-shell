@@ -37,6 +37,7 @@ export type { PopupEntry, PopupGroup, PopupTimer }
 import { registerDispose } from "./lifecycle"
 import { writeFileAtomic } from "./atomicWrite"
 import { createHoldable } from "./hold"
+import { UnownedNameGuard } from "./daemonWatch"
 
 // Shared notification daemon state. The first instantiation becomes
 // the daemon (so swaync must not run alongside).
@@ -171,6 +172,14 @@ function describeOwnership(state: NameOwnership): string {
 let nameWatchSource = 0
 
 if (useOurs) {
+    // the exit half of the watchdog (#357): a forced daemon whose name
+    // is STILL unowned two readings after the settle is the half-dead
+    // start, and quitting is the only cure — the service's
+    // Restart=always brings the shell back, and the fresh start either
+    // claims the name or diagnoses itself again. auto/system never
+    // exit (the name may belong to another daemon by design), and
+    // exit_if_unowned = false restores the old warn-only watch
+    const guard = new UnownedNameGuard(mode === "wam-shell", Config.notifications.exitIfUnowned)
     const check = () => {
         const next = readNameOwnership()
         if (next !== nameOwnership) {
@@ -178,6 +187,19 @@ if (useOurs) {
             const line = `Notifications: org.freedesktop.Notifications is ${describeOwnership(next)}`
             if (next === "ours") console.log(line)
             else console.error(line)
+        }
+        if (guard.tick(next) === "exit") {
+            console.error(
+                "Notifications: the daemon name is still unowned — exiting so the " +
+                    "service restarts the shell (notifications.exit_if_unowned; set " +
+                    "it to false to keep the old warn-only watch)",
+            )
+            // the running application via introspection, NOT the
+            // ags/gtk4/app module: that import at module scope would
+            // drag display-dependent setup into every importer of this
+            // file — gcalReminders among them, which the unit suite
+            // loads headless (verified: the suite died on it)
+            Gio.Application.get_default()?.quit()
         }
     }
     // astal acquires the name asynchronously off get_default(); give it

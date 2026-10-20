@@ -730,6 +730,14 @@ function getNotificationsConfig() {
         // whose notification daemon is used: auto = the system's if one
         // is running, ours otherwise
         daemon: r.oneOf("daemon", ["auto", "wam-shell", "system"] as const, "auto"),
+        // when the daemon is FORCED ("wam-shell") and the bus name
+        // still has no owner two watchdog ticks after startup (the
+        // half-dead start: alive, drawing, claiming nothing), quit so
+        // the systemd service restarts the shell — a session whose
+        // every notify-send dies silently is worse than a brief dark
+        // gap. auto and system modes never exit: there the name may
+        // belong to another daemon by design
+        exitIfUnowned: r.bool("exit_if_unowned", true),
         // app names whose notifications are popup-only: shown as banners
         // but excluded from the center's history. Lowercased once here,
         // so every comparison site can match without repeating it

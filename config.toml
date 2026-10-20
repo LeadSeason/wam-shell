@@ -815,6 +815,13 @@
 #          "system" - force the system's, even when none is running
 #          (nothing will display notifications in that case)
 #          decided at startup; restart the shell after changing daemons
+# exit_if_unowned - when the daemon is forced ("wam-shell") and the
+#          bus name still has no owner two watchdog ticks after
+#          startup (the half-dead start: alive and drawing, claiming
+#          nothing), quit so the service restarts the shell instead of
+#          running a session where every notify-send dies silently.
+#          auto and system modes never exit: there the name may belong
+#          to another daemon by design. default true
 # popups - show transient banners (card with a countdown bar) for
 #          incoming notifications. they follow the focused monitor,
 #          freeze on hover, and respect do-not-disturb (critical still
@@ -873,6 +880,7 @@
 #                  and overrides this default. default false
 # [notifications]
 # daemon = "auto"
+# exit_if_unowned = true
 # popups = true
 # popup_timeout = 5000
 # position = "topRight"
