@@ -13,15 +13,20 @@ Run from the repo root:
     python3 tests/manual/reproduce-321-tray-null-id.py
 
 The script boots an isolated "wam-shell-test" instance with a temporary
-XDG_CONFIG_HOME / XDG_CACHE_HOME, so it will not disturb a running
-wam-shell instance. It does require a live Hyprland or sway session.
+XDG_CONFIG_HOME / XDG_CACHE_HOME, and isolates itself under a private
+session bus (dbus-run-session): the StatusNotifierWatcher is a
+session-wide singleton, so against a live session the fake item would
+land in the RUNNING shell's tray while this script inspects its own
+instance's log (#371). It does require a live Hyprland or sway session.
 
-Requirements: a running D-Bus session bus, python-dbus, pygobject, ags, gjs.
+Requirements: a running D-Bus session bus, python-dbus, pygobject, ags,
+gjs, and dbus-run-session (the dbus package).
 """
 
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -38,6 +43,30 @@ WATCHER_NAME = "org.kde.StatusNotifierWatcher"
 WATCHER_PATH = "/StatusNotifierWatcher"
 WATCHER_IFACE = "org.kde.StatusNotifierWatcher"
 INSTANCE = "wam-shell-test"
+PRIVATE_BUS_MARKER = "WAM_321_PRIVATE_BUS"
+
+
+def ensure_private_bus() -> None:
+    """The SNI watcher is a session-wide singleton: against a live
+    session the fake item would land in the RUNNING shell's tray while
+    this script inspects its own instance's log — a misleading verdict
+    and an item injected into the real bar. Re-exec under a private
+    session bus, so the spawned instance owns its own watcher and
+    nothing touches the live session."""
+    if os.environ.get(PRIVATE_BUS_MARKER) == "1":
+        return
+    if shutil.which("dbus-run-session") is None:
+        raise SystemExit(
+            "dbus-run-session not found (the dbus package) — it is required to "
+            "isolate this repro from the live session"
+        )
+    env = dict(os.environ, **{PRIVATE_BUS_MARKER: "1"})
+    print("Isolating under a private session bus (dbus-run-session) ...")
+    os.execvpe(
+        "dbus-run-session",
+        ["dbus-run-session", "--", sys.executable, os.path.abspath(__file__), *sys.argv[1:]],
+        env,
+    )
 
 
 class StatusNotifierItem(dbus.service.Object):
@@ -92,6 +121,9 @@ def wait_for_watcher(bus: dbus.Bus, timeout: float = 15.0) -> dbus.ProxyObject:
 
 
 def main() -> int:
+    # never talk to the live session: see ensure_private_bus
+    ensure_private_bus()
+
     parser = argparse.ArgumentParser(description="Reproduce wam-shell#321")
     parser.add_argument(
         "--shell-timeout",
