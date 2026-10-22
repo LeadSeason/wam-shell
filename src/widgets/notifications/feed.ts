@@ -112,7 +112,19 @@ export function buildFeed<T extends FeedRow>(
         const bucket = buckets[i]
         if (bucket !== runBucket) {
             flush()
-            if (multiDay) blocks.push({ kind: "divider", key: `day:${bucket}`, label: bucket })
+            if (multiDay)
+                blocks.push({
+                    kind: "divider",
+                    // The counter, not the label: a soonest-first block
+                    // (calendar, todoist) sits ABOVE the newest-first
+                    // feed and can re-enter a day that block already
+                    // labeled. gnim's For treats a repeated key as the
+                    // same divider — it warns and drops the child — so
+                    // a second `day:Today` silently vanished and every
+                    // row after it rendered under the previous day.
+                    key: `day:${bucket}:${blocks.length}`,
+                    label: bucket,
+                })
             runBucket = bucket
         } else if (run.length > 0 && run[0].appName !== row.appName) {
             flush()

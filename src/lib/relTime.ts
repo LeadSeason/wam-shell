@@ -27,14 +27,24 @@ const DAY = 24 * HOUR
  *              ProviderItem.time are both in these units)
  * @param nowSec  unix seconds for "now" — injected so the formatting is
  *              pure and can be pinned in tests
- * @returns "now", "5m", "3h", "2d", or "6 Aug" past a week
+ * @returns "now", "5m", "3h", "2d", "6 Aug" past a week — or the future
+ *          tense "in 5m" for a timestamp ahead of us
  */
 export function relTime(time: number, nowSec: number): string {
     const age = nowSec - time
-    // clock skew, or a provider timestamping slightly ahead of us: an
-    // item from "the future" is newly arrived as far as the reader is
-    // concerned, and "-1m" would just look broken
-    if (age < MINUTE) return "now"
+    // a minute on either side reads as "now" — clock skew, or a provider
+    // timestamping slightly ahead of us; "-1m" would just look broken.
+    // But the band is MINUTE wide, not open-ended: provider items are
+    // dated AHEAD (a task's due time, a meeting's start), and "now" on
+    // everything future is the lie that made a deadline 13 hours out
+    // look like it was due this second
+    if (age > -MINUTE && age < MINUTE) return "now"
+    if (age < 0) {
+        const until = -age
+        if (until < HOUR) return `in ${Math.floor(until / MINUTE)}m`
+        if (until < DAY) return `in ${Math.floor(until / HOUR)}h`
+        return `in ${Math.floor(until / DAY)}d`
+    }
     if (age < HOUR) return `${Math.floor(age / MINUTE)}m`
     if (age < DAY) return `${Math.floor(age / HOUR)}h`
     if (age < 7 * DAY) return `${Math.floor(age / DAY)}d`
@@ -121,17 +131,21 @@ export function historyZone(
  *
  * Calendar days, not 24-hour windows: something from 23:50 last night is
  * "Yesterday" at 00:10 even though it is twenty minutes old, because
- * that is how people talk about it.
+ * that is how people talk about it. Future days read the same way —
+ * provider items are dated ahead (a task due tomorrow, a meeting
+ * tomorrow morning), and bucketing every one of them as "Today" is
+ * exactly how tomorrow's business ended up looking like today's.
  */
 export function dayBucket(time: number, nowSec: number): string {
     const then = GLib.DateTime.new_from_unix_local(time)
     const now = GLib.DateTime.new_from_unix_local(nowSec)
     if (!then || !now) return ""
     const days = dayNumber(now) - dayNumber(then)
-    if (days <= 0) return "Today"
+    if (days === 0) return "Today"
+    if (days === -1) return "Tomorrow"
     if (days === 1) return "Yesterday"
     // GLib numbers weekdays 1 (Monday) through 7 (Sunday)
-    if (days < 7) return WEEKDAYS[then.get_day_of_week() - 1]
+    if (days < 7 && days > -7) return WEEKDAYS[then.get_day_of_week() - 1]
     return `${then.get_day_of_month()} ${MONTHS[then.get_month() - 1]}`
 }
 

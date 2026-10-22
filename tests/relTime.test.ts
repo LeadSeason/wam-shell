@@ -35,9 +35,22 @@ test("relTime: past a week falls back to a date", () => {
     eq(relTime(NOW - 10 * DAY, NOW), "27 Jul")
 })
 
-test("relTime: a future timestamp reads as now, not a negative age", () => {
+test("relTime: a minute of future skew reads as now, not a negative age", () => {
     // clock skew, or a provider stamping slightly ahead of us
-    eq(relTime(NOW + 5 * MIN, NOW), "now")
+    eq(relTime(NOW + 59, NOW), "now")
+})
+
+test("relTime: a future timestamp reads the ladder the other way", () => {
+    // provider items are dated ahead (a task's due time, a meeting's
+    // start): "now" on all of it made a deadline hours out look due
+    // this second
+    eq(relTime(NOW + MIN, NOW), "in 1m")
+    eq(relTime(NOW + 5 * MIN, NOW), "in 5m")
+    eq(relTime(NOW + 59 * MIN, NOW), "in 59m")
+    eq(relTime(NOW + HOUR, NOW), "in 1h")
+    eq(relTime(NOW + 23 * HOUR, NOW), "in 23h")
+    eq(relTime(NOW + DAY, NOW), "in 1d")
+    eq(relTime(NOW + 9 * DAY, NOW), "in 9d")
 })
 
 test("dayBucket: same calendar day", () => {
@@ -49,6 +62,26 @@ test("dayBucket: yesterday is a calendar day, not 24 hours", () => {
     // 23:50 the previous evening is ~15h old but still "Yesterday"
     const lastNight = GLib.DateTime.new_local(2026, 8, 5, 23, 50, 0)!.to_unix()
     eq(dayBucket(lastNight, NOW), "Yesterday")
+})
+
+test("dayBucket: tomorrow is a calendar day, not 24 hours", () => {
+    // the mirror of the yesterday test: 04:30 tomorrow morning is ~14h
+    // ahead but reads as Tomorrow — and a task due then is tomorrow's
+    // business, not today's
+    const earlyTomorrow = GLib.DateTime.new_local(2026, 8, 7, 4, 30, 0)!.to_unix()
+    eq(dayBucket(earlyTomorrow, NOW), "Tomorrow")
+    eq(dayBucket(NOW + DAY, NOW), "Tomorrow")
+})
+
+test("dayBucket: later in the week names the day too", () => {
+    // 2026-08-09 is a Sunday — future days share the past's buckets
+    const sunday = GLib.DateTime.new_local(2026, 8, 9, 9, 0, 0)!
+    eq(dayBucket(sunday.to_unix(), NOW), "Sunday")
+})
+
+test("dayBucket: a week or more ahead falls back to a date", () => {
+    const ahead = GLib.DateTime.new_local(2026, 8, 16, 9, 0, 0)!
+    eq(dayBucket(ahead.to_unix(), NOW), "16 August")
 })
 
 test("dayBucket: earlier in the week names the day, in English", () => {
