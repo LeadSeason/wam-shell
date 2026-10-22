@@ -72,6 +72,33 @@ test("buildFeed: more than one day gets dividers", () => {
     eq(shape(buildFeed(rows, NOW)), ["--Today--", "ax1", "--Yesterday--", "bx1"])
 })
 
+test("buildFeed: a future day gets its own divider", () => {
+    // a task due tomorrow carries the largest timestamp in the list;
+    // it is tomorrow's business and must not read as today's
+    const tomorrow = GLib.DateTime.new_local(2026, 8, 7, 9, 0, 0)!.to_unix()
+    const rows = [row("a", tomorrow), row("b", NOW - HOUR)]
+    eq(shape(buildFeed(rows, NOW)), ["--Tomorrow--", "ax1", "--Today--", "bx1"])
+})
+
+test("buildFeed: re-entering a day gets a second divider with its own key", () => {
+    // a soonest-first block (calendar, todoist) sits ABOVE the
+    // newest-first feed and can visit a day the feed also holds. gnim's
+    // For treats a repeated key as the same divider and drops the
+    // duplicate — the second Today divider used to vanish silently and
+    // its rows rendered under the previous day
+    const tomorrow = GLib.DateTime.new_local(2026, 8, 7, 9, 0, 0)!.to_unix()
+    const rows = [
+        row("cal", NOW + HOUR),
+        row("cal", tomorrow),
+        row("b", tomorrow - HOUR),
+        row("a", NOW - HOUR),
+    ]
+    const blocks = buildFeed(rows, NOW)
+    eq(shape(blocks), ["--Today--", "calx1", "--Tomorrow--", "calx1", "bx1", "--Today--", "ax1"])
+    const keys = blocks.filter(b => b.kind === "divider").map(b => b.key)
+    eq(keys.length, new Set(keys).size, "divider keys unique")
+})
+
 test("buildFeed: a run never folds across a day divider", () => {
     const yesterday = GLib.DateTime.new_local(2026, 8, 5, 10, 0, 0)!.to_unix()
     const rows = [

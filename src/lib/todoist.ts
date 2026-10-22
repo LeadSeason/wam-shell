@@ -501,6 +501,12 @@ if (Config.todoist.enabled) {
         items,
         refresh,
         status,
+        // tasks are agenda, not records: newest-first reads a task due
+        // tomorrow (the largest timestamp in the list) as the newest
+        // thing that happened and pins it above everything. Same call
+        // the calendar made — the center lists the block soonest-first
+        // (feed.ts)
+        soonestFirst: true,
         setupHint: active
             ? null
             : "Todoist needs an API token: copy it from Todoist → Settings → Integrations → Developer and put it in ~/.config/wam-shell/todoist.env as TODOIST_API_TOKEN=<token>",
