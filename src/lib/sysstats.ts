@@ -1234,6 +1234,46 @@ async function readNet(): Promise<[number, number]> {
 // probe once: no point spawning nvidia-smi at all without one
 const hasNvidia = GLib.find_program_in_path("nvidia-smi") !== null
 
+// RTD3 GATE: the dGPU supports runtime suspend, but nvidia-smi is
+// itself an NVIDIA client — a running stream keeps the card out of
+// suspend forever (P8, ~3-10 W, always "active"). The gpuPm step below
+// yields the stream after sustained idle and respawns it the moment
+// the card wakes for real work. runtime_status reads passively from
+// sysfs: checking it does NOT wake the card.
+//
+// The PCI slots come from gpuState (what the stream itself reports), so
+// nothing is hardcoded per machine. Unreadable status (exotic setups)
+// falls back to the old always-on behaviour, and the wattage floor is
+// deliberately conservative: a card whose idle draw sits above
+// GPU_IDLE_MAX_WATTS simply keeps the old behaviour, it never loses
+// stats.
+const GPU_IDLE_POLLS = 10 // consecutive near-idle lines before yielding
+const GPU_IDLE_MAX_BUSY = 2 // % — anything above counts as activity
+const GPU_IDLE_MAX_WATTS = 12 // W — keep at/above the card's idle floor
+const GPU_RESPAWN_COOLDOWN = 60_000 // ms: the card takes a few s to actually
+// suspend after the stream dies — respawning inside that window would see
+// "active, no stream" and pin it awake again forever
+let gpuIdleStreak = 0
+let gpuYieldAt = 0
+
+// the PCI slots of every nvidia card the stream has reported. A sysfs
+// runtime_status read per slot tells us whether ANY of them is awake.
+// An empty set (stream not started yet) assumes awake — same as the old
+// always-on behaviour.
+function nvidiaAwake(): boolean {
+    const pdevs = new Set<string>()
+    for (const [id, g] of gpuState) if (id.startsWith("nv:") && g.pdev) pdevs.add(g.pdev)
+    if (pdevs.size === 0) return true
+    for (const p of pdevs) {
+        try {
+            if (readFile(`/sys/bus/pci/devices/${p}/power/runtime_status`).trim() === "active") return true
+        } catch {
+            // unreadable: treat as awake
+        }
+    }
+    return false
+}
+
 const poll = createPoll("", INTERVAL, () => {
     const step = (label: string, fn: () => void | Promise<void>) => {
         try {
@@ -1369,6 +1409,29 @@ const poll = createPoll("", INTERVAL, () => {
         setNetDown(down)
         setNetUp(up)
     })
+    step("gpuPm", () => {
+        // RTD3 GATE: while a card sleeps the stream stays dead and its
+        // pane entries are dropped (dropNvidiaGpus); they reappear the
+        // moment the card is awake again. The respawn cooldown keeps the
+        // suspend transition from being raced.
+        if (!gpuWanted) return
+        const awake = nvidiaAwake()
+        if (!awake && gpuProc) {
+            gpuProc.force_exit()
+            gpuProc = null
+            dropNvidiaGpus()
+        } else if (awake && !gpuProc && !gpuRestartSource && Date.now() - gpuYieldAt > GPU_RESPAWN_COOLDOWN) {
+            startGpuStream()
+        } else if (awake && gpuProc && gpuIdleStreak >= GPU_IDLE_POLLS) {
+            // sustained idle: the stream is the only client left —
+            // yield it so the card can runtime-suspend
+            gpuProc.force_exit()
+            gpuProc = null
+            gpuIdleStreak = 0
+            gpuYieldAt = Date.now()
+            dropNvidiaGpus()
+        }
+    })
     return ""
 })
 
@@ -1431,6 +1494,10 @@ function handleGpuLine(line: string) {
     gpuRestarts = 0
     const r = parseNvidiaGpuLine(line)
     if (!r) return
+    // RTD3 GATE: near-idle lines only prove the card is awake BECAUSE
+    // this stream exists. Real activity resets the streak.
+    const idleNow = (r.busy ?? 0) <= GPU_IDLE_MAX_BUSY && (r.watts === null || r.watts <= GPU_IDLE_MAX_WATTS)
+    gpuIdleStreak = idleNow ? gpuIdleStreak + 1 : 0
     const id = `nv:${r.index}`
     const prev = gpuState.get(id)
     if (!prev) gpuOrder.push(id)
@@ -1556,7 +1623,7 @@ function syncEngines() {
     gpuWanted = want
     if (want && !stopPoll) {
         stopPoll = poll.subscribe(() => {})
-        if (hasNvidia) startGpuStream()
+        if (hasNvidia && nvidiaAwake()) startGpuStream()
     }
     if (!want && stopPoll) {
         stopPoll()
