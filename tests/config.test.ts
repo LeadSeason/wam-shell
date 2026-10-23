@@ -117,6 +117,17 @@ test("config: documented defaults without a config file", () => {
     eq(c.todoist.enabled, true, "todoist.enabled")
     eq(c.protonmail.enabled, true, "protonmail.enabled")
     eq(c.notifications.popupProviders, [], "notifications.popupProviders")
+    eq(c.showOsIcon, true, "showOsIcon default")
+})
+
+test("config: show_os_icon false removes the panel OS icon", () => {
+    const c = loadConfig(
+        { DESKTOP_SESSION: "hyprland" },
+        `
+show_os_icon = false
+`,
+    )
+    eq(c.showOsIcon, false, "showOsIcon override")
 })
 
 test("config: theme fallback with follow_system off", () => {

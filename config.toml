@@ -41,6 +41,11 @@
 #           missing-icon
 # os_icon = ""
 
+# show_os_icon - false removes the OS icon from the panel: the osicon
+#                 widget renders nothing, in the legacy layout and in
+#                 any [[panel]] list. default true
+# show_os_icon = true
+
 # theme - color theme, a file scss/theme/<name>.scss. shipped:
 #         catppuccin-mocha (default), catppuccin-macchiato,
 #         catppuccin-frappe, catppuccin-latte, gruvbox, gruvbox-light

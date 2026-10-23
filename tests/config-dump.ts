@@ -9,6 +9,7 @@ const dump = {
     desktopSession: Config.desktopSession,
     instanceCacheDir: Config.instanceCacheDir,
     osIcon: Config.osIcon,
+    showOsIcon: Config.showOsIcon,
     swayGaps: Config.swayGaps,
     updatesThreshold: Config.updatesThreshold,
     theme: Config.theme,

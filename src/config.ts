@@ -970,6 +970,10 @@ export default class Config {
 
     static instanceSrcDir = instanceSrcDir
     static osIcon = getOsIcon()
+    // false removes the panel's OS icon entirely (src/widgets/bar/barModules/osIcon.tsx);
+    // the resolved osIcon itself stays available for the quicksettings
+    // avatar fallback, which has its own show_avatar switch
+    static showOsIcon = topLevel.bool("show_os_icon", true)
     static desktopSession = getDesktopSession()
     static updatesThreshold = topLevel.num("arch_updates_threshold", 50, { min: 0 })
 
