@@ -616,6 +616,14 @@ StartLimitIntervalSec=0
 [Service]
 Type=simple
 WorkingDirectory=$ROOT
+# Keep the shell off the NVIDIA GPU: GTK4 GL init via glvnd loads the
+# NVIDIA vendor stack (this system ships no glx_vendor.d, so vendor
+# selection cannot be steered by env), whose allocator opens
+# /dev/nvidia* and pins the dGPU out of runtime suspend forever. Cairo
+# renders the shell on the CPU -- a bar and launcher need no GPU.
+Environment=GSK_RENDERER=cairo
+Environment=__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json
+Environment=__GLX_VENDOR_LIBRARY_NAME=mesa
 # Don't race the compositor (#225). Always exits 0 -- a delay, never a
 # gate; see the header of the script itself.
 ExecStartPre=/usr/bin/env bash $(systemd_quote "$ROOT/scripts/wait-compositor.sh")
