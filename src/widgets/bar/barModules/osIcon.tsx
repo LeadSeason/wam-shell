@@ -1,6 +1,11 @@
 import Config from "../../../config"
 
 export default function OSIcon() {
+    // show_os_icon = false removes the widget outright — null, not an
+    // empty button shell — so both the [[panel]] lists and the legacy
+    // layout lose it without a hole in the row
+    if (!Config.showOsIcon) return null
+
     const icon = Config.osIcon
     let iconImage
 
