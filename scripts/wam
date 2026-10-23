@@ -137,11 +137,15 @@ usage: wam <command>
                    minimize_when_screen_sharing (bare time while sharing),
                    notify (banner + chime at prayer time), notify_sound,
                    offset_fajr … offset_isha (minutes, -120…120)
-  config <edit|path|show|diff|sync>
+  config <edit|path|show|diff|sync|format>
                    edit the config in $EDITOR (seeds the commented
                    template on first run), print its path, print it,
                    list template options your file predates (diff),
-                   rewrite it as latest template + your values (sync)
+                   rewrite it as latest template + your values (sync),
+                   rewrite it into the template's canonical order:
+                   values uncommented at their documented slot, unread
+                   keys kept under [wam-preserved] at the end — a .bak
+                   of the original is written first (format)
   screen-share     the video-input streams the privacy mask sees right
                    now + what it recently masked on, with the exact
                    ignore_apps value for each
@@ -696,7 +700,11 @@ cmd_config() {
         show) cmd_config_show ;;
         diff) cmd_config_diff ;;
         sync) cmd_config_sync ;;
-        *) die "usage: wam config <edit|path|show|diff|sync>" ;;
+        format)
+            shift
+            cmd_config_format "$@"
+            ;;
+        *) die "usage: wam config <edit|path|show|diff|sync|format>" ;;
     esac
 }
 
@@ -809,6 +817,45 @@ cmd_config_sync() {
     fi
     log "Synced $f with the latest template (backup: $backup)"
     log "Review with: wam config edit — most options apply on restart: wam restart"
+}
+
+# Rewrite the config into the template's canonical shape: values
+# uncommented at their documented slot, flat spellings folded into their
+# sections, keys the template does not know kept readable under
+# [wam-preserved] at the end. The rules live in src/lib/configFormat
+# (unit-tested against the real template); this only resolves the file
+# and runs the bundled formatter, which backs the original up as .bak
+# before it writes. Deterministic: formatting twice changes nothing, so
+# a format is also a safe way to re-sync the docs around your values.
+cmd_config_format() {
+    require_install # formats against the install's template
+    local target
+    if [[ $# -gt 0 ]]; then
+        target="$1"
+        [[ -f "$target" ]] || die "no such file: $target"
+    else
+        target="$(active_config_file)"
+        [[ -f "$target" ]] || die "no config file yet — running on defaults. create one with: wam config edit"
+    fi
+
+    # bundled on demand, the way compile_style() bundles the style
+    # precompiler — the engine is TypeScript so the unit suite can run
+    # against it directly, and one definition of the rules beats two
+    local tmp rc=0
+    tmp="$(mktemp -d)"
+    if ! (cd "$ROOT" && ags bundle --gtk 4 scripts/format-config.ts "$tmp/format-config" >/dev/null 2>&1); then
+        rm -rf "$tmp"
+        die "could not bundle the config formatter (is ags on PATH?)"
+    fi
+    chmod +x "$tmp/format-config"
+    if ! WAM_FORMAT_TEMPLATE="$ROOT/config.toml" \
+        WAM_FORMAT_TARGET="$target" \
+        "$tmp/format-config"; then
+        rc=1
+    fi
+    rm -rf "$tmp"
+    [[ $rc -eq 0 ]] || die "formatting failed — the file is unchanged"
+    log "Most options apply on restart: wam restart"
 }
 
 # --- harvest -------------------------------------------------------------------
