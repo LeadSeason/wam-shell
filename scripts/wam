@@ -141,11 +141,13 @@ usage: wam <command>
                    edit the config in $EDITOR (seeds the commented
                    template on first run), print its path, print it,
                    list template options your file predates (diff),
-                   rewrite it as latest template + your values (sync),
-                   rewrite it into the template's canonical order:
+                   rewrite it against the latest template with every
+                   value kept at its documented slot (sync), rewrite
+                   it into the template's canonical order:
                    values uncommented at their documented slot, unread
                    keys kept under [wam-preserved] at the end — a .bak
-                   of the original is written first (format)
+                   of the original is written first (format). sync is
+                   the same engine as format
   screen-share     the video-input streams the privacy mask sees right
                    now + what it recently masked on, with the exact
                    ignore_apps value for each
@@ -801,7 +803,7 @@ cmd_config_diff() {
 }
 
 cmd_config_sync() {
-    require_install # the new template ships with the install
+    require_install # syncs against the install's template
     local f
     f="$(active_config_file)"
     [[ -f "$f" ]] || die "no user config yet — run: wam config edit"
@@ -809,21 +811,15 @@ cmd_config_sync() {
         die "your active config IS the install's copy ($f) — create a user config first: wam config edit"
     fi
 
-    # the config-override pattern: latest template + the user's active
-    # values appended. the template is all comments, so the appended
-    # sections never collide with it
-    local values backup
-    backup="$f.bak"
-    values="$(grep -vE '^[[:space:]]*(#|$)' "$f" || true)"
-    cp "$f" "$backup"
-    cp "$ROOT/config.toml" "$f"
-    if [[ -n "$values" ]]; then
-        {
-            printf '\n# --- your values (preserved by wam config sync, %s) ---\n' "$(date +%F)"
-            printf '%s\n' "$values"
-        } >>"$f"
+    # sync IS a format run (#376): the engine rewrites the file against
+    # the latest template — doc comments refreshed, new keys shown
+    # commented at their slot — while every value stays at its
+    # documented slot. The old template+append shape broke the
+    # structure wam config format builds; a format run repaired it but
+    # clobbered sync's .bak with the broken intermediate.
+    if ! WAM_FORMAT_LABEL="config sync" run_config_formatter "$f"; then
+        die "sync failed — the file is unchanged"
     fi
-    log "Synced $f with the latest template (backup: $backup)"
     log "Review with: wam config edit — most options apply on restart: wam restart"
 }
 
@@ -835,6 +831,36 @@ cmd_config_sync() {
 # and runs the bundled formatter, which backs the original up as .bak
 # before it writes. Deterministic: formatting twice changes nothing, so
 # a format is also a safe way to re-sync the docs around your values.
+# Bundle and run the config formatter (src/lib/configFormat, via
+# scripts/format-config.ts) against a target file. ONE definition of
+# the rewrite rules for both commands that rewrite configs: sync IS a
+# format run under a different name — the engine refreshes the doc
+# comments against the CURRENT template and keeps every value at its
+# documented slot, which is the contract sync's old cp-template-
+# and-append-blob implementation only pretended to (#376: it yanked
+# the values out of their slots into a tail blob, and its .bak got
+# clobbered by the format run a user then needed to repair the file).
+run_config_formatter() { # $1 = target file, WAM_FORMAT_LABEL = output prefix
+    local target="$1" tmp rc=0
+    tmp="$(mktemp -d)"
+    # bundled on demand, the way compile_style() bundles the style
+    # precompiler — the engine is TypeScript so the unit suite can run
+    # against it directly, and one definition of the rules beats two
+    if ! (cd "$ROOT" && ags bundle --gtk 4 scripts/format-config.ts "$tmp/format-config" >/dev/null 2>&1); then
+        rm -rf "$tmp"
+        die "could not bundle the config formatter (is ags on PATH?)"
+    fi
+    chmod +x "$tmp/format-config"
+    if ! WAM_FORMAT_TEMPLATE="$ROOT/config.toml" \
+        WAM_FORMAT_TARGET="$target" \
+        WAM_FORMAT_LABEL="${WAM_FORMAT_LABEL:-config format}" \
+        "$tmp/format-config"; then
+        rc=1
+    fi
+    rm -rf "$tmp"
+    return "$rc"
+}
+
 cmd_config_format() {
     require_install # formats against the install's template
     local target
@@ -846,23 +872,9 @@ cmd_config_format() {
         [[ -f "$target" ]] || die "no config file yet — running on defaults. create one with: wam config edit"
     fi
 
-    # bundled on demand, the way compile_style() bundles the style
-    # precompiler — the engine is TypeScript so the unit suite can run
-    # against it directly, and one definition of the rules beats two
-    local tmp rc=0
-    tmp="$(mktemp -d)"
-    if ! (cd "$ROOT" && ags bundle --gtk 4 scripts/format-config.ts "$tmp/format-config" >/dev/null 2>&1); then
-        rm -rf "$tmp"
-        die "could not bundle the config formatter (is ags on PATH?)"
+    if ! run_config_formatter "$target"; then
+        die "formatting failed — the file is unchanged"
     fi
-    chmod +x "$tmp/format-config"
-    if ! WAM_FORMAT_TEMPLATE="$ROOT/config.toml" \
-        WAM_FORMAT_TARGET="$target" \
-        "$tmp/format-config"; then
-        rc=1
-    fi
-    rm -rf "$tmp"
-    [[ $rc -eq 0 ]] || die "formatting failed — the file is unchanged"
     log "Most options apply on restart: wam restart"
 }
 
