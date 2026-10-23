@@ -63,7 +63,9 @@ const parts = [`${placed} value${placed === 1 ? "" : "s"} placed at their docume
 if (folded > 0) parts.push(`${folded} folded in from flat spellings`)
 if (panels > 0) parts.push(`${panels} [[panel]] block${panels === 1 ? "" : "s"}`)
 if (preserved > 0) {
-    parts.push(`${preserved} unread key${preserved === 1 ? "" : "s"} kept under [wam-preserved]`)
+    parts.push(
+        `${preserved} unread key${preserved === 1 ? "" : "s"} preserved in the block at the end`,
+    )
 }
 print(`config format: ${parts.join(", ")}`)
 print(`config format: the original is backed up at ${backup}`)

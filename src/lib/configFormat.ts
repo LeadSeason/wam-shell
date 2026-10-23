@@ -408,7 +408,10 @@ interface PreservedBlock {
     entries: Array<{ key: string; raw: string }>
 }
 
-/** reserved: bare preserved keys live here; unwrapped again on re-read */
+/** reserved: bare preserved keys live here. Opaque on re-read: its
+ *  contents are skipped during classification and re-emitted verbatim,
+ *  so a value once pen-ned stays pen-ned — even one that happens to
+ *  share a name with a real key must not be re-activated by a format */
 const PRESERVED_TABLE = "wam-preserved"
 
 const PRESERVED_BANNER = [
@@ -647,10 +650,12 @@ export function formatConfig(template: string, user: string): FormatResult {
     // ── the preserved zone ───────────────────────────────────────────
     // bare keys cannot sit loose at the end of the file: after the
     // body's last table header they would join that table and redefine
-    // its keys. They live in the reserved [wam-preserved] table, whose
-    // contents are unwrapped back to top-level entries on the next
-    // read — so the zone re-classifies identically and formatting twice
-    // is the same as formatting once
+    // its keys. They live in the reserved [wam-preserved] table, which
+    // is OPAQUE on the next read: its entries are skipped during
+    // classification and re-emitted here verbatim, first — that is what
+    // makes the zone byte-stable across runs. (Re-classifying pen
+    // contents instead would re-activate an unread value that happens
+    // to share a name with a real key — a format must never do that)
     for (const stray of strays) {
         // re-heading is only safe when the body did not define the
         // table; otherwise the stray joins the pen, where it is simply
@@ -748,7 +753,7 @@ function readerVisible(
         typeof v === "object" && v !== null && !Array.isArray(v) && !(v instanceof Date)
 
     for (const [key, value] of Object.entries(doc)) {
-        if (key === PRESERVED_TABLE) continue // the pen: unwrapped below
+        if (key === PRESERVED_TABLE) continue // the pen: opaque, never projected
         if (key === "panel") {
             // a table-valued panel is malformed [[panel]] usage — kept
             // as-is so the verifier refuses a format that would drop it
