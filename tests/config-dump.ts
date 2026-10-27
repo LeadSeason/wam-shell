@@ -13,6 +13,7 @@ const dump = {
     swayGaps: Config.swayGaps,
     updatesThreshold: Config.updatesThreshold,
     theme: Config.theme,
+    timezone: Config.timezone,
     workspaces: Config.workspaces,
     tray: Config.tray,
     quicksettings: Config.quicksettings,

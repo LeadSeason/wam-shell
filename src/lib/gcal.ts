@@ -9,6 +9,8 @@ import { GoogleAccount, createGoogleAuth, googleRequest } from "./googleAuth"
 import { createRefreshGate } from "./providerCore"
 import { WEEKDAYS } from "./relTime"
 import { registerDispose } from "./lifecycle"
+import * as tz from "./tz"
+import type { Zone } from "./tz"
 
 // Google Calendar for the clock popover (Calendar API v3, read-only).
 // Multiple calendars of the account are merged into one event list; the
@@ -17,8 +19,9 @@ import { registerDispose } from "./lifecycle"
 // once per account in the browser, the refresh token lives in
 // gcal-tokens.json. Sync is a full refetch of a ~5-month window around
 // the viewed month — small, quota-cheap, and stateless (no syncToken
-// machinery). All date math is local; Google answers with UTC instants
-// or exclusive all-day end dates, both normalized here.
+// machinery). All date math is done IN THE CONFIGURED ZONE (lib/tz.ts —
+// "auto" means the machine's own); Google answers with UTC instants or
+// exclusive all-day end dates, both normalized here.
 
 const API = "https://www.googleapis.com/calendar/v3"
 const cachePath = `${Config.instanceCacheDir}/gcal-events.json`
@@ -257,55 +260,57 @@ let loadedTo = 0 // ms epoch, exclusive
 
 // ------------------------------------------------------- pure helpers
 
-// local "YYYY-MM-DD" for a ms epoch — the key marks and lists filter on
-export function dayKey(ms: number): string {
-    const d = new Date(ms)
-    const mo = String(d.getMonth() + 1).padStart(2, "0")
-    const dy = String(d.getDate()).padStart(2, "0")
-    return `${d.getFullYear()}-${mo}-${dy}`
+// "YYYY-MM-DD" in the configured zone for a ms epoch — the key marks
+// and lists filter on. The zone is an argument rather than read from
+// the config inside each helper so the tests can pin a real one; the
+// default is the configured zone, which is what every caller wants.
+export function dayKey(ms: number, z: Zone = tz.zone()): string {
+    return tz.dayKey(ms, z)
 }
 
-// NB: on a spring-forward date in a zone that transitions AT midnight,
-// this instant does not exist and JS resolves it to 01:00 — so an
-// all-day event starting on such a date gets a startMs an hour late.
-// Harmless as things stand, because dayKey() re-derives the calendar day
-// from the timestamp and lands on the right one either way, and nothing
-// renders an all-day event's clock time. Called out because the DST
-// handling in eventDays() right below is careful and commented, and a
-// reader will otherwise assume this line got the same treatment.
-function localMidnight(y: number, m: number, d: number): number {
-    return new Date(y, m, d).getTime()
-}
-
-// every local day an event touches. allDay ends are EXCLUSIVE per
-// Google convention (a one-day event ends the next midnight); timed
-// events ending exactly at midnight don't spill into that day. A
-// zero-length event covers its start day only. Capped defensively: a
-// broken feed must not produce 10k keys
+// every calendar day an event touches, IN THE CONFIGURED ZONE. allDay
+// ends are EXCLUSIVE per Google convention (a one-day event ends the
+// next midnight); timed events ending exactly at midnight don't spill
+// into that day. A zero-length event covers its start day only. Capped
+// defensively: a broken feed must not produce 10k keys
 //
 // `_allDay` is deliberately unused: the two cases converged once the
 // rule was stated as "the last covered instant is end-1ms", which is
 // true of both. It stays in the signature because callers still have to
 // know which kind they hold to normalize the end in the first place
 // (mapGoogleEvent does), and the tests pass both to pin that they agree
-export function eventDays(startMs: number, endMs: number, _allDay: boolean): string[] {
-    if (endMs <= startMs) return [dayKey(startMs)]
+//
+// The walk is a DateTime `add_days` from one civil midnight to the next
+// rather than a `+86400000` in ms: across a fall-back transition (a
+// 25-hour day) midnight+24h is still the same civil day, which would
+// duplicate the key and drop the last one.
+export function eventDays(
+    startMs: number,
+    endMs: number,
+    _allDay: boolean,
+    z: Zone = tz.zone(),
+): string[] {
+    if (endMs <= startMs) return [dayKey(startMs, z)]
     const days: string[] = []
     // end is exclusive for both kinds: the last covered instant is end-1ms
-    const last = new Date(endMs - 1)
-    const start = new Date(startMs)
-    const stop = localMidnight(last.getFullYear(), last.getMonth(), last.getDate())
-    // step by local calendar day, not absolute 24h: across the
-    // fall-back transition (a 25-hour day) midnight+86400s is still the
-    // same local day, which duplicated the key and dropped the last one
+    const last = tz.civil(endMs - 1, z)
+    const stop = tz.at(last.y, last.m, last.d, 0, 0, 0, z)
+    const start = tz.civil(startMs, z)
     for (
-        let d = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-        d.getTime() <= stop && days.length < 62;
-        d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)
+        let cur = tz.at(start.y, start.m, start.d, 0, 0, 0, z);
+        cur.to_unix() <= stop.to_unix() && days.length < 62;
+        cur = cur.add_days(1)!
     ) {
-        days.push(dayKey(d.getTime()))
+        days.push(cur.format("%Y-%m-%d")!)
     }
     return days
+}
+
+/** the midnight (or any civil time) of a date in the zone; months are
+ *  1-based here, unlike every `new Date(...)` call site, because the
+ *  value goes straight to GLib */
+function civilMs(y: number, m: number, d: number, z: Zone): number {
+    return tz.atMs(y, m, d, 0, 0, 0, z)
 }
 
 // the popup-method lead times of a Google reminder list (entries are
@@ -373,14 +378,25 @@ export function mapGoogleEvent(
     const allDay = typeof raw.start?.date === "string"
     let startMs: number, endMs: number
     if (allDay) {
-        // "YYYY-MM-DD" in local time; end.date is the exclusive next midnight
+        // "YYYY-MM-DD" as a civil date in the configured zone; end.date
+        // is the exclusive next midnight. NB: on a spring-forward date in
+        // a zone that transitions AT midnight, this instant does not
+        // exist and GLib resolves it to the next valid hour — so an
+        // all-day event starting on such a date gets a startMs an hour
+        // late. Harmless, because dayKey() re-derives the calendar day
+        // from the timestamp and lands on the right one either way, and
+        // nothing renders an all-day event's clock time. Called out
+        // because the DST handling in eventDays() is careful and
+        // commented, and a reader will assume this got the same
         const [sy, sm, sd] = raw.start.date.split("-").map(Number)
         const [ey, em, ed] = String(raw.end?.date ?? raw.start.date)
             .split("-")
             .map(Number)
-        startMs = localMidnight(sy, sm - 1, sd)
-        endMs = localMidnight(ey, em - 1, ed)
+        startMs = civilMs(sy, sm, sd, tz.zone())
+        endMs = civilMs(ey, em, ed, tz.zone())
     } else {
+        // an RFC3339 offset collapses to the configured zone here, which
+        // is exactly what the rest of this module then renders
         startMs = Date.parse(raw.start?.dateTime ?? "")
         endMs = Date.parse(raw.end?.dateTime ?? "")
     }
@@ -402,14 +418,10 @@ export function mapGoogleEvent(
     }
 }
 
-// "all day" or "HH:MM–HH:MM" for the day list
-export function timeLabel(e: CalEvent): string {
+// "all day" or "HH:MM–HH:MM" for the day list, in the configured zone
+export function timeLabel(e: CalEvent, z: Zone = tz.zone()): string {
     if (e.allDay) return "all day"
-    const hm = (ms: number) => {
-        const d = new Date(ms)
-        return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
-    }
-    return `${hm(e.startMs)}–${hm(e.endMs)}`
+    return `${tz.hhmm(e.startMs, z)}–${tz.hhmm(e.endMs, z)}`
 }
 
 export interface AgendaGroup {
@@ -424,30 +436,41 @@ export interface GridDay {
     inMonth: boolean // false for the leading/trailing days of adjacent months
 }
 
-// 6x7 Monday-first grid for a displayed month (year + 0-based month):
-// fixed row count so the grid never jumps height between months
-export function monthGrid(year: number, month0: number): GridDay[][] {
-    // getDay(): 0=Sunday..6=Saturday -> offset back to Monday
-    const firstWeekday = (new Date(year, month0, 1).getDay() + 6) % 7
-    const start = new Date(year, month0, 1 - firstWeekday)
+// 6x7 Monday-first grid for a displayed month (year + 0-based month),
+// in the configured zone: fixed row count so the grid never jumps height
+// between months. Walked with DateTime `add_days` rather than a
+// `new Date(y, m, d + n)` because GLib's constructor returns null for an
+// out-of-range day instead of rolling it over, and the leading cells of
+// a grid are always in the previous month.
+export function monthGrid(year: number, month0: number, z: Zone = tz.zone()): GridDay[][] {
+    const first = tz.at(year, month0 + 1, 1, 0, 0, 0, z)
+    // get_day_of_week(): 1=Monday..7=Sunday -> offset back to Monday
+    const firstWeekday = (first.get_day_of_week() + 6) % 7
+    let cur = first.add_days(-firstWeekday)!
     const weeks: GridDay[][] = []
     for (let w = 0; w < 6; w++) {
         const row: GridDay[] = []
         for (let i = 0; i < 7; i++) {
-            const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + w * 7 + i)
+            const d = cur.add_days(i)!
             row.push({
-                key: dayKey(d.getTime()),
-                num: d.getDate(),
-                inMonth: d.getMonth() === month0,
+                key: d.format("%Y-%m-%d")!,
+                num: d.get_day_of_month(),
+                inMonth: d.get_month() === month0 + 1,
             })
         }
         weeks.push(row)
+        cur = cur.add_days(7)!
     }
     return weeks
 }
 
-// ISO-8601 week number of a local date: week 1 contains the year's
-// first Thursday (both the grid rows and this count are Monday-first)
+// ISO-8601 week number of a calendar date: week 1 contains the year's
+// first Thursday (both the grid rows and this count are Monday-first).
+//
+// Pure civil-date arithmetic over a Date used purely as a y/m/d carrier,
+// so it is deliberately NOT zone-aware — the ISO week of "2026-08-07" is
+// the same in every zone, and callers build the Date from a day key
+// rather than from an instant.
 export function isoWeekNumber(d: Date): number {
     const date = new Date(d.getFullYear(), d.getMonth(), d.getDate())
     const day = (date.getDay() + 6) % 7 // Mon=0..Sun=6
@@ -465,15 +488,21 @@ export function isoWeekNumber(d: Date): number {
 // this agenda read "Today / Tomorrow / tis, 05.08.2026", switching
 // language two rows in. Same reasoning, and now the same list, as the
 // notification center's day dividers
-export function dayLabel(day: string, today: string): string {
+export function dayLabel(day: string, today: string, z: Zone = tz.zone()): string {
     if (day === today) return "Today"
     const [ty, tm, td] = today.split("-").map(Number)
-    if (day === dayKey(new Date(ty, tm - 1, td + 1).getTime())) return "Tomorrow"
+    // "tomorrow" is a civil day, so stepping one is a calendar-day add —
+    // `td + 1` on its own would be an out-of-range day-of-month at a
+    // month end, which GLib rejects (null) rather than rolling over
+    const t = tz.at(ty, tm, td, 0, 0, 0, z)
+    if (t && day === t.add_days(1)!.format("%Y-%m-%d")!) return "Tomorrow"
     const [y, m, dd] = day.split("-").map(Number)
-    const date = new Date(y, m - 1, dd)
-    if (Number.isNaN(date.getTime())) return day
-    // getDay() is 0=Sunday; WEEKDAYS is Monday-first
-    const weekday = WEEKDAYS[(date.getDay() + 6) % 7].slice(0, 3)
+    // the weekday of a calendar date, read in UTC so no configured zone
+    // can shift it: get_day_of_week() is 1=Monday..7=Sunday, WEEKDAYS is
+    // Monday-first
+    const probe = GLib.DateTime.new_utc(y, m, dd, 0, 0, 0)
+    if (!probe) return day
+    const weekday = WEEKDAYS[(probe.get_day_of_week() + 6) % 7].slice(0, 3)
     const pad = (n: number) => String(n).padStart(2, "0")
     return `${weekday}, ${pad(dd)}.${pad(m)}.${y}`
 }
@@ -550,11 +579,18 @@ function fetchPaged(
 }
 
 // [first day of focus-1mo, first day of focus+4mo): covers the 6-week
-// grid around the viewed month plus a useful agenda horizon
+// grid around the viewed month plus a useful agenda horizon. focusM is
+// 0-based, the same numbering monthGrid takes.
 function syncWindow(focusY: number, focusM: number): { from: number; to: number } {
-    const from = new Date(focusY, focusM - 1, 1).getTime()
-    const to = new Date(focusY, focusM + 4, 1).getTime()
-    return { from, to }
+    const first = tz.at(focusY, focusM + 1, 1)
+    // add_months, not a raw month number: December's window reaches into
+    // next April, which as a 0-based index is 15 — a value GLib would
+    // refuse rather than roll over (tz.at normalises now, but stepping
+    // from the month being viewed reads as what it means)
+    return {
+        from: first.add_months(-1)!.to_unix() * 1000,
+        to: first.add_months(4)!.to_unix() * 1000,
+    }
 }
 
 let syncInFlight = false
@@ -642,10 +678,14 @@ export function sync(focus?: { y: number; m: number }) {
     // a new fan-out: replies from here on may clear an older hold-off
     syncGeneration++
     gate.touch()
-    const now = new Date()
-    const y = focus?.y ?? now.getFullYear()
-    const m = focus?.m ?? now.getMonth()
+    // the month to cover: the one the popover is showing, else the
+    // current one IN THE CONFIGURED ZONE — a shell pinned to another
+    // zone must not fetch around its host's month
+    const now = tz.civil(Date.now())
+    const y = focus?.y ?? now.y
+    const m = focus?.m ?? now.m - 1
     const { from, to } = syncWindow(y, m)
+    // an instant, so UTC for every zone alike
     const rfc3339 = (ms: number) => new Date(ms).toISOString()
     const range = `timeMin=${encodeURIComponent(rfc3339(from))}&timeMax=${encodeURIComponent(rfc3339(to))}`
 

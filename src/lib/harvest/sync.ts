@@ -312,6 +312,9 @@ function slowCycle() {
 
 let rolloverTimer = 0
 
+// The Harvest day rollover, and so deliberately the machine's midnight,
+// matching localDay(): it re-fetches when the ACCOUNT's day changes, not
+// when the displayed one does.
 function msUntilMidnight(): number {
     const d = new Date()
     d.setHours(24, 0, 0, 0) // next local midnight

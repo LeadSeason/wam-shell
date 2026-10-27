@@ -2,6 +2,7 @@ import GLib from "gi://GLib?version=2.0"
 import { Accessor, createState } from "gnim"
 import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { registerDispose } from "./lifecycle"
+import * as tz from "./tz"
 
 // How long ago something happened, for notification rows.
 //
@@ -48,8 +49,8 @@ export function relTime(time: number, nowSec: number): string {
     if (age < HOUR) return `${Math.floor(age / MINUTE)}m`
     if (age < DAY) return `${Math.floor(age / HOUR)}h`
     if (age < 7 * DAY) return `${Math.floor(age / DAY)}d`
-    const dt = GLib.DateTime.new_from_unix_local(time)
-    return dt ? `${dt.get_day_of_month()} ${MONTHS[dt.get_month() - 1].slice(0, 3)}` : ""
+    const dt = tz.fromMs(time * 1000)
+    return `${dt.get_day_of_month()} ${MONTHS[dt.get_month() - 1].slice(0, 3)}`
 }
 
 // Day and month names, in English, spelled out here rather than taken
@@ -137,9 +138,9 @@ export function historyZone(
  * exactly how tomorrow's business ended up looking like today's.
  */
 export function dayBucket(time: number, nowSec: number): string {
-    const then = GLib.DateTime.new_from_unix_local(time)
-    const now = GLib.DateTime.new_from_unix_local(nowSec)
-    if (!then || !now) return ""
+    // both are unix SECONDS (AstalNotifd / provider timestamps); tz speaks ms
+    const then = tz.fromMs(time * 1000)
+    const now = tz.fromMs(nowSec * 1000)
     const days = dayNumber(now) - dayNumber(then)
     if (days === 0) return "Today"
     if (days === -1) return "Tomorrow"
@@ -149,8 +150,9 @@ export function dayBucket(time: number, nowSec: number): string {
     return `${then.get_day_of_month()} ${MONTHS[then.get_month() - 1]}`
 }
 
-// days since the epoch in LOCAL time — subtracting two of these compares
-// calendar days without any timezone arithmetic of our own
+// days since the epoch IN THE CONFIGURED ZONE (lib/tz.ts — "auto" means
+// the machine's own) — subtracting two of these compares calendar days
+// without any timezone arithmetic of our own
 function dayNumber(dt: GLib.DateTime): number {
     // get_utc_offset returns a GLib.TimeSpan (microseconds, gint64).
     // gjs marshals it as a plain number, but the typings keep it a
