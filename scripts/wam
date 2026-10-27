@@ -1000,18 +1000,33 @@ parse_nominatim() {
 # `wam update` refuse the tree. Seed a user config from it first, like
 # `wam config edit` does. (config-override.toml IS the values file by
 # design and stays a valid target.)
-prayer_config_file() {
-    local f
+# The config file a writer should edit: the active one, seeded from the
+# commented template when nothing has created it yet. Without the seed
+# step every writer died on `cp` of a path that does not exist — a
+# machine that had never run `wam config edit` could not be configured
+# from the CLI at all.
+writable_config_file() {
+    local f src="$ROOT/config.toml"
+    [[ -f "$src" ]] ||
+        die "no template at $src — this copy of wam-shell is incomplete; re-run: wam update"
     f="$(active_config_file)"
     if [[ "$f" == "$ROOT/config.toml" ]]; then
         local config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
         mkdir -p "$config_home/wam-shell"
-        cp "$ROOT/config.toml" "$config_home/wam-shell/config.toml"
+        cp "$src" "$config_home/wam-shell/config.toml"
         f="$config_home/wam-shell/config.toml"
         # stderr: the caller captures this function's stdout as the path
         log "Created $f from the commented template" >&2
+    elif [[ ! -f "$f" ]]; then
+        mkdir -p "$(dirname "$f")"
+        cp "$src" "$f"
+        log "Created $f from the commented template" >&2
     fi
     printf '%s\n' "$f"
+}
+
+prayer_config_file() {
+    writable_config_file
 }
 
 # Section-aware writer: set the given keys (key=value args, in order)
@@ -1270,8 +1285,7 @@ cmd_prayer_times_set() { # <key> <value>
 # a warning the user is unlikely to be watching.
 cmd_timezone() { # [zone]
     local f zone="${1:-}"
-    f="$(active_config_file)"
-    [[ "$f" == "$ROOT/config.toml" ]] && f="$(prayer_config_file)"
+    f="$(writable_config_file)"
 
     if [[ -z "$zone" ]]; then
         local current
