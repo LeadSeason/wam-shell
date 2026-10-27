@@ -205,6 +205,13 @@ let notifiedKey = ""
 let notifyPrimed = false
 let disposed = false
 
+// DELIBERATELY the machine's own zone, not the shell's configured one
+// (lib/tz.ts). adhan computes these times from a JS Date and is
+// inherently local — it has no timezone parameter — so a Date shifted to
+// a display zone would render STOCKHOLM-computed times as NEW YORK ones.
+// The astronomical answer belongs to where the coordinates are, and the
+// coordinates are what this module is configured by; the zone stays with
+// them. This is the one surface the `timezone` key does not reach.
 const dayKey = () => GLib.DateTime.new_now_local().format("%Y-%m-%d") ?? ""
 
 const timeLabel = (t: Date) =>

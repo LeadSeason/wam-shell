@@ -6,6 +6,7 @@ import CommandRegistry from "./commandRegistry"
 import { registerDispose } from "./lifecycle"
 import { execAsync } from "./metrics"
 import { notify } from "./notify"
+import * as tz from "./tz"
 
 // Screenshots and screen recording.
 //
@@ -35,7 +36,7 @@ function stamp(): string {
     // "2026-08-09_17-42-05" — sorts chronologically as text, and carries
     // no colons, which are legal in a filename right up until the file
     // meets a filesystem that disagrees
-    return GLib.DateTime.new_now_local().format("%Y-%m-%d_%H-%M-%S") ?? "capture"
+    return tz.now().format("%Y-%m-%d_%H-%M-%S") ?? "capture"
 }
 
 // stamp() has 1s resolution, so two captures in the same second would

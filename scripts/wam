@@ -137,6 +137,11 @@ usage: wam <command>
                    minimize_when_screen_sharing (bare time while sharing),
                    notify (banner + chime at prayer time), notify_sound,
                    offset_fajr … offset_isha (minutes, -120…120)
+  timezone [zone]  print the zone the clock and calendar are read in,
+                   or set it: "auto" for the machine's own, an IANA id
+                   ("Asia/Tokyo"), or a fixed offset ("+02:00").
+                   validated before it is written; .bak-timezone is
+                   written first
   config <edit|path|show|diff|sync|format>
                    edit the config in $EDITOR (seeds the commented
                    template on first run), print its path, print it,
@@ -1070,6 +1075,50 @@ write_prayer_keys() { # <file> <key=value>…
     rm -f "$tmp"
 }
 
+# Top-level writer, the opposite of write_prayer_keys: replaces an
+# existing UNCOMMENTED top-level assignment, else inserts one before the
+# first [section] header. Never appended at EOF when the file has
+# sections — TOML would give the key to that last section, and the shell
+# would read the default while the file claimed otherwise.
+write_top_level_key() { # <file> <key> <value>
+    local f="$1" key="$2" value="$3"
+    local tmp
+    tmp="$(mktemp)"
+    awk -v key="$key" -v value="$value" '
+        BEGIN { done = 0 }
+        # a section header ends the top level; write before it
+        /^\[/ {
+            if (!done) { print key " = " value; done = 1 }
+            print
+            next
+        }
+        # an existing uncommented top-level assignment: replace in place
+        !done && $0 !~ /^[[:space:]]*#/ &&
+            $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+            print key " = " value
+            done = 1
+            next
+        }
+        { print }
+        # a file with no sections at all is all top level, so EOF is safe
+        END { if (!done) print key " = " value }
+    ' "$f" >"$tmp" && cat "$tmp" >"$f"
+    rm -f "$tmp"
+}
+
+# read a top-level key back out, stopping at the first section header so
+# a section's same-named key can never be read as this one. Last
+# uncommented assignment wins, matching `wam config sync`'s output.
+read_top_level_key() { # <file> <key>
+    local f="$1" key="$2"
+    [[ -r "$f" ]] || return 0
+    sed -n \
+        -e '/^[[:space:]]*#/d' \
+        -e '/^\[/q' \
+        -e "s|^[[:space:]]*${key}[[:space:]]*=[[:space:]]*\"\([^\"]*\)\".*|\1|p" \
+        "$f" | tail -1
+}
+
 cmd_prayer_times_setup() {
     command -v curl >/dev/null || die "curl is required for the location lookup"
 
@@ -1209,6 +1258,44 @@ cmd_prayer_times_set() { # <key> <value>
     cp "$f" "$f.bak-prayer-times"
     write_prayer_keys "$f" "$key=$value"
     log "Wrote to $f (backup: $f.bak-prayer-times): [prayer_times] $key = $value"
+    log "Applies on restart: wam restart"
+}
+
+# wam timezone [zone]
+#
+# Reads or sets the top-level `timezone` key: the zone the clock, the
+# calendar and every "is it X o'clock" answer is read in. Validated
+# before it is written — a bad id in the config is only noticed at
+# startup, and the shell would then fall back to the machine's zone with
+# a warning the user is unlikely to be watching.
+cmd_timezone() { # [zone]
+    local f zone="${1:-}"
+    f="$(active_config_file)"
+    [[ "$f" == "$ROOT/config.toml" ]] && f="$(prayer_config_file)"
+
+    if [[ -z "$zone" ]]; then
+        local current
+        current="$(read_top_level_key "$f" timezone)"
+        printf '%s\n' "${current:-auto}"
+        return
+    fi
+
+    if [[ "$zone" != "auto" ]]; then
+        # fixed offset, e.g. +02:00 / -0530 / +09
+        if [[ "$zone" =~ ^[+-]([0-9]|0[0-9]|1[0-3])(:?[0-5][0-9])?$ ]]; then
+            :
+        elif [[ "$zone" == /* || "$zone" == *".."* || "$zone" == *$'\n'* ]]; then
+            die "\"$zone\" is not a time zone — use \"auto\", an offset like +02:00, or an IANA id like Europe/Stockholm"
+        elif [[ -f "/usr/share/zoneinfo/$zone" && ! -d "/usr/share/zoneinfo/$zone" ]]; then
+            :
+        else
+            die "\"$zone\" is not a time zone — use \"auto\", an offset like +02:00, or an IANA id like Europe/Stockholm (looked in /usr/share/zoneinfo)"
+        fi
+    fi
+
+    cp "$f" "$f.bak-timezone"
+    write_top_level_key "$f" timezone "\"$zone\""
+    log "Wrote to $f (backup: $f.bak-timezone): timezone = \"$zone\""
     log "Applies on restart: wam restart"
 }
 
@@ -1991,6 +2078,10 @@ case "${1:-}" in
     prayer-times)
         shift
         cmd_prayer_times "$@"
+        ;;
+    timezone)
+        shift
+        cmd_timezone "$@"
         ;;
     config)
         shift

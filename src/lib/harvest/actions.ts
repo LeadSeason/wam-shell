@@ -96,6 +96,10 @@ export function pauseTimer() {
     })
 }
 
+// NB: these clock strings and the `spent_date` beside them are WRITES
+// that Harvest reads in the ACCOUNT's timezone, not display — so they
+// deliberately stay on the machine's zone and never follow the shell's
+// configured one (see localDay in ./timeline).
 const clockFmt = () => (accountMode.accountClock === "24h" ? "%H:%M" : "%-I:%M%p")
 
 function createEntry(

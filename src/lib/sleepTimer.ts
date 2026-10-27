@@ -18,6 +18,7 @@ import {
 import { writeFileAtomic } from "./atomicWrite"
 import { SleepTimerState, serialize, parse, decide } from "./sleepTimerState"
 import { registerDispose } from "./lifecycle"
+import * as tz from "./tz"
 
 // Sleep timer: pauses every playing MPRIS player when it fires (and
 // dims, if configured). The user picks the duration when starting (QS
@@ -422,10 +423,9 @@ function loadState() {
             arm()
             break
         case "expired": {
-            const at = GLib.DateTime.new_from_unix_local(state!.deadline! / 1000)
             notify(
                 "Sleep timer expired",
-                `The timer reached 0 at ${at?.format("%H:%M") ?? "??"} while wam-shell was down.`,
+                `The timer reached 0 at ${tz.hhmm(state!.deadline!)} while wam-shell was down.`,
             )
             // a missed wakeup is the worst outcome: ring now (the user
             // can stop it in one click), whenever it expired

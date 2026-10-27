@@ -1,3 +1,4 @@
+import GLib from "gi://GLib?version=2.0"
 import { test, eq } from "./framework"
 import {
     dayKey,
@@ -425,4 +426,114 @@ test("gcal mapGoogleEvent: attending lands on the event", () => {
         true,
     )
     eq(personal?.attending, true)
+})
+
+// ---------------------------------------------------------------------
+// Zone-pinned cases. The `timezone` key threads one Zone through every
+// day-funnel above; the default is the machine's, which is what every
+// existing test here exercises without saying so. These pin the other
+// case: the same instant, resolved in two zones far enough apart that
+// the answers must differ. Both zones are named, so the assertions hold
+// on any machine in any zone.
+// ---------------------------------------------------------------------
+const NY = GLib.TimeZone.new("America/New_York")!
+const STOCKHOLM = GLib.TimeZone.new("Europe/Stockholm")!
+
+// 2026-01-15 23:30 UTC: 18:30 on the 15th in New York, 00:30 on the 16th
+// in Stockholm
+const EDGE = Date.UTC(2026, 0, 15, 23, 30, 0)
+
+test("gcal dayKey: an explicit zone moves the day, not just the clock", () => {
+    eq(dayKey(EDGE, NY), "2026-01-15", "New York is still on the 15th")
+    eq(dayKey(EDGE, STOCKHOLM), "2026-01-16", "Stockholm has rolled to the 16th")
+    // and without an explicit zone it is whatever this machine is set to
+    const local = new Date(EDGE)
+    eq(
+        dayKey(EDGE),
+        `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`,
+        "the default is the host's zone",
+    )
+})
+
+test("gcal eventDays: a midnight-crossing event is one day or two, per zone", () => {
+    // 2026-01-16 03:00-06:00 UTC. Stockholm is UTC+1 that week: 04:00 ->
+    // 07:00, entirely on the 16th. New York is UTC-5: 22:00 on the 15th
+    // -> 01:00 on the 16th, so the span crosses New York's midnight and
+    // the end-exclusive last covered instant (00:59:59.999) is on the
+    // 16th. One event, one day in one zone and two in the other.
+    const s = Date.UTC(2026, 0, 16, 3, 0)
+    const e = Date.UTC(2026, 0, 16, 6, 0)
+    eq(eventDays(s, e, false, STOCKHOLM), ["2026-01-16"], "Stockholm: one day")
+    eq(eventDays(s, e, false, NY), ["2026-01-15", "2026-01-16"], "New York: two days")
+    // a longer span walks every day in the given zone
+    eq(
+        eventDays(Date.UTC(2026, 0, 15, 20), Date.UTC(2026, 0, 17, 20), false, STOCKHOLM),
+        ["2026-01-15", "2026-01-16", "2026-01-17"],
+        "Stockholm: a two-day span",
+    )
+    eq(
+        eventDays(Date.UTC(2026, 0, 15, 20), Date.UTC(2026, 0, 17, 20), false, NY),
+        ["2026-01-15", "2026-01-16", "2026-01-17"],
+        "New York: the same span, same days",
+    )
+})
+
+test("gcal eventDays: an end exactly on a midnight starts the next day only in that zone", () => {
+    // 23:00 -> 00:00 UTC. Stockholm's 00:00 is 2026-01-16; the last
+    // covered instant is therefore still on the 16th, so one day.
+    const s = Date.UTC(2026, 0, 15, 23, 0)
+    const e = Date.UTC(2026, 0, 16, 0, 0)
+    eq(eventDays(s, e, false, STOCKHOLM), ["2026-01-16"], "exclusive end")
+    eq(eventDays(s, e, false, NY), ["2026-01-15"], "the same end, in New York")
+})
+
+test("gcal timeLabel: reads the clock in the given zone", () => {
+    // a timed event renders as a start–end range, both ends in the zone
+    const e = { allDay: false, startMs: EDGE, endMs: EDGE + 30 * 60_000 } as never
+    eq(timeLabel(e, STOCKHOLM), "00:30–01:00", "Stockholm")
+    eq(timeLabel(e, NY), "18:30–19:00", "New York")
+    eq(timeLabel({ allDay: true } as never, STOCKHOLM), "all day", "all-day events have no clock")
+})
+
+test("gcal monthGrid: leading cells are civil dates, aligned Monday-first", () => {
+    // 2026-01-01 is a Thursday, so January's grid opens on Mon 29 Dec
+    for (const z of [STOCKHOLM, NY]) {
+        const g = monthGrid(2026, 0, z)
+        eq(g.length, 6, "fixed six rows")
+        eq(g[0].length, 7, "seven cells in a row")
+        eq(g[0][0].key, "2025-12-29", "opens on the preceding Monday")
+        eq(g[0][0].inMonth, false, "the leading cell is off-month")
+        eq(g[0][3].key, "2026-01-01", "Thursday is the 1st")
+        eq(g[0][3].inMonth, true)
+        eq(g[0][6].key, "2026-01-04", "Sunday closes the first row")
+        eq(g[5][6].key, "2026-02-08", "the grid ends on Sunday 8 Feb")
+        eq(g[5][6].inMonth, false, "trailing cell is off-month")
+    }
+})
+
+test("gcal monthGrid: February's leading offset follows the year's weekday", () => {
+    // 2026-02-01 is a Sunday, so February opens on Mon 26 Jan
+    eq(monthGrid(2026, 1, STOCKHOLM)[0][0].key, "2026-01-26", "stockholm")
+    eq(monthGrid(2026, 1, NY)[0][0].key, "2026-01-26", "new york — the same civil grid")
+    // a leap February: 2024-02-01 is a Thursday, so the grid opens on
+    // Mon 29 Jan and the 29th itself appears
+    eq(monthGrid(2024, 1, STOCKHOLM)[0][0].key, "2024-01-29", "leap year leading cell")
+    eq(monthGrid(2024, 1, STOCKHOLM)[0][3].num, 1, "the 1st is a Thursday")
+})
+
+// dayLabel's `z` is threaded for the default only: the arguments are
+// already day KEYS, and a calendar-day add does not depend on the zone,
+// so the answer is the same everywhere. Worth pinning — it is the one
+// gcal helper whose zone parameter changes nothing, and a reader could
+// reasonably assume otherwise.
+test("gcal dayLabel: a day key's label does not depend on the zone", () => {
+    for (const z of [STOCKHOLM, NY]) {
+        eq(dayLabel("2026-08-07", "2026-08-07", z), "Today", "same day")
+        eq(dayLabel("2026-08-08", "2026-08-07", z), "Tomorrow", "next day")
+        // 2026-08-05 is a Wednesday; the weekday is read in UTC so no
+        // configured zone can shift it
+        eq(dayLabel("2026-08-05", "2026-08-07", z), "Wed, 05.08.2026", "earlier day")
+        // month rollover
+        eq(dayLabel("2026-09-01", "2026-08-31", z), "Tomorrow", "rollover")
+    }
 })

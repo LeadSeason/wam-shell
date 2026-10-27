@@ -518,6 +518,8 @@ export function Timeline() {
     const dayLabel = (i: number): string => {
         if (i === 0) return "Today"
         if (i === -1) return "Yesterday"
+        // each cell is a Harvest spent_date, so the machine's zone —
+        // deliberately not the shell's configured one (see localDay)
         const d = GLib.DateTime.new_now_local().add_days(i)!
         return d.format("%a, %d.%m.%Y") ?? ""
     }
