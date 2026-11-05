@@ -12,8 +12,11 @@ import {
     connectDeviceAsync,
     disconnectDeviceAsync,
     pairDeviceAsync,
+    powerPending,
     removeDeviceAsync,
+    setPoweredAsync,
 } from "../../../lib/bluetoothCtl"
+import bluetooth from "../../../lib/bluetooth"
 import { createDelayer } from "../../delay"
 
 // null when PipeWire/WirePlumber is absent (see SliderSection's guard);
@@ -178,24 +181,31 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan, scanSettled }: De
         const connected = createBinding(device, "connected")()
         const paired = createBinding(device, "paired")()
         const battery = createBinding(device, "batteryPercentage").as(batteryPercentValue)()
+        const on = createBinding(bluetooth, "is_powered")()
         if (error()) return error()
         if (pending() === "pairing") return "Pairing…"
         if (pending() === "connecting") return "Connecting…"
         if (pending() === "disconnecting") return "Disconnecting…"
         if (connected) return battery >= 0 ? `Connected · ${battery}%` : "Connected"
+        // the radio being down is the one thing we know; whether the
+        // device is around is unknowable until it is back up
+        if (!on) return "Bluetooth is off"
         if (!paired || heard()) return "Available"
         if (scanSettled() && canJudgeRange()) return "Not in range"
         return "Paired"
     })
     const statusClass = error.as(e => (e ? ["status", "error"] : ["status"]))
     const isPaired = createBinding(device, "paired")
-    // dims the whole row to match the "Not in range" status
+    // dims the whole row to match an unreachable status ("Not in range",
+    // or the whole radio being off)
     const rowClasses = createComputed(() => {
         const connected = createBinding(device, "connected")()
         const paired = isPaired()
+        const on = createBinding(bluetooth, "is_powered")()
         const classes = ["btDevice", "paneRow"]
         if (connected) classes.push("active")
-        else if (paired && !heard() && scanSettled() && canJudgeRange()) classes.push("unavailable")
+        else if (!on || (paired && !heard() && scanSettled() && canJudgeRange()))
+            classes.push("unavailable")
         return classes
     })
 
@@ -300,9 +310,35 @@ export function DeviceRow({ device, pauseDiscovery, maybeScan, scanSettled }: De
         })
     }
 
+    // set when clicked while the radio is down: the click powers the
+    // adapter on, and the connect runs once bluez confirms power (issued
+    // earlier it just fails NotReady). Instance state, not module state:
+    // the row persists across the For's re-appends, and if the pane's
+    // teardown takes the row down the intent dies with it
+    let connectWhenPowered = false
+    onCleanup(
+        powerPending.subscribe(target => {
+            if (target !== null || !connectWhenPowered) return
+            connectWhenPowered = false
+            // a refused power-on (rfkill) leaves the adapter off: nothing
+            // to connect to, and the row already says "Bluetooth is off"
+            if (!bluetooth.is_powered) return
+            pauseDiscovery()
+            void connectFlow()
+        }),
+    )
+
     function onClick() {
         if (pending.peek()) return
         setError("")
+        // with the radio down a click can only mean "turn it on and get
+        // me this device"; setPoweredAsync debounces a second click while
+        // the change is in flight
+        if (!bluetooth.is_powered) {
+            connectWhenPowered = true
+            setPoweredAsync(true)
+            return
+        }
         pauseDiscovery()
         // every branch resumes discovery when it settles (see maybeScan)
         if (device.connected) void disconnectFlow()

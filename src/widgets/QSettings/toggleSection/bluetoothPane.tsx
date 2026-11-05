@@ -358,6 +358,33 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                 orientation={Gtk.Orientation.VERTICAL}
                 visible={pairingRequest.as(r => r === null)}
             >
+                {/* paired devices show whether the radio is on or off.
+                    Each section in its own container: For re-appends its
+                    children at the end of the parent on every update, which
+                    would scramble static siblings */}
+                <box orientation={Gtk.Orientation.VERTICAL} visible={paired.as(l => l.length > 0)}>
+                    <label label={"Paired"} cssClasses={["paneSection"]} xalign={0} hexpand />
+                    <box
+                        orientation={Gtk.Orientation.VERTICAL}
+                        cssClasses={["paneCard"]}
+                        spacing={2}
+                    >
+                        <For each={paired}>
+                            {device => (
+                                <DeviceRow
+                                    device={device}
+                                    pauseDiscovery={pauseDiscovery}
+                                    maybeScan={maybeScan}
+                                    scanSettled={scanSettled}
+                                />
+                            )}
+                        </For>
+                    </box>
+                </box>
+                {/* the off placeholder shows whenever the radio is down,
+                    under the paired list when there is one, alone —
+                    filling the pane — when there is not. Click = turn on
+                    (a device row click turns on AND connects) */}
                 <box visible={powered.as(p => !p)}>
                     {/* fills the middle instead of a bare row: the pane
                     keeps the shell's consistent size */}
@@ -368,32 +395,10 @@ function BluetoothWidgetBody({ pane, name }: btPaneProps) {
                         onClick={() => setPoweredAsync(true)}
                     />
                 </box>
+                {/* scanning and discoverability need the radio: while it
+                    is off, the paired list and the off placeholder above
+                    are the whole pane */}
                 <box orientation={Gtk.Orientation.VERTICAL} visible={powered}>
-                    {/* each section in its own container: For re-appends its
-                children at the end of the parent on every update, which
-                would scramble static siblings */}
-                    <box
-                        orientation={Gtk.Orientation.VERTICAL}
-                        visible={paired.as(l => l.length > 0)}
-                    >
-                        <label label={"Paired"} cssClasses={["paneSection"]} xalign={0} hexpand />
-                        <box
-                            orientation={Gtk.Orientation.VERTICAL}
-                            cssClasses={["paneCard"]}
-                            spacing={2}
-                        >
-                            <For each={paired}>
-                                {device => (
-                                    <DeviceRow
-                                        device={device}
-                                        pauseDiscovery={pauseDiscovery}
-                                        maybeScan={maybeScan}
-                                        scanSettled={scanSettled}
-                                    />
-                                )}
-                            </For>
-                        </box>
-                    </box>
                     <box orientation={Gtk.Orientation.VERTICAL}>
                         <box>
                             <label

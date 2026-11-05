@@ -12,10 +12,11 @@
 // order, so cascade behaviour is unchanged.
 window#QSettings {
     .btDevice {
-        // paired, but the scan cannot hear it: switched off, in its
-        // case, or in another room. Dimmed rather than hidden or
-        // desensitised — it is still worth showing, and clicking it to
-        // wake a device that just came back has to keep working
+        // unreachable, two ways: the scan cannot hear it (switched off,
+        // in its case, or in another room), or the whole radio is off
+        // and every row is. Dimmed rather than hidden or desensitised —
+        // it is still worth showing, and clicking it to wake a device
+        // that just came back has to keep working
         &.unavailable {
             opacity: s.$disabled-opacity;
         }
