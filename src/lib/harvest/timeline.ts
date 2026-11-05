@@ -1,9 +1,12 @@
 import GLib from "gi://GLib?version=2.0"
+import * as tz from "../tz"
 import { accountMode } from "./account"
 
-// the Harvest data model and the pure date/timeline math over it: no
-// HTTP, no gnim state, no timers. dayTimeline/startTimeLabel are covered
-// by tests/harvestTimeline.test.ts
+// the Harvest data model and the date/timeline math over it: no HTTP, no
+// gnim state, no timers. Day boundaries are the machine's (see localDay
+// below — Harvest defines them account-side); only RENDERED clock times
+// follow the configured zone. dayTimeline/startTimeLabel are covered by
+// tests/harvestTimeline.test.ts
 
 // ---------------------------------------------------------------- types
 
@@ -34,6 +37,20 @@ export interface Project {
 
 // ------------------------------------------------------------- helpers
 
+// The day Harvest is bucketed against, and deliberately NOT the
+// configured zone.
+//
+// `spent_date` (written by actions.ts) and every `entry.spentDate`
+// (returned by the API) are defined in the Harvest ACCOUNT's timezone —
+// sync.ts logs the one the account reports. Shifting this to the
+// shell's display zone would file hours on the wrong day and make
+// `spentDate === localDay()` stop matching whenever the two disagree, so
+// it stays on the machine's own zone, which is what the API means. A
+// display zone only changes how a day LOOKS, never which day the hours
+// are counted under.
+//
+// `offsetDays` is a calendar-day step, not a multiple of 24h — across a
+// fall-back transition that keeps it on the next real day.
 export function localDay(offsetDays = 0): string {
     const now = GLib.DateTime.new_now_local()
     const day = offsetDays ? now.add_days(offsetDays)! : now
@@ -130,17 +147,18 @@ export function dayTimeline(entries: Entry[]): Entry[] {
 }
 
 // "HH:MM" (24h) for a timeline row, "" for manual entries with no start
+// "HH:MM" (24h) in the configured zone, for a timeline row; "" for
+// manual entries with no start
 export function startTimeLabel(e: Entry): string {
     const ms = startMs(e)
-    if (ms === null) return ""
-    const d = new Date(ms)
-    const hh = String(d.getHours()).padStart(2, "0")
-    const mm = String(d.getMinutes()).padStart(2, "0")
-    return `${hh}:${mm}`
+    return ms === null ? "" : tz.hhmm(ms)
 }
 
 // today's portion of the running entry: hours accrued before midnight
-// don't count toward today's total
+// don't count toward today's total.
+//
+// The midnight is the machine's, matching localDay() above — this is
+// which HARVEST day the hours land under, not how a clock reads.
 export function todaySeconds(e: Entry): number {
     const base =
         e.spentDate === localDay()

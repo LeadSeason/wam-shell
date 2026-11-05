@@ -17,6 +17,7 @@ import { addProviderPopup, removePopupDeferred } from "./notifd"
 import { createSessionHide, openUrl } from "./providerCore"
 import { timeoutAddSeconds, sourceRemove } from "./metrics"
 import { registerDispose } from "./lifecycle"
+import * as tz from "./tz"
 
 // Calendar event reminders and the notification center's "calendar"
 // provider. Owns no network: it subscribes to gcal's visibleEvents and
@@ -191,11 +192,11 @@ function attachActions(data: Omit<ProviderItem, "dismiss" | "activate" | "hide">
 // they still touch the horizon
 function rebuild(list: CalEvent[]) {
     const nowMs = Date.now()
-    const d = new Date(nowMs)
-    const horizon = [
-        dayKey(nowMs),
-        dayKey(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime()),
-    ]
+    // tomorrow is the next CIVIL day in the configured zone, not now+24h:
+    // a fall-back transition makes the latter land on today's key again,
+    // which would swallow every event that only touches tomorrow
+    const today = tz.civil(nowMs)
+    const horizon = [dayKey(nowMs), dayKey(tz.atMs(today.y, today.m, today.d + 1))]
     const upcoming = list
         .filter(e => !e.allDay && e.endMs > nowMs && e.days.some(day => horizon.includes(day)))
         .sort((a, b) => a.startMs - b.startMs)

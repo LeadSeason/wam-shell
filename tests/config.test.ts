@@ -322,3 +322,43 @@ alarm_volume = 0
         "out-of-range falls back to the default",
     )
 })
+
+// --- timezone: a top-level string, so it must not be swallowed by any section ---
+
+test("config: timezone defaults to auto", () => {
+    eq(loadConfig({ DESKTOP_SESSION: "hyprland" }).timezone, "auto")
+})
+
+test("config: timezone reads an IANA id from the top level", () => {
+    eq(
+        loadConfig({ DESKTOP_SESSION: "hyprland" }, `timezone = "Asia/Tokyo"`).timezone,
+        "Asia/Tokyo",
+    )
+})
+
+test("config: timezone is section-only — a section's key of the same name is not it", () => {
+    // TOML has no "close section": after `[notifications]` every key
+    // belongs to it, so the top-level spelling has to come FIRST. The
+    // section's same-named key must not shadow it (TOML would reject a
+    // duplicate at the same level, which is exactly why they are in
+    // different ones).
+    const c = loadConfig(
+        { DESKTOP_SESSION: "hyprland" },
+        `
+timezone = "Europe/Oslo"
+
+[notifications]
+timezone = "Not/Real"
+`,
+    )
+    eq(c.timezone, "Europe/Oslo", "top-level wins; the section key is not read")
+})
+
+test("config: timezone is not claimed by any section's reader", () => {
+    // the reverse leak: the top-level key must not be readable as a
+    // field of a section object
+    const c = loadConfig({ DESKTOP_SESSION: "hyprland" }, `timezone = "Europe/Oslo"`)
+    eq(c.notifications.timezone, undefined, "not on notifications")
+    eq(c.harvest.timezone, undefined, "not on harvest")
+    eq(c.calendar.timezone, undefined, "not on calendar")
+})

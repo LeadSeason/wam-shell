@@ -975,6 +975,13 @@ export default class Config {
     // avatar fallback, which has its own show_avatar switch
     static showOsIcon = topLevel.bool("show_os_icon", true)
     static desktopSession = getDesktopSession()
+    // which zone every clock, calendar day and day boundary is read in.
+    // "auto" (the default) means the system's own zone; anything else is
+    // an IANA identifier ("Europe/Stockholm") or a fixed offset
+    // ("+02:00"), resolved and validated in lib/tz.ts — every other
+    // module reads the time through that, so this one key is the whole
+    // of the shell's timezone behaviour
+    static timezone = topLevel.str("timezone", "auto")
     static updatesThreshold = topLevel.num("arch_updates_threshold", 50, { min: 0 })
 
     static swayGaps = topLevel.bool("sway_gaps", true)

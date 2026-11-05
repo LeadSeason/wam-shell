@@ -9,14 +9,18 @@ import CommandRegistry from "../../../lib/requestHandler"
 import { timeoutAdd, sourceRemove } from "../../../lib/metrics"
 import { registerDispose } from "../../../lib/lifecycle"
 import { pressable } from "../../pressable"
+import * as tz from "../../../lib/tz"
 
 const registry = CommandRegistry.get_default()
 
+// Whether the pill is shown is a question about NOW, so it reads the
+// configured zone (lib/tz.ts) — the same clock the bar's time sits next
+// to. With the default "auto" that is the machine's, as it always was.
 function withinWorkHours(): boolean {
     const { workStart, workEnd } = Config.harvest
     if (!workStart || !workEnd) return false
-    const now = new Date()
-    const mins = now.getHours() * 60 + now.getMinutes()
+    const now = tz.civil(Date.now())
+    const mins = now.h * 60 + now.mi
     const [sh, sm] = workStart.split(":").map(Number)
     const [eh, em] = workEnd.split(":").map(Number)
     const start = sh * 60 + sm
@@ -25,10 +29,13 @@ function withinWorkHours(): boolean {
     return start <= end ? mins >= start && mins < end : mins >= start || mins < end
 }
 
-// empty work_days list = every day; otherwise Date.getDay() must be in it
+// empty work_days list = every day; otherwise the WEEKDAY (0=Sunday, the
+// numbering work_days is written in) must be in it
 function withinWorkDays(): boolean {
     const days = Config.harvest.workDays
-    return days.length === 0 || days.includes(new Date().getDay())
+    if (days.length === 0) return true
+    // get_day_of_week(): 1=Monday..7=Sunday -> 0=Sunday..6=Saturday
+    return days.includes(tz.now().get_day_of_week() % 7)
 }
 
 // one shared evaluation for every bar instance: re-armed to the next
@@ -38,13 +45,13 @@ const [workDays, setWorkDays] = createState(withinWorkDays())
 
 function msUntilNextBoundary(): number {
     const { workStart, workEnd } = Config.harvest
-    const now = new Date()
-    const nowMs = now.getTime()
+    const nowMs = Date.now()
+    const today = tz.civil(nowMs)
+    // today's HH:MM as an instant in the configured zone — `d.setHours`
+    // on a Date would be the host's zone
     const toMs = (s: string) => {
         const [h, m] = s.split(":").map(Number)
-        const d = new Date(now)
-        d.setHours(h, m, 0, 0)
-        return d.getTime()
+        return tz.atMs(today.y, today.m, today.d, h, m)
     }
     const next = [workStart, workEnd]
         .map(s => (((toMs(s) - nowMs) % 86_400_000) + 86_400_000) % 86_400_000 || 86_400_000)
@@ -81,10 +88,13 @@ if (Config.harvest.workStart && Config.harvest.workEnd) {
 // day-of-week window: one re-check at each local midnight. Only armed
 // when the user limits days at all — an every-day config (the default)
 // needs no timer (and the perf gate counts startup timers)
+// the next midnight IN THE CONFIGURED ZONE — the day the weekday test
+// above reads changes there, not at the host's midnight
 function msUntilMidnight(): number {
-    const d = new Date()
-    d.setHours(24, 0, 0, 0)
-    return d.getTime() - Date.now() + 1000
+    const nowMs = Date.now()
+    const today = tz.civil(nowMs)
+    // d+1: tz.atMs normalises a day-of-month past the month end
+    return tz.atMs(today.y, today.m, today.d + 1) - nowMs + 1000
 }
 const armMidnight = () => {
     workDaysSource = timeoutAdd(

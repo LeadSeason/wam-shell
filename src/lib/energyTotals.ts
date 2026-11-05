@@ -5,6 +5,7 @@ import { isFile } from "./utils"
 import { writeFileAtomic } from "./atomicWrite"
 import { timeoutAdd, sourceRemove } from "./metrics"
 import { registerDispose } from "./lifecycle"
+import * as tz from "./tz"
 
 // Battery energy consumed per day (Wh), persisted.
 //
@@ -128,7 +129,8 @@ let dirty = false
 let lastSave = 0
 let pollSource = 0
 
-const dayKey = () => GLib.DateTime.new_now_local().format("%Y-%m-%d") ?? ""
+// the day each running total is bucketed under, in the configured zone
+const dayKey = () => tz.dayKey()
 
 function publish() {
     setTodayWh(tracker.days[dayKey()] ?? 0)

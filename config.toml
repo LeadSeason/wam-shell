@@ -51,6 +51,19 @@
 #         catppuccin-frappe, catppuccin-latte, gruvbox, gruvbox-light
 # theme = "catppuccin-mocha"
 
+# timezone - the zone the clock, the calendar and every "is it X o'clock"
+#             answer is read in. "auto" (default) follows the machine's
+#             own zone; otherwise an IANA identifier ("Asia/Tokyo") or a
+#             fixed offset ("+02:00", "-0530"). TOP-LEVEL ONLY — it
+#             cannot be set inside a section, and a section key of the
+#             same name is ignored. change it with `wam timezone <zone>`,
+#             which rewrites this file for you. two things deliberately
+#             do NOT follow it: prayer times (adhan has no timezone
+#             parameter — the times belong to the coordinates) and the
+#             Harvest timeline's day strip (its days are Harvest's own
+#             spent_date, written in the account's zone).
+# timezone = "auto"
+
 # sway_gaps - the SwayGaps module (runtime-adjustable inner/outer gaps
 #             via ags request). only relevant on sway/i3. default true
 # sway_gaps = true

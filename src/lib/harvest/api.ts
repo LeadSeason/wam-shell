@@ -115,7 +115,10 @@ export function request(method: string, path: string, body: any, cb: (r: Reply) 
             try {
                 json = text ? JSON.parse(text) : null
             } catch {}
-            const status = msg.get_status()
+            // get_status() is typed as the Soup.Status enum, but at
+            // runtime it is the plain HTTP status integer; widen it once
+            // here so the numeric comparisons below stay readable
+            const status: number = msg.get_status()
             const retryAfter =
                 status === 429 ? Number(msg.get_response_headers().get_one("Retry-After")) || 0 : 0
             reply = {

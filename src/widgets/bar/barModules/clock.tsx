@@ -1,19 +1,19 @@
 import { Gtk } from "ags/gtk4"
 import { createPoll } from "ags/time"
-import GLib from "gi://GLib?version=2.0"
 import Pango from "gi://Pango?version=1.0"
 import { For, createComputed, createState } from "gnim"
 import * as Gcal from "../../../lib/gcal"
 import Config from "../../../config"
 import { connect } from "../../../lib/metrics"
 import { WEEKDAYS } from "../../../lib/relTime"
+import * as tz from "../../../lib/tz"
 
 // one shared poll for every bar (one per monitor previously): the date
 // changes once a day and the time once a second, so a single 1s source
 // serves all clocks. createPoll is lazy until subscribed, so this costs
 // nothing when no clock is rendered.
 const now = createPoll(["", ""] as [string, string], 1000, () => {
-    const dt = GLib.DateTime.new_now_local()
+    const dt = tz.now()
     return [dt.format("%H:%M:%S")!, dt.format("%d.%m.%Y")!] as [string, string]
 })
 
@@ -49,16 +49,17 @@ interface GridCell extends Gcal.GridDay {
 // Gtk.Calendar: it can't show dots, and its Adwaita chrome clashes with
 // the theme. Without Google Calendar the month pane stands alone.
 function CalendarPopover() {
-    const now0 = new Date()
-    const [viewY, setViewY] = createState(now0.getFullYear())
-    const [viewM, setViewM] = createState(now0.getMonth()) // 0-based
+    // the month to open on: today's, in the configured zone
+    const now0 = tz.civil(Date.now())
+    const [viewY, setViewY] = createState(now0.y)
+    const [viewM, setViewM] = createState(now0.m - 1) // 0-based
     // the agenda starts here; clicking a day in the grid moves it
     const [selectedDay, setSelectedDay] = createState(todayKey.peek())
 
     const monthLabel = createComputed(() => {
         const y = viewY()
         const m = viewM()
-        return GLib.DateTime.new_local(y, m + 1, 1, 0, 0, 0).format("%B %Y") ?? ""
+        return tz.at(y, m + 1, 1).format("%B %Y") ?? ""
     })
 
     const grid = createComputed(() => {
@@ -110,11 +111,12 @@ function CalendarPopover() {
     }
 
     const goToday = () => {
-        const n = new Date()
-        setViewY(n.getFullYear())
-        setViewM(n.getMonth())
-        setSelectedDay(Gcal.dayKey(n.getTime()))
-        Gcal.ensureCoverage(n.getFullYear(), n.getMonth())
+        const ms = Date.now()
+        const n = tz.civil(ms)
+        setViewY(n.y)
+        setViewM(n.m - 1)
+        setSelectedDay(Gcal.dayKey(ms))
+        Gcal.ensureCoverage(n.y, n.m - 1)
     }
 
     const pick = (day: GridCell) => {

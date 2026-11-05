@@ -1266,7 +1266,8 @@ function nvidiaAwake(): boolean {
     if (pdevs.size === 0) return true
     for (const p of pdevs) {
         try {
-            if (readFile(`/sys/bus/pci/devices/${p}/power/runtime_status`).trim() === "active") return true
+            if (readFile(`/sys/bus/pci/devices/${p}/power/runtime_status`).trim() === "active")
+                return true
         } catch {
             // unreadable: treat as awake
         }
@@ -1420,7 +1421,12 @@ const poll = createPoll("", INTERVAL, () => {
             gpuProc.force_exit()
             gpuProc = null
             dropNvidiaGpus()
-        } else if (awake && !gpuProc && !gpuRestartSource && Date.now() - gpuYieldAt > GPU_RESPAWN_COOLDOWN) {
+        } else if (
+            awake &&
+            !gpuProc &&
+            !gpuRestartSource &&
+            Date.now() - gpuYieldAt > GPU_RESPAWN_COOLDOWN
+        ) {
             startGpuStream()
         } else if (awake && gpuProc && gpuIdleStreak >= GPU_IDLE_POLLS) {
             // sustained idle: the stream is the only client left —
@@ -1496,7 +1502,8 @@ function handleGpuLine(line: string) {
     if (!r) return
     // RTD3 GATE: near-idle lines only prove the card is awake BECAUSE
     // this stream exists. Real activity resets the streak.
-    const idleNow = (r.busy ?? 0) <= GPU_IDLE_MAX_BUSY && (r.watts === null || r.watts <= GPU_IDLE_MAX_WATTS)
+    const idleNow =
+        (r.busy ?? 0) <= GPU_IDLE_MAX_BUSY && (r.watts === null || r.watts <= GPU_IDLE_MAX_WATTS)
     gpuIdleStreak = idleNow ? gpuIdleStreak + 1 : 0
     const id = `nv:${r.index}`
     const prev = gpuState.get(id)

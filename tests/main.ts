@@ -52,6 +52,7 @@ import "./wifiQr.test"
 import "./volumeFeedback.test"
 import "./daemonWatch.test"
 import "./prayerTimes.test"
+import "./tz.test"
 // summary() must come after every suite has registered. This one used to
 // sit BELOW the call, which worked only because ES imports hoist — a
 // move to a dynamic import, or a reader "fixing" the order the other
