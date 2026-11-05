@@ -291,6 +291,12 @@ device has ever actually been heard. Two classic headsets on the same
 adapter can differ: one that also advertises over LE is judged normally,
 one that never advertises stays on **Paired** forever.
 
+With the radio off, paired devices do not disappear: the **Paired** list
+stays, dimmed, each row reading **Bluetooth is off**, with the "Bluetooth
+is off" placeholder under it. Clicking either turns the radio on — a
+device row goes on to connect that device. Scanning and discoverability
+stay hidden until it is back on.
+
 Under **Available**, the eight closest devices are shown, strongest
 signal first; a device's signal strength in dBm is in its details.
 
