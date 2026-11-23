@@ -1,5 +1,5 @@
 import { test, eq } from "./framework"
-import { ClickPacer } from "../src/lib/volumeFeedback"
+import { ClickPacer, DeliveryWatch } from "../src/lib/volumeFeedback"
 
 // The volume OSD's audio feedback must not spawn a player per key-repeat
 // step, nor swallow the last click of a burst. ClickPacer folds events
@@ -69,4 +69,78 @@ test("pacer: reset clears the clock", () => {
     p.reset()
     eq(p.request(1015), 0, "nothing pending after reset")
     eq(p.pendingSlot, null)
+})
+
+// DeliveryWatch: push-buffer returning OK only says the sample entered
+// the pipeline. The decision it must make: a queue that still holds a
+// whole sample `graceMs` after its push is not delivering, and two
+// such readings in a row retire the native path — while a fast ramp
+// under a fat sink quantum (one sample in flight, never two) must
+// never trip it, because a false retire costs the session its native
+// path permanently.
+
+const SAMPLE = 100
+
+function watch(): [DeliveryWatch, number[]] {
+    const retired: number[] = []
+    return [new DeliveryWatch(() => retired.push(1)), retired]
+}
+
+test("watch: a draining queue never retires", () => {
+    const [w, retired] = watch()
+    eq(w.check(0, SAMPLE), false)
+    eq(w.check(90, SAMPLE), false, "below one sample: consuming at real time")
+    eq(w.check(SAMPLE - 1, SAMPLE), false)
+    eq(retired.length, 0)
+})
+
+test("watch: an undrained sample is a strike, not a retire", () => {
+    const [w, retired] = watch()
+    eq(w.check(SAMPLE * 2, SAMPLE), false)
+    eq(retired.length, 0, "a single stalled reading gets no verdict yet")
+    eq(w.strikes, 1)
+})
+
+test("watch: two undrained readings in a row retire the path", () => {
+    const [w, retired] = watch()
+    eq(w.check(SAMPLE * 2, SAMPLE), false, "first strike")
+    eq(w.check(SAMPLE * 3, SAMPLE), true, "second consecutive strike retires")
+    eq(retired.length, 1)
+    eq(w.hasRetired, true)
+})
+
+test("watch: a drain between strikes resets them", () => {
+    const [w, retired] = watch()
+    w.check(SAMPLE * 2, SAMPLE)
+    eq(w.check(0, SAMPLE), false, "the queue drained: healthy again")
+    eq(w.strikes, 0)
+    w.check(SAMPLE * 2, SAMPLE)
+    eq(retired.length, 0, "the second strike never accumulated")
+})
+
+test("watch: a fast ramp under a fat quantum never strikes", () => {
+    // 100ms spacing, 67ms sample, one fat quantum of slack: the queue
+    // may hold a sample and a fraction, but never two
+    const [w, retired] = watch()
+    for (const level of [70, 130, 160, 199]) eq(w.check(level, SAMPLE), false)
+    eq(retired.length, 0)
+})
+
+test("watch: retire fires once, further checks stay retired", () => {
+    const [w, retired] = watch()
+    w.check(SAMPLE * 2, SAMPLE)
+    w.check(SAMPLE * 2, SAMPLE)
+    eq(w.check(SAMPLE * 2, SAMPLE), false, "no repeat verdicts")
+    eq(retired.length, 1)
+})
+
+test("watch: reset clears strikes and the verdict", () => {
+    const [w, retired] = watch()
+    w.check(SAMPLE * 2, SAMPLE)
+    w.check(SAMPLE * 2, SAMPLE)
+    eq(retired.length, 1)
+    w.reset()
+    eq(w.hasRetired, false)
+    eq(w.check(SAMPLE * 2, SAMPLE), false, "strikes start over after reset")
+    eq(retired.length, 1, "reset does not un-fire an already-made verdict")
 })
