@@ -1,7 +1,9 @@
 import GLib from "gi://GLib?version=2.0"
 import Gio from "gi://Gio?version=2.0"
+import GObject from "gi://GObject?version=2.0"
 import Gst from "gi://Gst?version=1.0"
 import Config from "../config"
+import CommandRegistry from "./commandRegistry"
 import { execAsync, timeoutAdd, sourceRemove } from "./metrics"
 import { registerDispose } from "./lifecycle"
 import { ensureGst } from "./gstreamer"
@@ -29,6 +31,16 @@ import { ensureGst } from "./gstreamer"
 // first click, off the audible path), and a click is one
 // `push-buffer` — microseconds. Until the decode lands (and forever,
 // if it can't), clicks fall back to a per-click subprocess player.
+//
+// A push that returns OK is only a delivery INTO the pipeline, not a
+// sound: a live pipeline whose sink stream has gone stale accepts
+// buffers forever while rendering none or minutes behind (observed
+// live: pills presented, the sink's monitor feed stayed silent for
+// seconds, clicks missing until a bus error finally tore the pipeline
+// down). The DeliveryWatch therefore audits the queue after each
+// push: a whole sample still sitting in appsrc 300ms later, twice in
+// a row, retires the native path for the session and clicks take the
+// subprocess player from then on.
 //
 // Deliberately NOT played for the microphone pill: a mic change has no
 // audible reference level to confirm.
@@ -66,6 +78,20 @@ function teardownPipeline() {
     bus = null
     appsrc = null
     pipeline = null
+    cancelDrainCheck()
+}
+
+// a stalled stream gets no second pipeline: a rebuild reproduces the
+// same stall, and the subprocess player measured faster than a native
+// click anyway (~50ms vs ~140ms through the sink). Same verdict as two
+// bus errors — retired for the session, back on the next shell start.
+function retireNative(reason: string) {
+    teardownPipeline()
+    nativeFailed = true
+    if (!warned) {
+        warned = true
+        console.warn(`volumeFeedback: ${reason}; subprocess player takes over for the session`)
+    }
 }
 
 function ensurePipeline(): boolean {
@@ -108,16 +134,16 @@ function ensurePipeline(): boolean {
         b.add_signal_watch()
         b.connect("message::error", () => {
             nativeErrors++
-            teardownPipeline()
-            if (nativeErrors >= 2) nativeFailed = true
-            if (!warned) {
-                warned = true
-                console.warn(
-                    "volumeFeedback: gstreamer sink error, " +
-                        (nativeFailed
-                            ? "falling back to a subprocess player for the session"
-                            : "rebuilding the pipeline on the next click"),
-                )
+            if (nativeErrors >= 2) {
+                retireNative("gstreamer sink error")
+            } else {
+                teardownPipeline()
+                if (!warned) {
+                    warned = true
+                    console.warn(
+                        "volumeFeedback: gstreamer sink error, rebuilding the pipeline on the next click",
+                    )
+                }
             }
         })
         pipeline = p
@@ -143,7 +169,9 @@ function pushPcm(): boolean {
     // push-buffer is an action signal; the gi typings type its return
     // as void even though it carries the FlowReturn at runtime
     const flow = appsrc.emit("push-buffer", makeBuffer()) as unknown as Gst.FlowReturn
-    return flow === Gst.FlowReturn.OK
+    if (flow !== Gst.FlowReturn.OK) return false
+    armDrainCheck()
+    return true
 }
 
 // ------------------------------------------------- one-shot decode
@@ -318,9 +346,61 @@ export class ClickPacer {
         return this.slot
     }
 
+    /** When the most recent click started (`Date.now()` domain). */
+    get lastFire(): number {
+        return this.last
+    }
+
     reset() {
         this.last = -Infinity
         this.slot = null
+    }
+}
+
+/**
+ * The delivery decision for the native pipeline, GTK-free so tests can
+ * drive it with a fake queue: `check` takes one queue reading taken
+ * `graceMs` after a push (`level`) and the pushed sample's size. A
+ * reading below one sample means the pipeline consumes at real time —
+ * healthy, strikes reset. At or above it means a whole sample never
+ * left the queue since its push — a strike; two strikes in a row
+ * without an intervening drain call `onRetire` once. The strike
+ * threshold is TWO samples, not one: a fat sink quantum can keep a
+ * sample in flight during a fast ramp, and a false retire is
+ * permanent — the session would lose its native path for no gain.
+ */
+export class DeliveryWatch {
+    private _strikes = 0
+    private retired = false
+
+    constructor(private readonly onRetire: () => void) {}
+
+    /** Queue level observed `graceMs` after a push; true = just retired. */
+    check(level: number, sampleBytes: number): boolean {
+        if (level < sampleBytes * 2) {
+            this._strikes = 0
+            return false
+        }
+        this._strikes++
+        if (this._strikes >= 2 && !this.retired) {
+            this.retired = true
+            this.onRetire()
+            return true
+        }
+        return false
+    }
+
+    get strikes(): number {
+        return this._strikes
+    }
+
+    get hasRetired(): boolean {
+        return this.retired
+    }
+
+    reset() {
+        this._strikes = 0
+        this.retired = false
     }
 }
 
@@ -330,6 +410,50 @@ export class ClickPacer {
 const MIN_INTERVAL_MS = 100
 
 const pacer = new ClickPacer(MIN_INTERVAL_MS)
+
+// ------------------------------------------------- delivery watch
+//
+// One bounded audit per push: DRAIN_GRACE_MS after pushing, the appsrc
+// queue must be below one whole sample. A healthy live pipeline
+// consumes the 67ms sample within a quantum or two; a stalled stream
+// still holds all of it. Armed once per burst (a ramp's later pushes
+// fall inside the armed window and are judged by the same reading).
+
+const DRAIN_GRACE_MS = 300
+
+const deliveryWatch = new DeliveryWatch(() =>
+    retireNative("clicks not reaching the sink (queue never drains)"),
+)
+
+let drainCheck: number | null = null
+let lastPlay: { at: number; via: string } | null = null
+
+function cancelDrainCheck() {
+    if (drainCheck !== null) {
+        sourceRemove(drainCheck)
+        drainCheck = null
+    }
+}
+
+function armDrainCheck() {
+    if (drainCheck !== null || pipeline === null) return
+    drainCheck = timeoutAdd("volumeFeedback:drain", GLib.PRIORITY_DEFAULT, DRAIN_GRACE_MS, () => {
+        drainCheck = null
+        if (appsrc === null || pcm === null) return GLib.SOURCE_REMOVE
+        deliveryWatch.check(appsrcQueueBytes(appsrc), pcm.byteLength)
+        return GLib.SOURCE_REMOVE
+    })
+}
+
+// the queue audit's reading: bytes still sitting in appsrc. This gjs
+// only exposes the raw two-argument get_property (name + an
+// initialised GObject.Value) — no one-argument convenience form
+function appsrcQueueBytes(src: Gst.Element): number {
+    const value = new GObject.Value()
+    value.init(GObject.type_from_name("guint64"))
+    src.get_property("current-level-bytes", value)
+    return value.get_uint64()
+}
 
 let trailing: number | null = null
 
@@ -343,13 +467,19 @@ function cancelTrailing() {
 }
 
 function play() {
-    if (pcm !== null && pushPcm()) return
+    if (pcm !== null && pushPcm()) {
+        lastPlay = { at: Date.now(), via: "pipeline" }
+        return
+    }
     // no PCM yet (first clicks of the session) or it can never exist:
     // per-click player. The decode is kicked off here so it is never
     // on the audible path
     if (!decoding && !decodeFailed && canDecode()) startDecode()
     const argv = resolveFallback()
-    if (argv !== null) spawnSubprocess(argv)
+    if (argv !== null) {
+        spawnSubprocess(argv)
+        lastPlay = { at: Date.now(), via: `subprocess/${argv[0]}` }
+    }
 }
 
 /**
@@ -380,10 +510,54 @@ export function click() {
 
 export function dispose() {
     cancelTrailing()
+    cancelDrainCheck()
     pacer.reset()
+    deliveryWatch.reset()
     teardownPipeline()
     proc?.force_exit()
     proc = null
 }
+
+// diagnostics for the request interface (`ags request -i <instance>
+// feedback`): which path the click is on and whether the pipeline is
+// actually delivering. Exists because the failure this guards against
+// is silent by construction — pills presented, clicks missing, and
+// nothing on any console until the watch or a bus error catches it.
+CommandRegistry.get_default().register({
+    name: ["feedback"],
+    description: "Volume-click audio feedback diagnostics as single-line JSON",
+    help: `feedback
+  Reports the state of the volume click's playback: the decoded
+  sample, the native GStreamer pipeline (present? state? bytes still
+  queued in appsrc?), the delivery watch (two undrained audits retire
+  the native path — that is the counter to read when clicks go
+  missing), the subprocess fallback command, and the last click's
+  path. JSON on one line.`,
+    main: () => {
+        let pipelineState: string | null = null
+        let queuedBytes: number | null = null
+        if (pipeline !== null) {
+            const [, st] = pipeline.get_state(0)
+            pipelineState = Gst.Element.state_get_name(st ?? Gst.State.NULL)
+        }
+        if (appsrc !== null) queuedBytes = appsrcQueueBytes(appsrc)
+        return JSON.stringify({
+            pcmReady: pcm !== null,
+            decoding,
+            decodeFailed,
+            nativeFile: nativeFile !== null,
+            nativeFailed,
+            nativeErrors,
+            pipelineState,
+            queuedBytes,
+            drainStrikes: deliveryWatch.strikes,
+            nativeRetired: deliveryWatch.hasRetired || nativeFailed,
+            lastPlay:
+                lastPlay === null ? null : { agoMs: Date.now() - lastPlay.at, via: lastPlay.via },
+            lastClickAgoMs: Date.now() - pacer.lastFire,
+            fallback: resolveFallback(),
+        })
+    },
+})
 
 registerDispose("volumeFeedback", dispose)
